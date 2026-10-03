@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check the tag matches the app version
+        run: |
+          VERSION="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/blackboard_sync/__init__.py)"
+          test "v$VERSION" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME does not match version $VERSION" >&2; exit 1; }
+      - name: Build the app and .dmg
+        run: |
+          ./scripts/setup.sh
+          .venv/bin/python -m pytest -q
+          ./scripts/build-app.sh
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/Blackboard-Sync-*.dmg --title "$GITHUB_REF_NAME" --generate-notes

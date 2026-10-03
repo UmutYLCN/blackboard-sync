@@ -125,22 +125,10 @@ close the terminal. (`.venv/bin/blackboard-sync-menubar` runs it in the
 foreground instead, with its log in the terminal.) Only one copy runs at a
 time; starting it again does nothing.
 
-To start it **without a terminal**, build a double-clickable app once:
-
-```sh
-./scripts/make-app.sh          # creates dist/Blackboard Sync.app
-```
-
-Drag `dist/Blackboard Sync.app` to `/Applications` (or your Desktop) and open
-it like any other app. It is only a launcher for this checkout's `.venv`, so
-keep the repository where it is (or run `make-app.sh` again after moving it).
-Alternatively, Automator → New → Application → "Run Shell Script" with
-`/path/to/blackboard-sync/scripts/menubar.sh` gives the same result.
-
-The first time it posts a notification, macOS asks whether **"Python"** may
-send notifications; choose **Allow** (System Settings → Notifications → Python
-to change it later). Notifications appear under that name because the app runs
-on your Python installation.
+To start it **without a terminal**, build the standalone app (see
+[Building the app](#building-the-app-and-releases)) and open
+`dist/Blackboard Sync.app`. It bundles its own Python and needs no checkout or
+`.venv`. Notifications appear under the name "Blackboard Sync".
 
 ### Start at login
 
@@ -393,8 +381,8 @@ normal after the next successful sync; choose **Şimdi senkronize et** to do it
 right away.
 
 **"Start at login" does nothing after moving the repository.** The login item
-points at this checkout's `.venv`. Untick and tick **Bilgisayar açılınca
-başlat** again (and rebuild the app with `./scripts/make-app.sh`).
+points at this checkout's `.venv` (or at the app, if you moved the app). Untick
+and tick **Bilgisayar açılınca başlat** again.
 
 ## Privacy
 
@@ -427,3 +415,30 @@ and note rendering. The menu bar app's decisions (scheduling, session-expiry
 handling, notification and menu text, the login item) live in plain modules
 under `src/blackboard_sync/menubar/` and are tested without a GUI session;
 only `menubar/app.py` touches AppKit.
+
+## Building the app and releases
+
+```sh
+./scripts/setup.sh
+./scripts/build-app.sh   # dist/Blackboard Sync.app and dist/Blackboard-Sync-<version>.dmg
+```
+
+The app is built with PyInstaller (installed into `.venv` only) and bundles
+Python and all dependencies. It is ad-hoc signed, not notarized, so on first
+launch macOS says the developer cannot be verified: right-click the app →
+**Open** once. Sync and sign-in runs re-invoke the app's own executable with
+the CLI subcommand (`packaging/app_entry.py`).
+
+The version lives in `src/blackboard_sync/__init__.py` (`pyproject.toml` reads
+it). To release, bump it, merge, then push a matching tag:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The `Release` workflow builds the `.dmg` on a macOS runner and attaches it to
+a GitHub Release. The `CI` workflow runs the tests on pull requests.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, IO
 
+from blackboard_sync import runtime
 from blackboard_sync.config import Config
 from blackboard_sync.errors import EXIT_ERROR
 from blackboard_sync.menubar.model import (
@@ -36,7 +37,7 @@ Runner = Callable[..., subprocess.CompletedProcess]
 
 
 def cli_command(*args: str, python: str | None = None) -> list[str]:
-    return [python or sys.executable, "-m", "blackboard_sync", *args]
+    return runtime.cli_command(*args, python=python)
 
 
 def utcnow() -> datetime:
@@ -146,7 +147,7 @@ def detach(config: Config, python: str | None = None) -> int:
     log = open(log_file(config), "a")
     try:
         subprocess.Popen(
-            [python or sys.executable, "-m", "blackboard_sync.menubar"],
+            runtime.menubar_command(python),
             stdin=subprocess.DEVNULL,
             stdout=log,
             stderr=log,

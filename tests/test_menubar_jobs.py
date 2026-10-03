@@ -5,6 +5,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from blackboard_sync import runtime
 from blackboard_sync.config import Config
 from blackboard_sync.menubar import jobs, launchagent
 from blackboard_sync.menubar.model import Icon
@@ -128,7 +129,17 @@ def test_launch_agent_install_and_remove(tmp_path):
 
 def test_launch_agent_keeps_custom_settings():
     plist = launchagent.build_plist(
-        "/py", Path("/log"), env={"BBSYNC_DEST": "/Okul", "HOME": "/Users/x"}
+        ["/py"], Path("/log"), env={"BBSYNC_DEST": "/Okul", "HOME": "/Users/x"}
     )
     assert plist["EnvironmentVariables"] == {"BBSYNC_DEST": "/Okul"}
-    assert "EnvironmentVariables" not in launchagent.build_plist("/py", Path("/log"), env={})
+    assert "EnvironmentVariables" not in launchagent.build_plist(["/py"], Path("/log"), env={})
+
+
+def test_frozen_app_reinvokes_its_own_executable(monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", "/Applications/Blackboard Sync.app/Contents/MacOS/Blackboard Sync")
+    exe = sys.executable
+    assert jobs.cli_command("sync", "--json") == [exe, "sync", "--json"]
+    assert runtime.menubar_command() == [exe]
+    plist = launchagent.build_plist(runtime.menubar_command(), Path("/log"), env={})
+    assert plist["ProgramArguments"] == [exe]
