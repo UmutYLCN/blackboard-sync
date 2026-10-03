@@ -1,0 +1,3 @@
+# Extra pin for building the packaged app (scripts/build-app.sh); installed into
+# the project-local .venv, never globally.
+pyinstaller==6.22.3

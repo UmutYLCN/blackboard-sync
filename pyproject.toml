@@ -4,9 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blackboard-sync"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Mirror Blackboard Learn Ultra course content into local folders."
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
 dependencies = [
     "requests==2.34.2",
@@ -24,6 +25,9 @@ dev = [
 [project.scripts]
 blackboard-sync = "blackboard_sync.cli:main"
 blackboard-sync-menubar = "blackboard_sync.menubar.app:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "blackboard_sync.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
