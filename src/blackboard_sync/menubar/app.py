@@ -14,13 +14,14 @@ import threading
 from pathlib import Path
 
 from blackboard_sync.config import Config
-from blackboard_sync.menubar import jobs, launchagent
+from blackboard_sync.menubar import jobs, launchagent, settings_form
 from blackboard_sync.menubar.model import (
     T_AUTOSTART,
     T_OPEN_FOLDER,
     T_QUIT,
     T_RECENT,
     T_RECENT_EMPTY,
+    T_SETTINGS,
     AppModel,
     Icon,
     MenuModel,
@@ -28,6 +29,7 @@ from blackboard_sync.menubar.model import (
     RunOutcome,
     open_target,
 )
+from blackboard_sync.settings import SettingsError, save_settings
 
 log = logging.getLogger("blackboard_sync.menubar")
 
@@ -76,11 +78,18 @@ def build_app(config: Config):
         def __init__(self):
             super().__init__("Blackboard Sync", title=FALLBACK_TITLES[Icon.IDLE], quit_button=None)
             self.config = config
+            self.settings = jobs.effective_settings(config)
             self.model = jobs.load_model(config, jobs.utcnow(), launchagent.is_installed())
             self._drawn: MenuModel | None = None
             self._drawn_icon: Icon | None = None
+            self._settings_window = None
+            self._login_after_job = False  # asked for while another job was running
             self._timer = rumps.Timer(self.tick, TICK_SECONDS)
             self._timer.start()
+            if not self.model.configured:
+                # First launch: show the settings window once the app is running.
+                self._first_run_timer = rumps.Timer(self._first_run, 1)
+                self._first_run_timer.start()
             rumps.events.on_notification.register(self.notification_clicked)
             rumps.events.on_wake.register(self.tick)
 
@@ -95,13 +104,13 @@ def build_app(config: Config):
                 return
             log.info("%s started", job)
             self.refresh()
-            threading.Thread(target=self._sync_worker, args=(job,), daemon=True).start()
+            threading.Thread(target=self._sync_worker, args=(job, self.settings), daemon=True).start()
 
         def start_refetch(self, _sender=None) -> None:
             self.start_sync(job="refetch")
 
-        def _sync_worker(self, job: str) -> None:
-            outcome = jobs.run_sync(job)
+        def _sync_worker(self, job: str, settings) -> None:
+            outcome = jobs.run_sync(job, settings)
             AppHelper.callAfter(self._sync_done, outcome)
 
         def _sync_done(self, outcome: RunOutcome) -> None:
@@ -109,22 +118,29 @@ def build_app(config: Config):
             for note in self.model.finish_sync(outcome, jobs.utcnow()):
                 self.notify(note)
             self._save()
+            if self._login_after_job:
+                self._login_after_job = False
+                self.start_login()
             self.refresh()
 
         def start_login(self, _sender=None) -> None:
             if not self.model.begin("login"):
                 return
-            log.info("login started")
+            log.info("login started (%s)", self.settings.base_url)
             self.refresh()
-            threading.Thread(target=self._login_worker, daemon=True).start()
+            threading.Thread(target=self._login_worker, args=(self.settings,), daemon=True).start()
 
-        def _login_worker(self) -> None:
-            ok, message = jobs.run_login()
+        def _login_worker(self, settings) -> None:
+            ok, message = jobs.run_login(settings)
             AppHelper.callAfter(self._login_done, ok, message)
 
         def _login_done(self, ok: bool, message: str) -> None:
             log.info("login finished: ok=%s %s", ok, message)
             self.model.finish_login(ok, message, jobs.utcnow())
+            if self._login_after_job:  # the school changed during this sign-in
+                self._login_after_job = False
+                self.start_login()
+                return
             self.tick()  # a successful sign-in makes a sync due right away
 
         def open_school_folder(self, _sender=None) -> None:
@@ -152,6 +168,53 @@ def build_app(config: Config):
                 log.warning("could not change the login item: %s", exc)
                 self.model.note = "Açılışta başlatma ayarı değiştirilemedi."
             self.refresh()
+
+        def _first_run(self, timer) -> None:
+            timer.stop()
+            self.open_settings()
+
+        def open_settings(self, _sender=None) -> None:
+            if self._settings_window is None:
+                from blackboard_sync.menubar.settings_window import SettingsWindow
+
+                saved = jobs.saved_settings(self.config)
+                values = settings_form.initial_values(saved, self.settings, launchagent.is_installed())
+                self._settings_window = SettingsWindow(
+                    values,
+                    first_run=saved is None,
+                    on_submit=self.settings_submitted,
+                    on_close=self._settings_closed,
+                )
+            self._settings_window.show()
+
+        def _settings_closed(self) -> None:
+            self._settings_window = None
+
+        def settings_submitted(self, values: settings_form.FormValues, login: bool) -> tuple[str, str] | None:
+            """Save the window; returns (error, field) to show instead of closing."""
+            try:
+                submission = settings_form.submit(values, self.settings)
+                save_settings(self.config.data_dir, submission.settings)
+            except SettingsError as exc:
+                return str(exc), exc.field
+            except OSError as exc:
+                log.warning("could not save the settings: %s", exc)
+                return f"Ayarlar kaydedilemedi: {exc.strerror or exc}", "dest"
+            log.info(
+                "settings saved: %s, dest %s", submission.settings.base_url, submission.settings.dest
+            )
+            self.settings = submission.settings
+            self.model.apply_settings(submission.settings.dest, submission.school_changed)
+            if submission.autostart != launchagent.is_installed():
+                self.toggle_autostart()
+            self._save()
+            if submission.needs_login(login):
+                if self.model.busy is None:
+                    self.start_login()
+                elif self.model.busy != "login" or submission.school_changed:
+                    self._login_after_job = True
+            self.refresh()
+            return None
 
         def notification_clicked(self, notification) -> None:
             data = notification.data if isinstance(notification.data, dict) else {}
@@ -201,6 +264,7 @@ def build_app(config: Config):
                 recent.add(rumps.MenuItem(T_RECENT_EMPTY))
             items.append(recent)
             items.append(rumps.separator)
+            items.append(rumps.MenuItem(T_SETTINGS, callback=self.open_settings))
             autostart = rumps.MenuItem(T_AUTOSTART, callback=self.toggle_autostart)
             autostart.state = 1 if menu.autostart else 0
             items.append(autostart)
@@ -265,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
     # A menu bar app: no Dock icon, no app menu.
     NSApplication.sharedApplication().setActivationPolicy_(NSApplicationActivationPolicyAccessory)
     app = build_app(config)
-    log.info("menu bar app started (dest %s)", config.dest)
+    log.info("menu bar app started (dest %s)", app.settings.dest)
     app.run()
     lock.close()
     return 0

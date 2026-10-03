@@ -9,8 +9,10 @@ from blackboard_sync import runtime
 from blackboard_sync.config import Config
 from blackboard_sync.menubar import jobs, launchagent
 from blackboard_sync.menubar.model import Icon
+from blackboard_sync.settings import Settings, save_settings
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
+SETTINGS = Settings(base_url="https://bb.example.edu", dest=Path("/Users/student/Okul"))
 
 
 def fake_runner(returncode=0, stdout="", stderr="", raises=None):
@@ -28,32 +30,37 @@ def fake_runner(returncode=0, stdout="", stderr="", raises=None):
 
 def test_sync_runs_the_cli_json_mode():
     runner = fake_runner(stdout=json.dumps({"status": "ok", "courses": []}))
-    result = jobs.run_sync(runner=runner, now=lambda: NOW)
+    result = jobs.run_sync("sync", SETTINGS, runner=runner, now=lambda: NOW)
     cmd, kwargs = runner.calls[0]
-    assert cmd == [sys.executable, "-m", "blackboard_sync", "sync", "--json"]
+    assert cmd == [
+        sys.executable, "-m", "blackboard_sync",
+        "--base-url", "https://bb.example.edu", "sync", "--json", "--dest", "/Users/student/Okul",
+    ]
     assert kwargs["capture_output"] and kwargs["stdin"] == subprocess.DEVNULL
     assert result.status == "ok" and result.finished_at == NOW
 
 
 def test_refetch_job_passes_refetch_missing():
     runner = fake_runner(stdout=json.dumps({"status": "ok", "courses": []}))
-    jobs.run_sync("refetch", runner=runner, now=lambda: NOW)
-    assert runner.calls[0][0][-3:] == ["sync", "--json", "--refetch-missing"]
+    jobs.run_sync("refetch", SETTINGS, runner=runner, now=lambda: NOW)
+    assert runner.calls[0][0][-1] == "--refetch-missing"
 
 
 def test_sync_respects_cli_exit_codes():
-    assert jobs.run_sync(runner=fake_runner(returncode=3), now=lambda: NOW).status == "login_required"
-    assert jobs.run_sync(runner=fake_runner(returncode=4), now=lambda: NOW).status == "locked"
+    assert jobs.run_sync("sync", SETTINGS, fake_runner(returncode=3), lambda: NOW).status == "login_required"
+    assert jobs.run_sync("sync", SETTINGS, fake_runner(returncode=4), lambda: NOW).status == "locked"
 
 
 def test_hung_sync_becomes_an_error():
     runner = fake_runner(raises=subprocess.TimeoutExpired("x", 1))
-    assert jobs.run_sync(runner=runner, now=lambda: NOW).status == "error"
+    assert jobs.run_sync("sync", SETTINGS, runner=runner, now=lambda: NOW).status == "error"
 
 
 def test_login_result():
-    assert jobs.run_login(fake_runner(returncode=0)) == (True, "")
-    assert jobs.run_login(fake_runner(returncode=1, stderr="Error: The browser did not start.\n")) == (
+    runner = fake_runner(returncode=0)
+    assert jobs.run_login(SETTINGS, runner) == (True, "")
+    assert runner.calls[0][0][-3:] == ["--base-url", "https://bb.example.edu", "login"]
+    assert jobs.run_login(SETTINGS, fake_runner(returncode=1, stderr="Error: The browser did not start.\n")) == (
         False,
         "Error: The browser did not start.",
     )
@@ -143,3 +150,33 @@ def test_frozen_app_reinvokes_its_own_executable(monkeypatch):
     assert runtime.menubar_command() == [exe]
     plist = launchagent.build_plist(runtime.menubar_command(), Path("/log"), env={})
     assert plist["ProgramArguments"] == [exe]
+
+
+def test_saved_settings_decide_what_the_app_syncs(tmp_path):
+    config = Config(base_url="https://env.example.edu", data_dir=tmp_path / "data", dest=tmp_path / "Okul")
+    assert jobs.saved_settings(config) is None
+    assert jobs.effective_settings(config) == Settings("https://env.example.edu", tmp_path / "Okul")
+    assert jobs.load_model(config, NOW, autostart=False).configured is False
+
+    save_settings(config.data_dir, SETTINGS)
+    assert jobs.effective_settings(config) == SETTINGS
+    model = jobs.load_model(config, NOW, autostart=False)
+    assert model.configured is True and model.dest == SETTINGS.dest
+
+
+def test_packaged_app_runs_cli_when_the_school_comes_first(monkeypatch):
+    import importlib.util
+
+    path = Path(__file__).parent.parent / "packaging" / "app_entry.py"
+    spec = importlib.util.spec_from_file_location("app_entry", path)
+    app_entry = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(app_entry)
+    called = []
+    monkeypatch.setattr("blackboard_sync.cli.main", lambda args: called.append(("cli", args)) or 0)
+    monkeypatch.setattr("blackboard_sync.menubar.app.main", lambda args: called.append(("menubar", args)) or 0)
+    for args in (["--base-url", "https://bb.example.edu", "login"], ["--base-url=https://x.edu", "sync"], ["sync"]):
+        monkeypatch.setattr(sys, "argv", ["Blackboard Sync", *args])
+        app_entry.main()
+    monkeypatch.setattr(sys, "argv", ["Blackboard Sync", "--detach"])
+    app_entry.main()
+    assert [kind for kind, _ in called] == ["cli", "cli", "cli", "menubar"]

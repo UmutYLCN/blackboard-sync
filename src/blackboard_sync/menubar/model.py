@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable
 
 from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
+from blackboard_sync.settings import Settings
 
 SYNC_INTERVAL = timedelta(hours=1)
 FIRST_SYNC_DELAY = timedelta(seconds=30)
@@ -54,6 +55,7 @@ T_OPEN_FOLDER = "Okul klasörünü aç"
 T_RECENT = "Son indirilenler"
 T_RECENT_EMPTY = "Henüz yeni bir şey yok"
 T_AUTOSTART = "Bilgisayar açılınca başlat"
+T_SETTINGS = "Ayarlar…"
 T_QUIT = "Çıkış"
 
 
@@ -63,12 +65,17 @@ T_QUIT = "Çıkış"
 SYNC_JOBS = ("sync", "refetch")
 
 
-def sync_arguments(job: str) -> list[str]:
-    """CLI arguments for a sync job."""
-    args = ["sync", "--json"]
+def sync_arguments(job: str, settings: Settings) -> list[str]:
+    """CLI arguments for a sync job with the settings from the settings window."""
+    args = ["--base-url", settings.base_url, "sync", "--json", "--dest", str(settings.dest)]
     if job == "refetch":
         args.append("--refetch-missing")
     return args
+
+
+def login_arguments(settings: Settings) -> list[str]:
+    """CLI arguments for signing in to the school from the settings window."""
+    return ["--base-url", settings.base_url, "login"]
 
 
 class Icon(str, Enum):
@@ -268,7 +275,9 @@ class AppModel:
 
     Only one job (a sync or a sign-in) runs at a time; the scheduler never
     starts a sync while one is busy, and the CLI's lock file covers syncs that
-    were started elsewhere (exit status 4, retried later).
+    were started elsewhere (exit status 4, retried later). Until the settings
+    window has been saved once (``configured``), nothing is synced on a
+    schedule.
     """
 
     def __init__(
@@ -279,8 +288,10 @@ class AppModel:
         recent: list[RecentItem] | None = None,
         login_prompted: bool = False,
         autostart: bool = False,
+        configured: bool = True,
     ):
         self.dest = dest
+        self.configured = configured
         self.last = last
         self.recent = list(recent or [])
         self.login_prompted = login_prompted
@@ -305,7 +316,7 @@ class AppModel:
 
     # -- scheduling -----------------------------------------------------
     def due(self, now: datetime) -> bool:
-        return self.busy is None and now >= self.next_run_at
+        return self.configured and self.busy is None and now >= self.next_run_at
 
     def begin(self, job: str) -> bool:
         """Claim the single job slot; False when something is already running."""
@@ -354,6 +365,22 @@ class AppModel:
         else:
             self.note = shorten(f"Giriş tamamlanamadı: {message}", 80)
 
+    def apply_settings(self, dest: Path, school_changed: bool) -> None:
+        """The settings window was saved.
+
+        A new folder only affects future syncs, so "Son indirilenler" (paths in
+        the old folder) starts over. A new school makes the last result and the
+        old session meaningless: the student has to sign in again.
+        """
+        self.configured = True
+        if dest != self.dest:
+            self.dest = dest
+            self.recent = []
+        if school_changed:
+            self.last = None
+            self.login_prompted = False
+            self.note = "Yeni okul için giriş yapın."
+
     def remember(self, outcome: RunOutcome) -> None:
         at = (outcome.finished_at or datetime.now(timezone.utc)).isoformat(timespec="seconds")
         fresh = [
@@ -372,6 +399,8 @@ class AppModel:
             lines = ["Silinen dosyalar tekrar indiriliyor…"]
         elif self.busy == "login":
             lines = ["Tarayıcıda giriş yapmanız bekleniyor…"]
+        elif not self.configured:
+            lines = [f"Kurulumu tamamlamak için “{T_SETTINGS}”ı seçin"]
         elif self.last is None:
             lines = ["Henüz senkronize edilmedi"]
         else:
@@ -390,7 +419,7 @@ class AppModel:
                     lines.append(shorten(self.last.message, 70))
         if self.note:
             lines.append(self.note)
-        if self.busy is None:
+        if self.busy is None and self.configured:
             lines.append(f"Sonraki senkron: {format_time(max(self.next_run_at, now), now)}")
         return lines
 

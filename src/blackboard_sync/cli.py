@@ -89,11 +89,9 @@ def _add_selection_args(p: argparse.ArgumentParser) -> None:
 
 
 def make_config(args: argparse.Namespace) -> Config:
-    config = Config.from_env()
+    config = Config.from_env(data_dir=args.data_dir)
     if args.base_url:
         config.base_url = args.base_url.rstrip("/")
-    if args.data_dir:
-        config.data_dir = args.data_dir.expanduser()
     if getattr(args, "dest", None):
         config.dest = args.dest.expanduser()
     return config
