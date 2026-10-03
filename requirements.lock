@@ -9,8 +9,11 @@ playwright==1.63.0
 pluggy==1.6.0
 pyee==13.0.1
 Pygments==2.21.0
+pyobjc-core==12.2.2
+pyobjc-framework-Cocoa==12.2.2
 pytest==9.1.1
 requests==2.34.2
+rumps==0.4.0
 tomli==2.4.1
 typing_extensions==4.16.0
 urllib3==2.8.0

@@ -35,8 +35,9 @@ finds your courses for the current term, and copies everything in them to
   local is ever deleted.
 - New term? It switches automatically; no course URLs to configure.
 
-Scheduling (an hourly background run with macOS notifications) is a separate
-add-on; it calls `blackboard-sync sync --json` described below.
+Day to day you do not need the terminal at all: the [menu bar app](#menu-bar-app)
+syncs every hour in the background and shows a macOS notification such as
+`CSE303: 2 yeni dosya` when something new arrives.
 
 ## Setup
 
@@ -108,6 +109,89 @@ download nothing.
 If something looks off, `-v` (`blackboard-sync -v sync`) logs every request
 (URLs only, never cookies).
 
+## Menu bar app
+
+A small icon next to the clock that runs the sync for you every hour, so you
+never have to type commands after the first setup.
+
+### Start it
+
+```sh
+./scripts/menubar.sh
+```
+
+The app starts in the background and the command returns right away; you can
+close the terminal. (`.venv/bin/blackboard-sync-menubar` runs it in the
+foreground instead, with its log in the terminal.) Only one copy runs at a
+time; starting it again does nothing.
+
+To start it **without a terminal**, build a double-clickable app once:
+
+```sh
+./scripts/make-app.sh          # creates dist/Blackboard Sync.app
+```
+
+Drag `dist/Blackboard Sync.app` to `/Applications` (or your Desktop) and open
+it like any other app. It is only a launcher for this checkout's `.venv`, so
+keep the repository where it is (or run `make-app.sh` again after moving it).
+Alternatively, Automator → New → Application → "Run Shell Script" with
+`/path/to/blackboard-sync/scripts/menubar.sh` gives the same result.
+
+The first time it posts a notification, macOS asks whether **"Python"** may
+send notifications; choose **Allow** (System Settings → Notifications → Python
+to change it later). Notifications appear under that name because the app runs
+on your Python installation.
+
+### Start at login
+
+Tick **Bilgisayar açılınca başlat** in the menu (or run
+`.venv/bin/blackboard-sync-menubar --enable-autostart`). This writes a per-user
+LaunchAgent, `~/Library/LaunchAgents/io.github.umutylcn.blackboard-sync.menubar.plist`,
+that starts the app every time you log in; macOS may show a "Background item
+added" notice for Python. Untick it (or `--disable-autostart`) to remove the
+file. No administrator rights are needed and nothing is installed outside your
+user account.
+
+### What the menu shows
+
+| Item | What it does |
+| --- | --- |
+| `Son senkron: 14:00 · 3 yeni dosya` | Result of the last run (greyed out, information only), followed by when the next one is due. Shows `oturum sona erdi` when you need to sign in again, or `hata` plus the error. |
+| **Şimdi senkronize et** | Sync right away instead of waiting for the next hourly run. Greyed out while a sync or sign-in is running. |
+| **Giriş yap** | Opens the Blackboard sign-in window (same as `blackboard-sync login`). As soon as you are in, a sync starts. |
+| **Okul klasörünü aç** | Opens `~/Documents/Okul` in Finder. |
+| **Son indirilenler** | The last 10 files, notes and announcements that came in. Click one to open it (or its folder, if you moved the file). |
+| **Bilgisayar açılınca başlat** | Start the app at login (see above). A check mark means it is on. |
+| **Çıkış** | Quit the app. |
+
+The icon tells you the state at a glance:
+
+| Icon | Meaning |
+| --- | --- |
+| graduation cap | Everything fine. |
+| circling arrows | A sync is running. |
+| **red** person with an exclamation mark | Your Blackboard session expired: choose **Giriş yap**. |
+| **orange** warning triangle | The last sync failed (e.g. no internet); it retries in 10 minutes. |
+
+### When it syncs and notifies
+
+- About 30 seconds after the app starts, then every hour. After the Mac
+  wakes up, an overdue sync runs within half a minute.
+- Never two at once: the app runs one sync or sign-in at a time, and if a
+  `blackboard-sync sync` from the terminal is already running (the lock file),
+  it waits and tries again in 10 minutes.
+- After a run with something new, **one** notification lists each changed
+  course on its own line, for example `CSE303: 2 yeni dosya, 1 yeni duyuru`.
+  Clicking it opens that course's folder (when several courses changed, the
+  term folder that contains them). No notification when nothing is new.
+- When the session expires you get **one** notification asking you to sign in
+  (clicking it opens the sign-in window). It is not repeated every hour; the
+  red icon stays until a sync succeeds again.
+
+Under the hood every run is exactly `blackboard-sync sync --json` (see
+[the single-run contract](#for-the-scheduler-single-run-contract)), so the app
+downloads the same files into the same folders as the command does.
+
 ## Commands and options
 
 ```
@@ -146,6 +230,8 @@ most recently started term. Courses the instructor has not opened yet
 | Sign-in browser profile | `~/Library/Application Support/blackboard-sync/browser-profile/` |
 | Sync state | `~/Library/Application Support/blackboard-sync/state.json` |
 | Last run summary | `~/Library/Application Support/blackboard-sync/last-run.json` |
+| Menu bar app state and log | `~/Library/Application Support/blackboard-sync/menubar.json`, `menubar.log` |
+| Start-at-login item | `~/Library/LaunchAgents/io.github.umutylcn.blackboard-sync.menubar.plist` |
 
 The data folder is created with owner-only permissions (`700`) and the files in
 it are `600`. None of it lives in this repository.
@@ -195,6 +281,8 @@ Your Blackboard session has expired. Run `blackboard-sync login` to sign in to B
 and exit with status **3**. `login` reuses its own browser profile, so signing
 in again is often just a click. Cookies that Blackboard refreshes during a run
 are saved back, which keeps a regularly used session alive longer.
+In the menu bar app the icon turns red and one notification asks you to sign
+in; choose **Giriş yap** there instead of typing `login`.
 
 ## For the scheduler: single-run contract
 
@@ -285,6 +373,27 @@ one without your usual tabs) and run `login` again.
 pages load for you. If you ended on an error page, open
 <https://blackboard.istun.edu.tr> in that window and finish signing in there.
 
+**The menu bar icon does not appear.** Check
+`~/Library/Application Support/blackboard-sync/menubar.log` for an error. If it
+says the app is already running, an earlier copy is still alive: find it with
+`pgrep -fl blackboard_sync.menubar` and quit it (or `kill` the number shown).
+On a crowded menu bar (especially with a notch), macOS hides icons that do not
+fit; quit a few other menu bar apps to check.
+
+**No notifications.** Allow notifications for "Python" in System Settings →
+Notifications. If your Python cannot use the notification center at all (some
+non-framework builds such as pyenv's), the app falls back to plain
+notifications that do not open a folder when clicked; the Python from
+python.org or Homebrew works.
+
+**The icon stays red after signing in from the terminal.** It turns back to
+normal after the next successful sync; choose **Şimdi senkronize et** to do it
+right away.
+
+**"Start at login" does nothing after moving the repository.** The login item
+points at this checkout's `.venv`. Untick and tick **Bilgisayar açılınca
+başlat** again (and rebuild the app with `./scripts/make-app.sh`).
+
 ## Privacy
 
 - Your password is typed only into Blackboard's own sign-in page in a real
@@ -312,4 +421,7 @@ pages load for you. If you ended on an error page, open
 Tests run entirely against hand-written sample responses in
 `tests/fixtures/` (no real accounts or data) and cover path building and the
 mirrored tree, name sanitizing, incremental state, session-expiry detection
-and note rendering.
+and note rendering. The menu bar app's decisions (scheduling, session-expiry
+handling, notification and menu text, the login item) live in plain modules
+under `src/blackboard_sync/menubar/` and are tested without a GUI session;
+only `menubar/app.py` touches AppKit.
