@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blackboard-sync"
+version = "0.1.0"
+description = "Mirror Blackboard Learn Ultra course content into local folders."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests==2.34.2",
+    "playwright==1.63.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+]
+
+[project.scripts]
+blackboard-sync = "blackboard_sync.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

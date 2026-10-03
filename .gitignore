@@ -1,0 +1,18 @@
+# Local environment
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Never commit sessions, cookies, browser profiles, sync state or course material.
+# (The tool stores these outside the repository by default; these entries are a safety net.)
+.bbsync/
+session.json
+browser-profile/
+state.json
+last-run.json
+*.partial
+Okul/
