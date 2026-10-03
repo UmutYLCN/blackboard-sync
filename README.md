@@ -61,12 +61,15 @@ environment with `source .venv/bin/activate` and type `blackboard-sync`).
 .venv/bin/blackboard-sync login
 ```
 
-A Chrome window (Brave if Chrome is missing; force one with
-`--browser chrome|brave`) opens on the Blackboard sign-in page, which for
-blackboard.istun.edu.tr forwards to the university's Microsoft sign-in. Sign in
-exactly as you normally do, including any two-factor step. As soon as Blackboard accepts you, the window closes by itself and the
-terminal prints `Signed in as <your user name>`. You have 10 minutes
-(`--timeout SECONDS` to change).
+A separate Chrome window (Brave if Chrome is missing; force one with
+`--browser chrome|brave`) opens in front, on the Blackboard sign-in page, which
+for blackboard.istun.edu.tr forwards to the university's Microsoft sign-in.
+It is started like any app you open from the Dock, with its own private profile,
+so your everyday browser and its tabs are not touched. Sign in exactly as you
+normally do, including any two-factor step. As soon as Blackboard accepts you,
+that window closes by itself and the terminal prints
+`Signed in as <your user name>`. You have 10 minutes (`--timeout SECONDS` to
+change).
 
 The tool never asks for, sees, or stores your password. It only keeps the
 session cookies Blackboard gives your browser after you sign in.
@@ -255,16 +258,40 @@ cookies — no page scraping and no application key:
 
 All of these routes were confirmed to exist on blackboard.istun.edu.tr (Learn
 4001): without a session they answer `401 API request is not authenticated`,
-while unknown routes answer `404`. The sign-in flow was also exercised up to
-the Microsoft sign-in page with the installed Chrome. What a student session may read inside them
+while unknown routes answer `404`. The original sign-in flow was also exercised up
+to the Microsoft sign-in page with the installed Chrome. What a student session may read inside them
 can only be confirmed by signing in, which is what the first-run steps above
 do; anything a course does not allow is reported as a warning for that course
 instead of stopping the run.
+
+## Troubleshooting
+
+**The sign-in window opened but I cannot type into it (keys go to the
+terminal).** Versions before this fix started the browser program directly from
+the command. When that command runs inside a terminal multiplexer or session
+manager (tmux, herdr, ...), the shell lives in a background macOS session, and a
+browser started from there can show its window without ever becoming the active
+app that receives the keyboard. `login` now asks macOS itself to open the
+browser (the same way the Dock does), so the window comes to the front and takes
+the keyboard. Update and run `blackboard-sync login` again. If it still happens,
+click once inside the sign-in window; if typing still goes to the terminal,
+run `login` from a plain iTerm or Terminal tab (outside tmux/herdr) and report it.
+
+**"The browser did not start."** A sign-in window from an earlier attempt is
+probably still open with the same private profile. Quit that window (it is the
+one without your usual tabs) and run `login` again.
+
+**`login` keeps waiting after I signed in.** It finishes once Blackboard's own
+pages load for you. If you ended on an error page, open
+<https://blackboard.istun.edu.tr> in that window and finish signing in there.
 
 ## Privacy
 
 - Your password is typed only into Blackboard's own sign-in page in a real
   browser window; this tool never receives it.
+- While `login` waits for you, the sign-in browser listens on a random local
+  DevTools port (127.0.0.1 only) so the tool can read the Blackboard cookies
+  once you are in; the port closes with that window.
 - Only cookies for the Blackboard site are saved, in a file only your user
   account can read. Single-sign-on cookies stay inside the tool's private
   browser profile.
