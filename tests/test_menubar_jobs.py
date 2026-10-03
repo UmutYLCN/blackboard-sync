@@ -27,21 +27,27 @@ def fake_runner(returncode=0, stdout="", stderr="", raises=None):
 
 def test_sync_runs_the_cli_json_mode():
     runner = fake_runner(stdout=json.dumps({"status": "ok", "courses": []}))
-    result = jobs.run_sync(runner, now=lambda: NOW)
+    result = jobs.run_sync(runner=runner, now=lambda: NOW)
     cmd, kwargs = runner.calls[0]
     assert cmd == [sys.executable, "-m", "blackboard_sync", "sync", "--json"]
     assert kwargs["capture_output"] and kwargs["stdin"] == subprocess.DEVNULL
     assert result.status == "ok" and result.finished_at == NOW
 
 
+def test_refetch_job_passes_refetch_missing():
+    runner = fake_runner(stdout=json.dumps({"status": "ok", "courses": []}))
+    jobs.run_sync("refetch", runner=runner, now=lambda: NOW)
+    assert runner.calls[0][0][-3:] == ["sync", "--json", "--refetch-missing"]
+
+
 def test_sync_respects_cli_exit_codes():
-    assert jobs.run_sync(fake_runner(returncode=3), now=lambda: NOW).status == "login_required"
-    assert jobs.run_sync(fake_runner(returncode=4), now=lambda: NOW).status == "locked"
+    assert jobs.run_sync(runner=fake_runner(returncode=3), now=lambda: NOW).status == "login_required"
+    assert jobs.run_sync(runner=fake_runner(returncode=4), now=lambda: NOW).status == "locked"
 
 
 def test_hung_sync_becomes_an_error():
     runner = fake_runner(raises=subprocess.TimeoutExpired("x", 1))
-    assert jobs.run_sync(runner, now=lambda: NOW).status == "error"
+    assert jobs.run_sync(runner=runner, now=lambda: NOW).status == "error"
 
 
 def test_login_result():

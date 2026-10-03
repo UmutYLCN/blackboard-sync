@@ -24,6 +24,7 @@ from blackboard_sync.menubar.model import (
     load_saved_state,
     parse_sync_output,
     shorten,
+    sync_arguments,
 )
 from blackboard_sync.session import write_private_json
 
@@ -42,10 +43,12 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def run_sync(runner: Runner = subprocess.run, now: Callable[[], datetime] = utcnow) -> RunOutcome:
+def run_sync(
+    job: str = "sync", runner: Runner = subprocess.run, now: Callable[[], datetime] = utcnow
+) -> RunOutcome:
     try:
         proc = runner(
-            cli_command("sync", "--json"),
+            cli_command(*sync_arguments(job)),
             capture_output=True,
             text=True,
             timeout=SYNC_TIMEOUT,

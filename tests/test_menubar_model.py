@@ -15,6 +15,7 @@ from blackboard_sync.menubar.model import (
     load_saved_state,
     open_target,
     parse_sync_output,
+    sync_arguments,
     unique_labels,
 )
 
@@ -221,7 +222,7 @@ def test_menu_while_syncing_and_before_any_sync():
     assert menu.sync_enabled is False
     assert menu.sync_title == "Senkronize ediliyor…"
     # Every status line differs from the item titles (menu items are keyed by text).
-    assert not set(menu.status_lines) & {menu.sync_title, menu.login_title}
+    assert not set(menu.status_lines) & {menu.sync_title, menu.login_title, menu.refetch_title}
 
 
 def test_nothing_new_line():
@@ -279,3 +280,59 @@ def test_saved_state_round_trip():
     assert recent == m.recent and prompted is True
     assert load_saved_state({"recent": [{"bad": 1}]}) == ([], False)
     assert load_saved_state(None) == ([], False)
+
+
+# -- "Silinenleri tekrar indir" ---------------------------------------------
+
+def test_only_the_refetch_job_brings_back_deleted_files():
+    assert sync_arguments("sync") == ["sync", "--json"]
+    assert sync_arguments("refetch") == ["sync", "--json", "--refetch-missing"]
+
+
+def test_scheduled_runs_stay_plain_syncs_after_a_refetch():
+    # The scheduler and "Şimdi senkronize et" always claim the "sync" job.
+    m = model()
+    assert m.begin("refetch")
+    m.finish_sync(outcome(), NOW)
+    assert m.busy is None
+    assert m.due(NOW + SYNC_INTERVAL)
+
+
+def test_refetch_shares_the_single_job_slot():
+    m = model()
+    assert m.begin("refetch")
+    assert m.icon() == Icon.SYNCING
+    assert not m.begin("sync") and not m.begin("login") and not m.begin("refetch")
+    assert not m.due(NOW + timedelta(days=1))
+    menu = m.menu(NOW)
+    assert (menu.sync_enabled, menu.refetch_enabled, menu.login_enabled) == (False, False, False)
+    assert menu.refetch_title == "Silinenler indiriliyor…"
+    assert menu.status_lines == ["Silinen dosyalar tekrar indiriliyor…"]
+    assert not set(menu.status_lines) & {menu.sync_title, menu.login_title, menu.refetch_title}
+
+
+def test_locked_refetch_asks_the_student_to_try_again():
+    m = model(last=outcome())
+    m.begin("refetch")
+    assert m.finish_sync(RunOutcome(status="locked"), NOW) == []
+    assert m.note == "Başka bir senkron sürüyor; birazdan tekrar deneyin."
+    assert m.next_run_at == NOW + RETRY_DELAY  # the retry is a normal sync
+
+
+def test_refetch_notification_is_one_line_per_course():
+    many = [f"{CSE}/Week {i}/slides{i}.pdf" for i in range(40)]
+    data = report(
+        courses=[
+            course("CSE303", CSE, new_files=many, new_notes=[f"{CSE}/Homework 1.md"]),
+            course("MTH201", MTH, new_files=[f"{MTH}/a.pdf", f"{MTH}/b.pdf"]),
+        ]
+    )
+    m = model()
+    m.begin("refetch")
+    notes = m.finish_sync(outcome(data), NOW)
+    assert len(notes) == 1
+    assert notes[0].message.splitlines() == [
+        "CSE303: 40 yeni dosya, 1 yeni not",
+        "MTH201: 2 yeni dosya",
+    ]
+    assert m.menu(NOW).refetch_enabled and m.menu(NOW).refetch_title == "Silinenleri tekrar indir"

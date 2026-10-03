@@ -158,6 +158,7 @@ user account.
 | --- | --- |
 | `Son senkron: 14:00 · 3 yeni dosya` | Result of the last run (greyed out, information only), followed by when the next one is due. Shows `oturum sona erdi` when you need to sign in again, or `hata` plus the error. |
 | **Şimdi senkronize et** | Sync right away instead of waiting for the next hourly run. Greyed out while a sync or sign-in is running. |
+| **Silinenleri tekrar indir** | Runs one sync that also downloads again the files you deleted locally (the same as `blackboard-sync sync --refetch-missing`), for example after deleting the whole `Okul` folder by mistake. Files you only edited are not touched, and the notification still has one line per course. The hourly runs and **Şimdi senkronize et** keep respecting deletions. |
 | **Giriş yap** | Opens the Blackboard sign-in window (same as `blackboard-sync login`). As soon as you are in, a sync starts. |
 | **Okul klasörünü aç** | Opens `~/Documents/Okul` in Finder. |
 | **Son indirilenler** | The last 10 files, notes and announcements that came in. Click one to open it (or its folder, if you moved the file). |
@@ -177,7 +178,8 @@ The icon tells you the state at a glance:
 
 - About 30 seconds after the app starts, then every hour. After the Mac
   wakes up, an overdue sync runs within half a minute.
-- Never two at once: the app runs one sync or sign-in at a time, and if a
+- Never two at once: the app runs one sync (normal or **Silinenleri tekrar
+  indir**) or sign-in at a time, and if a
   `blackboard-sync sync` from the terminal is already running (the lock file),
   it waits and tries again in 10 minutes.
 - After a run with something new, **one** notification lists each changed

@@ -46,6 +46,8 @@ STATUS_BY_EXIT = {EXIT_OK: "ok", EXIT_LOGIN_REQUIRED: "login_required", EXIT_LOC
 # Menu text
 T_SYNC_NOW = "Şimdi senkronize et"
 T_SYNCING = "Senkronize ediliyor…"
+T_REFETCH = "Silinenleri tekrar indir"
+T_REFETCHING = "Silinenler indiriliyor…"
 T_LOGIN = "Giriş yap"
 T_LOGGING_IN = "Giriş bekleniyor…"
 T_OPEN_FOLDER = "Okul klasörünü aç"
@@ -53,6 +55,20 @@ T_RECENT = "Son indirilenler"
 T_RECENT_EMPTY = "Henüz yeni bir şey yok"
 T_AUTOSTART = "Bilgisayar açılınca başlat"
 T_QUIT = "Çıkış"
+
+
+# Jobs that run `blackboard-sync sync`; "refetch" also brings back files the
+# student deleted locally. Scheduled runs and "Şimdi senkronize et" are plain
+# "sync" runs, so they keep respecting deletions.
+SYNC_JOBS = ("sync", "refetch")
+
+
+def sync_arguments(job: str) -> list[str]:
+    """CLI arguments for a sync job."""
+    args = ["sync", "--json"]
+    if job == "refetch":
+        args.append("--refetch-missing")
+    return args
 
 
 class Icon(str, Enum):
@@ -218,6 +234,8 @@ class MenuModel:
     status_lines: list[str]
     sync_title: str
     sync_enabled: bool
+    refetch_title: str
+    refetch_enabled: bool
     login_title: str
     login_enabled: bool
     recent: list[tuple[str, str]]  # (label, path relative to dest)
@@ -267,7 +285,7 @@ class AppModel:
         self.recent = list(recent or [])
         self.login_prompted = login_prompted
         self.autostart = autostart
-        self.busy: str | None = None  # "sync" | "login"
+        self.busy: str | None = None  # "sync" | "refetch" | "login"
         self.note = ""  # a transient extra line (lock held, sign-in failed, ...)
         self.next_run_at = now + FIRST_SYNC_DELAY
 
@@ -277,7 +295,7 @@ class AppModel:
         return self.last.status if self.last else "ok"
 
     def icon(self) -> Icon:
-        if self.busy == "sync":
+        if self.busy in SYNC_JOBS:
             return Icon.SYNCING
         if self.health == "login_required":
             return Icon.EXPIRED
@@ -297,13 +315,18 @@ class AppModel:
         return True
 
     def finish_sync(self, outcome: RunOutcome, now: datetime) -> list[Notification]:
-        self.busy = None
+        job, self.busy = self.busy, None
         self.note = ""
         notes: list[Notification] = []
         if outcome.status == "locked":
             # Another sync (e.g. from the terminal) is running; keep what we
-            # knew and look again soon.
-            self.note = "Başka bir senkron sürüyor; birazdan tekrar denenecek."
+            # knew and look again soon. A retry is a normal sync, so a
+            # refetch request has to be repeated by the student.
+            self.note = (
+                "Başka bir senkron sürüyor; birazdan tekrar deneyin."
+                if job == "refetch"
+                else "Başka bir senkron sürüyor; birazdan tekrar denenecek."
+            )
             self.next_run_at = now + RETRY_DELAY
             return notes
         self.last = outcome
@@ -345,6 +368,8 @@ class AppModel:
     def status_lines(self, now: datetime) -> list[str]:
         if self.busy == "sync":
             lines = ["Yeni içerik kontrol ediliyor…"]
+        elif self.busy == "refetch":
+            lines = ["Silinen dosyalar tekrar indiriliyor…"]
         elif self.busy == "login":
             lines = ["Tarayıcıda giriş yapmanız bekleniyor…"]
         elif self.last is None:
@@ -374,6 +399,8 @@ class AppModel:
             status_lines=self.status_lines(now),
             sync_title=T_SYNCING if self.busy == "sync" else T_SYNC_NOW,
             sync_enabled=self.busy is None,
+            refetch_title=T_REFETCHING if self.busy == "refetch" else T_REFETCH,
+            refetch_enabled=self.busy is None,
             login_title=T_LOGGING_IN if self.busy == "login" else T_LOGIN,
             login_enabled=self.busy is None,
             recent=unique_labels([(item.label, item.path) for item in self.recent]),

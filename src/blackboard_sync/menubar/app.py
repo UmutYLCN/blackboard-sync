@@ -90,15 +90,18 @@ def build_app(config: Config):
                 self.start_sync()
             self.refresh()
 
-        def start_sync(self, _sender=None) -> None:
-            if not self.model.begin("sync"):
+        def start_sync(self, _sender=None, job: str = "sync") -> None:
+            if not self.model.begin(job):
                 return
-            log.info("sync started")
+            log.info("%s started", job)
             self.refresh()
-            threading.Thread(target=self._sync_worker, daemon=True).start()
+            threading.Thread(target=self._sync_worker, args=(job,), daemon=True).start()
 
-        def _sync_worker(self) -> None:
-            outcome = jobs.run_sync()
+        def start_refetch(self, _sender=None) -> None:
+            self.start_sync(job="refetch")
+
+        def _sync_worker(self, job: str) -> None:
+            outcome = jobs.run_sync(job)
             AppHelper.callAfter(self._sync_done, outcome)
 
         def _sync_done(self, outcome: RunOutcome) -> None:
@@ -185,6 +188,9 @@ def build_app(config: Config):
             items: list = [rumps.MenuItem(line) for line in menu.status_lines]  # no callback: greyed out
             items.append(rumps.separator)
             items.append(rumps.MenuItem(menu.sync_title, callback=self.start_sync if menu.sync_enabled else None))
+            items.append(
+                rumps.MenuItem(menu.refetch_title, callback=self.start_refetch if menu.refetch_enabled else None)
+            )
             items.append(rumps.MenuItem(menu.login_title, callback=self.start_login if menu.login_enabled else None))
             items.append(rumps.MenuItem(T_OPEN_FOLDER, callback=self.open_school_folder))
             recent = rumps.MenuItem(T_RECENT)
