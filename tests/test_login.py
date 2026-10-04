@@ -265,3 +265,25 @@ def test_windows_login_reports_a_browser_that_cannot_start(config, tmp_path, mon
 
     with pytest.raises(BlackboardSyncError, match="Could not open Microsoft Edge"):
         login(config, spawn=spawn, connect=lambda url: None, platform="win32", out=lambda *_: None)
+
+
+def test_check_runtime_starts_and_stops_the_driver(monkeypatch):
+    import sys, types
+    events = []
+
+    class Driver:
+        chromium = types.SimpleNamespace(connect_over_cdp=None)
+        def stop(self):
+            events.append("stop")
+
+    class Manager:
+        def start(self):
+            events.append("start")
+            return Driver()
+
+    module = types.ModuleType("playwright.sync_api")
+    module.sync_playwright = Manager
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", module)
+    from blackboard_sync import login
+    login.check_runtime()
+    assert events == ["start", "stop"]

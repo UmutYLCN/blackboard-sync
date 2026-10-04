@@ -63,6 +63,22 @@ def test_default_run_command_uses_pythonw(monkeypatch):
     assert autostart.command().startswith('"C:\\My App\\.venv\\Scripts\\pythonw.exe"')
 
 
+def test_frozen_run_command_is_the_installed_exe(monkeypatch):
+    monkeypatch.setattr(autostart.runtime, 'is_frozen', lambda: True)
+    monkeypatch.setattr(autostart.sys, 'executable', r'C:\Users\Ada\AppData\Local\Programs\Blackboard Sync\Blackboard Sync.exe')
+    assert autostart.command() == '"C:\\Users\\Ada\\AppData\\Local\\Programs\\Blackboard Sync\\Blackboard Sync.exe"'
+
+
+def test_frozen_cli_runs_as_the_console_twin(monkeypatch):
+    from blackboard_sync.windows import app as tray
+    seen = []
+    monkeypatch.setattr(tray, 'Path', PureWindowsPath)
+    monkeypatch.setattr(tray.runtime, 'is_frozen', lambda: True)
+    monkeypatch.setattr(tray.subprocess, 'run', lambda command, **kw: seen.append(command))
+    tray.cli_runner([r'C:\App\Blackboard Sync.exe', '--version'])
+    assert seen == [[r'C:\App\blackboard-sync-cli.exe', '--version']]
+
+
 def test_notification_keeps_course_lines_and_safe_click_target(tmp_path):
     outcome = RunOutcome('ok', courses=[
         CourseChange('CSE & $(bad)', 'Term/CSE', {'new_files': 2}, []),

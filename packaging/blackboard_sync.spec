@@ -11,8 +11,8 @@ a = Analysis(
     [str(ROOT / "packaging" / "app_entry.py")],
     pathex=[str(ROOT / "src")],
     # The sync child run and the menu bar app are imported lazily by app_entry.
-    hiddenimports=["blackboard_sync.cli", "blackboard_sync.menubar.app", "rumps"],
-    excludes=["playwright", "pytest", "tkinter", "unittest", "pydoc_data"],
+    hiddenimports=["blackboard_sync.cli", "blackboard_sync.menubar.app", "rumps", "playwright.sync_api"],
+    excludes=["pytest", "tkinter", "unittest", "pydoc_data"],
 )
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Blackboard Sync", console=False)

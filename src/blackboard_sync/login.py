@@ -303,6 +303,16 @@ def _wait_for_sign_in(cdp_browser, base_url: str, timeout: float, check_user) ->
     raise BlackboardSyncError(f"Sign-in was not completed within {int(timeout // 60)} minutes.")
 
 
+def check_runtime() -> None:
+    """Start and stop the Playwright driver without opening a browser.
+
+    Run by CI against the packaged apps (``--check-login-runtime``) to prove the
+    bundle ships what the sign-in needs.
+    """
+    with _connector(None):
+        pass
+
+
 class _connector:
     """Provide a ``connect(url)`` function, starting Playwright only when needed."""
 

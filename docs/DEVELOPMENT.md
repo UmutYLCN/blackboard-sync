@@ -546,9 +546,37 @@ git tag "v<version>"
 git push origin "v<version>"
 ```
 
-The `Release` workflow builds the `.dmg` on a macOS runner and attaches it,
-with a `SHA256SUMS.txt` the app's updater verifies it against, to a GitHub
-Release. The `CI` workflow runs the tests on macOS and Windows for pull requests and pushes to `main`.
+The `Release` workflow builds the `.dmg` on a macOS runner and the Windows
+installer on a Windows runner, then publishes one GitHub Release holding both
+plus a `SHA256SUMS.txt` covering both, which the app's updater verifies them
+against. Rerunning it for the same tag replaces the release's assets. Running
+the workflow by hand (Actions > Release > Run workflow) builds and smoke-tests
+both files as workflow artifacts and publishes nothing.
+
+### Windows installer
+
+On Windows with Python 3.12 and [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+(`iscc`) on `PATH`:
+
+```powershell
+./scripts/build-windows.ps1   # dist\Blackboard-Sync-<version>-Setup.exe
+```
+
+PyInstaller freezes the tray app (`packaging/blackboard_sync_windows.spec`) into
+two programs sharing one folder: the windowed `Blackboard Sync.exe`, and
+`blackboard-sync-cli.exe`, a console twin the app runs for sync and sign-in
+jobs (a windowed exe may lose its standard streams, and the job's report is read
+from them). `packaging/installer.iss` installs per user into
+`%LOCALAPPDATA%\Programs\Blackboard Sync` (no administrator rights), adds a
+Start Menu shortcut and starts the app. It closes a running copy before an
+upgrade and starts it again afterwards, also with `/VERYSILENT`, which is how
+the updater runs it. The uninstaller removes the app and its start-at-login
+entry, never the downloaded files or `%APPDATA%` data. The installer is
+unsigned: Windows SmartScreen shows "Ek bilgi > Yine de çalıştır" once.
+`scripts/smoke-test-windows.ps1` (run by the workflow) installs, checks the
+installed app and `--version`, upgrades, and uninstalls.
+
+The `CI` workflow runs the tests on macOS and Windows for pull requests and pushes to `main`.
 
 The release asset contract is `Blackboard-Sync-<version>.dmg` for macOS and
 `Blackboard-Sync-<version>-Setup.exe` for Windows. Both must be listed in the

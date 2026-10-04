@@ -4,11 +4,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+from blackboard_sync import runtime
+
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 VALUE_NAME = "BlackboardSync"
 
 
 def command(python: str | None = None) -> str:
+    if python is None and runtime.is_frozen():
+        # The installed app starts itself; there is no Python to invoke.
+        return subprocess.list2cmdline([sys.executable])
     executable = Path(python or sys.executable)
     if python is None and executable.name.lower() == "python.exe":
         executable = executable.with_name("pythonw.exe")
