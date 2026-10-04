@@ -1,7 +1,7 @@
 #!/bin/sh
 # One-line installer for macOS:
 #   curl -fsSL https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.sh | sh
-# Downloads the latest release, verifies its SHA-256 and copies the app to
+# Downloads the latest release (no API calls, so no rate limit), verifies its SHA-256 and copies the app to
 # /Applications (or ~/Applications). Never uses sudo and installs nothing else.
 set -eu
 
@@ -22,18 +22,15 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM HUP
 
+BASE="https://github.com/$REPO/releases/latest/download"
+
 say "==> Son sürüm aranıyor..."
-json="$(curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases/latest")" \
-  || die "Sürüm bilgisi alınamadı. İnternet bağlantını kontrol et."
-urls="$(printf '%s\n' "$json" | sed -n 's/.*"browser_download_url": *"\([^"]*\)".*/\1/p')"
-dmg_url="$(printf '%s\n' "$urls" | grep '\.dmg$' | head -n 1 || true)"
-sums_url="$(printf '%s\n' "$urls" | grep '/SHA256SUMS\.txt$' | head -n 1 || true)"
-[ -n "$dmg_url" ] && [ -n "$sums_url" ] || die "Son sürümde .dmg veya SHA256SUMS.txt bulunamadı."
-dmg_name="${dmg_url##*/}"
+curl -fsSL -o "$TMP/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt" || die "SHA256SUMS.txt indirilemedi. İnternet bağlantını kontrol et."
+dmg_name="$(awk '{n=$2; sub(/^\*/, "", n)} n ~ /^Blackboard-Sync-.*\.dmg$/ {print n; exit}' "$TMP/SHA256SUMS.txt")"
+[ -n "$dmg_name" ] || die "Son sürümde .dmg bulunamadı."
 
 say "==> $dmg_name indiriliyor..."
-curl -fSL --progress-bar -o "$TMP/$dmg_name" "$dmg_url" || die "İndirme başarısız oldu."
-curl -fsSL -o "$TMP/SHA256SUMS.txt" "$sums_url" || die "SHA256SUMS.txt indirilemedi."
+curl -fSL --progress-bar -o "$TMP/$dmg_name" "$BASE/$dmg_name" || die "İndirme başarısız oldu."
 
 say "==> Sağlama toplamı doğrulanıyor..."
 expected="$(awk -v f="$dmg_name" '{n=$2; sub(/^\*/, "", n)} n == f {print $1; exit}' "$TMP/SHA256SUMS.txt")"

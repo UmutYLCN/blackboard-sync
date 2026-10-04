@@ -10,25 +10,23 @@
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     New-Item -ItemType Directory -Path $tmp | Out-Null
 
+    $base = "https://github.com/$repo/releases/latest/download"
     Write-Host '==> Son sürüm aranıyor...'
-    $release = Invoke-RestMethod -UseBasicParsing -Headers @{ Accept = 'application/vnd.github+json' } -Uri "https://api.github.com/repos/$repo/releases/latest"
-    $setup = $release.assets | Where-Object { $_.name -like '*-Setup.exe' } | Select-Object -First 1
-    $sums = $release.assets | Where-Object { $_.name -eq 'SHA256SUMS.txt' } | Select-Object -First 1
-    if (-not $setup -or -not $sums) { throw 'Son sürümde Setup.exe veya SHA256SUMS.txt bulunamadı.' }
-
-    Write-Host "==> $($setup.name) indiriliyor..."
-    $exe = Join-Path $tmp $setup.name
-    Invoke-WebRequest -UseBasicParsing -Uri $setup.browser_download_url -OutFile $exe
     $sumsFile = Join-Path $tmp 'SHA256SUMS.txt'
-    Invoke-WebRequest -UseBasicParsing -Uri $sums.browser_download_url -OutFile $sumsFile
-
-    Write-Host '==> Sağlama toplamı doğrulanıyor...'
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/SHA256SUMS.txt" -OutFile $sumsFile
     $expected = $null
+    $name = $null
     foreach ($line in Get-Content $sumsFile) {
       $parts = $line.Trim() -split '\s+', 2
-      if ($parts.Count -eq 2 -and $parts[1].TrimStart('*') -eq $setup.name) { $expected = $parts[0]; break }
+      if ($parts.Count -eq 2 -and $parts[1].TrimStart('*') -like 'Blackboard-Sync-*-Setup.exe') { $expected = $parts[0]; $name = $parts[1].TrimStart('*'); break }
     }
-    if (-not $expected) { throw "SHA256SUMS.txt içinde $($setup.name) bulunamadı." }
+    if (-not $name) { throw 'Son sürümde Setup.exe bulunamadı.' }
+
+    Write-Host "==> $name indiriliyor..."
+    $exe = Join-Path $tmp $name
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/$name" -OutFile $exe
+
+    Write-Host '==> Sağlama toplamı doğrulanıyor...'
     $actual = (Get-FileHash -Algorithm SHA256 -Path $exe).Hash
     if ($actual -ne $expected) { throw 'Sağlama toplamı uyuşmuyor, kurulum iptal edildi.' }
     Write-Host '    Doğrulandı.'
