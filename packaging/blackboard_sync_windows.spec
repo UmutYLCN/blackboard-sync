@@ -6,7 +6,7 @@ ROOT = Path(SPECPATH).parent
 VERSION = re.search(
     r'__version__ = "([^"]+)"', (ROOT / "src" / "blackboard_sync" / "__init__.py").read_text()
 ).group(1)
-ICON = str(ROOT / "build" / "app.ico")
+ICON = str(ROOT / "assets" / "icon" / "app.ico")
 
 a = Analysis(
     [str(ROOT / "packaging" / "app_entry.py")],
