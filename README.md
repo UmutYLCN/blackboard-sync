@@ -2,6 +2,60 @@
 
 Mirrors new Blackboard course content into local folders automatically.
 
+## Windows'ta deneme (önizleme)
+
+Windows 10/11 için henüz kurulum dosyası yok; aşağıdaki adımlarla deneyebilirsiniz.
+
+1. [python.org](https://www.python.org/downloads/windows/) üzerinden **Python 3.12**
+   kurun. Kurulumda **Add python.exe to PATH** kutusunu işaretleyin;
+   **pip**, **Tcl/Tk** ve Python başlatıcısı (**py launcher**) seçili olsun.
+   Bilgisayarınızda **Chrome veya Edge** de bulunmalı.
+
+2. GitHub'a giriş yapın (depo özel),
+   [bu dalın ZIP dosyasını indirin](https://github.com/UmutYLCN/blackboard-sync/archive/refs/heads/fm/bbsync-win-tray.zip)
+   ve **Tümünü ayıkla** ile bir klasöre çıkarın. Git kuruluysa alternatif:
+
+   ```powershell
+   git clone -b fm/bbsync-win-tray https://github.com/UmutYLCN/blackboard-sync.git
+   ```
+
+3. Çıkardığınız klasörde **README.md** ve **pyproject.toml** dosyalarının bulunduğu
+   yere girin. Boş alanda **Shift + sağ tık → PowerShell penceresini burada aç**
+   seçeneğini kullanın. Bu seçenek yoksa Başlat'tan PowerShell açıp
+   `cd "C:\dosyaları çıkardığınız klasör"` yazın (yolu kendi klasörünüzle değiştirin).
+   Ardından şu komutları sırayla çalıştırın:
+
+   ```powershell
+   py -3.12 -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -e .
+   ```
+
+   Ortamı etkinleştirmek veya PowerShell Execution Policy ayarını değiştirmek gerekmez.
+
+4. Aynı PowerShell penceresinde uygulamayı başlatın:
+
+   ```powershell
+   .\.venv\Scripts\pythonw.exe -m blackboard_sync.windows
+   ```
+
+   Açılan ayarlarda okulunuzun Blackboard adresini ve kayıt klasörünü kontrol edin,
+   **Giriş yap** düğmesine basıp tarayıcıda girişinizi tamamlayın. Sonraki açılışlarda
+   da aynı klasörde bu komutu kullanabilirsiniz.
+
+5. Şunları kontrol edin: ayarlar penceresi açılıyor mu, giriş tamamlanıyor mu,
+   dosyalar **Belgeler\Okul** klasörüne (veya seçtiğiniz klasöre) geliyor mu?
+   Saatin yanındaki simgeye sağ tıklayın; gizli simgeler oku altında olabilir.
+   Menüden senkronu ve klasör açmayı deneyin. Yeni içerik indirildiğinde bildirimi
+   kontrol edin. **Bilgisayar açılınca başlat** seçiliyken Windows oturumunu kapatıp
+   açarak simgenin geri geldiğini doğrulayın. Bu seçenek açıkken indirdiğiniz
+   klasörü taşımayın veya silmeyin. Ayarlardaki **Güncellemeleri otomatik denetle**
+   günlük sürüm kontrolünü açar; menünün sürüm satırından elle de denetleyebilirsiniz.
+   Bu kaynak kodu sürümünde **Güncelle** sürüm sayfasını açar. Depo özel olduğu
+   sürece otomatik denetim sürüm bilgisine erişemeyebilir; senkron çalışmaya devam eder.
+
+   Sorun olursa **Win + R** ile `%APPDATA%\blackboard-sync` klasörünü açıp
+   **windows-tray.log** dosyasını, hangi adımda ne olduğunu belirterek geri gönderin.
+
 `blackboard-sync` signs in to Blackboard Learn Ultra
 (default: <https://blackboard.istun.edu.tr>) using your own browser session,
 finds your courses for the current term, and copies everything in them to
@@ -465,8 +519,9 @@ and tick **Bilgisayar açılınca başlat** again.
 
 ## Windows (preview)
 
-The command-line tool also runs on Windows 10 and 11. A tray app and an
-installer are coming; until then, run it from source:
+The command-line tool also runs on Windows 10 and 11. For the tray app, follow
+the Turkish preview guide near the top or [the source instructions below](#windows-tray-app-from-source).
+The installer comes separately. To use only the command-line tool:
 
 ```powershell
 py -3 -m venv .venv
@@ -549,3 +604,51 @@ Release. The `CI` workflow runs the tests on pull requests.
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+### Windows tray app (from source)
+
+The Windows 10/11 tray app uses the same menu, hourly sync schedule, settings,
+CLI jobs and locks as the macOS app. Install Python 3.12 from python.org with
+**pip** and **Tcl/Tk** enabled, and install Chrome or Edge for sign-in. Download
+or clone this repository, open PowerShell in its folder, then run:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m blackboard_sync.windows
+```
+
+The first launch opens settings: enter your school's Blackboard URL, choose a
+folder (default: `Documents\Okul`), and select **Giriş yap**. Complete sign-in in
+the browser. Right-click the tray icon next to the clock (possibly inside the
+hidden-icons arrow) for the shared menu. Later, launch without a console with:
+
+```powershell
+.\.venv\Scripts\pythonw.exe -m blackboard_sync.windows
+```
+
+**Bilgisayar açılınca başlat** toggles only the current user's
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run\BlackboardSync` value.
+Keep this checkout and its virtual environment in place while it is enabled;
+disable the option before moving or deleting them. No administrator rights are
+needed. Settings and logs (`windows-tray.log`) live under
+`%APPDATA%\blackboard-sync` unless `BBSYNC_DATA_DIR` overrides it.
+
+Toasts show one Turkish summary line per changed course. Clicking opens the
+course folder, or the common parent folder when several courses changed, via a
+`file:` URI. Windows notification policies can suppress toasts or protocol
+activation; the tray's folder menu remains available. Expiry notifications ask
+you to sign in from the menu. Toast delivery uses Windows PowerShell and WinRT;
+no browser extension is required. Native Windows menus do not expose colored
+text through pystray, so expiry uses the shared warning label and a red icon.
+Idle is green, syncing blue, and errors orange. Settings saves and exit wait
+until a running sync/sign-in finishes. The Windows installer comes separately.
+
+The Windows tray also uses the shared daily update checker. Settings include
+**Güncellemeleri otomatik denetle**; the version row checks manually even when
+that setting is off. Source checkouts open the release page for updates.
+Packaged builds download and verify the Windows installer on a worker thread,
+then exit after launching it. Installation waits until sync/sign-in is idle and
+blocks new jobs while downloading. Update-toast clicks use the current user's
+`HKCU\Software\Classes\blackboard-sync` URI registration to forward a fixed
+update action to the running tray; no URI-supplied command is executed.
