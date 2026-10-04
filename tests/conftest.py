@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import sys
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -14,6 +15,13 @@ from blackboard_sync.api import BlackboardClient
 from blackboard_sync.config import Config
 
 FIXTURES = Path(__file__).parent / "fixtures"
+# POSIX permission bits exist only off Windows (there the data folder's ACL applies).
+POSIX = sys.platform != "win32"
+
+
+def assert_owner_only(path: Path, mode: int = 0o600) -> None:
+    if POSIX:
+        assert (path.stat().st_mode & 0o777) == mode
 BASE_URL = "https://blackboard.example.edu"
 
 

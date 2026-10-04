@@ -12,9 +12,10 @@ requires-python = ">=3.10"
 dependencies = [
     "requests==2.34.2",
     "playwright==1.63.0",
-    "rumps==0.4.0",
-    "pyobjc-core==12.2.2",
-    "pyobjc-framework-Cocoa==12.2.2",
+    # The macOS menu bar app only; the core and CLI never import them.
+    "rumps==0.4.0; sys_platform == 'darwin'",
+    "pyobjc-core==12.2.2; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa==12.2.2; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]

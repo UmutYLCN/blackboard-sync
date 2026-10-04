@@ -1,17 +1,19 @@
-"""Interactive sign-in through the student's own Chrome or Brave.
+"""Interactive sign-in through the student's own Chrome, Edge or Brave.
 
-The browser is started the way the Dock or Finder would start it: through
-macOS LaunchServices (``open -n -a <app>``), with a private profile kept in the
-data directory. That makes it an ordinary, frontmost app window that takes the
-keyboard, even when this command runs from a terminal multiplexer or another
-background session. (Starting the browser binary directly as a child process
-can leave the window unable to take keyboard focus there; see the README's
-troubleshooting section.)
+On macOS the browser is started the way the Dock or Finder would start it:
+through LaunchServices (``open -n -a <app>``), with a private profile kept in
+the data directory. That makes it an ordinary, frontmost app window that takes
+the keyboard, even when this command runs from a terminal multiplexer or
+another background session. (Starting the browser binary directly as a child
+process can leave the window unable to take keyboard focus there; see the
+README's troubleshooting section.) On Windows the installed ``chrome.exe`` /
+``msedge.exe`` / ``brave.exe`` is started as its own detached process with the
+same private profile and flags.
 
 The student signs in normally (including single sign-on and two-factor steps);
 this tool never sees the password. It only watches over the browser's local
-DevTools port until Blackboard accepts the session, then saves the Blackboard
-cookies for ``sync`` and closes the browser.
+DevTools port (127.0.0.1) until Blackboard accepts the session, then saves the
+Blackboard cookies for ``sync`` and closes the browser.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Mapping
 
 import requests
 
@@ -28,23 +30,58 @@ from blackboard_sync.api import BlackboardClient
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.session import save_session
+from blackboard_sync.system import is_windows, make_private_dir
 
 BROWSERS = {
     "chrome": "Google Chrome.app",
     "brave": "Brave Browser.app",
+    "edge": "Microsoft Edge.app",
 }
 APP_DIRS = [Path("/Applications"), Path.home() / "Applications"]
+# Windows: executable name and its folder below Program Files / %LOCALAPPDATA%.
+WINDOWS_BROWSERS = {
+    "chrome": ("chrome.exe", ("Google", "Chrome", "Application")),
+    "edge": ("msedge.exe", ("Microsoft", "Edge", "Application")),
+    "brave": ("brave.exe", ("BraveSoftware", "Brave-Browser", "Application")),
+}
+BROWSER_LABELS = {"chrome": "Google Chrome", "edge": "Microsoft Edge", "brave": "Brave"}
+# Edge ships with every Windows, so it is the dependable fallback there.
+AUTO_ORDER = {"darwin": ["chrome", "brave", "edge"], "win32": ["chrome", "edge", "brave"]}
 # Chromium writes the port it picked for --remote-debugging-port=0 here.
 DEVTOOLS_PORT_FILE = "DevToolsActivePort"
 POLL_SECONDS = 2
+# Windows: run the browser on its own, without a console and outside our
+# Ctrl+C group, like an app started from the Start menu.
+DETACHED_PROCESS = 0x00000008
+CREATE_NEW_PROCESS_GROUP = 0x00000200
 
 
-def find_browser(preference: str = "auto", app_dirs: list[Path] | None = None) -> Path:
-    """Locate an installed Chrome or Brave app bundle."""
-    order = ["chrome", "brave"] if preference == "auto" else [preference]
+def _browser_order(preference: str, platform: str | None) -> list[str]:
+    if preference != "auto":
+        if preference not in BROWSERS:
+            raise BlackboardSyncError(f"Unknown browser {preference!r}; use chrome, edge or brave.")
+        return [preference]
+    return AUTO_ORDER["win32" if is_windows(platform) else "darwin"]
+
+
+def find_browser(
+    preference: str = "auto",
+    app_dirs: list[Path] | None = None,
+    *,
+    platform: str | None = None,
+    env: Mapping[str, str] | None = None,
+    registry: Callable[[str], list[str]] | None = None,
+) -> Path:
+    """Locate an installed browser: an app bundle on macOS, an ``.exe`` on Windows."""
+    order = _browser_order(preference, platform)
+    if is_windows(platform):
+        for name in order:
+            for candidate in windows_browser_candidates(name, env, registry):
+                if candidate.is_file():
+                    return candidate
+        wanted = "Google Chrome, Microsoft Edge or Brave" if preference == "auto" else BROWSER_LABELS[preference]
+        raise BlackboardSyncError(f"Could not find {wanted} on this computer.")
     for name in order:
-        if name not in BROWSERS:
-            raise BlackboardSyncError(f"Unknown browser {name!r}; use chrome or brave.")
         for app_dir in app_dirs or APP_DIRS:
             candidate = app_dir / BROWSERS[name]
             if candidate.is_dir():
@@ -53,25 +90,108 @@ def find_browser(preference: str = "auto", app_dirs: list[Path] | None = None) -
     raise BlackboardSyncError(f"Could not find {wanted} in /Applications.")
 
 
-def launch_command(app: Path, profile_dir: Path, url: str) -> list[str]:
-    """The ``open`` command that starts a separate, normal browser instance.
+def windows_browser_candidates(
+    name: str,
+    env: Mapping[str, str] | None = None,
+    registry: Callable[[str], list[str]] | None = None,
+) -> list[Path]:
+    """Where a Windows browser may be installed, most authoritative first.
 
-    ``-n`` starts a new instance even if the student's everyday browser is
-    already running; ``--user-data-dir`` keeps it apart from their own profile.
-    Port 0 lets the browser pick a free local port for DevTools.
+    The "App Paths" registry entries the installers write come first, then the
+    standard per-machine and per-user install folders.
+    """
+    env = os.environ if env is None else env
+    exe, parts = WINDOWS_BROWSERS[name]
+    found = [Path(p) for p in (registry or windows_app_paths)(exe) if p]
+    for var in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "LOCALAPPDATA"):
+        base = env.get(var)
+        if base:
+            found.append(Path(base).joinpath(*parts, exe))
+    unique: list[Path] = []
+    for path in found:
+        if path not in unique:
+            unique.append(path)
+    return unique
+
+
+def windows_app_paths(exe: str) -> list[str]:
+    """The registered location of ``exe`` (HKCU, then HKLM "App Paths")."""
+    try:
+        import winreg
+    except ImportError:  # not Windows
+        return []
+    key = rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exe}"
+    paths = []
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        try:
+            with winreg.OpenKey(hive, key) as handle:
+                value, _ = winreg.QueryValueEx(handle, None)
+        except OSError:
+            continue
+        if isinstance(value, str) and value.strip():
+            paths.append(os.path.expandvars(value.strip().strip('"')))
+    return paths
+
+
+def browser_label(app: Path) -> str:
+    """A readable browser name: "Google Chrome", "Microsoft Edge", "Brave Browser"."""
+    for name, (exe, _) in WINDOWS_BROWSERS.items():
+        if app.name.lower() == exe:
+            return BROWSER_LABELS[name]
+    return app.stem
+
+
+def browser_flags(profile_dir: Path, url: str) -> list[str]:
+    """A separate, normal browser instance with a private profile.
+
+    ``--user-data-dir`` keeps it apart from the student's own profile (and
+    makes it a new instance even if their everyday browser is running). Port 0
+    lets the browser pick a free local port for DevTools, which Chromium binds
+    to 127.0.0.1 only.
     """
     return [
-        "/usr/bin/open",
-        "-n",
-        "-a",
-        str(app),
-        "--args",
         f"--user-data-dir={profile_dir}",
         "--remote-debugging-port=0",
         "--no-first-run",
         "--no-default-browser-check",
         url,
     ]
+
+
+def launch_command(app: Path, profile_dir: Path, url: str, platform: str | None = None) -> list[str]:
+    """The command that starts the sign-in browser.
+
+    macOS: ``open -n -a`` (``-n`` starts a new instance even if the student's
+    everyday browser is already running). Windows: the browser executable.
+    """
+    if is_windows(platform):
+        return [str(app), *browser_flags(profile_dir, url)]
+    return ["/usr/bin/open", "-n", "-a", str(app), "--args", *browser_flags(profile_dir, url)]
+
+
+def start_browser(
+    argv: list[str],
+    label: str,
+    platform: str | None = None,
+    run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+    spawn: Callable[..., object] = subprocess.Popen,
+) -> None:
+    if not is_windows(platform):
+        result = run(argv, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise BlackboardSyncError(f"Could not open {label}: {result.stderr.strip()}")
+        return
+    try:
+        spawn(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+        )
+    except OSError as exc:
+        raise BlackboardSyncError(f"Could not open {label}: {exc}") from exc
 
 
 def wait_for_devtools_port(profile_dir: Path, timeout: float = 30) -> int:
@@ -125,25 +245,27 @@ def login(
     run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
     connect: Callable[[str], object] | None = None,
     check_user: Callable[[str, list[dict]], dict | None] = session_user,
+    spawn: Callable[..., object] = subprocess.Popen,
+    platform: str | None = None,
 ) -> dict:
     """Open a browser, wait for the student to sign in, save the session."""
-    app = find_browser(browser)
+    app = find_browser(browser, platform=platform)
+    label = browser_label(app)
     config.ensure_data_dir()
-    config.profile_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(config.profile_dir, 0o700)
+    make_private_dir(config.profile_dir, platform=platform)
     stale = config.profile_dir / DEVTOOLS_PORT_FILE
     if stale.exists():
         stale.unlink()
 
-    out(f"Opening {app.stem} on {config.base_url} ...")
+    out(f"Opening {label} on {config.base_url} ...")
     out("Sign in to Blackboard in that window. It closes by itself once you are in.")
-    result = run(
-        launch_command(app, config.profile_dir, config.base_url + "/"),
-        capture_output=True,
-        text=True,
+    start_browser(
+        launch_command(app, config.profile_dir, config.base_url + "/", platform),
+        label,
+        platform,
+        run=run,
+        spawn=spawn,
     )
-    if result.returncode != 0:
-        raise BlackboardSyncError(f"Could not open {app.stem}: {result.stderr.strip()}")
     port = wait_for_devtools_port(config.profile_dir)
 
     with _connector(connect) as connect_fn:
@@ -194,7 +316,7 @@ class _connector:
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:  # pragma: no cover - dependency is pinned
-            raise BlackboardSyncError("Playwright is not installed; run scripts/setup.sh.") from exc
+            raise BlackboardSyncError("Playwright is not installed; see the README's setup steps.") from exc
         self._pw = sync_playwright().start()
         return self._pw.chromium.connect_over_cdp
 

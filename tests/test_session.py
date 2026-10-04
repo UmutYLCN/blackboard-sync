@@ -12,7 +12,7 @@ from blackboard_sync.session import (
     save_session,
 )
 
-from .conftest import BASE_URL, FakeResponse
+from .conftest import BASE_URL, FakeResponse, assert_owner_only
 
 
 def _save(config, cookies=None):
@@ -30,8 +30,8 @@ def _save(config, cookies=None):
 
 def test_saved_session_is_private_and_only_holds_blackboard_cookies(config):
     assert _save(config) == 2
-    assert (config.session_file.stat().st_mode & 0o777) == 0o600
-    assert (config.data_dir.stat().st_mode & 0o777) == 0o700
+    assert_owner_only(config.session_file)
+    assert_owner_only(config.data_dir, 0o700)
     data = json.loads(config.session_file.read_text())
     assert {c["name"] for c in data["cookies"]} == {"BbRouter", "JSESSIONID"}
     assert "password" not in config.session_file.read_text().lower()
@@ -98,7 +98,7 @@ def test_refresh_saved_cookies_keeps_rotated_values(config):
     values = {c["name"]: c["value"] for c in saved["cookies"]}
     assert values["BbRouter"] == "rotated"
     assert "tracker" not in values
-    assert (config.session_file.stat().st_mode & 0o777) == 0o600
+    assert_owner_only(config.session_file)
 
 
 def _run_cli(config, fake_bb, monkeypatch, *args):

@@ -17,6 +17,8 @@ from blackboard_sync.settings import (
     save_settings,
 )
 
+from .conftest import assert_owner_only
+
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
 HOME = Path.home()
 ISTUN = Settings("https://blackboard.istun.edu.tr", HOME / "Documents" / "Okul")
@@ -77,7 +79,7 @@ def test_settings_round_trip_privately(tmp_path):
     assert load_settings(data_dir) is None
     path = save_settings(data_dir, Settings("https://bb.example.edu", tmp_path / "Okul"))
     assert path == data_dir / "settings.json"
-    assert (path.stat().st_mode & 0o777) == 0o600
+    assert_owner_only(path)
     assert load_settings(data_dir) == Settings("https://bb.example.edu", tmp_path / "Okul")
 
 
