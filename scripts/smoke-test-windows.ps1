@@ -28,6 +28,10 @@ $out = (& "$app\blackboard-sync-cli.exe" --version) -join "`n"
 Write-Host $out
 Check ($out -match [regex]::Escape($version)) "CLI answers --version $version"
 
+$out = (& "$app\blackboard-sync-cli.exe" --check-login-runtime 2>&1) -join "`n"
+Write-Host $out
+Check ($out -match "login runtime ok") "the sign-in runtime (Playwright driver) starts"
+
 Start-Sleep -Seconds 5
 Check ($null -ne (Get-Process -Name "Blackboard Sync" -ErrorAction SilentlyContinue)) "the installer started the app"
 

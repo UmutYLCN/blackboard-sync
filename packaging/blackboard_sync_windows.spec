@@ -16,6 +16,7 @@ a = Analysis(
         "blackboard_sync.cli",
         "blackboard_sync.windows.app",
         "pystray._win32",
+        "playwright.sync_api",
     ],
     excludes=["pytest", "unittest", "pydoc_data"],
 )

@@ -8,6 +8,8 @@ the tray app (Windows).
 
 import sys
 
+# Hidden self-test used by CI: starts the Playwright driver the sign-in needs.
+CHECK_LOGIN_RUNTIME = "--check-login-runtime"
 CLI_COMMANDS = {"login", "sync", "check", "--version", "-h", "--help"}
 # CLI options that come before the subcommand; the menu bar app passes the
 # school from its settings window as ``--base-url URL sync ...``.
@@ -16,6 +18,12 @@ CLI_GLOBAL_OPTIONS = {"--base-url", "--data-dir", "-v", "--verbose"}
 
 def main() -> int:
     args = sys.argv[1:]
+    if args == [CHECK_LOGIN_RUNTIME]:
+        from blackboard_sync.login import check_runtime
+
+        check_runtime()
+        print("login runtime ok")
+        return 0
     if args and (args[0] in CLI_COMMANDS or args[0].split("=", 1)[0] in CLI_GLOBAL_OPTIONS):
         from blackboard_sync.cli import main as cli_main
 
