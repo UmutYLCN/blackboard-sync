@@ -177,22 +177,33 @@ To start it **without a terminal**, build the standalone app (see
 
 ### Settings
 
-The first time the app starts, a small **Blackboard Sync kurulumu** window
-asks for:
+The first time the app starts, the settings window opens as **Blackboard Sync
+kurulumu**; later **Ayarlar…** in the menu opens the same window. It has four
+sections:
 
-- **Okulunuzun Blackboard adresi** — prefilled with
+- **Hesap** — **Okulunuzun Blackboard adresi**, prefilled with
   `https://blackboard.istun.edu.tr`; students of another university type their
   school's Blackboard address instead (it must be `https://`; a pasted course
-  link is reduced to the site address).
-- **Dosyaların kaydedileceği klasör** — prefilled with `~/Documents/University`;
-  **Seç…** opens a folder picker.
-- **Bilgisayar açılınca başlat** — ticked by default (see below).
-- **Güncellemeleri otomatik denetle** — ticked by default (see
-  [Updates](#updates)).
+  link is reduced to the site address). Below it, who is signed in and
+  **Giriş yap** (saves the window and opens the Blackboard sign-in window) or
+  **Hesaptan çıkış yap** (asks first; downloaded files are kept).
+- **Klasör** — **Dosyaların kaydedileceği klasör**, prefilled with
+  `~/Documents/University`; **Seç…** opens a folder picker. **Silinenleri tekrar
+  indir** runs one sync that also downloads again the files you deleted
+  locally (the same as `blackboard-sync sync --refetch-missing`), for example
+  after deleting the whole folder by mistake. Files you only edited are not
+  touched; the hourly runs and **Şimdi senkronize et** keep respecting
+  deletions.
+- **Genel** — **Bilgisayar açılınca başlat**, ticked by default (see
+  [Start at login](#start-at-login)).
+- **Güncellemeler** — **Güncellemeleri otomatik denetle**, ticked by default,
+  **Şimdi denetle** and the version number (see [Updates](#updates)).
 
-**Giriş yap** saves and opens the Blackboard sign-in window; **Kaydet** only
-saves. Nothing is synced on a schedule until the window has been saved once.
-Choose **Ayarlar…** in the menu to change the settings later:
+**Kaydet** saves the fields and check boxes; **Giriş yap**, **Hesaptan çıkış
+yap**, **Silinenleri tekrar indir** and **Şimdi denetle** act right away. The
+buttons that need the app's single job slot (sign in, sign out, bring back
+deleted files) are greyed out while a sync or sign-in runs. Nothing is synced
+on a schedule until the window has been saved once. When you save later:
 
 - A different school address requires signing in again; the sign-in window
   opens as soon as you save.
@@ -209,10 +220,11 @@ options still override it for the terminal.
 
 Once a day the app asks GitHub whether a newer release exists (only while
 **Güncellemeleri otomatik denetle** is ticked) and posts one notification per
-new version, "Blackboard Sync 1.1.0 hazır — Güncelle". The version row at the
-bottom of the menu then reads **Güncelleme var: 1.1.0 — Güncelle**; otherwise
-**Sürüm … · Güncellemeleri denetle** checks right away and answers with a
-notification.
+new version, "Blackboard Sync 1.1.0 hazır — Güncelle". The menu then shows
+**Güncelleme var: 1.1.0 — Güncelle** above **Ayarlar…** (the row is absent
+while there is no update). **Şimdi denetle** in the settings window checks
+right away and answers with a notification; with an update waiting it reads
+**1.1.0 sürümüne güncelle** instead.
 
 **Güncelle** downloads `Blackboard-Sync-<version>.dmg` into Downloads, checks
 it against the release's `SHA256SUMS.txt`, opens it and explains the last
@@ -228,28 +240,27 @@ no update. No account data is sent; the request is an anonymous call to
 
 ### Start at login
 
-Tick **Bilgisayar açılınca başlat** in the menu (or run
+Tick **Bilgisayar açılınca başlat** in the settings window (or run
 `.venv/bin/blackboard-sync-menubar --enable-autostart`). This writes a per-user
 LaunchAgent, `~/Library/LaunchAgents/io.github.umutylcn.blackboard-sync.menubar.plist`,
 that starts the app every time you log in; macOS may show a "Background item
 added" notice for Python. Untick it (or `--disable-autostart`) to remove the
-file. No administrator rights are needed and nothing is installed outside your
+file; the change takes effect when you press **Kaydet**. No administrator rights are needed and nothing is installed outside your
 user account.
 
 ### What the menu shows
 
 | Item | What it does |
 | --- | --- |
-| `Son senkron: 14:00 · 3 yeni dosya` | Result of the last run (greyed out, information only), followed by when the next one is due. Shows `oturum sona erdi` when you need to sign in again, or `hata` plus the error. |
+| `✓ UMUT YALÇIN · 17 dk önce senkronize edildi` | Who is signed in and when the last sync ran (greyed out, information only). When the session expired, a red **⚠ Oturum sona erdi — Giriş yap** row takes its place; when nobody is signed in, **Giriş yap**. Either opens the Blackboard sign-in window (same as `blackboard-sync login`); as soon as you are in, a sync starts. |
+| `14 yeni dosya, 2 yeni not · sonraki: 14:19` | What the last sync brought (or the error) and when the next one is due. While a sync or sign-in runs it says so instead. |
 | **Şimdi senkronize et** | Sync right away instead of waiting for the next hourly run. Greyed out while a sync or sign-in is running. |
-| **Silinenleri tekrar indir** | Runs one sync that also downloads again the files you deleted locally (the same as `blackboard-sync sync --refetch-missing`), for example after deleting the whole `University` folder by mistake. Files you only edited are not touched, and the notification still has one line per course. The hourly runs and **Şimdi senkronize et** keep respecting deletions. |
-| **Giriş yap** | Opens the Blackboard sign-in window (same as `blackboard-sync login`). As soon as you are in, a sync starts. |
-| **Okul klasörünü aç** | Opens the folder chosen in **Ayarlar…** (`~/Documents/University` by default) in Finder. |
+| **Dersler** | The courses of the term; click one to open its folder. |
 | **Son indirilenler** | The last 10 files, notes and announcements that came in. Click one to open it (or its folder, if you moved the file). |
-| **Ayarlar…** | Reopens the [settings window](#settings): school address, folder, start at login, update checks. |
-| **Bilgisayar açılınca başlat** | Start the app at login (see above). A check mark means it is on. |
-| **Sürüm … · Güncellemeleri denetle** | Check for a new version now. Reads **Güncelleme var: X — Güncelle** when one is available; click it to download and install it (see [Updates](#updates)). |
-| **Çıkış** | Quit the app. |
+| **University klasörünü aç** | Opens the folder chosen in **Ayarlar…** in Finder; the item carries that folder's name. |
+| **Güncelleme var: X — Güncelle** | Only when a new version is available: download and install it (see [Updates](#updates)). |
+| **Ayarlar…** | Opens the [settings window](#settings): account, folder, start at login, updates. |
+| **Çık** | Quit the app. |
 
 The icon tells you the state at a glance:
 

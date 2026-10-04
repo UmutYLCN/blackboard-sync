@@ -59,19 +59,26 @@ T_REFETCH = "Silinenleri tekrar indir"
 T_REFETCHING = "Silinenler indiriliyor…"
 T_LOGIN = "Giriş yap"
 T_LOGGING_IN = "Giriş bekleniyor…"
-T_OPEN_FOLDER = "Okul klasörünü aç"
+T_LOGOUT = "Hesaptan çıkış yap"
+T_EXPIRED = "⚠ Oturum sona erdi — Giriş yap"
 T_RECENT = "Son indirilenler"
 T_RECENT_EMPTY = "Henüz yeni bir şey yok"
-T_AUTOSTART = "Bilgisayar açılınca başlat"
 T_SETTINGS = "Ayarlar…"
-T_QUIT = "Blackboard Sync'ten çık"
-T_VERSION_ROW = f"Sürüm {__version__} · Güncellemeleri denetle"
+T_QUIT = "Çık"
+T_CHECK_NOW = "Şimdi denetle"
 T_CHECKING_UPDATES = "Güncellemeler denetleniyor…"
 T_DOWNLOADING_UPDATE = "Güncelleme indiriliyor…"
 
-# Menu actions of the version row. "check_updates" checks right away;
-# "update" downloads the release in ``AppModel.updates.available`` and installs
-# it (macOS: open the .dmg, Windows: run the silent installer and quit).
+
+def open_folder_title(dest: Path) -> str:
+    """The menu item that opens the destination, named after it: "University klasörünü aç"."""
+    return f"{dest.name or dest} klasörünü aç"
+
+
+# Update actions of the menu row and the settings window. "check_updates"
+# checks right away; "update" downloads the release in
+# ``AppModel.updates.available`` and installs it (macOS: open the .dmg,
+# Windows: run the silent installer and quit).
 UPDATE_ACTIONS = ("check_updates", "update")
 
 
@@ -227,6 +234,10 @@ class MenuEntry:
     children: list["MenuEntry"] = field(default_factory=list)
 
 
+def capitalize(text: str) -> str:
+    return text[:1].upper() + text[1:]
+
+
 def shorten(text: str, limit: int) -> str:
     text = " ".join(text.split())
     return text if len(text) <= limit else text[: limit - 1] + "…"
@@ -340,14 +351,13 @@ class UpdateState:
             return [Notification("Güncelleme yüklenemedi", error, {})]
         return []
 
-    def menu_entry(self) -> MenuEntry:
-        if self.busy == "check":
-            return MenuEntry(T_CHECKING_UPDATES, enabled=False)
+    def menu_entry(self) -> MenuEntry | None:
+        """The menu row, only while a new version is waiting or downloading."""
         if self.busy == "download":
             return MenuEntry(T_DOWNLOADING_UPDATE, enabled=False)
         if self.available is not None:
             return MenuEntry(f"Güncelleme var: {self.available.version} — Güncelle", "update")
-        return MenuEntry(T_VERSION_ROW, "check_updates")
+        return None
 
     def saved_state(self) -> dict:
         return {
@@ -389,15 +399,10 @@ class RecentItem:
 
 @dataclass
 class MenuModel:
-    status_lines: list[str]
+    status_lines: list[str]  # the two lines at the top (plus a transient note)
     sync_title: str
     sync_enabled: bool
-    refetch_title: str
-    refetch_enabled: bool
-    login_title: str
-    login_enabled: bool
     recent: list[tuple[str, str]]  # (label, path relative to dest)
-    autostart: bool
     entries: list[MenuEntry] = field(default_factory=list)
 
 
@@ -573,35 +578,71 @@ class AppModel:
         self.recent = (fresh + [r for r in self.recent if r.path not in seen])[:RECENT_LIMIT]
 
     # -- presentation ---------------------------------------------------
-    def status_lines(self, now: datetime) -> list[str]:
+    def account(self) -> tuple[str | None, bool]:
+        """(signed-in name, session expired); the name is None when not signed in."""
+        expired = self.session_expired
+        if self.auth_failed_at:
+            saved_at = (self.session or {}).get("saved_at", 0)
+            expired = expired or saved_at <= self.auth_failed_at.timestamp()
+        if not self.session or expired:
+            return None, expired
+        user = self.session.get("user") or {}
+        return shorten(user.get("displayName") or user.get("userName") or user.get("id") or "Blackboard", 50), False
+
+    def headline(self, now: datetime) -> str:
+        """When the last sync ran and how it went: "17 dk önce senkronize edildi"."""
+        if self.last is None:
+            return "henüz senkronize edilmedi"
+        when = relative_time(self.last.finished_at or now, now)
+        if self.last.status == "ok":
+            return f"{when} senkronize edildi"
+        if self.last.status == "login_required":
+            return f"{when} denendi"
+        return f"{when} denendi · hata"
+
+    def activity(self) -> str:
+        """What is going on instead of the usual schedule ("" when nothing special)."""
         if self.busy == "sync":
-            lines = ["Yeni içerik kontrol ediliyor…"]
-        elif self.busy == "refetch":
-            lines = ["Silinen dosyalar tekrar indiriliyor…"]
-        elif self.busy == "login":
-            lines = [login_waiting_line(self.login_method)]
-        elif not self.configured:
-            lines = [f"Kurulumu tamamlamak için “{T_SETTINGS}”ı seçin"]
-        elif self.last is None:
-            lines = ["Henüz senkronize edilmedi"]
+            return "Yeni içerik kontrol ediliyor…"
+        if self.busy == "refetch":
+            return "Silinen dosyalar tekrar indiriliyor…"
+        if self.busy == "login":
+            return login_waiting_line(self.login_method)
+        if not self.configured:
+            return f"Kurulumu tamamlamak için “{T_SETTINGS}”ı seçin"
+        return ""
+
+    def detail(self, now: datetime) -> list[str]:
+        """What the last sync brought and when the next one runs."""
+        parts = []
+        if self.last is not None and self.last.status == "ok":
+            totals: dict[str, int] = {}
+            for course in self.last.courses:
+                for key, count in course.counts.items():
+                    totals[key] = totals.get(key, 0) + count
+            parts.append(counts_text(totals))
+        elif self.last is not None and self.last.status == "error" and self.last.message:
+            parts.append(shorten(self.last.message, 50))
+        parts.append(f"sonraki: {format_time(max(self.next_run_at, now), now)}")
+        return parts
+
+    def status_lines(self, now: datetime) -> list[str]:
+        """The disabled lines at the top of the menu.
+
+        Signed in, the first line names the student and the last sync and the
+        second says what it brought; otherwise the first row is the clickable
+        sign-in item and a single line sums up the rest.
+        """
+        name, _expired = self.account()
+        activity = self.activity()
+        if name is not None:
+            lines = [f"✓ {name} · {self.headline(now)}", activity or capitalize(" · ".join(self.detail(now)))]
+        elif activity:
+            lines = [activity]
         else:
-            when = relative_time(self.last.finished_at or now, now)
-            if self.last.status == "ok":
-                totals: dict[str, int] = {}
-                for course in self.last.courses:
-                    for key, count in course.counts.items():
-                        totals[key] = totals.get(key, 0) + count
-                lines = [f"Son senkron: {when} · {counts_text(totals)}"]
-            elif self.last.status == "login_required":
-                lines = [f"Son deneme: {when} · oturum sona erdi, giriş yapın"]
-            else:
-                lines = [f"Son deneme: {when} · hata"]
-                if self.last.message:
-                    lines.append(shorten(self.last.message, 70))
+            lines = [capitalize(" · ".join([self.headline(now), *self.detail(now)]))]
         if self.note:
             lines.append(self.note)
-        if self.busy is None and self.configured:
-            lines.append(f"Sonraki: {format_time(max(self.next_run_at, now), now)}")
         return lines
 
     def menu(self, now: datetime) -> MenuModel:
@@ -609,26 +650,14 @@ class AppModel:
             status_lines=self.status_lines(now),
             sync_title=T_SYNCING if self.busy == "sync" else T_SYNC_NOW,
             sync_enabled=self.busy is None,
-            refetch_title=T_REFETCHING if self.busy == "refetch" else T_REFETCH,
-            refetch_enabled=self.busy is None,
-            login_title=T_LOGGING_IN if self.busy == "login" else T_LOGIN,
-            login_enabled=self.busy is None,
             recent=unique_labels([(f"{(parse_iso(item.at) or now).astimezone():%d.%m %H:%M} · {item.label}", item.path) for item in self.recent]),
-            autostart=self.autostart,
         )
-
-        expired = self.session_expired
-        if self.auth_failed_at:
-            saved_at = (self.session or {}).get("saved_at", 0)
-            expired = expired or saved_at <= self.auth_failed_at.timestamp()
-        user = (self.session or {}).get("user") or {}
-        signed_in = bool(self.session) and not expired
-        if signed_in:
-            account = shorten(user.get("displayName") or user.get("userName") or user.get("id") or "Blackboard", 70)
-            account_row = MenuEntry(f"✓ Giriş yapıldı · {account}", enabled=False)
+        name, expired = self.account()
+        if name is None:
+            title = T_LOGGING_IN if self.busy == "login" else T_EXPIRED if expired else T_LOGIN
+            top = [MenuEntry(title, "login", enabled=self.busy is None, warning=expired)]
         else:
-            title = "⚠ Oturum sona erdi — Giriş yap" if expired else menu.login_title
-            account_row = MenuEntry(title, "login", enabled=menu.login_enabled, warning=expired)
+            top = []
         course_items = []
         for course in self.courses:
             label = course.name if course.name.startswith(course.code) else f"{course.code} {course.name}".strip()
@@ -636,23 +665,18 @@ class AppModel:
             if count:
                 label += f" ({count} yeni)"
             course_items.append((label, course.folder))
+        update = self.updates.menu_entry()
         menu.entries = [
-            account_row,
+            *top,
             *[MenuEntry(line, enabled=False) for line in menu.status_lines],
             MenuEntry(),
             MenuEntry(menu.sync_title, "sync", enabled=menu.sync_enabled),
             MenuEntry("Dersler", children=[MenuEntry(label, "open", value=path) for label, path in unique_labels(course_items)] or [MenuEntry("Henüz ders yok", enabled=False)]),
             MenuEntry(T_RECENT, children=[MenuEntry(label, "open", value=path) for label, path in menu.recent] or [MenuEntry(T_RECENT_EMPTY, enabled=False)]),
-            MenuEntry(T_OPEN_FOLDER, "folder"),
+            MenuEntry(open_folder_title(self.dest), "folder"),
             MenuEntry(),
+            *([update] if update else []),
             MenuEntry(T_SETTINGS, "settings"),
-            MenuEntry("Gelişmiş", children=[
-                MenuEntry(menu.refetch_title, "refetch", enabled=menu.refetch_enabled),
-                MenuEntry("Hesaptan çıkış yap", "logout", enabled=self.busy is None and (bool(self.session) or self.session_expired)),
-            ]),
-            MenuEntry(T_AUTOSTART, "autostart", checked=self.autostart),
-            MenuEntry(),
-            self.updates.menu_entry(),
             MenuEntry(T_QUIT, "quit"),
         ]
         return menu

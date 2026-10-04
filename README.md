@@ -15,13 +15,13 @@ Python kurman gerekmez. Bilgisayarında Chrome, Edge, Brave, Opera, Vivaldi gibi
 
 macOS’ta menü çubuğundaki, Windows’ta saatin yanındaki simgeden (Windows’ta simge görünmüyorsa saatin yanındaki **^** okuna, yani gizli simgelere bak):
 
-- **Şimdi senkronize et** ile hemen kontrol et; **Silinenleri tekrar indir** ile bilgisayarından sildiğin dosyaları geri indir.
-- **Okul klasörünü aç** ve **Son indirilenler** ile içeriklerine ulaş.
-- **Ayarlar…** ile okul adresini, klasörü ve **Bilgisayar açılınca başlat** seçeneğini değiştir.
+- **Şimdi senkronize et** ile hemen kontrol et.
+- **Dersler**, **Son indirilenler** ve kayıt klasörünün adını taşıyan **… klasörünü aç** ile içeriklerine ulaş.
+- **Ayarlar…** penceresinde hesabını (okul adresi, giriş/çıkış), klasörü (**Silinenleri tekrar indir** ile bilgisayarından sildiğin dosyaları geri indirme), **Bilgisayar açılınca başlat** seçeneğini ve güncellemeleri yönet.
 
 Windows’ta uygulamayı Başlat menüsünden tekrar açınca ayarlar penceresi gelir. Bir sorun olursa ayrıntılar `%APPDATA%\blackboard-sync\windows-tray.log` dosyasındadır (Win+R’ye `%APPDATA%\blackboard-sync` yazıp Enter’a bas).
 
-Güncellemeler varsayılan olarak otomatik denetlenir. Menüdeki sürüm satırından elle de denetleyebilir, yeni sürüm varsa **Güncelle** seçeneğini kullanabilirsin.
+Güncellemeler varsayılan olarak otomatik denetlenir; **Ayarlar…** penceresindeki **Şimdi denetle** ile elle de denetleyebilirsin. Yeni sürüm varsa menüde **Güncelleme var: … — Güncelle** satırı çıkar.
 
 ## Gizlilik
 

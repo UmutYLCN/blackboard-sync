@@ -227,7 +227,7 @@ def build_app(config: Config):
             if self.model.dest.is_dir():
                 open_path(self.model.dest)
             else:
-                self.model.note = "Okul klasörü henüz yok; önce senkronize edin."
+                self.model.note = f"{self.model.dest.name or self.model.dest} klasörü henüz yok; önce senkronize edin."
                 self.refresh()
 
         def open_recent(self, rel_path: str) -> None:
@@ -261,11 +261,20 @@ def build_app(config: Config):
                 values = settings_form.initial_values(saved, self.settings, launchagent.is_installed())
                 self._settings_window = SettingsWindow(
                     values,
+                    settings_form.window_status(self.model),
                     first_run=saved is None,
                     on_submit=self.settings_submitted,
+                    on_action=self.settings_action,
                     on_close=self._settings_closed,
                 )
             self._settings_window.show()
+
+        def settings_action(self, action: str) -> None:
+            """A button in the settings window that acts right away instead of saving."""
+            {
+                "logout": self.logout, "refetch": self.start_refetch,
+                "check_updates": self.start_update_check, "update": self.start_update,
+            }[action]()
 
         def _settings_closed(self) -> None:
             self._settings_window = None
@@ -328,6 +337,8 @@ def build_app(config: Config):
             jobs.refresh_session(self.config, self.model, self.settings)
             self.model.autostart = launchagent.is_installed()
             self._draw_icon(self.model.icon())
+            if self._settings_window is not None:
+                self._settings_window.update_status(settings_form.window_status(self.model))
             menu = self.model.menu(jobs.utcnow())
             if menu == self._drawn:
                 return
@@ -337,12 +348,10 @@ def build_app(config: Config):
                 if not entry.title:
                     return rumps.separator
                 actions = {
-                    "sync": self.start_sync, "refetch": self.start_refetch,
-                    "login": self.start_login, "folder": self.open_school_folder,
-                    "settings": self.open_settings, "autostart": self.toggle_autostart,
-                    "logout": self.logout, "quit": self.quit,
-                    "open": lambda _s: self.open_recent(entry.value),
-                    "check_updates": self.start_update_check, "update": self.start_update,
+                    "sync": self.start_sync, "login": self.start_login,
+                    "folder": self.open_school_folder, "settings": self.open_settings,
+                    "quit": self.quit, "open": lambda _s: self.open_recent(entry.value),
+                    "update": self.start_update,
                 }
                 item = rumps.MenuItem(entry.title, callback=actions.get(entry.action) if entry.enabled else None)
                 item.state = int(entry.checked)

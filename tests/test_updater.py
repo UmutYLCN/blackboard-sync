@@ -16,7 +16,7 @@ from blackboard_sync.menubar.model import (
     AppModel,
     UpdateState,
 )
-from blackboard_sync.menubar.settings_form import FormValues, initial_values, submit
+from blackboard_sync.menubar.settings_form import FormValues, initial_values, submit, window_status
 from blackboard_sync.settings import Settings, load_settings, save_settings
 from blackboard_sync.updater import CheckResult, Release, UpdateError
 
@@ -302,8 +302,11 @@ def model(**kwargs):
     return AppModel(dest=Path("/Users/student/Documents/University"), now=NOW, **kwargs)
 
 
-def version_row(m):
-    return m.menu(NOW).entries[-2]
+def update_row(m):
+    """The menu row above "Ayarlar…" that only exists while an update is waiting."""
+    entries = m.menu(NOW).entries
+    row = entries[-3]
+    return row if row.title else None
 
 
 def test_checks_once_a_day_after_start_up():
@@ -326,8 +329,8 @@ def test_setting_off_means_no_scheduled_checks():
     assert not m.update_due(NOW + timedelta(days=30))
     m.apply_settings(m.dest, school_changed=False)  # a caller without the setting keeps it
     assert not m.update_due(NOW + timedelta(days=30))
-    # "Güncellemeleri denetle" still works when it is off.
-    assert version_row(m).action == "check_updates" and m.updates.begin("check")
+    # "Şimdi denetle" in the settings window still works when it is off.
+    assert window_status(m).update_action == "check_updates" and m.updates.begin("check")
 
 
 def test_one_notification_per_new_version():
@@ -360,21 +363,28 @@ def test_manual_check_always_answers():
     assert len(m.updates.finish_check(AVAILABLE, NOW, manual=True)) == 1
 
 
-def test_version_row_follows_the_update_state():
+def test_update_row_and_button_follow_the_update_state():
     m = model()
-    assert version_row(m).title.endswith("Güncellemeleri denetle")
+    assert update_row(m) is None
+    status = window_status(m)
+    assert (status.update_title, status.update_action, status.update_enabled) == ("Şimdi denetle", "check_updates", True)
+    assert status.version.startswith("Sürüm ")
     m.updates.begin("check")
-    assert version_row(m).title == "Güncellemeler denetleniyor…" and not version_row(m).enabled
+    assert update_row(m) is None  # a check only shows in the settings window
+    assert (window_status(m).update_title, window_status(m).update_enabled) == ("Denetleniyor…", False)
     m.updates.finish_check(AVAILABLE, NOW, manual=False)
-    row = version_row(m)
+    row = update_row(m)
     assert (row.title, row.action) == ("Güncelleme var: 1.1.0 — Güncelle", "update")
-    assert m.updates.begin("download") and not version_row(m).enabled
+    assert (window_status(m).update_title, window_status(m).update_action) == ("1.1.0 sürümüne güncelle", "update")
+    assert m.updates.begin("download")
+    assert update_row(m).title == "Güncelleme indiriliyor…" and not update_row(m).enabled
+    assert not window_status(m).update_enabled
     assert [n.title for n in m.updates.finish_download("İndirilen güncelleme doğrulanamadı; yüklenmedi.")] == [
         "Güncelleme yüklenemedi"
     ]
-    assert version_row(m).action == "update"  # can be tried again
+    assert update_row(m).action == "update"  # can be tried again
     m.updates.finish_check(CheckResult("current"), NOW, manual=False)
-    assert version_row(m).action == "check_updates"
+    assert update_row(m) is None and window_status(m).update_action == "check_updates"
 
 
 def test_download_needs_a_known_release():
