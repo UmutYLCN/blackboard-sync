@@ -190,7 +190,7 @@ def test_packaged_app_runs_cli_when_the_school_comes_first(monkeypatch):
     for args in (["--base-url", "https://bb.example.edu", "login"], ["--base-url=https://x.edu", "sync"], ["sync"]):
         monkeypatch.setattr(sys, "argv", ["Blackboard Sync", *args])
         app_entry.main()
-    monkeypatch.setattr("blackboard_sync.windows.app.main", lambda args: called.append(("tray", args)) or 0)
+    monkeypatch.setattr("blackboard_sync.windows.startup.run", lambda args: called.append(("tray", args)) or 0)
     monkeypatch.setattr(sys, "argv", ["Blackboard Sync", "--detach"])
     monkeypatch.setattr(sys, "platform", "darwin")
     app_entry.main()

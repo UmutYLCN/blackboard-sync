@@ -632,7 +632,11 @@ the updater runs it. The uninstaller removes the app and its start-at-login
 entry, never the downloaded files or `%APPDATA%` data. The installer is
 unsigned: Windows SmartScreen shows "Ek bilgi > Yine de çalıştır" once.
 `scripts/smoke-test-windows.ps1` (run by the workflow) installs, checks the
-installed app and `--version`, upgrades, and uninstalls.
+installed app and `--version`, checks the GUI (within 45 s `windows-tray.log`
+exists, the app runs and its first-run window "Blackboard Sync kurulumu" is
+visible; closed and started again, the running copy shows it), upgrades, and
+uninstalls. On a failure it prints `scripts/windows-gui-snapshot.ps1`: the
+app's windows, its data folder and the log with periodic thread stacks.
 
 The `CI` workflow runs the tests on macOS and Windows for pull requests and pushes to `main`.
 
@@ -642,7 +646,8 @@ release's `SHA256SUMS.txt`; the updater rejects missing or mismatched checksums.
 The first public release, `v1.0.0`, must ship both installers together. Check
 `.github/workflows/release.yml` for the build jobs before publishing. The
 Windows updater launches the installer with
-`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`; the installer must restart the app.
+`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`; the installer must restart the app
+(with `--background`, so an update does not open the settings window).
 
 ## License
 
@@ -672,11 +677,21 @@ hidden-icons arrow) for the shared menu. Later, launch without a console with:
 ```
 
 **Bilgisayar açılınca başlat** toggles only the current user's
-`HKCU\Software\Microsoft\Windows\CurrentVersion\Run\BlackboardSync` value.
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run\BlackboardSync` value,
+which starts the app with `--background` (tray only). Any other start (the
+installer's last page, the Start Menu) opens the settings window in front; when
+the app is already running, the new start asks the running copy to do that and
+exits. After the first settings window closes, a one-time tray notification
+says the app keeps running from the icon next to the clock (maybe under the
+**^** hidden-icons arrow).
 Keep this checkout and its virtual environment in place while it is enabled;
 disable the option before moving or deleting them. No administrator rights are
 needed. Settings and logs (`windows-tray.log`) live under
-`%APPDATA%\blackboard-sync` unless `BBSYNC_DATA_DIR` overrides it.
+`%APPDATA%\blackboard-sync` unless `BBSYNC_DATA_DIR` overrides it. The log is
+opened before anything else is imported (`windows/startup.py`), together with
+`faulthandler`; an unhandled error shows a message box naming the log. To see
+where a running app waits, start it with `BBSYNC_STACK_DUMP=<seconds>`: every
+thread's stack is then written to the log at that interval.
 
 Toasts show one Turkish summary line per changed course. Clicking opens the
 course folder, or the common parent folder when several courses changed, via a

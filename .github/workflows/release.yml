@@ -63,8 +63,6 @@ jobs:
         run: ./scripts/build-windows.ps1
       # Install it the way the updater does (silently), check the installed app,
       # then uninstall and check nothing but the app was removed.
-      - name: Reproduce the startup report (temporary)
-        run: ./scripts/repro-windows-startup.ps1
       - name: Smoke-test the installer
         run: ./scripts/smoke-test-windows.ps1
       - uses: actions/upload-artifact@v4

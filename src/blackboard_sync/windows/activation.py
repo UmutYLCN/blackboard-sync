@@ -31,15 +31,41 @@ def register() -> None:
         winreg.SetValueEx(key, "", 0, winreg.REG_SZ, protocol_command())
 
 
+UPDATE_REQUEST = "update-request"
+SETTINGS_REQUEST = "settings-request"
+ASFW_ANY = -1
+
+
 def request_update(config) -> None:
     # The data directory is already private. Repeated clicks coalesce; no paths
     # or commands from the URI are executed or stored.
-    (config.data_dir / "update-request").touch()
+    (config.data_dir / UPDATE_REQUEST).touch()
 
 
 def take_update_request(config) -> bool:
+    return _take(config, UPDATE_REQUEST)
+
+
+def request_settings(config) -> None:
+    """Ask the running copy to show its window (the app was started again)."""
     try:
-        (config.data_dir / "update-request").unlink()
+        import ctypes
+
+        # Only the process the user just started may bring a window to the
+        # front; pass that right on to the running copy.
+        ctypes.windll.user32.AllowSetForegroundWindow(ASFW_ANY)
+    except (ImportError, AttributeError, OSError):
+        pass
+    (config.data_dir / SETTINGS_REQUEST).touch()
+
+
+def take_settings_request(config) -> bool:
+    return _take(config, SETTINGS_REQUEST)
+
+
+def _take(config, name) -> bool:
+    try:
+        (config.data_dir / name).unlink()
         return True
     except FileNotFoundError:
         return False

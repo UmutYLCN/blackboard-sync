@@ -382,20 +382,23 @@ def test_download_needs_a_known_release():
 
 
 def test_update_state_survives_a_restart(tmp_path):
+    # Ahead of any real version, so the remembered release stays an update.
+    ahead = Release("99.0.0", "https://github.com/UmutYLCN/blackboard-sync/releases/tag/v99.0.0",
+                    "Blackboard-Sync-99.0.0.dmg", DOWNLOAD + "Blackboard-Sync-99.0.0.dmg")
     config = Config(data_dir=tmp_path / "data", dest=tmp_path / "Okul")
     m = jobs.load_model(config, NOW, autostart=False)
-    m.updates.finish_check(AVAILABLE, NOW, manual=False)
+    m.updates.finish_check(CheckResult("available", ahead), NOW, manual=False)
     jobs.save_model(config, m)
     saved = json.loads(jobs.menubar_state_file(config).read_text())["updates"]
-    assert saved["notified"] == "1.1.0" and saved["available"]["version"] == "1.1.0"
+    assert saved["notified"] == "99.0.0" and saved["available"]["version"] == "99.0.0"
 
     restored = jobs.load_model(config, NOW + timedelta(hours=3), autostart=False)
-    assert restored.updates.available == RELEASE
+    assert restored.updates.available == ahead
     assert not restored.update_due(NOW + timedelta(hours=5))  # checked today already
-    assert restored.updates.finish_check(AVAILABLE, NOW + UPDATE_INTERVAL, manual=False) == []
+    assert restored.updates.finish_check(CheckResult("available", ahead), NOW + UPDATE_INTERVAL, manual=False) == []
 
-    # After installing 1.1.0 the remembered release is no longer an update.
-    assert UpdateState.load(saved, NOW, current="1.1.0").available is None
+    # After installing 99.0.0 the remembered release is no longer an update.
+    assert UpdateState.load(saved, NOW, current="99.0.0").available is None
     assert UpdateState.load({"available": {"bad": 1}, "checked_at": "nonsense"}, NOW).available is None
 
 

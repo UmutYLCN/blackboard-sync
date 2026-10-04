@@ -68,9 +68,20 @@ class SettingsWindow:
         self.show()
 
     def show(self):
-        self.window.deiconify()
-        self.window.lift()
-        self.window.focus_force()
+        window = self.window
+        window.deiconify()
+        window.lift()
+        # Windows keeps a new window behind the active one (the installer,
+        # Explorer); topmost for a moment brings it in front of them.
+        window.attributes("-topmost", True)
+        window.after(1000, self.release_topmost)
+        window.focus_force()
+
+    def release_topmost(self):
+        try:
+            self.window.attributes("-topmost", False)
+        except Exception:  # closed meanwhile
+            pass
 
     def close(self):
         self.window.destroy()
