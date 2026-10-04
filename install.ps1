@@ -32,7 +32,10 @@
     Write-Host '    Doğrulandı.'
 
     Write-Host '==> Kuruluyor (uygulama kurulumdan sonra kendiliğinden açılır)...'
-    $p = Start-Process -FilePath $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+    $p = Start-Process -FilePath $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -PassThru
+    # Wait for the installer only: -Wait would also wait for the app it starts.
+    $null = $p.Handle
+    $p.WaitForExit()
     if ($p.ExitCode -ne 0) { throw "Kurulum başarısız oldu (çıkış kodu $($p.ExitCode))." }
     Write-Host 'Kurulum tamamlandı.'
   } catch {
