@@ -30,7 +30,8 @@ def main() -> int:
 
         return cli_main(args)
     if sys.platform == "win32":
-        from blackboard_sync.windows.app import main as tray_main
+        # Sets up windows-tray.log before the tray app is imported.
+        from blackboard_sync.windows.startup import run as tray_main
 
         return tray_main(args)
     from blackboard_sync.menubar.app import main as menubar_main

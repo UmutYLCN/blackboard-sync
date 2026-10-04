@@ -303,14 +303,14 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Blackboard Sync Windows tray")
     parser.add_argument("--notification", choices=[activation.UPDATE_URI])
     args = parser.parse_args(argv)
+    # Logging is set up by .startup, before this module is imported.
     config = Config.from_env()
     config.ensure_data_dir()
-    logging.basicConfig(filename=str(config.data_dir / "windows-tray.log"), encoding="utf-8",
-                        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if args.notification:
         activation.request_update(config)
     lock = jobs.single_instance(config)
     if lock is None:
+        log.info("Another copy is already running")
         return 0
     try:
         try:
@@ -319,6 +319,7 @@ def main(argv=None):
             log.exception("Could not register update-toast activation")
         root = tk.Tk()
         root.withdraw()
+        root.report_callback_exception = lambda *exc: log.error("Tk callback failed", exc_info=exc)
         TrayApp(config, root).run()
     finally:
         lock.close()
