@@ -2,7 +2,8 @@
 
 Syncs and sign-ins run as ``python -m blackboard_sync sync --json`` / ``login``
 child processes, so the app reuses the exact CLI code path, its lock file and
-its exit codes, and a crash in a run cannot take the menu bar app down.
+its exit codes, and a crash in a run cannot take the menu bar app down. The
+school and folder from the settings window are passed as flags on every run.
 """
 
 from __future__ import annotations
@@ -23,11 +24,13 @@ from blackboard_sync.menubar.model import (
     AppModel,
     RunOutcome,
     load_saved_state,
+    login_arguments,
     parse_sync_output,
     shorten,
     sync_arguments,
 )
 from blackboard_sync.session import write_private_json
+from blackboard_sync.settings import Settings, load_settings
 
 # A first sync of a whole term can take a while; this only guards against a hang.
 SYNC_TIMEOUT = 2 * 60 * 60
@@ -45,11 +48,14 @@ def utcnow() -> datetime:
 
 
 def run_sync(
-    job: str = "sync", runner: Runner = subprocess.run, now: Callable[[], datetime] = utcnow
+    job: str,
+    settings: Settings,
+    runner: Runner = subprocess.run,
+    now: Callable[[], datetime] = utcnow,
 ) -> RunOutcome:
     try:
         proc = runner(
-            cli_command(*sync_arguments(job)),
+            cli_command(*sync_arguments(job, settings)),
             capture_output=True,
             text=True,
             timeout=SYNC_TIMEOUT,
@@ -62,11 +68,11 @@ def run_sync(
     return parse_sync_output(proc.stdout, proc.returncode, proc.stderr, now())
 
 
-def run_login(runner: Runner = subprocess.run) -> tuple[bool, str]:
+def run_login(settings: Settings, runner: Runner = subprocess.run) -> tuple[bool, str]:
     """Run ``blackboard-sync login``; returns (signed in, message)."""
     try:
         proc = runner(
-            cli_command("login"),
+            cli_command(*login_arguments(settings)),
             capture_output=True,
             text=True,
             timeout=LOGIN_TIMEOUT,
@@ -98,6 +104,20 @@ def _read_json(path: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def saved_settings(config: Config) -> Settings | None:
+    """What the settings window saved; None before the first save."""
+    return load_settings(config.data_dir)
+
+
+def effective_settings(config: Config) -> Settings:
+    """The settings the app syncs with: the saved ones, else the defaults.
+
+    Saved settings win over ``BBSYNC_*`` variables here, so a choice made in
+    the window is not undone by an environment the app was started with.
+    """
+    return saved_settings(config) or Settings(base_url=config.base_url, dest=config.dest)
+
+
 def load_last_run(config: Config) -> RunOutcome | None:
     data = _read_json(config.last_run_file)
     if not data or data.get("dry_run") or not data.get("status"):
@@ -111,7 +131,8 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
     saved = _read_json(menubar_state_file(config))
     recent, login_prompted = load_saved_state(saved)
     model = AppModel(
-        dest=config.dest,
+        dest=effective_settings(config).dest,
+        configured=saved_settings(config) is not None,
         now=now,
         last=last,
         recent=recent,

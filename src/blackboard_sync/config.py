@@ -1,7 +1,8 @@
 """Runtime configuration: where things live and which Blackboard to talk to.
 
-Every setting has a default, can be overridden by an environment variable, and
-can be overridden again by a command-line flag.
+Every setting has a default, which the settings saved by the menu bar app's
+settings window (``settings.json`` in the data directory) replace. An
+environment variable overrides both, and a command-line flag overrides that.
 """
 
 from __future__ import annotations
@@ -9,6 +10,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+
+from blackboard_sync.settings import load_settings, settings_path
 
 DEFAULT_BASE_URL = "https://blackboard.istun.edu.tr"
 DEFAULT_DEST = Path.home() / "Documents" / "Okul"
@@ -29,12 +32,19 @@ class Config:
         self.data_dir = Path(self.data_dir).expanduser()
 
     @classmethod
-    def from_env(cls, env: dict[str, str] | None = None) -> "Config":
+    def from_env(cls, env: dict[str, str] | None = None, data_dir: Path | None = None) -> "Config":
+        """Defaults, then saved settings, then environment variables.
+
+        ``data_dir`` (the ``--data-dir`` flag) wins over ``BBSYNC_DATA_DIR`` and
+        decides which saved settings are read.
+        """
         env = os.environ if env is None else env
+        data_dir = Path(data_dir or env.get("BBSYNC_DATA_DIR") or DEFAULT_DATA_DIR).expanduser()
+        saved = load_settings(data_dir)
         return cls(
-            base_url=env.get("BBSYNC_BASE_URL", DEFAULT_BASE_URL),
-            dest=Path(env.get("BBSYNC_DEST", str(DEFAULT_DEST))),
-            data_dir=Path(env.get("BBSYNC_DATA_DIR", str(DEFAULT_DATA_DIR))),
+            base_url=env.get("BBSYNC_BASE_URL") or (saved.base_url if saved else DEFAULT_BASE_URL),
+            dest=Path(env.get("BBSYNC_DEST") or (saved.dest if saved else DEFAULT_DEST)),
+            data_dir=data_dir,
             announcements_folder=env.get(
                 "BBSYNC_ANNOUNCEMENTS_FOLDER", DEFAULT_ANNOUNCEMENTS_FOLDER
             ),
@@ -47,6 +57,10 @@ class Config:
     @property
     def profile_dir(self) -> Path:
         return self.data_dir / "browser-profile"
+
+    @property
+    def settings_file(self) -> Path:
+        return settings_path(self.data_dir)
 
     @property
     def state_file(self) -> Path:

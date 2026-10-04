@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from blackboard_sync.settings import Settings
 from blackboard_sync.menubar.model import (
     FIRST_SYNC_DELAY,
     RETRY_DELAY,
@@ -285,8 +286,10 @@ def test_saved_state_round_trip():
 # -- "Silinenleri tekrar indir" ---------------------------------------------
 
 def test_only_the_refetch_job_brings_back_deleted_files():
-    assert sync_arguments("sync") == ["sync", "--json"]
-    assert sync_arguments("refetch") == ["sync", "--json", "--refetch-missing"]
+    settings = Settings(base_url="https://bb.example.edu", dest=DEST)
+    common = ["--base-url", "https://bb.example.edu", "sync", "--json", "--dest", str(DEST)]
+    assert sync_arguments("sync", settings) == common
+    assert sync_arguments("refetch", settings) == common + ["--refetch-missing"]
 
 
 def test_scheduled_runs_stay_plain_syncs_after_a_refetch():

@@ -130,6 +130,34 @@ To start it **without a terminal**, build the standalone app (see
 `dist/Blackboard Sync.app`. It bundles its own Python and needs no checkout or
 `.venv`. Notifications appear under the name "Blackboard Sync".
 
+### Settings
+
+The first time the app starts, a small **Blackboard Sync kurulumu** window
+asks for:
+
+- **Okulunuzun Blackboard adresi** — prefilled with
+  `https://blackboard.istun.edu.tr`; students of another university type their
+  school's Blackboard address instead (it must be `https://`; a pasted course
+  link is reduced to the site address).
+- **Dosyaların kaydedileceği klasör** — prefilled with `~/Documents/Okul`;
+  **Seç…** opens a folder picker.
+- **Bilgisayar açılınca başlat** — ticked by default (see below).
+
+**Giriş yap** saves and opens the Blackboard sign-in window; **Kaydet** only
+saves. Nothing is synced on a schedule until the window has been saved once.
+Choose **Ayarlar…** in the menu to change the settings later:
+
+- A different school address requires signing in again; the sign-in window
+  opens as soon as you save.
+- A different folder applies to future syncs only. Files already downloaded
+  stay where they are; nothing is moved or deleted.
+
+The choices are stored in `settings.json` in the data folder (see
+[Where things go](#where-things-go)). The `blackboard-sync` command reads the
+same file, so after the window is saved the terminal syncs the same school
+into the same folder without any flags; `BBSYNC_*` variables and command-line
+options still override it for the terminal.
+
 ### Start at login
 
 Tick **Bilgisayar açılınca başlat** in the menu (or run
@@ -148,8 +176,9 @@ user account.
 | **Şimdi senkronize et** | Sync right away instead of waiting for the next hourly run. Greyed out while a sync or sign-in is running. |
 | **Silinenleri tekrar indir** | Runs one sync that also downloads again the files you deleted locally (the same as `blackboard-sync sync --refetch-missing`), for example after deleting the whole `Okul` folder by mistake. Files you only edited are not touched, and the notification still has one line per course. The hourly runs and **Şimdi senkronize et** keep respecting deletions. |
 | **Giriş yap** | Opens the Blackboard sign-in window (same as `blackboard-sync login`). As soon as you are in, a sync starts. |
-| **Okul klasörünü aç** | Opens `~/Documents/Okul` in Finder. |
+| **Okul klasörünü aç** | Opens the folder chosen in **Ayarlar…** (`~/Documents/Okul` by default) in Finder. |
 | **Son indirilenler** | The last 10 files, notes and announcements that came in. Click one to open it (or its folder, if you moved the file). |
+| **Ayarlar…** | Reopens the [settings window](#settings): school address, folder, start at login. |
 | **Bilgisayar açılınca başlat** | Start the app at login (see above). A check mark means it is on. |
 | **Çıkış** | Quit the app. |
 
@@ -178,7 +207,9 @@ The icon tells you the state at a glance:
   (clicking it opens the sign-in window). It is not repeated every hour; the
   red icon stays until a sync succeeds again.
 
-Under the hood every run is exactly `blackboard-sync sync --json` (see
+Under the hood every run is exactly
+`blackboard-sync --base-url <school> sync --json --dest <folder>` with the
+values from the settings window (see
 [the single-run contract](#for-the-scheduler-single-run-contract)), so the app
 downloads the same files into the same folders as the command does.
 
@@ -193,14 +224,14 @@ blackboard-sync [...] sync  [--term NAME | --all-terms] [--course CODE ...]
 
 | Option | Meaning |
 | --- | --- |
-| `--dest DIR` | Base folder (default `~/Documents/Okul`, env `BBSYNC_DEST`). |
+| `--dest DIR` | Base folder (default: the folder saved in the menu bar app's settings, else `~/Documents/Okul`; env `BBSYNC_DEST`). |
 | `--term NAME` | Sync a specific term by its Blackboard name, e.g. `"2025-2026 Bahar"`. |
 | `--all-terms` | Sync every term, including past ones and courses without a term. |
 | `--course CODE` | Only this course (`CSE303`, or the course id); repeatable. |
 | `--dry-run` | Show what would be fetched; write and download nothing. |
 | `--refetch-missing` | Download again files you deleted locally (normally deletions are respected). |
 | `--json` | Print the run summary as JSON (see below). |
-| `--base-url URL` | Another Blackboard site (env `BBSYNC_BASE_URL`). |
+| `--base-url URL` | Another Blackboard site (default: the saved school address, else İSTÜN; env `BBSYNC_BASE_URL`). |
 | `--data-dir DIR` | Where the session and state live (env `BBSYNC_DATA_DIR`). |
 
 The announcements folder is called `Duyurular` like on the site; set
@@ -216,6 +247,7 @@ most recently started term. Courses the instructor has not opened yet
 | What | Where |
 | --- | --- |
 | Course material | `~/Documents/Okul/<term>/<course code> <course name>/...` |
+| Settings (school address, folder) | `~/Library/Application Support/blackboard-sync/settings.json` |
 | Session cookies | `~/Library/Application Support/blackboard-sync/session.json` |
 | Sign-in browser profile | `~/Library/Application Support/blackboard-sync/browser-profile/` |
 | Sync state | `~/Library/Application Support/blackboard-sync/state.json` |
