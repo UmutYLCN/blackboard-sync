@@ -29,7 +29,8 @@ jobs:
           ./scripts/setup.sh
           .venv/bin/python -m pytest -q
           ./scripts/build-app.sh
-      # The sign-in needs Playwright's driver inside the app.
+      # The browser sign-in needs Playwright's driver inside the app, the in-app
+      # sign-in window needs WebKit.
       - name: Check the app can start the sign-in runtime
         run: dist/"Blackboard Sync.app"/Contents/MacOS/"Blackboard Sync" --check-login-runtime
       - uses: actions/upload-artifact@v4

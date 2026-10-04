@@ -70,6 +70,15 @@ def test_login_result():
     )
 
 
+def test_login_method_is_the_browser_or_the_app_window(tmp_path, monkeypatch):
+    from blackboard_sync import login as login_mod
+
+    monkeypatch.setattr(login_mod, "APP_DIRS", [tmp_path])
+    assert jobs.login_method(platform="darwin") == "inapp"
+    (tmp_path / "Vivaldi.app").mkdir()
+    assert jobs.login_method(platform="darwin") == "Vivaldi"
+
+
 def test_model_is_restored_from_last_run_and_saved_state(tmp_path):
     config = Config(data_dir=tmp_path / "data", dest=tmp_path / "Okul")
     config.ensure_data_dir()

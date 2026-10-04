@@ -62,6 +62,11 @@ class Config:
         return self.data_dir / "browser-profile"
 
     @property
+    def inapp_profile_dir(self) -> Path:
+        """The Windows sign-in window's web data (macOS keeps it in WebKit's store)."""
+        return self.data_dir / "inapp-profile"
+
+    @property
     def settings_file(self) -> Path:
         return settings_path(self.data_dir)
 

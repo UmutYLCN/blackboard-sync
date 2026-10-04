@@ -17,6 +17,10 @@ The student signs in normally (including single sign-on and two-factor steps);
 this tool never sees the password. It only watches over the browser's local
 DevTools port (127.0.0.1) until Blackboard accepts the session, then saves the
 Blackboard cookies for ``sync`` and closes the browser.
+
+When no supported browser is installed (or one fails to start), the sign-in
+happens in the app's own window instead; see ``inapp``. ``--browser inapp``
+forces that.
 """
 
 from __future__ import annotations
@@ -32,6 +36,9 @@ import requests
 from blackboard_sync.api import BlackboardClient
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
+from blackboard_sync.inapp import INAPP
+from blackboard_sync.inapp import check_runtime as inapp_check_runtime
+from blackboard_sync.inapp import sign_in as inapp_sign_in
 from blackboard_sync.session import save_session
 from blackboard_sync.system import is_windows, make_private_dir
 
@@ -99,6 +106,13 @@ class NoSupportedBrowserError(BlackboardSyncError):
     def __init__(self, message: str, requested: str | None = None):
         super().__init__(message)
         self.requested = requested
+
+
+class BrowserStartError(BlackboardSyncError):
+    """The browser could not be started or reached before the sign-in page was up.
+
+    ``login`` with ``auto`` then signs in in the app's own window instead.
+    """
 
 
 def supported_browsers(platform: str | None = None) -> list[str]:
@@ -262,7 +276,7 @@ def start_browser(
     if not is_windows(platform):
         result = run(argv, capture_output=True, text=True)
         if result.returncode != 0:
-            raise BlackboardSyncError(f"Could not open {label}: {result.stderr.strip()}")
+            raise BrowserStartError(f"Could not open {label}: {result.stderr.strip()}")
         return
     try:
         spawn(
@@ -274,7 +288,7 @@ def start_browser(
             creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
         )
     except OSError as exc:
-        raise BlackboardSyncError(f"Could not open {label}: {exc}") from exc
+        raise BrowserStartError(f"Could not open {label}: {exc}") from exc
 
 
 def wait_for_devtools_port(profile_dir: Path, timeout: float = 30) -> int:
@@ -290,7 +304,7 @@ def wait_for_devtools_port(profile_dir: Path, timeout: float = 30) -> int:
         except (OSError, IndexError, ValueError):
             pass
         time.sleep(0.25)
-    raise BlackboardSyncError(
+    raise BrowserStartError(
         "The browser did not start. If a sign-in window from an earlier attempt is "
         "still open, close it and run `blackboard-sync login` again."
     )
@@ -330,11 +344,71 @@ def login(
     check_user: Callable[[str, list[dict]], dict | None] = session_user,
     spawn: Callable[..., object] = subprocess.Popen,
     platform: str | None = None,
+    inapp: Callable[..., tuple[dict, list[dict]]] | None = None,
 ) -> dict:
-    """Open a browser, wait for the student to sign in, save the session."""
-    app = find_browser(browser, platform=platform)
-    label = browser_label(app)
+    """Wait for the student to sign in, save the session.
+
+    A supported browser is used when one is installed (or the one asked for
+    with ``browser``); otherwise, or with ``browser="inapp"``, the app's own
+    sign-in window. With ``auto``, a browser that fails to start before the
+    sign-in page is up also falls back to the window.
+    """
     config.ensure_data_dir()
+    app = choose_browser(browser, platform=platform)
+    if app is not None:
+        try:
+            user, cookies = _browser_sign_in(
+                config, app, timeout, out, run, connect, check_user, spawn, platform
+            )
+        except BrowserStartError as exc:
+            if browser != "auto":
+                raise
+            out(f"{exc} Using the app's own sign-in window instead.")
+            app = None
+    if app is None:
+        out(f"Opening the sign-in window on {config.base_url} ...")
+        out("Sign in to Blackboard in that window. It closes by itself once you are in.")
+        user, cookies = (inapp or inapp_sign_in)(
+            config.base_url + "/",
+            config.base_url,
+            timeout,
+            check_user,
+            config.inapp_profile_dir,
+            platform=platform,
+        )
+
+    kept = save_session(config.session_file, config.base_url, cookies, user)
+    out(f"Signed in as {user.get('userName') or user.get('id')}; session saved ({kept} cookies).")
+    return user
+
+
+def choose_browser(browser: str = "auto", platform: str | None = None) -> Path | None:
+    """The browser the sign-in uses, or None for the app's own window.
+
+    ``auto`` falls back to the window when no supported browser is installed;
+    a browser asked for by name must exist.
+    """
+    if browser == INAPP:
+        return None
+    try:
+        return find_browser(browser, platform=platform)
+    except NoSupportedBrowserError as exc:
+        if exc.requested is not None:
+            raise
+        return None
+
+
+def login_method_label(browser: str = "auto", platform: str | None = None) -> str:
+    """What ``login`` will open: the browser's name, or ``INAPP`` for the window."""
+    try:
+        app = choose_browser(browser, platform=platform)
+    except BlackboardSyncError:
+        return INAPP
+    return browser_label(app) if app is not None else INAPP
+
+
+def _browser_sign_in(config, app, timeout, out, run, connect, check_user, spawn, platform):
+    label = browser_label(app)
     make_private_dir(config.profile_dir, platform=platform)
     stale = config.profile_dir / DEVTOOLS_PORT_FILE
     if stale.exists():
@@ -352,15 +426,14 @@ def login(
     port = wait_for_devtools_port(config.profile_dir)
 
     with _connector(connect) as connect_fn:
-        cdp_browser = connect_fn(f"http://127.0.0.1:{port}")
         try:
-            user, cookies = _wait_for_sign_in(cdp_browser, config.base_url, timeout, check_user)
+            cdp_browser = connect_fn(f"http://127.0.0.1:{port}")
+        except Exception as exc:
+            raise BrowserStartError(f"Could not connect to {label}: {exc}") from exc
+        try:
+            return _wait_for_sign_in(cdp_browser, config.base_url, timeout, check_user)
         finally:
             _close_browser(cdp_browser)
-
-    kept = save_session(config.session_file, config.base_url, cookies, user)
-    out(f"Signed in as {user.get('userName') or user.get('id')}; session saved ({kept} cookies).")
-    return user
 
 
 def _wait_for_sign_in(cdp_browser, base_url: str, timeout: float, check_user) -> tuple[dict, list[dict]]:
@@ -386,14 +459,16 @@ def _wait_for_sign_in(cdp_browser, base_url: str, timeout: float, check_user) ->
     raise BlackboardSyncError(f"Sign-in was not completed within {int(timeout // 60)} minutes.")
 
 
-def check_runtime() -> None:
-    """Start and stop the Playwright driver without opening a browser.
+def check_runtime() -> str:
+    """Start and stop the Playwright driver and load the sign-in window's web
+    component, without opening anything; returns the web component's name.
 
     Run by CI against the packaged apps (``--check-login-runtime``) to prove the
-    bundle ships what the sign-in needs.
+    bundle ships what both sign-in methods need.
     """
     with _connector(None):
         pass
+    return inapp_check_runtime()
 
 
 class _connector:
@@ -409,8 +484,11 @@ class _connector:
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:  # pragma: no cover - dependency is pinned
-            raise BlackboardSyncError("Playwright is not installed; see the README's setup steps.") from exc
-        self._pw = sync_playwright().start()
+            raise BrowserStartError("Playwright is not installed; see the README's setup steps.") from exc
+        try:
+            self._pw = sync_playwright().start()
+        except Exception as exc:
+            raise BrowserStartError(f"Could not start the browser connection: {exc}") from exc
         return self._pw.chromium.connect_over_cdp
 
     def __exit__(self, *exc):

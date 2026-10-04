@@ -182,6 +182,18 @@ def test_successful_login_makes_a_sync_due_now():
     assert m.due(NOW + timedelta(minutes=2))
 
 
+def test_waiting_for_sign_in_names_the_browser_or_the_app_window():
+    m = model()
+    m.begin("login")
+    assert m.status_lines(NOW)[0] == "Tarayıcıda giriş yapmanız bekleniyor…"  # not known
+    m.login_method = "Opera GX"
+    assert m.status_lines(NOW)[0] == "Opera GX penceresinde giriş yapmanız bekleniyor…"
+    m.login_method = "inapp"
+    assert m.status_lines(NOW)[0] == "Açılan pencerede giriş yapmanız bekleniyor…"
+    m.finish_login(True, "", NOW)
+    assert m.login_method == ""
+
+
 def test_failed_login_is_shown():
     m = model()
     m.begin("login")

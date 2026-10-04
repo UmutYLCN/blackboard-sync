@@ -18,6 +18,10 @@ dependencies = [
     "rumps==0.4.0; sys_platform == 'darwin'",
     "pyobjc-core==12.2.2; sys_platform == 'darwin'",
     "pyobjc-framework-Cocoa==12.2.2; sys_platform == 'darwin'",
+    # The in-app sign-in window (used when no supported browser is installed):
+    # WKWebView on macOS, Microsoft Edge WebView2 through pywebview on Windows.
+    "pyobjc-framework-WebKit==12.2.2; sys_platform == 'darwin'",
+    "pywebview==6.2.1; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

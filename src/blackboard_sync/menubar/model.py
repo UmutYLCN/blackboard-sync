@@ -21,6 +21,7 @@ from typing import Callable
 
 from blackboard_sync import __version__
 from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
+from blackboard_sync.inapp import INAPP
 from blackboard_sync.settings import Settings
 from blackboard_sync.updater import CheckResult, Release, is_newer
 
@@ -264,6 +265,15 @@ def update_notification(release: Release) -> Notification:
     )
 
 
+def login_waiting_line(method: str) -> str:
+    """The status line while signing in, naming where: a browser or the app's window."""
+    if method == INAPP:
+        return "Açılan pencerede giriş yapmanız bekleniyor…"
+    if method:
+        return f"{method} penceresinde giriş yapmanız bekleniyor…"
+    return "Tarayıcıda giriş yapmanız bekleniyor…"
+
+
 def login_notification() -> Notification:
     return Notification(
         title="Blackboard oturumu sona erdi",
@@ -448,6 +458,7 @@ class AppModel:
         self.login_prompted = login_prompted
         self.autostart = autostart
         self.busy: str | None = None  # "sync" | "refetch" | "login"
+        self.login_method = ""  # while signing in: a browser's name, INAPP, or "" if unknown
         self.note = ""  # a transient extra line (lock held, sign-in failed, ...)
         self.next_run_at = now + FIRST_SYNC_DELAY
         self.check_updates = check_updates  # the "Güncellemeleri otomatik denetle" setting
@@ -520,6 +531,7 @@ class AppModel:
 
     def finish_login(self, ok: bool, message: str, now: datetime) -> None:
         self.busy = None
+        self.login_method = ""
         if ok:
             self.auth_failed_at = None
             self.session_expired = False
@@ -567,7 +579,7 @@ class AppModel:
         elif self.busy == "refetch":
             lines = ["Silinen dosyalar tekrar indiriliyor…"]
         elif self.busy == "login":
-            lines = ["Tarayıcıda giriş yapmanız bekleniyor…"]
+            lines = [login_waiting_line(self.login_method)]
         elif not self.configured:
             lines = [f"Kurulumu tamamlamak için “{T_SETTINGS}”ı seçin"]
         elif self.last is None:
