@@ -476,7 +476,7 @@ class AppModel:
             refetch_enabled=self.busy is None,
             login_title=T_LOGGING_IN if self.busy == "login" else T_LOGIN,
             login_enabled=self.busy is None,
-            recent=unique_labels([(f"{format_time(parse_iso(item.at) or now, now)} · {item.label}", item.path) for item in self.recent]),
+            recent=unique_labels([(f"{(parse_iso(item.at) or now).astimezone():%d.%m %H:%M} · {item.label}", item.path) for item in self.recent]),
             autostart=self.autostart,
         )
 
@@ -511,7 +511,7 @@ class AppModel:
             MenuEntry(T_SETTINGS, "settings"),
             MenuEntry("Gelişmiş", children=[
                 MenuEntry(menu.refetch_title, "refetch", enabled=menu.refetch_enabled),
-                MenuEntry("Hesaptan çıkış yap", "logout", enabled=self.busy is None and bool(self.session)),
+                MenuEntry("Hesaptan çıkış yap", "logout", enabled=self.busy is None and (bool(self.session) or self.session_expired)),
             ]),
             MenuEntry(T_AUTOSTART, "autostart", checked=self.autostart),
             MenuEntry(),

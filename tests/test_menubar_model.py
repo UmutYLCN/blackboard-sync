@@ -210,9 +210,9 @@ def test_menu_after_a_sync_with_new_files():
     ]
     assert menu.sync_enabled and menu.login_enabled
     assert [label for label, _ in menu.recent] == [
-        f"{format_time(NOW, NOW)} · CSE303 · week2.pdf",
-        f"{format_time(NOW, NOW)} · CSE303 · hw2.pdf",
-        f"{format_time(NOW, NOW)} · CSE303 · 2026-10-03 Quiz.md",
+        f"{NOW.astimezone():%d.%m %H:%M} · CSE303 · week2.pdf",
+        f"{NOW.astimezone():%d.%m %H:%M} · CSE303 · hw2.pdf",
+        f"{NOW.astimezone():%d.%m %H:%M} · CSE303 · 2026-10-03 Quiz.md",
     ]
 
 
@@ -416,7 +416,7 @@ def test_course_display_name_and_recent_dates():
     m.finish_sync(outcome(data), NOW)
     menu = m.menu(NOW)
     assert next(e for e in menu.entries if e.title == "Dersler").children[0].title == "CSE303 Algorithm Analysis (1 yeni)"
-    assert menu.recent[0][0] == f"{format_time(NOW, NOW)} · CSE303 · a.pdf"
+    assert menu.recent[0][0] == f"{NOW.astimezone():%d.%m %H:%M} · CSE303 · a.pdf"
 
 
 def test_relative_time_refreshes_and_handles_yesterday():
