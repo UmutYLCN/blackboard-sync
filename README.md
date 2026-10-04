@@ -13,11 +13,13 @@ Python kurman gerekmez. Bilgisayarında Chrome, Edge, Brave, Opera, Vivaldi gibi
 
 ## Kullanım
 
-macOS’ta menü çubuğundaki, Windows’ta saatin yanındaki simgeden:
+macOS’ta menü çubuğundaki, Windows’ta saatin yanındaki simgeden (Windows’ta simge görünmüyorsa saatin yanındaki **^** okuna, yani gizli simgelere bak):
 
 - **Şimdi senkronize et** ile hemen kontrol et; **Silinenleri tekrar indir** ile bilgisayarından sildiğin dosyaları geri indir.
 - **Okul klasörünü aç** ve **Son indirilenler** ile içeriklerine ulaş.
 - **Ayarlar…** ile okul adresini, klasörü ve **Bilgisayar açılınca başlat** seçeneğini değiştir.
+
+Windows’ta uygulamayı Başlat menüsünden tekrar açınca ayarlar penceresi gelir. Bir sorun olursa ayrıntılar `%APPDATA%\blackboard-sync\windows-tray.log` dosyasındadır (Win+R’ye `%APPDATA%\blackboard-sync` yazıp Enter’a bas).
 
 Güncellemeler varsayılan olarak otomatik denetlenir. Menüdeki sürüm satırından elle de denetleyebilir, yeni sürüm varsa **Güncelle** seçeneğini kullanabilirsin.
 

@@ -23,6 +23,11 @@ log = logging.getLogger(__name__)
 # The two executables of the installed app (packaging/blackboard_sync_windows.spec).
 GUI_EXE = "Blackboard Sync.exe"
 CLI_EXE = "blackboard-sync-cli.exe"
+# Shown once, when the first settings window closes: where the app went.
+TRAY_HINT_TITLE = "Blackboard Sync arka planda çalışıyor"
+TRAY_HINT = ("Menü için saatin yanındaki Blackboard Sync simgesine sağ tıklayın. "
+             "Simge görünmüyorsa gizli simgeleri gösteren ^ okuna tıklayın.")
+TRAY_HINT_SHOWN = "tray-hint-shown"
 
 
 def cli_runner(command, **kwargs):
@@ -42,10 +47,11 @@ def cli_runner(command, **kwargs):
 
 
 class TrayApp:
-    def __init__(self, config, root):
+    def __init__(self, config, root, show_settings=False):
         import pystray
 
         self.config, self.root = config, root
+        self.show_settings = show_settings
         self.settings = jobs.effective_settings(config)
         self.model = jobs.load_model(config, jobs.utcnow(), autostart.is_installed())
         self.events = queue.Queue()
@@ -58,9 +64,10 @@ class TrayApp:
 
     def run(self):
         self.icon.run_detached()
+        log.info("Tray icon started (configured %s)", self.model.configured)
         self.root.after(100, self.poll)
         self.root.after(1000, self.tick)
-        if not self.model.configured:
+        if self.show_settings or not self.model.configured:
             self.root.after(200, self.open_settings)
         self.root.mainloop()
 
@@ -78,6 +85,9 @@ class TrayApp:
             try:
                 if activation.take_update_request(self.config):
                     self.notification_clicked({"action": "update"})
+                if activation.take_settings_request(self.config):
+                    log.info("Started again; showing the settings window")
+                    self.open_settings()
             except OSError:
                 log.exception("Could not read toast activation")
             self.root.after(100, self.poll)
@@ -262,9 +272,25 @@ class TrayApp:
         if self.window is None:
             saved = jobs.saved_settings(self.config)
             values = settings_form.initial_values(saved, self.settings, self.model.autostart)
+            log.info("Opening the settings window (first run %s)", saved is None)
             self.window = SettingsWindow(self.root, values, saved is None, self.settings_submitted,
-                                         lambda: setattr(self, "window", None))
+                                         self.settings_closed)
         self.window.show()
+
+    def settings_closed(self):
+        self.window = None
+        self.show_tray_hint()
+
+    def show_tray_hint(self):
+        """Once: the window is gone, the app lives on in the (maybe hidden) tray icon."""
+        marker = self.config.data_dir / TRAY_HINT_SHOWN
+        if marker.exists():
+            return
+        try:
+            self.icon.notify(TRAY_HINT, TRAY_HINT_TITLE)
+            marker.touch()
+        except Exception:
+            log.exception("Could not show the tray hint")
 
     def settings_submitted(self, values, login):
         # Do not apply a new destination/school to the result of an in-flight job.
@@ -302,24 +328,33 @@ def main(argv=None):
 
     parser = argparse.ArgumentParser(description="Blackboard Sync Windows tray")
     parser.add_argument("--notification", choices=[activation.UPDATE_URI])
+    # The login item and the updater's silent reinstall start the app in the
+    # tray only; any other start (installer, Start Menu) shows its window.
+    parser.add_argument(autostart.BACKGROUND, action="store_true")
     args = parser.parse_args(argv)
+    # Logging is set up by .startup, before this module is imported.
     config = Config.from_env()
     config.ensure_data_dir()
-    logging.basicConfig(filename=str(config.data_dir / "windows-tray.log"), encoding="utf-8",
-                        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if args.notification:
         activation.request_update(config)
+    show_settings = not (args.background or args.notification)
     lock = jobs.single_instance(config)
     if lock is None:
+        log.info("Another copy is already running%s", "; asking it to show its window" if show_settings else "")
+        if show_settings:
+            activation.request_settings(config)
         return 0
     try:
+        activation.take_settings_request(config)  # left over from an earlier run
         try:
             activation.register()
+            autostart.upgrade_legacy()
         except OSError:
-            log.exception("Could not register update-toast activation")
+            log.exception("Could not register update-toast activation or login item")
         root = tk.Tk()
         root.withdraw()
-        TrayApp(config, root).run()
+        root.report_callback_exception = lambda *exc: log.error("Tk callback failed", exc_info=exc)
+        TrayApp(config, root, show_settings).run()
     finally:
         lock.close()
     return 0

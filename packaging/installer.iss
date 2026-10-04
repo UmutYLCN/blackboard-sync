@@ -52,12 +52,14 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: 
 ; Notification-click handler the app registers.
 Root: HKCU; Subkey: "Software\Classes\blackboard-sync"; Flags: dontcreatekey uninsdeletekey
 ; An upgrade or reinstall keeps a start-at-login the user already chose, pointing at this exe.
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "BlackboardSync"; ValueType: string; ValueData: """{app}\{#AppExe}"""; Check: RunValueExists
+; --background: started at login the app stays in the tray (same value as windows/autostart.py).
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "BlackboardSync"; ValueType: string; ValueData: """{app}\{#AppExe}"" --background"; Check: RunValueExists
 
 [Run]
-; Also runs after a silent (updater) install, which is how the app restarts.
+; Started from the last page the app opens its window in front. After a silent
+; (updater) install it restarts in the tray only, as it was before the update.
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
-Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: WizardSilent
+Filename: "{app}\{#AppExe}"; Parameters: "--background"; Flags: nowait runasoriginaluser; Check: WizardSilent
 
 [Code]
 function RunValueExists: Boolean;

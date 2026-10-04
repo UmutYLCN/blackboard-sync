@@ -54,7 +54,7 @@ def test_entire_shared_menu_maps_recursively(tmp_path):
 
 
 def test_run_command_quotes_spaces_and_uses_absolute_interpreter():
-    assert autostart.command(r'C:\Program Files\Python\pythonw.exe') == '"C:\\Program Files\\Python\\pythonw.exe" -m blackboard_sync.windows'
+    assert autostart.command(r'C:\Program Files\Python\pythonw.exe') == '"C:\\Program Files\\Python\\pythonw.exe" -m blackboard_sync.windows --background'
 
 
 def test_default_run_command_uses_pythonw(monkeypatch):
@@ -66,7 +66,23 @@ def test_default_run_command_uses_pythonw(monkeypatch):
 def test_frozen_run_command_is_the_installed_exe(monkeypatch):
     monkeypatch.setattr(autostart.runtime, 'is_frozen', lambda: True)
     monkeypatch.setattr(autostart.sys, 'executable', r'C:\Users\Ada\AppData\Local\Programs\Blackboard Sync\Blackboard Sync.exe')
-    assert autostart.command() == '"C:\\Users\\Ada\\AppData\\Local\\Programs\\Blackboard Sync\\Blackboard Sync.exe"'
+    assert autostart.command() == '"C:\\Users\\Ada\\AppData\\Local\\Programs\\Blackboard Sync\\Blackboard Sync.exe" --background'
+
+
+def test_login_item_from_before_background_is_kept_and_upgraded(monkeypatch):
+    monkeypatch.setattr(autostart.runtime, 'is_frozen', lambda: True)
+    monkeypatch.setattr(autostart.sys, 'executable', r'C:\App\Blackboard Sync.exe')
+    written = []
+    monkeypatch.setattr(autostart, 'set_enabled', written.append)
+    monkeypatch.setattr(autostart, '_value', lambda: '"C:\\App\\Blackboard Sync.exe"')
+    assert autostart.is_installed()
+    autostart.upgrade_legacy()
+    assert written == [True]
+    monkeypatch.setattr(autostart, '_value', lambda: '"C:\\App\\Blackboard Sync.exe" --background')
+    autostart.upgrade_legacy()
+    assert written == [True]
+    monkeypatch.setattr(autostart, '_value', lambda: None)
+    assert not autostart.is_installed()
 
 
 def test_frozen_cli_runs_as_the_console_twin(monkeypatch):
@@ -198,6 +214,10 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
             pass
         def focus_force(self):
             pass
+        def attributes(self, *args):
+            self.topmost = args[1]
+        def after(self, delay, callback):
+            self.later = callback
         def destroy(self):
             self.destroyed = True
 
@@ -219,6 +239,9 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
         return ('Geçerli bir adres yazın.', 'base_url') if len(submitted) == 1 else None
     window = SettingsWindow(None, FormValues('school.edu', str(tmp_path), True), True,
                             submit, lambda: closed.append(True))
+    assert window.window.topmost is True
+    window.window.later()
+    assert window.window.topmost is False
     labels = [w.options.get('text') for w in widgets]
     assert INTRO in labels
     assert all(label in labels for label in ('Okulunuzun Blackboard adresi',
@@ -415,3 +438,64 @@ def test_activation_command_quotes_interpreter_and_uri(monkeypatch):
     assert activation.protocol_command() == '"C:\\My App\\pythonw.exe" -m blackboard_sync.windows --notification "%1"'
     monkeypatch.setattr(activation.runtime, 'is_frozen', lambda: True)
     assert activation.protocol_command() == '"C:\\My App\\python.exe" --notification "%1"'
+
+
+def test_second_start_asks_running_copy_to_show_settings(tmp_path, monkeypatch):
+    from blackboard_sync.windows import activation
+    app, workers = update_app(tmp_path, monkeypatch)
+    opened = []
+    app.open_settings = lambda: opened.append(True)
+    app.poll()
+    assert opened == []
+    activation.request_settings(app.config)
+    app.poll()
+    assert opened == [True]
+    app.poll()
+    assert opened == [True]
+
+
+def test_tray_hint_shown_once_after_settings_close(tmp_path):
+    from blackboard_sync.windows.app import TRAY_HINT
+    app = make_app(tmp_path)
+    shown = []
+    app.icon = SimpleNamespace(notify=lambda message, title: shown.append(message))
+    app.window = object()
+    app.settings_closed()
+    assert app.window is None
+    assert '^' in TRAY_HINT and 'saatin yanındaki' in TRAY_HINT
+    app.settings_closed()
+    assert shown == [TRAY_HINT]
+
+
+def test_startup_logs_before_tray_import_and_reports_errors(tmp_path, monkeypatch):
+    import logging
+    import sys
+    import threading
+    from blackboard_sync.windows import startup
+    monkeypatch.setenv('BBSYNC_DATA_DIR', str(tmp_path / 'data'))
+    monkeypatch.setenv(startup.STACK_DUMP_ENV, '20')
+    dumps = []
+    monkeypatch.setattr(startup.faulthandler, 'enable', lambda *a, **kw: None)
+    monkeypatch.setattr(startup.faulthandler, 'dump_traceback_later', lambda seconds, **kw: dumps.append(seconds))
+    monkeypatch.setattr(threading, 'excepthook', threading.excepthook)
+    shown = []
+    monkeypatch.setattr(startup, 'show_error', shown.append)
+    def broken(argv):
+        raise ModuleNotFoundError("No module named 'pystray'")
+    monkeypatch.setitem(sys.modules, 'blackboard_sync.windows.app', SimpleNamespace(main=broken))
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
+    try:
+        assert startup.run([]) == 1
+    finally:
+        for handler in root.handlers:
+            if handler not in handlers:
+                handler.close()
+        root.handlers[:], root.level = handlers, level
+        startup._fault_file.close()
+    path = tmp_path / 'data' / 'windows-tray.log'
+    text = path.read_text(encoding='utf-8')
+    assert 'Starting Blackboard Sync' in text and "No module named 'pystray'" in text
+    assert dumps == [20.0]
+    assert shown == [startup.error_text(path, None)] and str(path) in shown[0]
+    assert 'OSError: denied' in startup.error_text(None, OSError('denied'))
