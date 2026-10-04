@@ -2,6 +2,57 @@
 
 Mirrors new Blackboard course content into local folders automatically.
 
+## Windows'ta deneme (önizleme)
+
+Windows 10/11 için henüz kurulum dosyası yok; aşağıdaki adımlarla deneyebilirsiniz.
+
+1. [python.org](https://www.python.org/downloads/windows/) üzerinden **Python 3.12**
+   kurun. Kurulumda **Add python.exe to PATH** kutusunu işaretleyin;
+   **pip**, **Tcl/Tk** ve Python başlatıcısı (**py launcher**) seçili olsun.
+   Bilgisayarınızda **Chrome veya Edge** de bulunmalı.
+
+2. GitHub'a giriş yapın (depo özel),
+   [bu dalın ZIP dosyasını indirin](https://github.com/UmutYLCN/blackboard-sync/archive/refs/heads/fm/bbsync-win-tray.zip)
+   ve **Tümünü ayıkla** ile bir klasöre çıkarın. Git kuruluysa alternatif:
+
+   ```powershell
+   git clone -b fm/bbsync-win-tray https://github.com/UmutYLCN/blackboard-sync.git
+   ```
+
+3. Çıkardığınız klasörde **README.md** ve **pyproject.toml** dosyalarının bulunduğu
+   yere girin. Boş alanda **Shift + sağ tık → PowerShell penceresini burada aç**
+   seçeneğini kullanın. Bu seçenek yoksa Başlat'tan PowerShell açıp
+   `cd "C:\dosyaları çıkardığınız klasör"` yazın (yolu kendi klasörünüzle değiştirin).
+   Ardından şu komutları sırayla çalıştırın:
+
+   ```powershell
+   py -3.12 -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -e .
+   ```
+
+   Ortamı etkinleştirmek veya PowerShell Execution Policy ayarını değiştirmek gerekmez.
+
+4. Aynı PowerShell penceresinde uygulamayı başlatın:
+
+   ```powershell
+   .\.venv\Scripts\pythonw.exe -m blackboard_sync.windows
+   ```
+
+   Açılan ayarlarda okulunuzun Blackboard adresini ve kayıt klasörünü kontrol edin,
+   **Giriş yap** düğmesine basıp tarayıcıda girişinizi tamamlayın. Sonraki açılışlarda
+   da aynı klasörde bu komutu kullanabilirsiniz.
+
+5. Şunları kontrol edin: ayarlar penceresi açılıyor mu, giriş tamamlanıyor mu,
+   dosyalar **Belgeler\Okul** klasörüne (veya seçtiğiniz klasöre) geliyor mu?
+   Saatin yanındaki simgeye sağ tıklayın; gizli simgeler oku altında olabilir.
+   Menüden senkronu ve klasör açmayı deneyin. Yeni içerik indirildiğinde bildirimi
+   kontrol edin. **Bilgisayar açılınca başlat** seçiliyken Windows oturumunu kapatıp
+   açarak simgenin geri geldiğini doğrulayın. Bu seçenek açıkken indirdiğiniz
+   klasörü taşımayın veya silmeyin.
+
+   Sorun olursa **Win + R** ile `%APPDATA%\blackboard-sync` klasörünü açıp
+   **windows-tray.log** dosyasını, hangi adımda ne olduğunu belirterek geri gönderin.
+
 `blackboard-sync` signs in to Blackboard Learn Ultra
 (default: <https://blackboard.istun.edu.tr>) using your own browser session,
 finds your courses for the current term, and copies everything in them to
