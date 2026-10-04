@@ -34,3 +34,5 @@ irm https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.ps1 
 Şifreni yalnızca okulunun giriş sayfasına yazarsın; uygulama şifreni görmez ve saklamaz. Oturumun sadece bu bilgisayarda saklanır.
 
 Lisans: [MIT](LICENSE). Geliştirme ve komut satırı kullanımı: [geliştirici rehberi](docs/DEVELOPMENT.md).
+
+Blackboard Sync bağımsız bir projedir; Anthology Inc. ile bağlantılı değildir ve onların onayını taşımaz. Blackboard, sahibinin ticari markasıdır.

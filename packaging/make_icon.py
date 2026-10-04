@@ -1,15 +1,14 @@
-"""Write the Windows app icon (the tray's idle icon) as a multi-size .ico."""
+"""Ensure the Windows app icon exists as a multi-size .ico."""
 
+import shutil
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+ROOT = Path(__file__).resolve().parent.parent
+SOURCE_ICO = ROOT / "assets" / "icon" / "icon.ico"
 
-from blackboard_sync.menubar.model import Icon  # noqa: E402
-from blackboard_sync.windows.presentation import icon_image  # noqa: E402
-
-out = Path(sys.argv[1])
+out = Path(sys.argv[1]) if len(sys.argv) > 1 else SOURCE_ICO
 out.parent.mkdir(parents=True, exist_ok=True)
-icon_image(Icon.IDLE).resize((256, 256)).save(
-    out, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
-)
+if SOURCE_ICO.exists() and SOURCE_ICO.resolve() != out.resolve():
+    shutil.copyfile(SOURCE_ICO, out)
+
