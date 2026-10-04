@@ -29,10 +29,12 @@ app = BUNDLE(
     coll,
     name="Blackboard Sync.app",
     bundle_identifier="io.github.umutylcn.blackboard-sync",
+    icon=str(ROOT / "assets" / "icon" / "app.icns"),
     version=VERSION,
     info_plist={
         "CFBundleName": "Blackboard Sync",
         "CFBundleDisplayName": "Blackboard Sync",
+        "CFBundleIconFile": "app.icns",
         "CFBundleShortVersionString": VERSION,
         "CFBundleVersion": VERSION,
         "LSUIElement": True,  # menu bar app: no Dock icon

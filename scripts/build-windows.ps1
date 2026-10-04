@@ -10,7 +10,6 @@ python -m pip install --quiet -r requirements.lock -r requirements-build.txt
 python -m pip install --quiet --no-deps -e .
 $version = python -c "import blackboard_sync; print(blackboard_sync.__version__)"
 Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
-python packaging\make_icon.py build\app.ico
 python -m PyInstaller --noconfirm --clean packaging\blackboard_sync_windows.spec
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
 iscc /Qp "/DAppVersion=$version" packaging\installer.iss
