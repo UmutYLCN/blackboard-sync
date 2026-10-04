@@ -1,5 +1,6 @@
 """Windows-only entry point; Tk owns state, tray and workers enqueue events."""
 
+import argparse
 import logging
 import os
 import queue
@@ -9,11 +10,12 @@ import threading
 import webbrowser
 from pathlib import Path
 
+from blackboard_sync import runtime, updater
 from blackboard_sync.config import Config
 from blackboard_sync.menubar import jobs, settings_form
-from blackboard_sync.menubar.model import open_target, RunOutcome
+from blackboard_sync.menubar.model import open_target, RunOutcome, UPDATE_ACTIONS
 from blackboard_sync.settings import SettingsError, save_settings
-from . import autostart, notifications
+from . import activation, autostart, notifications
 from .presentation import icon_image, render_menu
 
 log = logging.getLogger(__name__)
@@ -65,16 +67,23 @@ class TrayApp:
         except queue.Empty:
             pass
         if not self.closed:
+            try:
+                if activation.take_update_request(self.config):
+                    self.notification_clicked({"action": "update"})
+            except OSError:
+                log.exception("Could not read toast activation")
             self.root.after(100, self.poll)
 
     def tick(self):
         if self.model.due(jobs.utcnow()):
             self.start_job("sync")
+        if self.model.update_due(jobs.utcnow()):
+            self.start_update_check(manual=False)
         self.refresh()
         self.root.after(30000, self.tick)
 
     def start_job(self, job):
-        if not self.model.begin(job):
+        if self.model.updates.busy == "download" or not self.model.begin(job):
             return
         self.refresh()
         settings = self.settings
@@ -98,6 +107,72 @@ class TrayApp:
         if self.model.due(jobs.utcnow()):
             self.start_job("sync")
         self.refresh()
+
+    def post_notifications(self, notes):
+        for note in notes:
+            threading.Thread(target=self.notify, args=(note,), daemon=True).start()
+
+    def start_update_check(self, manual=True):
+        if not self.model.updates.begin("check"):
+            return
+        self.refresh()
+        threading.Thread(target=self.update_check_worker, args=(manual,), daemon=True).start()
+
+    def update_check_worker(self, manual):
+        try:
+            result = updater.check()
+        except Exception:
+            log.exception("Update check failed")
+            result = updater.CheckResult("unknown")
+        self.events.put((self.update_checked, (result, manual)))
+
+    def update_checked(self, result, manual):
+        self.post_notifications(self.model.updates.finish_check(result, jobs.utcnow(), manual))
+        self.save()
+        self.refresh()
+
+    def start_update(self):
+        release = self.model.updates.available
+        if release is None:
+            self.start_update_check()
+            return
+        if self.model.updates.busy is not None:
+            return
+        if not runtime.is_frozen():
+            webbrowser.open(release.page_url)
+            return
+        if self.model.busy is not None:
+            self.model.note = "Güncellemeden önce çalışan işlemin tamamlanmasını bekleyin."
+            self.refresh()
+            return
+        if not self.model.updates.begin("download"):
+            return
+        self.refresh()
+        threading.Thread(target=self.update_install_worker, args=(release,), daemon=True).start()
+
+    def update_install_worker(self, release):
+        error = ""
+        try:
+            updater.install_windows_update(release)
+        except updater.UpdateError as exc:
+            error = str(exc)
+        except Exception:
+            log.exception("Update installation failed")
+            error = "Güncelleme yüklenemedi; daha sonra tekrar deneyin."
+        self.events.put((self.update_installed, (error,)))
+
+    def update_installed(self, error):
+        self.post_notifications(self.model.updates.finish_download(error))
+        self.save()
+        if error:
+            self.refresh()
+        else:
+            # The installer has started; release the app and its lifetime lock.
+            self.dispatch("quit")
+
+    def notification_clicked(self, data):
+        if data.get("action") in UPDATE_ACTIONS:
+            self.dispatch(data["action"])
 
     def notify(self, note):
         try:
@@ -133,6 +208,10 @@ class TrayApp:
 
         if action in ("sync", "refetch", "login"):
             self.start_job(action)
+        elif action == "check_updates":
+            self.start_update_check()
+        elif action == "update":
+            self.start_update()
         elif action == "settings":
             self.open_settings()
         elif action == "autostart":
@@ -158,7 +237,7 @@ class TrayApp:
                 except OSError:
                     self.model.note = "Hesaptan çıkış yapılamadı."
         elif action == "quit":
-            if self.model.busy:
+            if self.model.busy or self.model.updates.busy == "download":
                 messagebox.showinfo("Blackboard Sync", "Önce çalışan işlemin tamamlanmasını bekleyin.", parent=self.root)
                 return
             self.closed = True
@@ -179,7 +258,7 @@ class TrayApp:
 
     def settings_submitted(self, values, login):
         # Do not apply a new destination/school to the result of an in-flight job.
-        if self.model.busy:
+        if self.model.busy or self.model.updates.busy == "download":
             return "Önce çalışan işlemin tamamlanmasını bekleyin.", "base_url"
         try:
             submission = settings_form.submit(values, self.settings)
@@ -191,7 +270,7 @@ class TrayApp:
             log.exception("Could not save settings")
             return f"Ayarlar kaydedilemedi: {exc}", "dest"
         self.settings = submission.settings
-        self.model.apply_settings(self.settings.dest, submission.school_changed)
+        self.model.apply_settings(self.settings.dest, submission.school_changed, self.settings.check_updates)
         self.save()
         if submission.needs_login(login):
             self.start_job("login")
@@ -205,20 +284,29 @@ class TrayApp:
             log.exception("Could not save tray state")
 
 
-def main():
+def main(argv=None):
     if sys.platform != "win32":
         print("The Windows tray app requires Windows.", file=sys.stderr)
         return 1
     import tkinter as tk
 
+    parser = argparse.ArgumentParser(description="Blackboard Sync Windows tray")
+    parser.add_argument("--notification", choices=[activation.UPDATE_URI])
+    args = parser.parse_args(argv)
     config = Config.from_env()
     config.ensure_data_dir()
     logging.basicConfig(filename=str(config.data_dir / "windows-tray.log"), encoding="utf-8",
                         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    if args.notification:
+        activation.request_update(config)
     lock = jobs.single_instance(config)
     if lock is None:
         return 0
     try:
+        try:
+            activation.register()
+        except OSError:
+            log.exception("Could not register update-toast activation")
         root = tk.Tk()
         root.withdraw()
         TrayApp(config, root).run()

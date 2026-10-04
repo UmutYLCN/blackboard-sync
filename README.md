@@ -48,7 +48,10 @@ Windows 10/11 için henüz kurulum dosyası yok; aşağıdaki adımlarla deneyeb
    Menüden senkronu ve klasör açmayı deneyin. Yeni içerik indirildiğinde bildirimi
    kontrol edin. **Bilgisayar açılınca başlat** seçiliyken Windows oturumunu kapatıp
    açarak simgenin geri geldiğini doğrulayın. Bu seçenek açıkken indirdiğiniz
-   klasörü taşımayın veya silmeyin.
+   klasörü taşımayın veya silmeyin. Ayarlardaki **Güncellemeleri otomatik denetle**
+   günlük sürüm kontrolünü açar; menünün sürüm satırından elle de denetleyebilirsiniz.
+   Bu kaynak kodu sürümünde **Güncelle** sürüm sayfasını açar. Depo özel olduğu
+   sürece otomatik denetim sürüm bilgisine erişemeyebilir; senkron çalışmaya devam eder.
 
    Sorun olursa **Win + R** ile `%APPDATA%\blackboard-sync` klasörünü açıp
    **windows-tray.log** dosyasını, hangi adımda ne olduğunu belirterek geri gönderin.
@@ -516,8 +519,9 @@ and tick **Bilgisayar açılınca başlat** again.
 
 ## Windows (preview)
 
-The command-line tool also runs on Windows 10 and 11. A tray app and an
-installer are coming; until then, run it from source:
+The command-line tool also runs on Windows 10 and 11. For the tray app, follow
+the Turkish preview guide near the top or [the source instructions below](#windows-tray-app-from-source).
+The installer comes separately. To use only the command-line tool:
 
 ```powershell
 py -3 -m venv .venv
@@ -639,3 +643,12 @@ no browser extension is required. Native Windows menus do not expose colored
 text through pystray, so expiry uses the shared warning label and a red icon.
 Idle is green, syncing blue, and errors orange. Settings saves and exit wait
 until a running sync/sign-in finishes. The Windows installer comes separately.
+
+The Windows tray also uses the shared daily update checker. Settings include
+**Güncellemeleri otomatik denetle**; the version row checks manually even when
+that setting is off. Source checkouts open the release page for updates.
+Packaged builds download and verify the Windows installer on a worker thread,
+then exit after launching it. Installation waits until sync/sign-in is idle and
+blocks new jobs while downloading. Update-toast clicks use the current user's
+`HKCU\Software\Classes\blackboard-sync` URI registration to forward a fixed
+update action to the running tray; no URI-supplied command is executed.

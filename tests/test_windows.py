@@ -206,14 +206,196 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
     labels = [w.options.get('text') for w in widgets]
     assert INTRO in labels
     assert all(label in labels for label in ('Okulunuzun Blackboard adresi',
-        'Dosyaların kaydedileceği klasör', 'Bilgisayar açılınca başlat', 'Kaydet', 'Giriş yap', 'Vazgeç', 'Seç…'))
+        'Dosyaların kaydedileceği klasör', 'Bilgisayar açılınca başlat', 'Güncellemeleri otomatik denetle', 'Kaydet', 'Giriş yap', 'Vazgeç', 'Seç…'))
     assert window.fields['base_url'].grid_options['sticky'] == 'ew'
     login = next(w for w in widgets if w.options.get('text') == 'Giriş yap')
     login.options['command']()
     assert window.fields['base_url'].focused
     assert not window.window.destroyed
     assert window.error.options['text'] == 'Geçerli bir adres yazın.'
+    window.check_updates.set(False)
     login.options['command']()
+    assert submitted[-1][0].check_updates is False
     assert submitted[-1][1] is True
     assert closed == [True]
     assert window.window.destroyed
+
+
+def update_app(tmp_path, monkeypatch):
+    import queue
+    import blackboard_sync.windows.app as module
+
+    app = make_app(tmp_path)
+    app.events = queue.Queue()
+    app.closed = False
+    app.root = SimpleNamespace(after=lambda *args: None)
+    app.notices = []
+    app.post_notifications = app.notices.extend
+    workers = []
+    class Thread:
+        def __init__(self, target, args=(), **kwargs):
+            self.target, self.args = target, args
+        def start(self):
+            workers.append(lambda: self.target(*self.args))
+    monkeypatch.setattr(module.threading, 'Thread', Thread)
+    return app, workers
+
+
+def release():
+    from blackboard_sync.updater import Release
+    return Release('99.0.0', 'https://github.com/UmutYLCN/blackboard-sync/releases/tag/v99.0.0',
+                   'Blackboard-Sync-99.0.0-Setup.exe',
+                   'https://github.com/UmutYLCN/blackboard-sync/releases/download/v99.0.0/Blackboard-Sync-99.0.0-Setup.exe')
+
+
+def drain_one(app):
+    callback, args = app.events.get_nowait()
+    callback(*args)
+
+
+def test_update_check_worker_queues_result_for_tk_and_deduplicates(tmp_path, monkeypatch):
+    from blackboard_sync.windows.app import updater
+    app, workers = update_app(tmp_path, monkeypatch)
+    monkeypatch.setattr(updater, 'check', lambda: updater.CheckResult('available', release()))
+    app.start_update_check(manual=False)
+    app.start_update_check()
+    assert len(workers) == 1
+    workers.pop()()
+    assert app.model.updates.available is None
+    assert app.model.updates.busy == 'check'
+    drain_one(app)
+    assert app.model.updates.available == release()
+    assert app.model.updates.busy is None
+    assert app.notices[0].data == {'action': 'update'}
+    assert not app.model.update_due(datetime.now(timezone.utc))
+
+
+def test_update_tick_obeys_setting_and_runs_automatically(tmp_path, monkeypatch):
+    app, workers = update_app(tmp_path, monkeypatch)
+    app.model.configured = False
+    app.model.updates.not_before = None
+    app.model.check_updates = False
+    app.tick()
+    assert not workers
+    app.model.check_updates = True
+    app.tick()
+    assert len(workers) == 1
+    assert app.model.updates.busy == 'check'
+
+
+def test_update_check_exception_recovers_row(tmp_path, monkeypatch):
+    from blackboard_sync.windows.app import updater
+    app, workers = update_app(tmp_path, monkeypatch)
+    def fail():
+        raise RuntimeError('network')
+    monkeypatch.setattr(updater, 'check', fail)
+    app.start_update_check()
+    workers.pop()()
+    drain_one(app)
+    assert app.model.updates.busy is None
+    assert app.model.updates.not_before is not None
+    assert app.notices[0].title == 'Güncellemeler denetlenemedi'
+
+
+def test_update_install_waits_for_idle_and_quits_only_after_success(tmp_path, monkeypatch):
+    from blackboard_sync.windows.app import runtime, updater
+    app, workers = update_app(tmp_path, monkeypatch)
+    monkeypatch.setattr(runtime, 'is_frozen', lambda: True)
+    installed, actions = [], []
+    monkeypatch.setattr(updater, 'install_windows_update', installed.append)
+    app.dispatch = actions.append
+    app.model.updates.available = release()
+    app.model.begin('sync')
+    app.start_update()
+    assert not workers
+    app.model.busy = None
+    app.start_update()
+    app.start_update()
+    assert len(workers) == 1
+    app.start_job('sync')
+    assert app.model.busy is None
+    assert app.settings_submitted(FormValues('school.edu', str(tmp_path), False), False)
+    workers.pop()()
+    assert installed == [release()]
+    assert not actions  # Worker does not touch Tk or quit.
+    drain_one(app)
+    assert actions == ['quit']
+    assert app.model.updates.busy is None
+
+
+def test_update_install_failure_preserves_app_and_allows_retry(tmp_path, monkeypatch):
+    from blackboard_sync.windows.app import runtime, updater
+    app, workers = update_app(tmp_path, monkeypatch)
+    monkeypatch.setattr(runtime, 'is_frozen', lambda: True)
+    def fail(value):
+        raise updater.UpdateError('Güncelleme doğrulanamadı.')
+    monkeypatch.setattr(updater, 'install_windows_update', fail)
+    app.model.updates.available = release()
+    app.dispatch = lambda action: (_ for _ in ()).throw(AssertionError('Must not quit'))
+    app.start_update()
+    workers.pop()()
+    drain_one(app)
+    assert app.model.updates.busy is None
+    assert app.notices[0].message == 'Güncelleme doğrulanamadı.'
+    app.start_update()
+    assert len(workers) == 1
+
+
+def test_source_update_opens_release_without_installer(tmp_path, monkeypatch):
+    from blackboard_sync.windows.app import runtime, webbrowser
+    app, workers = update_app(tmp_path, monkeypatch)
+    monkeypatch.setattr(runtime, 'is_frozen', lambda: False)
+    opened = []
+    monkeypatch.setattr(webbrowser, 'open', opened.append)
+    app.model.updates.available = release()
+    app.start_update()
+    assert opened == [release().page_url]
+    assert not workers
+
+
+def test_menu_and_toast_update_actions_dispatch(tmp_path, monkeypatch):
+    import sys
+    from blackboard_sync.menubar.model import UPDATE_ACTIONS
+    app, workers = update_app(tmp_path, monkeypatch)
+    monkeypatch.setitem(sys.modules, 'tkinter', SimpleNamespace(messagebox=SimpleNamespace()))
+    actions = []
+    app.start_update_check = lambda: actions.append('check_updates')
+    app.start_update = lambda: actions.append('update')
+    for action in UPDATE_ACTIONS:
+        app.dispatch(action)
+    app.notification_clicked({'action': 'update'})
+    app.notification_clicked({'action': 'unrecognized'})
+    assert actions == ['check_updates', 'update', 'update']
+
+
+def test_update_setting_saved_and_applied(tmp_path, monkeypatch):
+    from blackboard_sync.settings import load_settings
+    app = make_app(tmp_path)
+    monkeypatch.setattr(autostart, 'set_enabled', lambda enabled: None)
+    assert app.settings_submitted(FormValues(app.settings.base_url, str(app.settings.dest), False, False), False) is None
+    assert not app.model.check_updates
+    assert not load_settings(tmp_path).check_updates
+
+
+def test_update_toast_activation_is_fixed_and_consumed_on_tk(tmp_path, monkeypatch):
+    from blackboard_sync.windows import activation
+    from blackboard_sync.menubar.model import update_notification
+    app, workers = update_app(tmp_path, monkeypatch)
+    assert presentation.notification_fields(update_notification(release()))['launch'] == activation.UPDATE_URI
+    activation.request_update(app.config)
+    actions = []
+    app.dispatch = actions.append
+    app.poll()
+    assert actions == ['update']
+    app.poll()
+    assert actions == ['update']
+
+
+def test_activation_command_quotes_interpreter_and_uri(monkeypatch):
+    from blackboard_sync.windows import activation
+    monkeypatch.setattr(activation, 'Path', PureWindowsPath)
+    monkeypatch.setattr(activation.sys, 'executable', r'C:\My App\python.exe')
+    monkeypatch.setattr(activation.runtime, 'is_frozen', lambda: False)
+    assert activation.protocol_command() == '"C:\\My App\\pythonw.exe" -m blackboard_sync.windows --notification "%1"'
+    monkeypatch.setattr(activation.runtime, 'is_frozen', lambda: True)
+    assert activation.protocol_command() == '"C:\\My App\\python.exe" --notification "%1"'

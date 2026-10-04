@@ -22,9 +22,12 @@ def render_menu(entries, dispatch, menu_type, item_type):
 
 
 def notification_fields(note: Notification) -> dict:
+    from .activation import UPDATE_URI
+
     target = note.data.get("open")
+    launch = UPDATE_URI if note.data.get("action") == "update" else Path(target).as_uri() if target else ""
     return {"app_id": "Blackboard Sync", "title": note.title, "msg": note.message,
-            "launch": Path(target).as_uri() if target else ""}
+            "launch": launch}
 
 
 def icon_image(state: Icon):

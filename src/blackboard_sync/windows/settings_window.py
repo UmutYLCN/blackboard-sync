@@ -25,6 +25,7 @@ class SettingsWindow:
         self.url = tk.StringVar(value=values.base_url)
         self.dest = tk.StringVar(value=values.dest)
         self.autostart = tk.BooleanVar(value=values.autostart)
+        self.check_updates = tk.BooleanVar(value=values.check_updates)
         row = 0
         if first_run:
             ttk.Label(frame, text=INTRO, wraplength=520).grid(row=row, columnspan=2, sticky="w", pady=(0, 16))
@@ -47,12 +48,14 @@ class SettingsWindow:
             ttk.Label(frame, text=hint, wraplength=520).grid(row=row + 2, columnspan=2, sticky="w", pady=(0, 12))
             row += 3
         ttk.Checkbutton(frame, text=T_AUTOSTART, variable=self.autostart).grid(row=row, columnspan=2, sticky="w")
+        row += 1
+        ttk.Checkbutton(frame, text=form.T_CHECK_UPDATES, variable=self.check_updates).grid(row=row, columnspan=2, sticky="w")
         self.error = ttk.Label(frame, foreground="#b00020", wraplength=520)
         self.error.grid(row=row + 1, columnspan=2, sticky="w", pady=8)
         buttons = ttk.Frame(frame)
         buttons.grid(row=row + 2, columnspan=2, sticky="e")
         def save(login):
-            error = on_submit(form.FormValues(self.url.get(), self.dest.get(), self.autostart.get()), login)
+            error = on_submit(form.FormValues(self.url.get(), self.dest.get(), self.autostart.get(), self.check_updates.get()), login)
             if error:
                 message, field = error
                 self.error.configure(text=message)
