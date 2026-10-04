@@ -260,8 +260,9 @@ def test_parse_checksums():
 
 def test_mac_opens_the_disk_image():
     calls = []
-    updater.open_disk_image(Path("/Users/me/Downloads/Blackboard-Sync-1.1.0.dmg"), lambda *a, **k: calls.append(a[0]))
-    assert calls == [["open", "/Users/me/Downloads/Blackboard-Sync-1.1.0.dmg"]]
+    dmg = Path("/Users/me/Downloads/Blackboard-Sync-1.1.0.dmg")
+    updater.open_disk_image(dmg, lambda *a, **k: calls.append(a[0]))
+    assert calls == [["open", str(dmg)]]
 
 
 def test_windows_downloads_verifies_and_starts_the_silent_installer(tmp_path, monkeypatch):
