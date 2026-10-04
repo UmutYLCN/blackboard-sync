@@ -13,6 +13,7 @@ from blackboard_sync.menubar.model import (
     changes_notification,
     course_line,
     format_time,
+    relative_time,
     load_saved_state,
     open_target,
     parse_sync_output,
@@ -152,7 +153,7 @@ def test_error_retries_soon_and_shows_error_icon():
     assert notes == []
     assert m.icon() == Icon.ERROR
     assert m.next_run_at == NOW + RETRY_DELAY
-    assert m.status_lines(NOW)[:2] == ["Son deneme: " + format_time(NOW, NOW) + " · hata", "Network error"]
+    assert m.status_lines(NOW)[:2] == ["Son deneme: " + relative_time(NOW, NOW) + " · hata", "Network error"]
 
 
 # -- session expiry ----------------------------------------------------------
@@ -204,14 +205,14 @@ def test_menu_after_a_sync_with_new_files():
     m.finish_sync(outcome(), NOW)
     menu = m.menu(NOW)
     assert menu.status_lines == [
-        f"Son senkron: {format_time(NOW, NOW)} · 2 yeni dosya, 1 yeni duyuru",
-        f"Sonraki senkron: {format_time(NOW + SYNC_INTERVAL, NOW)}",
+        f"Son senkron: {relative_time(NOW, NOW)} · 2 yeni dosya, 1 yeni duyuru",
+        f"Sonraki: {format_time(NOW + SYNC_INTERVAL, NOW)}",
     ]
     assert menu.sync_enabled and menu.login_enabled
     assert [label for label, _ in menu.recent] == [
-        "CSE303 · week2.pdf",
-        "CSE303 · hw2.pdf",
-        "CSE303 · 2026-10-03 Quiz.md",
+        f"{format_time(NOW, NOW)} · CSE303 · week2.pdf",
+        f"{format_time(NOW, NOW)} · CSE303 · hw2.pdf",
+        f"{format_time(NOW, NOW)} · CSE303 · 2026-10-03 Quiz.md",
     ]
 
 
@@ -339,3 +340,90 @@ def test_refetch_notification_is_one_line_per_course():
         "MTH201: 2 yeni dosya",
     ]
     assert m.menu(NOW).refetch_enabled and m.menu(NOW).refetch_title == "Silinenleri tekrar indir"
+
+
+def entries(menu):
+    for entry in menu.entries:
+        yield entry
+        yield from entry.children
+
+
+def signed_session(at=NOW):
+    return {"saved_at": at.timestamp(), "user": {"id": "student", "displayName": "Ada Student"}}
+
+
+def test_signed_in_menu_structure_and_version():
+    from blackboard_sync import __version__
+    m = model(session=signed_session(), last=outcome(), autostart=True)
+    menu = m.menu(NOW)
+    assert menu.entries[0].title == "✓ Giriş yapıldı · Ada Student"
+    assert not any(e.action == "login" for e in entries(menu))
+    assert [e.title for e in menu.entries if e.title][3:] == [
+        "Şimdi senkronize et", "Dersler", "Son indirilenler", "Okul klasörünü aç",
+        "Ayarlar…", "Gelişmiş", "Bilgisayar açılınca başlat",
+        f"Sürüm {__version__} · Güncellemeleri denetle", "Blackboard Sync'ten çık",
+    ]
+    assert next(e for e in entries(menu) if e.action == "autostart").checked
+    assert next(e for e in entries(menu) if e.action == "releases").value.endswith("/releases")
+
+
+def test_expiry_overrides_saved_cookies_and_survives_network_errors():
+    m = model(session=signed_session(NOW - timedelta(hours=1)))
+    m.finish_sync(RunOutcome("login_required", finished_at=NOW), NOW)
+    row = m.menu(NOW).entries[0]
+    assert row.title == "⚠ Oturum sona erdi — Giriş yap" and row.warning
+    assert row.action == "login"
+    m.finish_sync(RunOutcome("error", finished_at=NOW), NOW)
+    assert m.menu(NOW).entries[0].warning
+    m.session = signed_session(NOW + timedelta(minutes=1))
+    assert m.menu(NOW).entries[0].title.startswith("✓ Giriş yapıldı")
+
+
+def test_saved_session_without_sync_and_legacy_username():
+    m = model(session={"user": {"userName": "student"}})
+    assert m.menu(NOW).entries[0].title == "✓ Giriş yapıldı · student"
+    assert m.menu(NOW).status_lines[0] == "Henüz senkronize edilmedi"
+    assert model().menu(NOW).entries[0].action == "login"
+    assert model(session_expired=True).menu(NOW).entries[0].warning
+
+
+def test_syncing_disables_mutating_actions_but_keeps_folders():
+    m = model(session=signed_session(), last=outcome())
+    m.begin("sync")
+    actions = {e.action: e for e in entries(m.menu(NOW)) if e.action}
+    assert actions["sync"].title == "Senkronize ediliyor…"
+    assert all(not actions[a].enabled for a in ("sync", "refetch", "logout"))
+    assert actions["folder"].enabled
+
+
+def test_course_counts_reset_on_success_and_survive_errors():
+    m = model(last=outcome())
+    def courses():
+        return next(e.children for e in m.menu(NOW).entries if e.title == "Dersler")
+    assert courses()[0].title == "CSE303 (3 yeni)"
+    assert courses()[0].value == CSE
+    m.finish_sync(RunOutcome("error", finished_at=NOW), NOW)
+    assert courses()[0].title == "CSE303 (3 yeni)"
+    m.finish_sync(outcome(report(courses=[course("CSE303", CSE)])), NOW)
+    assert courses()[0].title == "CSE303"
+    m.finish_sync(outcome(report()), NOW)
+    assert courses()[0].title == "Henüz ders yok" and not courses()[0].enabled
+
+
+def test_course_display_name_and_recent_dates():
+    data = report(courses=[dict(code="CSE303", name="Algorithm Analysis", folder=CSE, new_files=[f"{CSE}/a.pdf"])])
+    m = model()
+    m.finish_sync(outcome(data), NOW)
+    menu = m.menu(NOW)
+    assert next(e for e in menu.entries if e.title == "Dersler").children[0].title == "CSE303 Algorithm Analysis (1 yeni)"
+    assert menu.recent[0][0] == f"{format_time(NOW, NOW)} · CSE303 · a.pdf"
+
+
+def test_relative_time_refreshes_and_handles_yesterday():
+    local = datetime(2026, 10, 3, 14, 0).astimezone()
+    assert relative_time(local, local + timedelta(seconds=30)) == "az önce"
+    assert relative_time(local, local + timedelta(minutes=5)) == "5 dk önce"
+    assert relative_time(local, local + timedelta(hours=2)) == "2 sa önce"
+    assert relative_time(local, local + timedelta(days=1)) == "dün 14:00"
+    m = model(last=RunOutcome("ok", finished_at=local))
+    assert "5 dk önce" in m.menu(local + timedelta(minutes=5)).status_lines[0]

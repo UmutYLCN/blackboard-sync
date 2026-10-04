@@ -19,6 +19,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable
 
+from blackboard_sync import __version__
 from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
 from blackboard_sync.settings import Settings
 
@@ -56,7 +57,8 @@ T_RECENT = "Son indirilenler"
 T_RECENT_EMPTY = "Henüz yeni bir şey yok"
 T_AUTOSTART = "Bilgisayar açılınca başlat"
 T_SETTINGS = "Ayarlar…"
-T_QUIT = "Çıkış"
+T_QUIT = "Blackboard Sync'ten çık"
+RELEASES_URL = "https://github.com/UmutYLCN/blackboard-sync/releases"
 
 
 # Jobs that run `blackboard-sync sync`; "refetch" also brings back files the
@@ -91,6 +93,7 @@ class CourseChange:
     folder: str  # relative to dest
     counts: dict[str, int]
     recent_paths: list[str]  # relative to dest
+    name: str = ""
 
     @property
     def changes(self) -> int:
@@ -119,6 +122,7 @@ class RunOutcome:
             recent = [p for key in RECENT_KEYS for p in c.get(key) or []]
             courses.append(
                 CourseChange(
+                    name=c.get("name") or "",
                     code=c.get("code") or c.get("name") or "?",
                     folder=c.get("folder") or "",
                     counts=counts,
@@ -187,6 +191,28 @@ def format_time(when: datetime, now: datetime) -> str:
     return local.strftime("%d.%m %H:%M")
 
 
+def relative_time(when: datetime, now: datetime) -> str:
+    if when.astimezone().date() != now.astimezone().date():
+        return format_time(when, now)
+    seconds = max(0, (now - when).total_seconds())
+    if seconds < 60:
+        return "az önce"
+    if seconds < 3600:
+        return f"{int(seconds // 60)} dk önce"
+    return f"{int(seconds // 3600)} sa önce"
+
+
+@dataclass
+class MenuEntry:
+    title: str = ""  # empty means separator
+    action: str | None = None
+    value: str = ""
+    enabled: bool = True
+    checked: bool = False
+    warning: bool = False
+    children: list["MenuEntry"] = field(default_factory=list)
+
+
 def shorten(text: str, limit: int) -> str:
     text = " ".join(text.split())
     return text if len(text) <= limit else text[: limit - 1] + "…"
@@ -247,6 +273,7 @@ class MenuModel:
     login_enabled: bool
     recent: list[tuple[str, str]]  # (label, path relative to dest)
     autostart: bool
+    entries: list[MenuEntry] = field(default_factory=list)
 
 
 def unique_labels(entries: list[tuple[str, str]]) -> list[tuple[str, str]]:
@@ -289,8 +316,15 @@ class AppModel:
         login_prompted: bool = False,
         autostart: bool = False,
         configured: bool = True,
+        session: dict | None = None,
+        session_expired: bool = False,
+        courses: list[CourseChange] | None = None,
     ):
         self.dest = dest
+        self.session = session
+        self.session_expired = session_expired
+        self.auth_failed_at = (last.finished_at or now) if last and last.status == "login_required" else None
+        self.courses = courses if courses is not None else list(last.courses if last else [])
         self.configured = configured
         self.last = last
         self.recent = list(recent or [])
@@ -343,12 +377,16 @@ class AppModel:
         self.last = outcome
         if outcome.status == "ok":
             self.login_prompted = False
+            self.session_expired = False
+            self.auth_failed_at = None
+            self.courses = outcome.courses
             self.remember(outcome)
             self.next_run_at = now + SYNC_INTERVAL
             notification = changes_notification(outcome, self.dest)
             if notification:
                 notes.append(notification)
         elif outcome.status == "login_required":
+            self.auth_failed_at = outcome.finished_at or now
             self.next_run_at = now + SYNC_INTERVAL
             if not self.login_prompted:
                 self.login_prompted = True
@@ -360,6 +398,8 @@ class AppModel:
     def finish_login(self, ok: bool, message: str, now: datetime) -> None:
         self.busy = None
         if ok:
+            self.auth_failed_at = None
+            self.session_expired = False
             self.note = ""
             self.next_run_at = now  # fetch what was missed right away
         else:
@@ -374,9 +414,13 @@ class AppModel:
         """
         self.configured = True
         if dest != self.dest:
+            self.courses = []
             self.dest = dest
             self.recent = []
         if school_changed:
+            self.session = None
+            self.auth_failed_at = None
+            self.courses = []
             self.last = None
             self.login_prompted = False
             self.note = "Yeni okul için giriş yapın."
@@ -404,7 +448,7 @@ class AppModel:
         elif self.last is None:
             lines = ["Henüz senkronize edilmedi"]
         else:
-            when = format_time(self.last.finished_at or now, now)
+            when = relative_time(self.last.finished_at or now, now)
             if self.last.status == "ok":
                 totals: dict[str, int] = {}
                 for course in self.last.courses:
@@ -420,11 +464,11 @@ class AppModel:
         if self.note:
             lines.append(self.note)
         if self.busy is None and self.configured:
-            lines.append(f"Sonraki senkron: {format_time(max(self.next_run_at, now), now)}")
+            lines.append(f"Sonraki: {format_time(max(self.next_run_at, now), now)}")
         return lines
 
     def menu(self, now: datetime) -> MenuModel:
-        return MenuModel(
+        menu = MenuModel(
             status_lines=self.status_lines(now),
             sync_title=T_SYNCING if self.busy == "sync" else T_SYNC_NOW,
             sync_enabled=self.busy is None,
@@ -432,13 +476,55 @@ class AppModel:
             refetch_enabled=self.busy is None,
             login_title=T_LOGGING_IN if self.busy == "login" else T_LOGIN,
             login_enabled=self.busy is None,
-            recent=unique_labels([(item.label, item.path) for item in self.recent]),
+            recent=unique_labels([(f"{format_time(parse_iso(item.at) or now, now)} · {item.label}", item.path) for item in self.recent]),
             autostart=self.autostart,
         )
+
+        expired = self.session_expired
+        if self.auth_failed_at:
+            saved_at = (self.session or {}).get("saved_at", 0)
+            expired = expired or saved_at <= self.auth_failed_at.timestamp()
+        user = (self.session or {}).get("user") or {}
+        signed_in = bool(self.session) and not expired
+        if signed_in:
+            account = shorten(user.get("displayName") or user.get("userName") or user.get("id") or "Blackboard", 70)
+            account_row = MenuEntry(f"✓ Giriş yapıldı · {account}", enabled=False)
+        else:
+            title = "⚠ Oturum sona erdi — Giriş yap" if expired else menu.login_title
+            account_row = MenuEntry(title, "login", enabled=menu.login_enabled, warning=expired)
+        course_items = []
+        for course in self.courses:
+            label = course.name if course.name.startswith(course.code) else f"{course.code} {course.name}".strip()
+            count = sum(course.counts.get(key, 0) for key in ("new_files", "new_notes", "new_announcements"))
+            if count:
+                label += f" ({count} yeni)"
+            course_items.append((label, course.folder))
+        menu.entries = [
+            account_row,
+            *[MenuEntry(line, enabled=False) for line in menu.status_lines],
+            MenuEntry(),
+            MenuEntry(menu.sync_title, "sync", enabled=menu.sync_enabled),
+            MenuEntry("Dersler", children=[MenuEntry(label, "open", value=path) for label, path in unique_labels(course_items)] or [MenuEntry("Henüz ders yok", enabled=False)]),
+            MenuEntry(T_RECENT, children=[MenuEntry(label, "open", value=path) for label, path in menu.recent] or [MenuEntry(T_RECENT_EMPTY, enabled=False)]),
+            MenuEntry(T_OPEN_FOLDER, "folder"),
+            MenuEntry(),
+            MenuEntry(T_SETTINGS, "settings"),
+            MenuEntry("Gelişmiş", children=[
+                MenuEntry(menu.refetch_title, "refetch", enabled=menu.refetch_enabled),
+                MenuEntry("Hesaptan çıkış yap", "logout", enabled=self.busy is None and bool(self.session)),
+            ]),
+            MenuEntry(T_AUTOSTART, "autostart", checked=self.autostart),
+            MenuEntry(),
+            MenuEntry(f"Sürüm {__version__} · Güncellemeleri denetle", "releases", value=RELEASES_URL),
+            MenuEntry(T_QUIT, "quit"),
+        ]
+        return menu
 
     # -- persistence ----------------------------------------------------
     def saved_state(self) -> dict:
         return {
+            "auth_failed_at": self.auth_failed_at.isoformat() if self.auth_failed_at else None,
+            "courses": [vars(course) for course in self.courses],
             "login_prompted": self.login_prompted,
             "recent": [vars(item) for item in self.recent],
         }

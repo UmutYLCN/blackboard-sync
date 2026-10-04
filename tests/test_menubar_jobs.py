@@ -184,3 +184,36 @@ def test_packaged_app_runs_cli_when_the_school_comes_first(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["Blackboard Sync", "--detach"])
     app_entry.main()
     assert [kind for kind, _ in called] == ["cli", "cli", "cli", "menubar"]
+
+
+def test_session_evidence_and_logout_preserve_files(config):
+    from blackboard_sync.session import save_session
+    config.ensure_data_dir()
+    config.dest.mkdir(parents=True, exist_ok=True)
+    downloaded = config.dest / "lecture.pdf"
+    downloaded.write_bytes(b"downloaded")
+    config.state_file.write_text('{"keep": true}')
+    save_session(config.session_file, config.base_url,
+                 [{"name": "auth", "value": "test", "domain": "blackboard.example.edu"}],
+                 {"id": "1", "userName": "ada", "name": {"given": "Ada", "family": "Student"}})
+    model = jobs.load_model(config, NOW, False)
+    assert model.menu(NOW).entries[0].title == "✓ Giriş yapıldı · Ada Student"
+    jobs.logout(config)
+    jobs.refresh_session(config, model, jobs.effective_settings(config))
+    assert model.menu(NOW).entries[0].action == "login"
+    assert not config.session_file.exists()
+    assert downloaded.read_bytes() == b"downloaded"
+    assert config.state_file.read_text() == '{"keep": true}'
+    jobs.logout(config)  # already removed
+
+
+def test_courses_and_expiry_survive_restart_after_error(config):
+    from blackboard_sync.menubar.model import CourseChange, RunOutcome
+    model = jobs.load_model(config, NOW, False)
+    model.courses = [CourseChange("CSE303", "course", {"new_files": 2}, [])]
+    model.finish_sync(RunOutcome("login_required", finished_at=NOW), NOW)
+    model.finish_sync(RunOutcome("error", finished_at=NOW), NOW)
+    jobs.save_model(config, model)
+    restored = jobs.load_model(config, NOW, False)
+    assert restored.courses == model.courses
+    assert restored.menu(NOW).entries[0].warning
