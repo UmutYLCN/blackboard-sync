@@ -51,7 +51,7 @@ def test_truncate_respects_bytes_and_keeps_extension():
     out = truncate_name(long_name)
     assert out.endswith(".pdf")
     assert len(out.encode("utf-8")) <= 255
-    assert sanitize_name(long_name) == out
+    assert sanitize_name(long_name, windows=False) == out
 
 
 def test_split_ext():
@@ -94,9 +94,7 @@ def test_windows_replaces_forbidden_characters():
 
 def test_windows_rules_do_not_rename_macos_files():
     for name in ('Q1 "Big-O" <draft>', "What is a heap?", "CON", "nul.txt", "x" * 200 + ".pdf"):
-        assert sanitize_name(name, windows=False) == sanitize_name(name)
-    assert sanitize_name("What is a heap?", windows=False) == "What is a heap?"
-    assert sanitize_name("CON", windows=False) == "CON"
+        assert sanitize_name(name, windows=False) == name
 
 
 def test_windows_reserved_device_names():

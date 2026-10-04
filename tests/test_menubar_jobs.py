@@ -1,4 +1,5 @@
 import json
+import os
 import plistlib
 import subprocess
 import sys
@@ -14,7 +15,8 @@ from blackboard_sync.settings import Settings, save_settings
 from .conftest import assert_owner_only
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
-SETTINGS = Settings(base_url="https://bb.example.edu", dest=Path("/Users/student/Okul"))
+# Absolute on every OS ("/Users/..." has no drive letter on Windows).
+SETTINGS = Settings(base_url="https://bb.example.edu", dest=Path(os.path.abspath("/Users/student/Okul")))
 
 
 def fake_runner(returncode=0, stdout="", stderr="", raises=None):
@@ -36,7 +38,7 @@ def test_sync_runs_the_cli_json_mode():
     cmd, kwargs = runner.calls[0]
     assert cmd == [
         sys.executable, "-m", "blackboard_sync",
-        "--base-url", "https://bb.example.edu", "sync", "--json", "--dest", "/Users/student/Okul",
+        "--base-url", "https://bb.example.edu", "sync", "--json", "--dest", str(SETTINGS.dest),
     ]
     assert kwargs["capture_output"] and kwargs["stdin"] == subprocess.DEVNULL
     assert result.status == "ok" and result.finished_at == NOW

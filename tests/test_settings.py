@@ -1,3 +1,4 @@
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -67,6 +68,7 @@ def test_destination_folder(tmp_path):
         assert info.value.field == "dest"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS settings window shows POSIX paths")
 def test_display_path_uses_tilde():
     assert display_path(Path("/Users/me/Documents/Okul"), home=Path("/Users/me")) == "~/Documents/Okul"
     assert display_path(Path("/Volumes/USB/Okul"), home=Path("/Users/me")) == "/Volumes/USB/Okul"
@@ -117,11 +119,13 @@ def test_cli_reads_the_settings_of_its_data_dir(tmp_path, monkeypatch):
 
 # -- the settings window's form -----------------------------------------------
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS settings window shows POSIX paths")
 def test_first_launch_is_prefilled_with_the_defaults_and_autostart():
     values = initial_values(None, ISTUN, autostart=False)
     assert values == FormValues("https://blackboard.istun.edu.tr", "~/Documents/Okul", autostart=True)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS settings window shows POSIX paths")
 def test_later_the_window_shows_what_was_saved():
     saved = Settings("https://bb.example.edu", Path("/Volumes/USB/Okul"))
     assert initial_values(saved, saved, autostart=False) == FormValues(

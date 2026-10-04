@@ -52,7 +52,7 @@ def test_first_sync_mirrors_the_course_tree(config, client):
     assert sorted(cse.new_files) == sorted([SYLLABUS, SLIDES, f"{CSE}/hw1.pdf"])
     assert cse.new_announcements == [f"{CSE}/Duyurular/2026-09-20 Welcome to CSE303.md"]
     assert cse.summary_line() == "CSE303: 3 new files, 3 new notes, 1 new announcement"
-    note = (config.dest / CSE / "Lecture Notes/Week 1/Intro - Asymptotic Notation.md").read_text()
+    note = (config.dest / CSE / "Lecture Notes/Week 1/Intro - Asymptotic Notation.md").read_text(encoding="utf-8")
     assert "Read chapter 3 before class." in note
     assert "- week1-slides.pdf" in note
 
@@ -174,7 +174,7 @@ def test_existing_identical_file_is_adopted(config, client, fake_bb):
 def test_state_file_is_private_and_keyed_by_blackboard_ids(config, client):
     sync(config, client)
     assert_owner_only(config.state_file)
-    state = json.loads(config.state_file.read_text())
+    state = json.loads(config.state_file.read_text(encoding="utf-8"))
     assert state["items"]["content:_13004_1:_c11_1"]["modified"] == "2026-09-01T10:05:00.000Z"
     assert state["outputs"]["attachment:_13004_1:_a11_1"]["path"] == SYLLABUS
     assert "xid:_13004_1:777_1" in state["outputs"]

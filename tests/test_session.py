@@ -32,9 +32,9 @@ def test_saved_session_is_private_and_only_holds_blackboard_cookies(config):
     assert _save(config) == 2
     assert_owner_only(config.session_file)
     assert_owner_only(config.data_dir, 0o700)
-    data = json.loads(config.session_file.read_text())
+    data = json.loads(config.session_file.read_text(encoding="utf-8"))
     assert {c["name"] for c in data["cookies"]} == {"BbRouter", "JSESSIONID"}
-    assert "password" not in config.session_file.read_text().lower()
+    assert "password" not in config.session_file.read_text(encoding="utf-8").lower()
 
 
 def test_missing_session_requires_login(config):
@@ -94,7 +94,7 @@ def test_refresh_saved_cookies_keeps_rotated_values(config):
     http.cookies.set("BbRouter", "rotated", domain="blackboard.example.edu", path="/")
     http.cookies.set("tracker", "x", domain="cdn.example.net", path="/")
     refresh_saved_cookies(config.session_file, data, http)
-    saved = json.loads(config.session_file.read_text())
+    saved = json.loads(config.session_file.read_text(encoding="utf-8"))
     values = {c["name"]: c["value"] for c in saved["cookies"]}
     assert values["BbRouter"] == "rotated"
     assert "tracker" not in values
@@ -117,7 +117,7 @@ def test_cli_exits_with_login_required_status_when_session_expired(config, fake_
     out = json.loads(capsys.readouterr().out)
     assert out["status"] == "login_required"
     assert "blackboard-sync login" in out["message"]
-    last = json.loads(config.last_run_file.read_text())
+    last = json.loads(config.last_run_file.read_text(encoding="utf-8"))
     assert last["status"] == "login_required"
 
 
@@ -137,4 +137,4 @@ def test_cli_sync_json_summary(config, fake_bb, monkeypatch, capsys):
     assert [c["summary"] for c in out["changed_courses"]] == [
         "CSE303: 3 new files, 3 new notes, 1 new announcement"
     ]
-    assert json.loads(config.last_run_file.read_text())["totals"] == out["totals"]
+    assert json.loads(config.last_run_file.read_text(encoding="utf-8"))["totals"] == out["totals"]
