@@ -36,6 +36,7 @@ Start-Sleep -Seconds 5
 Check ($null -ne (Get-Process -Name "Blackboard Sync" -ErrorAction SilentlyContinue)) "the installer started the app"
 
 # A later install (an update) replaces the running app and starts it again.
+New-Item -Path $runKey -Force | Out-Null
 New-ItemProperty $runKey -Name BlackboardSync -Value "`"C:\old\Blackboard Sync.exe`"" -Force | Out-Null
 Install
 Start-Sleep -Seconds 5
