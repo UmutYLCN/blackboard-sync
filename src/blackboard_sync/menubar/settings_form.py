@@ -1,8 +1,12 @@
 """What the settings window shows and what saving it means, without any GUI code.
 
-``settings_window.py`` only draws these values and calls ``submit`` when a
-button is pressed. The first launch (no ``settings.json`` yet) and the
-"Ayarlar…" menu item open the same window.
+The window has four sections: Hesap (school address, who is signed in, sign
+in or out), Klasör (destination, bring back deleted files), Genel (start at
+login) and Güncellemeler (automatic checks, check now, version). The GUI
+layers (``settings_window.py`` on macOS, ``windows/settings_window.py``) only
+draw ``FormValues`` and ``WindowStatus`` and report which button was pressed.
+The first launch (no ``settings.json`` yet) and the "Ayarlar…" menu item open
+the same window.
 
 User-facing strings are Turkish on purpose: the window is read by the student.
 """
@@ -11,6 +15,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from blackboard_sync import __version__
+from blackboard_sync.menubar.model import (
+    T_CHECK_NOW,
+    T_LOGGING_IN,
+    T_LOGIN,
+    T_LOGOUT,
+    T_REFETCH,
+    T_REFETCHING,
+    AppModel,
+    login_waiting_line,
+)
 from blackboard_sync.settings import (
     Settings,
     display_path,
@@ -24,6 +39,10 @@ T_INTRO_FIRST_RUN = (
     "Ders dosyalarınız her saat bu Mac'e indirilir. Okulunuzun Blackboard adresini ve "
     "dosyaların kaydedileceği klasörü kontrol edin, sonra “Giriş yap” ile Blackboard'a girin."
 )
+T_SECTION_ACCOUNT = "Hesap"
+T_SECTION_FOLDER = "Klasör"
+T_SECTION_GENERAL = "Genel"
+T_SECTION_UPDATES = "Güncellemeler"
 T_URL_LABEL = "Okulunuzun Blackboard adresi"
 T_URL_PLACEHOLDER = "https://blackboard.okul.edu.tr"
 T_URL_HINT = "Adresi değiştirirseniz yeni okul için tekrar giriş yapmanız gerekir."
@@ -32,11 +51,12 @@ T_DEST_HINT = (
     "Klasörü değiştirmek yalnızca bundan sonraki senkronları etkiler; "
     "mevcut dosyalar taşınmaz ve silinmez."
 )
+T_REFETCH_HINT = "Bilgisayarınızdan sildiğiniz ders dosyalarını yeniden indirir."
+T_AUTOSTART = "Bilgisayar açılınca başlat"
 T_CHECK_UPDATES = "Güncellemeleri otomatik denetle"
 T_CHOOSE_FOLDER = "Seç…"
 T_CHOOSE_FOLDER_PROMPT = "Bu klasörü kullan"
 T_CHOOSE_FOLDER_MESSAGE = "Ders dosyalarının kaydedileceği klasörü seçin."
-T_LOGIN = "Giriş yap"
 T_SAVE = "Kaydet"
 T_CANCEL = "Vazgeç"
 
@@ -62,6 +82,63 @@ class Submission:
 
     def needs_login(self, login_pressed: bool) -> bool:
         return login_pressed or self.school_changed
+
+
+@dataclass(frozen=True)
+class WindowStatus:
+    """The live part of the window: who is signed in and which buttons work now.
+
+    Buttons that need the app's single job slot (sign in, sign out, bring back
+    deleted files) are disabled while a sync or a sign-in runs.
+    """
+
+    account: str
+    account_warning: bool
+    account_title: str
+    account_action: str  # "login" (saves the form first) | "logout"
+    account_enabled: bool
+    refetch_title: str
+    refetch_enabled: bool
+    version: str
+    update_title: str
+    update_action: str  # "check_updates" | "update"
+    update_enabled: bool
+
+
+def window_status(model: AppModel) -> WindowStatus:
+    idle = model.busy is None
+    name, expired = model.account()
+    if model.busy == "login":
+        account, title, action = login_waiting_line(model.login_method), T_LOGGING_IN, "login"
+    elif name is not None:
+        account, title, action = f"Giriş yapıldı: {name}", T_LOGOUT, "logout"
+    elif expired:
+        account, title, action = "Oturum sona erdi; tekrar giriş yapın.", T_LOGIN, "login"
+    else:
+        account, title, action = "Henüz giriş yapılmadı.", T_LOGIN, "login"
+    updates = model.updates
+    if updates.busy == "check":
+        update_title, update_action = "Denetleniyor…", "check_updates"
+    elif updates.busy == "download":
+        update_title, update_action = "İndiriliyor…", "update"
+    elif updates.available is not None:
+        update_title, update_action = f"{updates.available.version} sürümüne güncelle", "update"
+    else:
+        update_title, update_action = T_CHECK_NOW, "check_updates"
+    return WindowStatus(
+        account=account,
+        account_warning=expired and model.busy != "login",
+        account_title=title,
+        account_action=action,
+        account_enabled=idle,
+        refetch_title=T_REFETCHING if model.busy == "refetch" else T_REFETCH,
+        # Before the first save there is no folder to bring files back to.
+        refetch_enabled=idle and model.configured,
+        version=f"Sürüm {__version__}",
+        update_title=update_title,
+        update_action=update_action,
+        update_enabled=updates.busy is None,
+    )
 
 
 def initial_values(saved: Settings | None, current: Settings, autostart: bool) -> FormValues:

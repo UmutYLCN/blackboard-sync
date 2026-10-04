@@ -216,6 +216,8 @@ class TrayApp:
         if state != self.drawn_icon:
             self.icon.icon = icon_image(state)
             self.drawn_icon = state
+        if self.window is not None:
+            self.window.update_status(settings_form.window_status(self.model))
         menu = self.model.menu(jobs.utcnow())
         if menu != self.drawn:
             self.icon.menu = render_menu(menu.entries,
@@ -234,13 +236,6 @@ class TrayApp:
             self.start_update()
         elif action == "settings":
             self.open_settings()
-        elif action == "autostart":
-            try:
-                autostart.set_enabled(not autostart.is_installed())
-            except OSError:
-                self.model.note = "Açılışta başlatma ayarı değiştirilemedi."
-        elif action == "releases":
-            webbrowser.open(value)
         elif action in ("folder", "open"):
             target = self.model.dest if action == "folder" else open_target(self.model.dest, value)
             if target and target.exists():
@@ -251,7 +246,9 @@ class TrayApp:
             else:
                 self.model.note = "Dosya veya klasör henüz yok; önce senkronize edin."
         elif action == "logout" and self.model.busy is None:
-            if messagebox.askyesno("Hesaptan çıkış yapılsın mı?", "İndirilen dosyalarınız korunacak.", parent=self.root):
+            # Asked from the settings window, so the question belongs in front of it.
+            parent = self.window.window if self.window is not None else self.root
+            if messagebox.askyesno("Hesaptan çıkış yapılsın mı?", "İndirilen dosyalarınız korunacak.", parent=parent):
                 try:
                     jobs.logout(self.config)
                 except OSError:
@@ -273,7 +270,8 @@ class TrayApp:
             saved = jobs.saved_settings(self.config)
             values = settings_form.initial_values(saved, self.settings, self.model.autostart)
             log.info("Opening the settings window (first run %s)", saved is None)
-            self.window = SettingsWindow(self.root, values, saved is None, self.settings_submitted,
+            self.window = SettingsWindow(self.root, values, settings_form.window_status(self.model),
+                                         saved is None, self.settings_submitted, self.dispatch,
                                          self.settings_closed)
         self.window.show()
 

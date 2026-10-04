@@ -127,6 +127,7 @@ def make_app(tmp_path):
     app.model = AppModel(app.settings.dest, datetime.now(timezone.utc))
     app.save = lambda: None
     app.refresh = lambda: None
+    app.window = None
     return app
 
 
@@ -183,6 +184,7 @@ def test_pythonw_parent_runs_hidden_console_child(monkeypatch):
 
 def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
     import sys
+    from blackboard_sync.menubar.settings_form import window_status
     from blackboard_sync.windows.settings_window import SettingsWindow, INTRO
     widgets = []
 
@@ -229,25 +231,51 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
         def set(self, value):
             self.value = value
 
-    ttk = SimpleNamespace(**{name: Widget for name in ('Frame', 'Label', 'Entry', 'Button', 'Checkbutton')})
+    ttk = SimpleNamespace(**{name: Widget for name in ('Frame', 'Label', 'Entry', 'Button', 'Checkbutton', 'Separator')})
     fake = SimpleNamespace(Toplevel=Widget, StringVar=Variable, BooleanVar=Variable, ttk=ttk,
                            filedialog=SimpleNamespace(askdirectory=lambda **kw: str(tmp_path)))
     monkeypatch.setitem(sys.modules, 'tkinter', fake)
-    submitted, closed = [], []
+    model = AppModel(tmp_path, datetime.now(timezone.utc), configured=False)
+    submitted, closed, actions = [], [], []
     def submit(values, login):
         submitted.append((values, login))
         return ('Geçerli bir adres yazın.', 'base_url') if len(submitted) == 1 else None
-    window = SettingsWindow(None, FormValues('school.edu', str(tmp_path), True), True,
-                            submit, lambda: closed.append(True))
+    window = SettingsWindow(None, FormValues('school.edu', str(tmp_path), True), window_status(model), True,
+                            submit, actions.append, lambda: closed.append(True))
     assert window.window.topmost is True
     window.window.later()
     assert window.window.topmost is False
     labels = [w.options.get('text') for w in widgets]
     assert INTRO in labels
-    assert all(label in labels for label in ('Okulunuzun Blackboard adresi',
-        'Dosyaların kaydedileceği klasör', 'Bilgisayar açılınca başlat', 'Güncellemeleri otomatik denetle', 'Kaydet', 'Giriş yap', 'Vazgeç', 'Seç…'))
+    sections = [label for label in labels if label in ('Hesap', 'Klasör', 'Genel', 'Güncellemeler')]
+    assert sections == ['Hesap', 'Klasör', 'Genel', 'Güncellemeler']
+    assert all(label in labels for label in ('Okulunuzun Blackboard adresi', 'Henüz giriş yapılmadı.',
+        'Dosyaların kaydedileceği klasör', 'Silinenleri tekrar indir', 'Bilgisayar açılınca başlat',
+        'Güncellemeleri otomatik denetle', 'Şimdi denetle', 'Kaydet', 'Giriş yap', 'Vazgeç', 'Seç…'))
+    assert any(label and label.startswith('Sürüm ') for label in labels)
     assert window.fields['base_url'].grid_options['sticky'] == 'ew'
-    login = next(w for w in widgets if w.options.get('text') == 'Giriş yap')
+    assert window.refetch_button.options['state'] == 'disabled'  # nothing to bring back yet
+    window.update_button.options['command']()
+    assert actions == ['check_updates']
+
+    # A signed-in student signs out from the window; it stays open.
+    model.configured = True
+    model.session = {'saved_at': 0, 'user': {'displayName': 'Ada Student'}}
+    window.update_status(window_status(model))
+    assert window.account_label.options['text'] == 'Giriş yapıldı: Ada Student'
+    assert window.account_button.options['text'] == 'Hesaptan çıkış yap'
+    window.account_button.options['command']()
+    window.refetch_button.options['command']()
+    assert actions == ['check_updates', 'logout', 'refetch'] and not submitted
+    model.begin('sync')
+    window.update_status(window_status(model))
+    assert window.account_button.options['state'] == window.refetch_button.options['state'] == 'disabled'
+    model.busy = None
+
+    # "Giriş yap" saves the form first and keeps the window open on an error.
+    model.session = None
+    window.update_status(window_status(model))
+    login = window.account_button
     login.options['command']()
     assert window.fields['base_url'].focused
     assert not window.window.destroyed
@@ -499,3 +527,21 @@ def test_startup_logs_before_tray_import_and_reports_errors(tmp_path, monkeypatc
     assert dumps == [20.0]
     assert shown == [startup.error_text(path, None)] and str(path) in shown[0]
     assert 'OSError: denied' in startup.error_text(None, OSError('denied'))
+
+
+def test_sign_out_from_settings_window_asks_in_front_of_it(tmp_path, monkeypatch):
+    import sys
+    from blackboard_sync.windows.app import jobs
+    app = make_app(tmp_path)
+    app.root = 'root'
+    asked, removed = [], []
+    monkeypatch.setitem(sys.modules, 'tkinter', SimpleNamespace(messagebox=SimpleNamespace(
+        askyesno=lambda title, message, parent: asked.append(parent) or True)))
+    monkeypatch.setattr(jobs, 'logout', removed.append)
+    app.dispatch('logout')
+    app.window = SimpleNamespace(window='settings')
+    app.dispatch('logout')
+    assert asked == ['root', 'settings'] and len(removed) == 2
+    app.model.begin('sync')
+    app.dispatch('logout')
+    assert len(asked) == 2  # never while a job runs

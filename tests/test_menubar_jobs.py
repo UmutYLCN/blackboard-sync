@@ -210,7 +210,7 @@ def test_session_evidence_and_logout_preserve_files(config):
                  [{"name": "auth", "value": "test", "domain": "blackboard.example.edu"}],
                  {"id": "1", "userName": "ada", "name": {"given": "Ada", "family": "Student"}})
     model = jobs.load_model(config, NOW, False)
-    assert model.menu(NOW).entries[0].title == "✓ Giriş yapıldı · Ada Student"
+    assert model.menu(NOW).entries[0].title == "✓ Ada Student · henüz senkronize edilmedi"
     jobs.logout(config)
     jobs.refresh_session(config, model, jobs.effective_settings(config))
     assert model.menu(NOW).entries[0].action == "login"
