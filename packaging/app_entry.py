@@ -1,8 +1,9 @@
-"""Entry point of the packaged "Blackboard Sync.app".
+"""Entry point of the packaged "Blackboard Sync.app" and Windows app.
 
-The menu bar app runs syncs by re-invoking this same executable with a CLI
+The menu bar / tray app runs syncs by re-invoking this same program with a CLI
 subcommand (there is no separate ``python`` inside the bundle). With no
-arguments, or with the menu bar options, it starts the menu bar app.
+arguments, or with the app's own options, it starts the menu bar app (macOS) or
+the tray app (Windows).
 """
 
 import sys
@@ -19,6 +20,10 @@ def main() -> int:
         from blackboard_sync.cli import main as cli_main
 
         return cli_main(args)
+    if sys.platform == "win32":
+        from blackboard_sync.windows.app import main as tray_main
+
+        return tray_main(args)
     from blackboard_sync.menubar.app import main as menubar_main
 
     return menubar_main(args)

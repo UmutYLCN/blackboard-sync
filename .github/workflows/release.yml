@@ -1,11 +1,15 @@
 name: Release
 
+# A v* tag builds the macOS .dmg and the Windows Setup.exe and publishes one
+# release holding both plus SHA256SUMS.txt. A manual run (workflow_dispatch)
+# builds and smoke-tests the same files as workflow artifacts and publishes nothing.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   dmg:
@@ -16,6 +20,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Check the tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           VERSION="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/blackboard_sync/__init__.py)"
           test "v$VERSION" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME does not match version $VERSION" >&2; exit 1; }
@@ -24,18 +29,71 @@ jobs:
           ./scripts/setup.sh
           .venv/bin/python -m pytest -q
           ./scripts/build-app.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg
+          path: dist/Blackboard-Sync-*.dmg
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check the tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/blackboard_sync/__init__.py)"
+          test "v$VERSION" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME does not match version $VERSION" >&2; exit 1; }
+      - name: Test
+        run: |
+          python -m pip install -r requirements.lock
+          python -m pip install --no-deps -e .
+          python -m pytest -q
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build the installer
+        run: ./scripts/build-windows.ps1
+      # Install it the way the updater does (silently), check the installed app,
+      # then uninstall and check nothing but the app was removed.
+      - name: Smoke-test the installer
+        run: ./scripts/smoke-test-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: setup
+          path: dist/Blackboard-Sync-*-Setup.exe
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [dmg, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       # The app's updater (src/blackboard_sync/updater.py) finds installers by
       # name, so keep these exact: macOS "Blackboard-Sync-<version>.dmg",
       # Windows "Blackboard-Sync-<version>-Setup.exe". It refuses an installer
-      # that SHA256SUMS.txt does not list or that does not match its line, so
-      # a job adding another installer must also append its line, e.g.
-      #   gh release download "$TAG" -p SHA256SUMS.txt
-      #   sha256sum Blackboard-Sync-<version>-Setup.exe >> SHA256SUMS.txt
-      #   gh release upload "$TAG" Blackboard-Sync-<version>-Setup.exe SHA256SUMS.txt --clobber
+      # that SHA256SUMS.txt does not list or that does not match its line.
       - name: Write SHA256SUMS.txt
         working-directory: dist
-        run: shasum -a 256 Blackboard-Sync-*.dmg > SHA256SUMS.txt && cat SHA256SUMS.txt
+        run: sha256sum Blackboard-Sync-*.dmg Blackboard-Sync-*-Setup.exe > SHA256SUMS.txt && cat SHA256SUMS.txt
+      # Safe to rerun: an existing release for the tag gets its assets replaced.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/Blackboard-Sync-*.dmg dist/SHA256SUMS.txt --title "$GITHUB_REF_NAME" --generate-notes
+          GH_REPO: ${{ github.repository }}
+        run: |
+          FILES="dist/Blackboard-Sync-*.dmg dist/Blackboard-Sync-*-Setup.exe dist/SHA256SUMS.txt"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" $FILES --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" $FILES --title "$GITHUB_REF_NAME" --generate-notes
+          fi

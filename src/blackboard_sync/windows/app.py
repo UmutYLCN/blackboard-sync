@@ -20,6 +20,10 @@ from .presentation import icon_image, render_menu
 
 log = logging.getLogger(__name__)
 
+# The two executables of the installed app (packaging/blackboard_sync_windows.spec).
+GUI_EXE = "Blackboard Sync.exe"
+CLI_EXE = "blackboard-sync-cli.exe"
+
 
 def cli_runner(command, **kwargs):
     # pythonw can discard standard streams even with redirected handles. Run
@@ -28,6 +32,10 @@ def cli_runner(command, **kwargs):
     executable = Path(command[0])
     if executable.name.lower() == "pythonw.exe":
         command[0] = str(executable.with_name("python.exe"))
+    elif runtime.is_frozen() and executable.name.lower() == GUI_EXE.lower():
+        # Same reason in the installed app: its windowed exe has no console, so
+        # the CLI runs as the console twin installed next to it.
+        command[0] = str(executable.with_name(CLI_EXE))
     # The CLI emits UTF-8 even when the Windows ANSI code page is different.
     return subprocess.run(command, **kwargs, encoding="utf-8", errors="replace",
                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
