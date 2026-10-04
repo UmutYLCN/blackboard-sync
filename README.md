@@ -549,3 +549,42 @@ Release. The `CI` workflow runs the tests on pull requests.
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+### Windows tray app (from source)
+
+The Windows 10/11 tray app uses the same menu, hourly sync schedule, settings,
+CLI jobs and locks as the macOS app. Install Python 3.12 from python.org with
+**pip** and **Tcl/Tk** enabled, and install Chrome or Edge for sign-in. Download
+or clone this repository, open PowerShell in its folder, then run:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m blackboard_sync.windows
+```
+
+The first launch opens settings: enter your school's Blackboard URL, choose a
+folder (default: `Documents\Okul`), and select **Giriş yap**. Complete sign-in in
+the browser. Right-click the tray icon next to the clock (possibly inside the
+hidden-icons arrow) for the shared menu. Later, launch without a console with:
+
+```powershell
+.\.venv\Scripts\pythonw.exe -m blackboard_sync.windows
+```
+
+**Bilgisayar açılınca başlat** toggles only the current user's
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run\BlackboardSync` value.
+Keep this checkout and its virtual environment in place while it is enabled;
+disable the option before moving or deleting them. No administrator rights are
+needed. Settings and logs (`windows-tray.log`) live under
+`%APPDATA%\blackboard-sync` unless `BBSYNC_DATA_DIR` overrides it.
+
+Toasts show one Turkish summary line per changed course. Clicking opens the
+course folder, or the common parent folder when several courses changed, via a
+`file:` URI. Windows notification policies can suppress toasts or protocol
+activation; the tray's folder menu remains available. Expiry notifications ask
+you to sign in from the menu. Toast delivery uses Windows PowerShell and WinRT;
+no browser extension is required. Native Windows menus do not expose colored
+text through pystray, so expiry uses the shared warning label and a red icon.
+Idle is green, syncing blue, and errors orange. Settings saves and exit wait
+until a running sync/sign-in finishes. The Windows installer comes separately.

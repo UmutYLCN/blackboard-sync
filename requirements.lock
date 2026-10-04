@@ -17,3 +17,6 @@ rumps==0.4.0; sys_platform == 'darwin'
 tomli==2.4.1
 typing_extensions==4.16.0
 urllib3==2.8.0
+pystray==0.19.5; sys_platform == 'win32'
+Pillow==11.3.0; sys_platform == 'win32'
+six==1.17.0; sys_platform == 'win32'

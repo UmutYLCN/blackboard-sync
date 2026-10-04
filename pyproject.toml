@@ -10,6 +10,8 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 dependencies = [
+    "pystray==0.19.5; sys_platform == 'win32'",
+    "Pillow==11.3.0; sys_platform == 'win32'",
     "requests==2.34.2",
     "playwright==1.63.0",
     # The macOS menu bar app only; the core and CLI never import them.
@@ -25,6 +27,7 @@ dev = [
 
 [project.scripts]
 blackboard-sync = "blackboard_sync.cli:main"
+blackboard-sync-tray = "blackboard_sync.windows.app:main"
 blackboard-sync-menubar = "blackboard_sync.menubar.app:main"
 
 [tool.setuptools.dynamic]
