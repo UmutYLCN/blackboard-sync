@@ -2,33 +2,32 @@
 
 Yeni ders içeriklerini otomatik indirip Blackboard’daki klasör yapısıyla bilgisayarına kaydeder. Arka planda her saat kontrol eder, yeni bir şey geldiğinde bildirim gösterir.
 
+## Ekran görüntüleri
+
+<!-- Görseller ve video buraya eklenecek -->
+
 ## Kurulum
 
 [Son sürümü indir](https://github.com/UmutYLCN/blackboard-sync/releases/latest):
 
-- **macOS:** `Blackboard-Sync-<version>.dmg` dosyasını aç, **Blackboard Sync** uygulamasını **Uygulamalar (Applications)** klasörüne sürükle. İlk açılışta sağ tık → **Aç** seçeneğini kullan.
-- **Windows:** `Blackboard-Sync-<version>-Setup.exe` dosyasını çalıştır ve kurulumu tamamla. SmartScreen uyarısı çıkarsa **Ek bilgi → Yine de çalıştır** seçeneğini kullan.
+- **macOS:** `.dmg` dosyasını aç, uygulamayı **Applications** klasörüne sürükle. İlk açılışta sağ tık → **Aç**.
+- **Windows:** `Setup.exe` dosyasını çalıştır. SmartScreen uyarısı çıkarsa **Ek bilgi → Yine de çalıştır**.
 
 ### Terminalden tek komutla
 
-- **macOS:** `curl -fsSL https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.sh | sh`
-- **Windows (PowerShell):** `irm https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.ps1 | iex`
+macOS:
 
-Komut son sürümü indirir, SHA-256 sağlama toplamını doğrular ve kurar. macOS’ta uygulama imzasız olduğu için yalnızca kurulan uygulamanın karantina işareti kaldırılır; böylece sağ tık → **Aç** adımı gerekmez.
+```sh
+curl -fsSL https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.sh | sh
+```
 
-Python kurman gerekmez. Bilgisayarında Chrome, Edge, Brave, Opera, Vivaldi gibi bir tarayıcı varsa giriş onda açılır; yoksa uygulamanın kendi penceresinde açılır, tarayıcı gerekmez. İlk açılışta okulunun Blackboard adresini ve kayıt klasörünü seç, **Giriş yap** düğmesine bas ve açılan pencerede girişini tamamla.
+Windows (PowerShell):
 
-## Kullanım
+```powershell
+irm https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.ps1 | iex
+```
 
-macOS’ta menü çubuğundaki, Windows’ta saatin yanındaki simgeden (Windows’ta simge görünmüyorsa saatin yanındaki **^** okuna, yani gizli simgelere bak):
-
-- **Şimdi senkronize et** ile hemen kontrol et.
-- **Dersler**, **Son indirilenler** ve kayıt klasörünün adını taşıyan **… klasörünü aç** ile içeriklerine ulaş.
-- **Ayarlar…** penceresinde hesabını (okul adresi, giriş/çıkış), klasörü (**Silinenleri tekrar indir** ile bilgisayarından sildiğin dosyaları geri indirme), **Bilgisayar açılınca başlat** seçeneğini ve güncellemeleri yönet.
-
-Windows’ta uygulamayı Başlat menüsünden tekrar açınca ayarlar penceresi gelir. Bir sorun olursa ayrıntılar `%APPDATA%\blackboard-sync\windows-tray.log` dosyasındadır (Win+R’ye `%APPDATA%\blackboard-sync` yazıp Enter’a bas).
-
-Güncellemeler varsayılan olarak otomatik denetlenir; **Ayarlar…** penceresindeki **Şimdi denetle** ile elle de denetleyebilirsin. Yeni sürüm varsa menüde **Güncelleme var: … — Güncelle** satırı çıkar.
+İlk açılışta okul adresini ve kayıt klasörünü seç, ardından **Giriş yap**.
 
 ## Gizlilik
 
