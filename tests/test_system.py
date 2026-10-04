@@ -16,7 +16,7 @@ def test_macos_paths_are_unchanged():
     assert system.default_data_dir("darwin", env={}, home=HOME) == (
         HOME / "Library" / "Application Support" / "blackboard-sync"
     )
-    assert system.default_dest("darwin", home=HOME) == HOME / "Documents" / "Okul"
+    assert system.default_dest("darwin", home=HOME) == HOME / "Documents" / "University"
 
 
 def test_windows_data_dir_lives_in_appdata():
@@ -31,8 +31,8 @@ def test_windows_data_dir_lives_in_appdata():
 
 def test_windows_dest_follows_a_moved_documents_folder():
     onedrive = Path("C:/Users/student/OneDrive/Documents")
-    assert system.default_dest("win32", home=HOME, documents=lambda: onedrive) == onedrive / "Okul"
-    assert system.default_dest("win32", home=HOME, documents=lambda: None) == HOME / "Documents" / "Okul"
+    assert system.default_dest("win32", home=HOME, documents=lambda: onedrive) == onedrive / "University"
+    assert system.default_dest("win32", home=HOME, documents=lambda: None) == HOME / "Documents" / "University"
 
 
 def test_windows_private_dir_replaces_inherited_permissions(tmp_path):

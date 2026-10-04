@@ -70,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync = sub.add_parser("sync", help="download everything new into the course folders")
     _add_selection_args(sync)
-    sync.add_argument("--dest", type=Path, help="base folder (env BBSYNC_DEST, default Documents/Okul)")
+    sync.add_argument("--dest", type=Path, help="base folder (env BBSYNC_DEST, default Documents/University)")
     sync.add_argument("--json", action="store_true", help="print the run summary as JSON")
     sync.add_argument("--dry-run", action="store_true", help="show what would be fetched, write nothing")
     sync.add_argument(

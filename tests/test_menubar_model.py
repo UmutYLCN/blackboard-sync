@@ -22,7 +22,7 @@ from blackboard_sync.menubar.model import (
 )
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
-DEST = Path("/Users/student/Documents/Okul")
+DEST = Path("/Users/student/Documents/University")
 CSE = "2026-2027 Güz/CSE303 Algorithm Analysis"
 MTH = "2026-2027 Güz/MTH201 Linear Algebra"
 

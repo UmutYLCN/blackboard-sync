@@ -18,7 +18,7 @@ from typing import IO, Callable, Mapping
 log = logging.getLogger(__name__)
 
 APP_NAME = "blackboard-sync"
-DEST_FOLDER = "Okul"
+DEST_FOLDER = "University"
 # subprocess.CREATE_NO_WINDOW exists only on Windows; keeps helper tools from
 # flashing a console window when the caller has none (the tray app).
 CREATE_NO_WINDOW = 0x08000000
@@ -55,7 +55,7 @@ def default_dest(
     home: Path | None = None,
     documents: Callable[[], Path | None] | None = None,
 ) -> Path:
-    """The course folder: ``Okul`` inside the user's Documents folder.
+    """The course folder: ``University`` inside the user's Documents folder.
 
     On Windows the Documents folder can be moved (for example into OneDrive),
     so it is asked from the system instead of assumed to be ``~\\Documents``.

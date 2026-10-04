@@ -16,7 +16,7 @@ from .conftest import assert_owner_only
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
 # Absolute on every OS ("/Users/..." has no drive letter on Windows).
-SETTINGS = Settings(base_url="https://bb.example.edu", dest=Path(os.path.abspath("/Users/student/Okul")))
+SETTINGS = Settings(base_url="https://bb.example.edu", dest=Path(os.path.abspath("/Users/student/University")))
 
 
 def fake_runner(returncode=0, stdout="", stderr="", raises=None):
@@ -80,7 +80,7 @@ def test_login_method_is_the_browser_or_the_app_window(tmp_path, monkeypatch):
 
 
 def test_model_is_restored_from_last_run_and_saved_state(tmp_path):
-    config = Config(data_dir=tmp_path / "data", dest=tmp_path / "Okul")
+    config = Config(data_dir=tmp_path / "data", dest=tmp_path / "University")
     config.ensure_data_dir()
     folder = "2026-2027 Güz/CSE303 Algorithm Analysis"
     config.last_run_file.write_text(
@@ -149,9 +149,9 @@ def test_launch_agent_install_and_remove(tmp_path):
 
 def test_launch_agent_keeps_custom_settings():
     plist = launchagent.build_plist(
-        ["/py"], Path("/log"), env={"BBSYNC_DEST": "/Okul", "HOME": "/Users/x"}
+        ["/py"], Path("/log"), env={"BBSYNC_DEST": "/University", "HOME": "/Users/x"}
     )
-    assert plist["EnvironmentVariables"] == {"BBSYNC_DEST": "/Okul"}
+    assert plist["EnvironmentVariables"] == {"BBSYNC_DEST": "/University"}
     assert "EnvironmentVariables" not in launchagent.build_plist(["/py"], Path("/log"), env={})
 
 
@@ -166,9 +166,9 @@ def test_frozen_app_reinvokes_its_own_executable(monkeypatch):
 
 
 def test_saved_settings_decide_what_the_app_syncs(tmp_path):
-    config = Config(base_url="https://env.example.edu", data_dir=tmp_path / "data", dest=tmp_path / "Okul")
+    config = Config(base_url="https://env.example.edu", data_dir=tmp_path / "data", dest=tmp_path / "University")
     assert jobs.saved_settings(config) is None
-    assert jobs.effective_settings(config) == Settings("https://env.example.edu", tmp_path / "Okul")
+    assert jobs.effective_settings(config) == Settings("https://env.example.edu", tmp_path / "University")
     assert jobs.load_model(config, NOW, autostart=False).configured is False
 
     save_settings(config.data_dir, SETTINGS)

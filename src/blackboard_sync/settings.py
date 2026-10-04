@@ -106,7 +106,7 @@ def normalize_dest(text: str | os.PathLike) -> Path:
         raise SettingsError("Dosyaların kaydedileceği klasörü seçin.", "dest")
     path = Path(text).expanduser()
     if not path.is_absolute():
-        raise SettingsError("Klasörü tam yoluyla yazın, örneğin ~/Documents/Okul", "dest")
+        raise SettingsError("Klasörü tam yoluyla yazın, örneğin ~/Documents/University", "dest")
     path = Path(os.path.normpath(path))
     if path.exists() and not path.is_dir():
         raise SettingsError("Bu yol bir klasör değil.", "dest")
@@ -114,7 +114,7 @@ def normalize_dest(text: str | os.PathLike) -> Path:
 
 
 def display_path(path: Path, home: Path | None = None) -> str:
-    """``/Users/me/Documents/Okul`` -> ``~/Documents/Okul`` for the window."""
+    """``/Users/me/Documents/University`` -> ``~/Documents/University`` for the window."""
     home = Path.home() if home is None else home
     try:
         rest = path.relative_to(home)

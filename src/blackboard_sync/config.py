@@ -15,8 +15,8 @@ from blackboard_sync.settings import load_settings, settings_path
 from blackboard_sync.system import default_data_dir, default_dest, make_private_dir
 
 DEFAULT_BASE_URL = "https://blackboard.istun.edu.tr"
-# macOS: ~/Documents/Okul and ~/Library/Application Support/blackboard-sync.
-# Windows: <Documents>\Okul and %APPDATA%\blackboard-sync.
+# macOS: ~/Documents/University and ~/Library/Application Support/blackboard-sync.
+# Windows: <Documents>\University and %APPDATA%\blackboard-sync.
 DEFAULT_DEST = default_dest()
 DEFAULT_DATA_DIR = default_data_dir()
 DEFAULT_ANNOUNCEMENTS_FOLDER = "Duyurular"
