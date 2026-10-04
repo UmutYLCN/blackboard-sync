@@ -12,6 +12,9 @@ from blackboard_sync.login import (
     CREATE_NEW_PROCESS_GROUP,
     DETACHED_PROCESS,
     DEVTOOLS_PORT_FILE,
+    NoSupportedBrowserError,
+    discover_browser,
+    supported_browsers,
     browser_label,
     find_browser,
     launch_command,
@@ -214,7 +217,7 @@ def test_windows_prefers_the_registered_install_location(tmp_path):
 
 
 def test_windows_reports_a_missing_browser(tmp_path):
-    with pytest.raises(BlackboardSyncError, match="Could not find Google Chrome, Microsoft Edge or Brave"):
+    with pytest.raises(NoSupportedBrowserError, match="Could not find a supported browser"):
         find_browser("auto", platform="win32", env=_windows_env(tmp_path), registry=lambda exe: [])
     with pytest.raises(BlackboardSyncError, match="Unknown browser"):
         find_browser("firefox", platform="win32", env={}, registry=lambda exe: [])
@@ -265,6 +268,87 @@ def test_windows_login_reports_a_browser_that_cannot_start(config, tmp_path, mon
 
     with pytest.raises(BlackboardSyncError, match="Could not open Microsoft Edge"):
         login(config, spawn=spawn, connect=lambda url: None, platform="win32", out=lambda *_: None)
+
+
+# -- More Chromium browsers -------------------------------------------------
+
+def test_mac_order_is_chrome_edge_brave_then_the_rest_with_arc_last(tmp_path):
+    assert supported_browsers("darwin") == [
+        "chrome", "edge", "brave", "vivaldi", "opera", "operagx", "chromium", "arc"]
+    apps = _apps(tmp_path, "Arc.app", "Opera.app", "Opera GX.app", "Vivaldi.app", "Chromium.app")
+    names = []
+    for _ in range(5):
+        found = find_browser("auto", apps, platform="darwin")
+        names.append(found.name)
+        import shutil
+        shutil.rmtree(found)
+    assert names == ["Vivaldi.app", "Opera.app", "Opera GX.app", "Chromium.app", "Arc.app"]
+
+
+def test_mac_finds_each_extra_browser_by_name(tmp_path):
+    apps = _apps(tmp_path, "Opera GX.app", "Arc.app")
+    assert find_browser("operagx", apps, platform="darwin").name == "Opera GX.app"
+    assert find_browser("arc", apps, platform="darwin").name == "Arc.app"
+    assert browser_label(tmp_path / "Opera GX.app") == "Opera GX"
+
+
+def test_windows_order_has_no_arc():
+    assert supported_browsers("win32") == [
+        "chrome", "edge", "brave", "vivaldi", "opera", "operagx", "chromium"]
+
+
+def test_windows_finds_the_extra_browsers_in_their_install_folders(tmp_path):
+    env = _windows_env(tmp_path)
+    none = lambda exe: []
+    vivaldi = _windows_install(tmp_path / "Local", "Vivaldi", "Application", "vivaldi.exe")
+    assert find_browser("auto", platform="win32", env=env, registry=none) == vivaldi
+    opera = _windows_install(tmp_path / "Local", "Programs", "Opera", "opera.exe")
+    gx = _windows_install(tmp_path / "Local", "Programs", "Opera GX", "opera.exe")
+    chromium = _windows_install(tmp_path / "Local", "Chromium", "Application", "chrome.exe")
+    assert find_browser("opera", platform="win32", env=env, registry=none) == opera
+    assert find_browser("operagx", platform="win32", env=env, registry=none) == gx
+    assert find_browser("chromium", platform="win32", env=env, registry=none) == chromium
+    assert browser_label(opera) == "Opera"
+    assert browser_label(gx) == "Opera GX"
+    assert browser_label(chromium) == "Chromium"
+    assert browser_label(vivaldi) == "Vivaldi"
+
+
+def test_windows_shared_exe_registry_entries_are_matched_to_the_right_browser(tmp_path):
+    env = _windows_env(tmp_path)
+    gx = _windows_install(tmp_path / "Local", "Programs", "Opera GX", "opera.exe")
+    registry = lambda exe: [str(gx)] if exe == "opera.exe" else []
+    assert find_browser("operagx", platform="win32", env=env, registry=registry) == gx
+    # Opera GX's registration must not be mistaken for plain Opera.
+    assert windows_browser_candidates("opera", env, registry)[0] != gx
+    assert discover_browser("opera", platform="win32", env=env, registry=registry) is None
+    chromium_reg = _windows_install(tmp_path / "D", "Chromium", "Application", "chrome.exe")
+    registry = lambda exe: [str(chromium_reg)] if exe == "chrome.exe" else []
+    assert discover_browser("chrome", platform="win32", env=env, registry=registry) is None
+    assert discover_browser("chromium", platform="win32", env=env, registry=registry) == chromium_reg
+
+
+def test_no_browser_is_a_typed_result_the_caller_can_branch_on(tmp_path):
+    empty = _apps(tmp_path)
+    assert discover_browser("auto", empty, platform="darwin") is None
+    with pytest.raises(NoSupportedBrowserError) as auto:
+        find_browser("auto", empty, platform="darwin")
+    assert auto.value.requested is None
+    with pytest.raises(NoSupportedBrowserError) as named:
+        find_browser("vivaldi", empty, platform="darwin")
+    assert named.value.requested == "vivaldi"
+    assert isinstance(named.value, BlackboardSyncError)
+    with pytest.raises(BlackboardSyncError, match="Unknown browser") as unknown:
+        find_browser("firefox", empty, platform="darwin")
+    assert not isinstance(unknown.value, NoSupportedBrowserError)
+
+
+def test_cli_offers_every_supported_browser():
+    from blackboard_sync.cli import build_parser
+    args = build_parser().parse_args(["login", "--browser", "operagx"])
+    assert args.browser == "operagx"
+    for name in supported_browsers("darwin"):
+        assert build_parser().parse_args(["login", "--browser", name]).browser == name
 
 
 def test_check_runtime_starts_and_stops_the_driver(monkeypatch):

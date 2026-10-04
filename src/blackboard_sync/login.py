@@ -1,4 +1,7 @@
-"""Interactive sign-in through the student's own Chrome, Edge or Brave.
+"""Interactive sign-in through the student's own Chromium-based browser.
+
+Chrome, Edge and Brave come first; Vivaldi, Opera, Opera GX, Chromium and Arc
+are used when none of those is installed (see ``AUTO_ORDER``).
 
 On macOS the browser is started the way the Dock or Finder would start it:
 through LaunchServices (``open -n -a <app>``), with a private profile kept in
@@ -6,8 +9,8 @@ the data directory. That makes it an ordinary, frontmost app window that takes
 the keyboard, even when this command runs from a terminal multiplexer or
 another background session. (Starting the browser binary directly as a child
 process can leave the window unable to take keyboard focus there; see the
-README's troubleshooting section.) On Windows the installed ``chrome.exe`` /
-``msedge.exe`` / ``brave.exe`` is started as its own detached process with the
+README's troubleshooting section.) On Windows the installed browser
+executable (``chrome.exe``, ``msedge.exe``, ...) is started as its own detached process with the
 same private profile and flags.
 
 The student signs in normally (including single sign-on and two-factor steps);
@@ -32,21 +35,50 @@ from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.session import save_session
 from blackboard_sync.system import is_windows, make_private_dir
 
+# macOS app bundle names, as installed in /Applications.
 BROWSERS = {
     "chrome": "Google Chrome.app",
-    "brave": "Brave Browser.app",
     "edge": "Microsoft Edge.app",
+    "brave": "Brave Browser.app",
+    "vivaldi": "Vivaldi.app",
+    "opera": "Opera.app",
+    "operagx": "Opera GX.app",
+    "chromium": "Chromium.app",
+    "arc": "Arc.app",
 }
 APP_DIRS = [Path("/Applications"), Path.home() / "Applications"]
-# Windows: executable name and its folder below Program Files / %LOCALAPPDATA%.
+# Windows: executable name, its folder below Program Files / %LOCALAPPDATA%, and
+# optional (must contain, must not contain) markers for a registered "App Paths"
+# location. Chrome and Chromium share chrome.exe, Opera and Opera GX share
+# opera.exe, so the registry entry is accepted only if its path says which it is.
 WINDOWS_BROWSERS = {
-    "chrome": ("chrome.exe", ("Google", "Chrome", "Application")),
-    "edge": ("msedge.exe", ("Microsoft", "Edge", "Application")),
-    "brave": ("brave.exe", ("BraveSoftware", "Brave-Browser", "Application")),
+    "chrome": ("chrome.exe", ("Google", "Chrome", "Application"), ("", "chromium")),
+    "edge": ("msedge.exe", ("Microsoft", "Edge", "Application"), ("", "")),
+    "brave": ("brave.exe", ("BraveSoftware", "Brave-Browser", "Application"), ("", "")),
+    "vivaldi": ("vivaldi.exe", ("Vivaldi", "Application"), ("", "")),
+    "opera": ("opera.exe", ("Opera",), ("opera", "gx")),
+    "operagx": ("opera.exe", ("Opera GX",), ("gx", "")),
+    "chromium": ("chrome.exe", ("Chromium", "Application"), ("chromium", "")),
 }
-BROWSER_LABELS = {"chrome": "Google Chrome", "edge": "Microsoft Edge", "brave": "Brave"}
-# Edge ships with every Windows, so it is the dependable fallback there.
-AUTO_ORDER = {"darwin": ["chrome", "brave", "edge"], "win32": ["chrome", "edge", "brave"]}
+BROWSER_LABELS = {
+    "chrome": "Google Chrome",
+    "edge": "Microsoft Edge",
+    "brave": "Brave",
+    "vivaldi": "Vivaldi",
+    "opera": "Opera",
+    "operagx": "Opera GX",
+    "chromium": "Chromium",
+    "arc": "Arc",
+}
+# Every one of these is Chromium, so --user-data-dir and --remote-debugging-port
+# work alike. Arc goes last: it is a single-window-per-profile app that may reuse
+# a running instance instead of honouring a private profile, so it is only tried
+# when nothing more predictable is installed. Arc on Windows is a Store app with
+# no stable install path, so it is macOS only.
+AUTO_ORDER = {
+    "darwin": ["chrome", "edge", "brave", "vivaldi", "opera", "operagx", "chromium", "arc"],
+    "win32": ["chrome", "edge", "brave", "vivaldi", "opera", "operagx", "chromium"],
+}
 # Chromium writes the port it picked for --remote-debugging-port=0 here.
 DEVTOOLS_PORT_FILE = "DevToolsActivePort"
 POLL_SECONDS = 2
@@ -56,12 +88,56 @@ DETACHED_PROCESS = 0x00000008
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 
 
+class NoSupportedBrowserError(BlackboardSyncError):
+    """No supported Chromium-based browser is installed.
+
+    ``requested`` is the browser name asked for with ``--browser``, or None when
+    the search was automatic. Callers that have a fallback (such as an in-app
+    sign-in window) catch this type instead of matching the message.
+    """
+
+    def __init__(self, message: str, requested: str | None = None):
+        super().__init__(message)
+        self.requested = requested
+
+
+def supported_browsers(platform: str | None = None) -> list[str]:
+    """Browser names usable on this platform, in the order ``auto`` tries them."""
+    return list(AUTO_ORDER["win32" if is_windows(platform) else "darwin"])
+
+
 def _browser_order(preference: str, platform: str | None) -> list[str]:
+    available = supported_browsers(platform)
     if preference != "auto":
         if preference not in BROWSERS:
-            raise BlackboardSyncError(f"Unknown browser {preference!r}; use chrome, edge or brave.")
+            raise BlackboardSyncError(f"Unknown browser {preference!r}; use {', '.join(available)}.")
         return [preference]
-    return AUTO_ORDER["win32" if is_windows(platform) else "darwin"]
+    return available
+
+
+def discover_browser(
+    preference: str = "auto",
+    app_dirs: list[Path] | None = None,
+    *,
+    platform: str | None = None,
+    env: Mapping[str, str] | None = None,
+    registry: Callable[[str], list[str]] | None = None,
+) -> Path | None:
+    """Locate an installed browser (an app bundle on macOS, an ``.exe`` on
+    Windows), or return None when there is none. Unknown names still raise."""
+    for name in _browser_order(preference, platform):
+        if is_windows(platform):
+            if name not in WINDOWS_BROWSERS:
+                continue
+            for candidate in windows_browser_candidates(name, env, registry):
+                if candidate.is_file():
+                    return candidate
+        else:
+            for app_dir in app_dirs or APP_DIRS:
+                candidate = app_dir / BROWSERS[name]
+                if candidate.is_dir():
+                    return candidate
+    return None
 
 
 def find_browser(
@@ -72,22 +148,26 @@ def find_browser(
     env: Mapping[str, str] | None = None,
     registry: Callable[[str], list[str]] | None = None,
 ) -> Path:
-    """Locate an installed browser: an app bundle on macOS, an ``.exe`` on Windows."""
-    order = _browser_order(preference, platform)
-    if is_windows(platform):
-        for name in order:
-            for candidate in windows_browser_candidates(name, env, registry):
-                if candidate.is_file():
-                    return candidate
-        wanted = "Google Chrome, Microsoft Edge or Brave" if preference == "auto" else BROWSER_LABELS[preference]
-        raise BlackboardSyncError(f"Could not find {wanted} on this computer.")
-    for name in order:
-        for app_dir in app_dirs or APP_DIRS:
-            candidate = app_dir / BROWSERS[name]
-            if candidate.is_dir():
-                return candidate
-    wanted = "Google Chrome or Brave" if preference == "auto" else preference
-    raise BlackboardSyncError(f"Could not find {wanted} in /Applications.")
+    """Like ``discover_browser`` but raises ``NoSupportedBrowserError`` when none is found."""
+    found = discover_browser(preference, app_dirs, platform=platform, env=env, registry=registry)
+    if found is not None:
+        return found
+    if preference == "auto":
+        raise NoSupportedBrowserError(
+            "Could not find a supported browser (Google Chrome, Microsoft Edge, Brave, Vivaldi, "
+            "Opera, Opera GX, Chromium or Arc) on this computer.",
+            None,
+        )
+    raise NoSupportedBrowserError(
+        f"Could not find {BROWSER_LABELS[preference]} on this computer.", preference
+    )
+
+
+def _marker_ok(name: str, path: str | Path) -> bool:
+    """Whether ``path`` fits ``name`` where several browsers share an exe name."""
+    _, _, (must, must_not) = WINDOWS_BROWSERS[name]
+    lowered = str(path).lower()
+    return must in lowered and not (must_not and must_not in lowered)
 
 
 def windows_browser_candidates(
@@ -101,12 +181,15 @@ def windows_browser_candidates(
     standard per-machine and per-user install folders.
     """
     env = os.environ if env is None else env
-    exe, parts = WINDOWS_BROWSERS[name]
-    found = [Path(p) for p in (registry or windows_app_paths)(exe) if p]
-    for var in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "LOCALAPPDATA"):
+    exe, parts, _ = WINDOWS_BROWSERS[name]
+    registered = (registry or windows_app_paths)(exe)
+    found = [Path(p) for p in registered if p and _marker_ok(name, p)]
+    bases = [(var, ()) for var in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "LOCALAPPDATA")]
+    bases.append(("LOCALAPPDATA", ("Programs",)))  # per-user installers (Opera, Opera GX)
+    for var, extra in bases:
         base = env.get(var)
         if base:
-            found.append(Path(base).joinpath(*parts, exe))
+            found.append(Path(base).joinpath(*extra, *parts, exe))
     unique: list[Path] = []
     for path in found:
         if path not in unique:
@@ -134,9 +217,9 @@ def windows_app_paths(exe: str) -> list[str]:
 
 
 def browser_label(app: Path) -> str:
-    """A readable browser name: "Google Chrome", "Microsoft Edge", "Brave Browser"."""
-    for name, (exe, _) in WINDOWS_BROWSERS.items():
-        if app.name.lower() == exe:
+    """A readable browser name: "Google Chrome", "Microsoft Edge", "Opera GX"."""
+    for name, (exe, _, _) in WINDOWS_BROWSERS.items():
+        if app.name.lower() == exe and _marker_ok(name, app):
             return BROWSER_LABELS[name]
     return app.stem
 

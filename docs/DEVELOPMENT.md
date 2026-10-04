@@ -43,7 +43,7 @@ syncs every hour in the background and shows a macOS notification such as
 ## Setup
 
 Requirements: macOS, Python 3.10 or newer (`python3 --version`), and Google
-Chrome, Brave, or Microsoft Edge in `/Applications` or `~/Applications`. On Windows, see
+Chrome, Edge, Brave, Vivaldi, Opera, Opera GX, Chromium, or Arc (any Chromium-based browser) in `/Applications` or `~/Applications`. On Windows, see
 [Windows](#windows).
 
 ```sh
@@ -52,7 +52,7 @@ Chrome, Brave, or Microsoft Edge in `/Applications` or `~/Applications`. On Wind
 
 This creates a project-local virtual environment in `.venv/` and installs the
 pinned dependencies from `requirements.lock`. Nothing is installed globally and
-no browser is downloaded — sign-in uses the Chrome or Brave you already have.
+no browser is downloaded — sign-in uses the Chromium-based browser you already have.
 After setup the command is `.venv/bin/blackboard-sync` (or activate the
 environment with `source .venv/bin/activate` and type `blackboard-sync`).
 
@@ -64,8 +64,9 @@ environment with `source .venv/bin/activate` and type `blackboard-sync`).
 .venv/bin/blackboard-sync login
 ```
 
-A separate Chrome window (Brave if Chrome is missing, then Microsoft Edge;
-force one with `--browser chrome|brave|edge`) opens in front, on the Blackboard sign-in page, which
+A separate browser window (Chrome, else Edge, Brave, Vivaldi, Opera, Opera GX,
+Chromium, and Arc last; force one with
+`--browser chrome|edge|brave|vivaldi|opera|operagx|chromium|arc`) opens in front, on the Blackboard sign-in page, which
 for blackboard.istun.edu.tr forwards to the university's Microsoft sign-in.
 It is started like any app you open from the Dock, with its own private profile,
 so your everyday browser and its tabs are not touched. Sign in exactly as you
@@ -76,6 +77,20 @@ change).
 
 The tool never asks for, sees, or stores your password. It only keeps the
 session cookies Blackboard gives your browser after you sign in.
+
+Browser discovery (`blackboard_sync.login`): `discover_browser()` returns the
+installed browser's path or `None`; `find_browser()` raises
+`NoSupportedBrowserError` (a `BlackboardSyncError`; `.requested` is the
+`--browser` name, or `None` for `auto`) so a caller can fall back to another
+sign-in method. Every listed browser is Chromium and takes `--user-data-dir`
+and `--remote-debugging-port`. macOS bundle names: `Google Chrome.app`,
+`Microsoft Edge.app`, `Brave Browser.app`, `Vivaldi.app`, `Opera.app`,
+`Opera GX.app`, `Chromium.app`, `Arc.app`; on Windows `opera.exe` and
+`chrome.exe` are shared by Opera/Opera GX and Chrome/Chromium, so those are told
+apart by install folder. Arc is tried last on macOS and is not offered on
+Windows (Store app, no stable path). Only Chrome, Edge and Brave have been run
+end to end; the others are the same Chromium flags but untested here, and Arc
+may reuse a running instance instead of honouring the private profile.
 
 ### 2. Check what will be synced
 
@@ -242,7 +257,7 @@ downloads the same files into the same folders as the command does.
 ## Commands and options
 
 ```
-blackboard-sync [--base-url URL] [--data-dir DIR] [-v] login [--browser auto|chrome|edge|brave] [--timeout S]
+blackboard-sync [--base-url URL] [--data-dir DIR] [-v] login [--browser auto|chrome|edge|brave|vivaldi|opera|operagx|chromium|arc] [--timeout S]
 blackboard-sync [...] check [--term NAME | --all-terms] [--course CODE ...]
 blackboard-sync [...] sync  [--term NAME | --all-terms] [--course CODE ...]
                             [--dest DIR] [--json] [--dry-run] [--refetch-missing]
@@ -478,9 +493,10 @@ py -3 -m venv .venv
 .venv\Scripts\blackboard-sync sync
 ```
 
-Requirements: Python 3.10 or newer from python.org, and Google Chrome or
-Microsoft Edge (every Windows has Edge; Brave works too). `login` picks Chrome
-if it is installed, otherwise Edge (`--browser chrome|edge|brave` to choose),
+Requirements: Python 3.10 or newer from python.org, and a Chromium-based browser
+(every Windows has Microsoft Edge). `login` picks Chrome if it is installed,
+otherwise Edge, Brave, Vivaldi, Opera, Opera GX or Chromium
+(`--browser chrome|edge|brave|vivaldi|opera|operagx|chromium` to choose),
 and opens it as a separate window with its own private profile, exactly like on
 a Mac.
 

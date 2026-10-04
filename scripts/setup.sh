@@ -1,7 +1,7 @@
 #!/bin/sh
 # Create the project-local virtual environment and install pinned dependencies.
 # Nothing is installed globally, and no browser is downloaded: `login` drives the
-# Google Chrome or Brave that is already in /Applications.
+# Chromium-based browser (Chrome, Edge, Brave, ...) already in /Applications.
 set -eu
 cd "$(dirname "$0")/.."
 PYTHON="${PYTHON:-python3}"
