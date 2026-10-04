@@ -14,16 +14,18 @@ from html.parser import HTMLParser
 
 _BLOCK = {"p", "div", "section", "article", "header", "footer", "table", "blockquote", "pre"}
 _HEADINGS = {f"h{i}": i for i in range(1, 7)}
-_XID = re.compile(r"bbcswebdav/xid-(\d+_\d+)")
+# Files live at /bbcswebdav/xid-<id> or, in Ultra, /bbcswebdav/pid-..-rid-<id>/xid-<id>?<signed query>.
+_XID = re.compile(r"bbcswebdav/(?:[^?#\s\"']*/)?xid-(\d+_\d+)")
+_RID = re.compile(r"bbcswebdav/[^?#\s\"']*rid-(\d+_\d+)")
 
 
 @dataclass
 class EmbeddedFile:
     """A file embedded in an item body (Ultra documents link files this way)."""
 
-    xid: str
+    xid: str  # stable file id; a replaced file gets a new one
     name: str
-    url: str
+    url: str  # as found in the body; Ultra URLs carry a short-lived signed query
 
 
 def body_text(body) -> str:
@@ -47,6 +49,7 @@ class _Converter(HTMLParser):
         self.link_text_start: list[int] = []
         self.in_pre = 0
         self.cell_count = 0
+        self.skip_file_link = 0  # inside <a data-bbfile>: the file is saved, not quoted
 
     # -- helpers ---------------------------------------------------------
     def _newlines(self, n: int) -> None:
@@ -71,6 +74,12 @@ class _Converter(HTMLParser):
     # -- parser callbacks ------------------------------------------------
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
+        if attrs.get("data-bbfile"):
+            if tag == "a":
+                self.skip_file_link += 1
+            return
+        if self.skip_file_link:
+            return
         if tag in _HEADINGS:
             self._newlines(2)
             self.out.append("#" * _HEADINGS[tag] + " ")
@@ -121,6 +130,11 @@ class _Converter(HTMLParser):
             self._newlines(2)
 
     def handle_endtag(self, tag):
+        if tag == "a" and self.skip_file_link:
+            self.skip_file_link -= 1
+            return
+        if self.skip_file_link:
+            return
         if tag in _HEADINGS or tag in _BLOCK:
             if tag == "pre" and self.in_pre:
                 self.in_pre -= 1
@@ -150,6 +164,8 @@ class _Converter(HTMLParser):
                 self.out.append(f"]({href})")
 
     def handle_data(self, data):
+        if self.skip_file_link:
+            return
         if self.in_pre:
             self.out.append(data)
             return
@@ -185,7 +201,7 @@ class _EmbedFinder(HTMLParser):
         self._open: list[dict] = []
 
     def _add(self, url: str, name: str) -> None:
-        match = _XID.search(url or "")
+        match = _XID.search(url or "") or _RID.search(url or "")
         if not match:
             return
         if any(f.xid == match.group(1) for f in self.found):
@@ -200,11 +216,13 @@ class _EmbedFinder(HTMLParser):
                 meta = json.loads(attrs["data-bbfile"])
             except ValueError:
                 meta = {}
-        url = attrs.get("href") or attrs.get("src") or meta.get("resourceUrl") or ""
-        name = meta.get("linkName") or meta.get("displayName") or meta.get("fileName") or ""
+        if not isinstance(meta, dict):
+            meta = {}
+        url = meta.get("resourceUrl") or attrs.get("href") or attrs.get("src") or ""
+        name = meta.get("displayName") or meta.get("linkName") or meta.get("fileName") or ""
         if tag == "a":
             self._open.append({"url": url, "name": name, "text": []})
-        elif _XID.search(url):
+        elif _XID.search(url) or _RID.search(url):
             self._add(url, name or attrs.get("alt") or "")
 
     def handle_data(self, data):
@@ -219,7 +237,7 @@ class _EmbedFinder(HTMLParser):
 
 def find_embedded_files(html: str) -> list[EmbeddedFile]:
     """Files stored in Blackboard's content collection and linked from a body."""
-    if not html or "xid-" not in html:
+    if not html or "bbcswebdav" not in html:
         return []
     finder = _EmbedFinder()
     finder.feed(html)
