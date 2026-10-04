@@ -41,6 +41,9 @@ FOLDER_HANDLERS = {"resource/x-bb-folder", "resource/x-bb-lesson", "resource/x-b
 # Items that can never carry attachments; skip the extra request.
 NO_ATTACHMENT_HANDLERS = {"resource/x-bb-externallink", "resource/x-bb-courselink"}
 LEAF_HANDLERS = {"resource/x-bb-file", "resource/x-bb-document", "resource/x-bb-externallink"}
+# Ultra stores a document's text and files in one hidden child of that name.
+ULTRA_BODY_TITLE = "ultraDocumentBody"
+NO_ATTACHMENTS_MESSAGE = "does not support file attachments"
 NO_TERM = "No term"
 # Courses usually open a little before the term officially starts.
 TERM_LEAD_TIME = timedelta(days=30)
@@ -250,7 +253,14 @@ class Syncer:
         self.sync_announcements(course, report)
         return report
 
-    def walk(self, course: Course, items: list[dict], rel_dir: str, report: CourseReport) -> None:
+    def walk(
+        self,
+        course: Course,
+        items: list[dict],
+        rel_dir: str,
+        report: CourseReport,
+        parent_title: str = "",
+    ) -> None:
         for item in sorted(items, key=lambda i: i.get("position", 0)):
             if self.is_folder(item):
                 sub_dir = join_rel(rel_dir, sanitize_name(item.get("title") or "Folder", windows=self.windows))
@@ -261,10 +271,10 @@ class Syncer:
                 except ApiError as exc:
                     report.warnings.append(f"Could not open folder {item.get('title')!r}: {exc}")
                     continue
-                self.walk(course, children, sub_dir, report)
+                self.walk(course, children, sub_dir, report, item.get("title") or "")
             else:
                 try:
-                    self.process_item(course, item, rel_dir, report)
+                    self.process_item(course, item, rel_dir, report, parent_title)
                 except ApiError as exc:
                     report.warnings.append(f"Skipped {item.get('title')!r}: {exc}")
 
@@ -275,22 +285,41 @@ class Syncer:
             return True
         return bool(item.get("hasChildren")) and hid not in LEAF_HANDLERS
 
-    def process_item(self, course: Course, item: dict, rel_dir: str, report: CourseReport) -> None:
+    @staticmethod
+    def is_ultra_body(item: dict) -> bool:
+        return item.get("title") == ULTRA_BODY_TITLE and handler_id(item) == "resource/x-bb-document"
+
+    def process_item(
+        self, course: Course, item: dict, rel_dir: str, report: CourseReport, parent_title: str = ""
+    ) -> None:
         key = f"content:{course.id}:{item['id']}"
         modified = item.get("modified")
-        if self.state.item_unchanged(key, modified, self.dest, self.refetch_missing):
+        # Bodies come fresh with every listing, so the signed file URLs in them are
+        # still valid for the downloads below.
+        embedded_files = find_embedded_files(body_text(item.get("body")))
+        embedded_keys = [self.embedded_key(course, item, e) for e in embedded_files]
+        previous_item = self.state.items.get(key) or {}
+        # A replaced file shows up as a new id even when "modified" stays put.
+        if set(embedded_keys) <= set(previous_item.get("outputs", [])) and self.state.item_unchanged(
+            key, modified, self.dest, self.refetch_missing
+        ):
             return
-        title = item.get("title") or "Untitled"
+        ultra_body = self.is_ultra_body(item)
+        # The hidden Ultra child stands for its parent document.
+        title = (parent_title if ultra_body and parent_title else item.get("title")) or "Untitled"
         hid = handler_id(item)
         outputs: list[str] = []
         saved: list[str] = []
 
-        if hid not in NO_ATTACHMENT_HANDLERS:
+        if hid not in NO_ATTACHMENT_HANDLERS and not ultra_body:
             try:
                 attachments = self.client.attachments(course.id, item["id"])
             except ApiError as exc:
                 # Assignments, tests and tool links often have no attachment collection.
-                if hid == "resource/x-bb-file" or exc.status not in (403, 404):
+                no_attachments = exc.status in (403, 404) or (
+                    exc.status == 400 and NO_ATTACHMENTS_MESSAGE in str(exc)
+                )
+                if hid == "resource/x-bb-file" or not no_attachments:
                     raise
                 attachments = []
             for att in attachments:
@@ -301,25 +330,41 @@ class Syncer:
                 outputs.append(out_key)
                 saved.append(PurePosixPath(rel).name)
 
-        for embedded in find_embedded_files(body_text(item.get("body"))):
-            out_key = f"xid:{course.id}:{embedded.xid}"
+        stale = [k for k in previous_item.get("outputs", []) if k.startswith("xid:") and k not in embedded_keys]
+        for embedded, out_key in zip(embedded_files, embedded_keys):
             name = sanitize_name(embedded.name, windows=self.windows) if embedded.name else ""
-            # Rebuild the URL: older bodies hold placeholders instead of a real host.
-            url = f"/bbcswebdav/xid-{embedded.xid}"
+            desired = join_rel(rel_dir, name) if name else ""
+            replaces = next(
+                (k for k in stale if desired and (self.state.output(k) or {}).get("path") == desired),
+                None,
+            )
             rel = self.fetch_file(
-                out_key, join_rel(rel_dir, name) if name else "", url, report, rel_dir
+                out_key, desired, self.embedded_url(embedded), report, rel_dir, replaces=replaces
             )
             outputs.append(out_key)
             saved.append(PurePosixPath(rel).name)
 
         if needs_note(item):
-            note = render_item_note(item, self.course_label(course), self.course_url(course), saved)
+            note_item = {**item, "title": title} if title != item.get("title") else item
+            note = render_item_note(note_item, self.course_label(course), self.course_url(course), saved)
             out_key = f"note:{course.id}:{item['id']}"
             self.write_note(out_key, join_rel(rel_dir, note_name(title, windows=self.windows)), note, report, "notes")
             outputs.append(out_key)
 
         if not self.dry_run:
             self.state.record_item(key, modified, outputs, title)
+
+    @staticmethod
+    def embedded_key(course: Course, item: dict, embedded) -> str:
+        return f"xid:{course.id}:{item['id']}:{embedded.xid}"
+
+    @staticmethod
+    def embedded_url(embedded) -> str:
+        # Older bodies hold placeholders instead of a real host; rebuild the plain URL
+        # unless the link carries Ultra's own path and signed query.
+        if "?" in embedded.url and "/pid-" in embedded.url:
+            return embedded.url
+        return f"/bbcswebdav/xid-{embedded.xid}"
 
     def sync_announcements(self, course: Course, report: CourseReport) -> None:
         try:
@@ -354,8 +399,11 @@ class Syncer:
         url: str,
         report: CourseReport,
         fallback_dir: str = "",
+        replaces: str | None = None,
     ) -> str:
         """Download one file unless it is already mirrored; return its local path."""
+        if replaces and not self.dry_run and self.state.output(out_key) is None:
+            self.state.move_output(replaces, out_key)
         previous = self.state.output(out_key)
         if self.dry_run:
             if previous:

@@ -74,3 +74,13 @@ class State:
             del self._claimed[old["path"]]
         self.outputs[key] = {"path": rel_path, "sha256": sha256, "size": size}
         self._claimed[rel_path] = key
+
+    def move_output(self, old_key: str, new_key: str) -> None:
+        """Hand a mirrored file over to a new key (the file was replaced upstream)."""
+        entry = self.outputs.pop(old_key, None)
+        if entry is None or new_key in self.outputs:
+            if entry is not None:
+                self.outputs[old_key] = entry
+            return
+        self.outputs[new_key] = entry
+        self._claimed[entry["path"]] = new_key

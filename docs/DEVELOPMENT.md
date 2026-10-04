@@ -436,7 +436,7 @@ cookies — no page scraping and no application key:
 | Term name and dates | `/learn/api/public/v1/terms/{termId}` |
 | Course content tree | `/learn/api/public/v1/courses/{courseId}/contents` and `.../contents/{id}/children` |
 | Files of an item | `.../contents/{id}/attachments` and `.../attachments/{id}/download` |
-| Files embedded in a page | `/bbcswebdav/xid-...` links inside the item body |
+| Files embedded in a page | `data-bbfile` links (`/bbcswebdav/...xid-...`) inside the item body; Ultra documents keep them in a hidden `ultraDocumentBody` child, saved in the parent folder |
 | Announcements | `/learn/api/public/v1/courses/{courseId}/announcements` (falls back to `/learn/api/v1/...`) |
 
 All of these routes were confirmed to exist on blackboard.istun.edu.tr (Learn

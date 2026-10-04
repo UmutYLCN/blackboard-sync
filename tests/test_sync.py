@@ -177,7 +177,7 @@ def test_state_file_is_private_and_keyed_by_blackboard_ids(config, client):
     state = json.loads(config.state_file.read_text(encoding="utf-8"))
     assert state["items"]["content:_13004_1:_c11_1"]["modified"] == "2026-09-01T10:05:00.000Z"
     assert state["outputs"]["attachment:_13004_1:_a11_1"]["path"] == SYLLABUS
-    assert "xid:_13004_1:777_1" in state["outputs"]
+    assert "xid:_13004_1:_c211_1:777_1" in state["outputs"]
 
 
 def test_dry_run_writes_nothing(config, client, fake_bb):
@@ -266,3 +266,182 @@ def test_windows_names_are_valid_and_paths_fit(config, client, fake_bb, monkeypa
     website = next(f for f in files if f.startswith(f"{CSE}/Course Website - vvv"))
     assert len(website.rsplit("/", 1)[-1]) <= 120
     assert all(len(str(config.dest)) + 1 + len(f) <= 259 for f in files)
+
+
+# -- Ultra documents: files embedded in the hidden "ultraDocumentBody" child -----------
+COURSE = "/learn/api/public/v1/courses/_13004_1/contents"
+WEEK = f"{CSE}/WEEK 01 - FUNDAMENTALS"
+
+
+def ultra_body(rid, name, text=""):
+    meta = json.dumps(
+        {
+            "linkName": name,
+            "displayName": name,
+            "mimeType": "application/octet-stream",
+            "resourceUrl": f"https://blackboard.example.edu/bbcswebdav/pid-9-dt-content-rid-{rid}/xid-{rid}?t=TOKEN&e=EXPIRY&s=SIG",
+        }
+    )
+    href = f"https://blackboard.example.edu/bbcswebdav/pid-9-dt-content-rid-{rid}/xid-{rid}?t=TOKEN&e=EXPIRY&s=SIG"
+    link = (
+        f'<a data-bbid="bbml-editor-id_0" data-bbfile="{meta.replace(chr(34), "&quot;")}" href="{href}"></a>'
+    )
+    return (
+        '<div data-layout-row="r"><div data-layout-column="c" data-layout-column-width="12">'
+        f"{text}{link}</div></div>"
+    )
+
+
+def add_ultra_doc(fake_bb, doc_id, title, body, rid, position=5):
+    root = fake_bb.routes[COURSE]["results"]
+    root.append(
+        {
+            "id": doc_id, "title": title, "position": position, "hasChildren": True,
+            "modified": "2026-09-30T10:00:00.000Z",
+            "contentHandler": {"id": "resource/x-bb-folder"},
+        }
+    )
+    child = f"{doc_id}_body"
+    fake_bb.routes[f"{COURSE}/{doc_id}/children"] = {
+        "results": [
+            {
+                "id": child, "title": "ultraDocumentBody", "position": 0,
+                "modified": "2026-09-30T10:00:00.000Z",
+                "contentHandler": {"id": "resource/x-bb-document"},
+                "body": body,
+            }
+        ]
+    }
+    # Real Blackboard answers 400 for these; the sync must not even ask.
+    fake_bb.routes.pop(f"{COURSE}/{child}/attachments", None)
+    return child
+
+
+def ultra_course(fake_bb):
+    add_ultra_doc(
+        fake_bb, "_w1_1", "WEEK 01 - FUNDAMENTALS",
+        ultra_body("4023455_1", "CSE301 - WEEK 01 - FUNDAMENTALS.pptx"), "4023455_1",
+    )
+    add_ultra_doc(
+        fake_bb, "_w0_1", "COURSE SYLLABUS",
+        ultra_body("4023400_1", "CSE301 - Ders İzlencesi ENG (Syllabus).docx"), "4023400_1", 6,
+    )
+    fake_bb.files["/bbcswebdav/pid-9-dt-content-rid-4023455_1/xid-4023455_1"] = b"PPTX v1"
+    fake_bb.files["/bbcswebdav/pid-9-dt-content-rid-4023400_1/xid-4023400_1"] = b"DOCX v1"
+
+
+def test_ultra_document_files_land_in_the_parent_folder(config, client, fake_bb):
+    ultra_course(fake_bb)
+
+    report = sync(config, client)
+
+    files = files_under(config.dest)
+    pptx = f"{WEEK}/CSE301 - WEEK 01 - FUNDAMENTALS.pptx"
+    docx = f"{CSE}/COURSE SYLLABUS/CSE301 - Ders İzlencesi ENG (Syllabus).docx"
+    assert pptx in files and docx in files
+    assert (config.dest / pptx).read_bytes() == b"PPTX v1"
+    # No hidden-child folder, and an empty layout wrapper produces no note.
+    assert not any("ultraDocumentBody" in f for f in files)
+    assert not any(f.startswith(WEEK) and f.endswith(".md") for f in files)
+    assert not [w for c in report.courses for w in c.warnings]
+    # Neither the attachment collection nor anything signed is stored.
+    assert not any("_body/attachments" in c for c in fake_bb.calls)
+    state = (config.data_dir / "state.json").read_text(encoding="utf-8")
+    assert "TOKEN" not in state and "xid:_13004_1:_w1_1_body:4023455_1" in state
+
+
+def test_ultra_body_text_becomes_the_documents_note(config, client, fake_bb):
+    add_ultra_doc(
+        fake_bb, "_w2_1", "WEEK 02 - E R MODEL I",
+        ultra_body("4023500_1", "week2.pptx", "<p>Read chapter 2.</p>"), "4023500_1",
+    )
+    fake_bb.files["/bbcswebdav/pid-9-dt-content-rid-4023500_1/xid-4023500_1"] = b"PPTX w2"
+
+    sync(config, client)
+
+    folder = config.dest / CSE / "WEEK 02 - E R MODEL I"
+    note = (folder / "WEEK 02 - E R MODEL I.md").read_text(encoding="utf-8")
+    assert "Read chapter 2." in note and "- week2.pptx" in note
+    assert "ultraDocumentBody" not in note and "TOKEN" not in note
+    assert (folder / "week2.pptx").read_bytes() == b"PPTX w2"
+
+
+def test_no_attachments_answer_is_silent(config, client, fake_bb):
+    item = {
+        "id": "_d1_1", "title": "Plain doc", "position": 7, "modified": "2026-09-30T10:00:00.000Z",
+        "contentHandler": {"id": "resource/x-bb-document"}, "body": "<p>Hello</p>",
+    }
+    fake_bb.routes[COURSE]["results"].append(item)
+    real_get = fake_bb.get
+
+    def get(url, **kwargs):
+        if url.endswith("/_d1_1/attachments"):
+            from .conftest import FakeResponse
+
+            return FakeResponse(
+                400, url, {"status": 400, "message": "The Content Item does not support file attachments"}
+            )
+        return real_get(url, **kwargs)
+
+    fake_bb.get = get
+    report = sync(config, client)
+
+    assert not [w for c in report.courses for w in c.warnings]
+    assert (config.dest / CSE / "Plain doc.md").exists()
+
+
+def test_other_400s_still_warn(config, client, fake_bb):
+    fake_bb.routes[COURSE]["results"].append(
+        {"id": "_d2_1", "title": "Odd", "position": 8, "modified": "x",
+         "contentHandler": {"id": "resource/x-bb-document"}, "body": "<p>x</p>"}
+    )
+    real_get = fake_bb.get
+
+    def get(url, **kwargs):
+        if url.endswith("/_d2_1/attachments"):
+            from .conftest import FakeResponse
+
+            return FakeResponse(400, url, {"status": 400, "message": "Bad request"})
+        return real_get(url, **kwargs)
+
+    fake_bb.get = get
+    report = sync(config, client)
+    assert any("Skipped 'Odd'" in w for c in report.courses for w in c.warnings)
+
+
+def test_ultra_second_run_downloads_nothing(config, client, fake_bb):
+    ultra_course(fake_bb)
+    sync(config, client)
+    fake_bb.calls.clear()
+
+    report = sync(config, client)
+
+    assert fake_bb.downloads() == []
+    assert report.totals() == {k: 0 for k in report.totals()}
+
+
+def test_ultra_replaced_file_is_downloaded_again_in_place(config, client, fake_bb):
+    ultra_course(fake_bb)
+    sync(config, client)
+    name = "CSE301 - WEEK 01 - FUNDAMENTALS.pptx"
+    body = ultra_body("4023999_1", name)
+    fake_bb.routes[f"{COURSE}/_w1_1/children"]["results"][0]["body"] = body  # "modified" unchanged
+    fake_bb.files["/bbcswebdav/pid-9-dt-content-rid-4023999_1/xid-4023999_1"] = b"PPTX v2"
+    fake_bb.calls.clear()
+
+    report = sync(config, client)
+
+    assert fake_bb.downloads() == ["/bbcswebdav/pid-9-dt-content-rid-4023999_1/xid-4023999_1"]
+    assert (config.dest / WEEK / name).read_bytes() == b"PPTX v2"
+    assert not (config.dest / WEEK / "CSE301 - WEEK 01 - FUNDAMENTALS (2).pptx").exists()
+    cse = next(c for c in report.courses if c.code == "CSE303")
+    assert cse.updated_files == [f"{WEEK}/{name}"]
+
+
+def test_empty_folders_from_the_failed_runs_get_filled(config, client, fake_bb):
+    ultra_course(fake_bb)
+    (config.dest / WEEK).mkdir(parents=True)  # what the old version left behind
+
+    sync(config, client)
+
+    assert (config.dest / WEEK / "CSE301 - WEEK 01 - FUNDAMENTALS.pptx").exists()
