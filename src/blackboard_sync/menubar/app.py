@@ -13,6 +13,7 @@ import sys
 import threading
 from pathlib import Path
 
+from blackboard_sync import runtime, updater
 from blackboard_sync.config import Config
 from blackboard_sync.menubar import jobs, launchagent, settings_form
 from blackboard_sync.menubar.model import (
@@ -24,6 +25,7 @@ from blackboard_sync.menubar.model import (
     open_target,
 )
 from blackboard_sync.settings import SettingsError, save_settings
+from blackboard_sync.updater import CheckResult, Release, UpdateError
 
 log = logging.getLogger("blackboard_sync.menubar")
 
@@ -42,6 +44,13 @@ DESCRIPTIONS = {
     Icon.EXPIRED: "Blackboard Sync: oturum sona erdi",
     Icon.ERROR: "Blackboard Sync: hata",
 }
+T_UPDATE_READY = "Blackboard Sync {version} indirildi"
+T_UPDATE_STEPS = (
+    "Açılan pencerede “Blackboard Sync” simgesini “Applications” klasörüne sürükleyin "
+    "ve eski sürümün yerine koymak için “Değiştir”i seçin. Bunun için önce "
+    "Blackboard Sync'ten çıkmanız gerekir; sonra uygulamayı Applications klasöründen "
+    "yeniden açın. Ayarlarınız ve indirdiğiniz ders dosyaları korunur."
+)
 
 
 def symbol_image(icon: Icon):
@@ -62,6 +71,10 @@ def symbol_image(icon: Icon):
 
 def open_path(path: Path) -> None:
     subprocess.Popen(["open", str(path)], stdin=subprocess.DEVNULL)
+
+
+def open_url(url: str) -> None:
+    subprocess.Popen(["open", url], stdin=subprocess.DEVNULL)
 
 
 def build_app(config: Config):
@@ -100,6 +113,8 @@ def build_app(config: Config):
         def tick(self, _sender=None) -> None:
             if self.model.due(jobs.utcnow()):
                 self.start_sync()
+            if self.model.update_due(jobs.utcnow()):
+                self.start_update_check(manual=False)
             self.refresh()
 
         def start_sync(self, _sender=None, job: str = "sync") -> None:
@@ -145,6 +160,67 @@ def build_app(config: Config):
                 self.start_login()
                 return
             self.tick()  # a successful sign-in makes a sync due right away
+
+        # -- updates -----------------------------------------------------
+        def start_update_check(self, _sender=None, manual: bool = True) -> None:
+            if not self.model.updates.begin("check"):
+                return
+            self.refresh()
+            threading.Thread(target=self._update_check_worker, args=(manual,), daemon=True).start()
+
+        def _update_check_worker(self, manual: bool) -> None:
+            try:
+                result = updater.check()
+            except Exception:  # check() handles network errors; never leave the row stuck
+                log.exception("update check failed")
+                result = CheckResult("unknown")
+            AppHelper.callAfter(self._update_checked, result, manual)
+
+        def _update_checked(self, result: CheckResult, manual: bool) -> None:
+            log.info("update check: %s %s", result.status, result.release.version if result.release else "")
+            for note in self.model.updates.finish_check(result, jobs.utcnow(), manual):
+                self.notify(note)
+            self._save()
+            self.refresh()
+
+        def start_update(self, _sender=None) -> None:
+            release = self.model.updates.available
+            if release is None:
+                self.start_update_check()
+                return
+            if not runtime.is_frozen():
+                # Run from a checkout: there is no app bundle to replace.
+                open_url(release.page_url)
+                return
+            if not self.model.updates.begin("download"):
+                return
+            self.refresh()
+            threading.Thread(target=self._update_download_worker, args=(release,), daemon=True).start()
+
+        def _update_download_worker(self, release: Release) -> None:
+            try:
+                path, error = updater.download(release, updater.download_dir()), ""
+            except UpdateError as exc:
+                path, error = None, str(exc)
+            except OSError as exc:
+                path, error = None, f"Güncelleme kaydedilemedi: {exc.strerror or exc}"
+            except Exception:  # keep the menu usable whatever went wrong
+                log.exception("update download failed")
+                path, error = None, "Güncelleme indirilemedi."
+            AppHelper.callAfter(self._update_downloaded, release, path, error)
+
+        def _update_downloaded(self, release: Release, path: Path | None, error: str) -> None:
+            log.info("update download: %s %s", path, error)
+            for note in self.model.updates.finish_download(error):
+                self.notify(note)
+            self.refresh()
+            if path is None:
+                return
+            # No silent replacement: an unsigned app cannot reliably swap itself.
+            updater.open_disk_image(path)
+            if rumps.alert(T_UPDATE_READY.format(version=release.version), T_UPDATE_STEPS,
+                           ok="Blackboard Sync'ten çık", cancel="Sonra") == 1:
+                self.quit()
 
         def open_school_folder(self, _sender=None) -> None:
             if self.model.dest.is_dir():
@@ -207,7 +283,9 @@ def build_app(config: Config):
                 "settings saved: %s, dest %s", submission.settings.base_url, submission.settings.dest
             )
             self.settings = submission.settings
-            self.model.apply_settings(submission.settings.dest, submission.school_changed)
+            self.model.apply_settings(
+                submission.settings.dest, submission.school_changed, submission.settings.check_updates
+            )
             if submission.autostart != launchagent.is_installed():
                 self.toggle_autostart()
             self._save()
@@ -223,6 +301,8 @@ def build_app(config: Config):
             data = notification.data if isinstance(notification.data, dict) else {}
             if data.get("action") == "login":
                 self.start_login()
+            elif data.get("action") == "update":
+                self.start_update()
             elif data.get("open"):
                 path = Path(data["open"])
                 open_path(path if path.exists() else self.model.dest)
@@ -261,7 +341,7 @@ def build_app(config: Config):
                     "settings": self.open_settings, "autostart": self.toggle_autostart,
                     "logout": self.logout, "quit": self.quit,
                     "open": lambda _s: self.open_recent(entry.value),
-                    "releases": lambda _s: subprocess.Popen(["open", entry.value]),
+                    "check_updates": self.start_update_check, "update": self.start_update,
                 }
                 item = rumps.MenuItem(entry.title, callback=actions.get(entry.action) if entry.enabled else None)
                 item.state = int(entry.checked)

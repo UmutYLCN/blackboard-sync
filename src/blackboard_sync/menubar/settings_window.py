@@ -33,6 +33,7 @@ from Foundation import NSURL, NSMakeRect, NSObject
 from blackboard_sync.menubar.model import T_AUTOSTART
 from blackboard_sync.menubar.settings_form import (
     T_CANCEL,
+    T_CHECK_UPDATES,
     T_CHOOSE_FOLDER,
     T_CHOOSE_FOLDER_MESSAGE,
     T_CHOOSE_FOLDER_PROMPT,
@@ -164,7 +165,11 @@ class SettingsWindow:
 
         self.autostart = NSButton.checkboxWithTitle_target_action_(T_AUTOSTART, None, None)
         self.autostart.setState_(1 if values.autostart else 0)
-        place(self.autostart, 18, gap=12)
+        place(self.autostart, 18, gap=8)
+
+        self.check_updates = NSButton.checkboxWithTitle_target_action_(T_CHECK_UPDATES, None, None)
+        self.check_updates.setState_(1 if values.check_updates else 0)
+        place(self.check_updates, 18, gap=12)
 
         self.error_label, _ = wrapping("")
         self.error_label.setTextColor_(NSColor.systemRedColor())
@@ -204,6 +209,7 @@ class SettingsWindow:
             base_url=str(self.url_field.stringValue()),
             dest=str(self.dest_field.stringValue()),
             autostart=bool(self.autostart.state()),
+            check_updates=bool(self.check_updates.state()),
         )
 
     def submit(self, login: bool) -> None:

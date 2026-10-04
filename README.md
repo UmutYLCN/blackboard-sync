@@ -143,6 +143,8 @@ asks for:
 - **Dosyaların kaydedileceği klasör** — prefilled with `~/Documents/Okul`;
   **Seç…** opens a folder picker.
 - **Bilgisayar açılınca başlat** — ticked by default (see below).
+- **Güncellemeleri otomatik denetle** — ticked by default (see
+  [Updates](#updates)).
 
 **Giriş yap** saves and opens the Blackboard sign-in window; **Kaydet** only
 saves. Nothing is synced on a schedule until the window has been saved once.
@@ -158,6 +160,27 @@ The choices are stored in `settings.json` in the data folder (see
 same file, so after the window is saved the terminal syncs the same school
 into the same folder without any flags; `BBSYNC_*` variables and command-line
 options still override it for the terminal.
+
+### Updates
+
+Once a day the app asks GitHub whether a newer release exists (only while
+**Güncellemeleri otomatik denetle** is ticked) and posts one notification per
+new version, "Blackboard Sync 1.1.0 hazır — Güncelle". The version row at the
+bottom of the menu then reads **Güncelleme var: 1.1.0 — Güncelle**; otherwise
+**Sürüm … · Güncellemeleri denetle** checks right away and answers with a
+notification.
+
+**Güncelle** downloads `Blackboard-Sync-<version>.dmg` into Downloads, checks
+it against the release's `SHA256SUMS.txt`, opens it and explains the last
+step: quit Blackboard Sync and drag the new app over the old one in
+Applications. The app is not signed with a paid Apple certificate, so it does
+not replace itself silently. Run from a checkout, **Güncelle** opens the
+release page instead.
+
+Checking needs the GitHub repository to be public: without signing in, GitHub
+does not show a private repository's releases, and the app then simply finds
+no update. No account data is sent; the request is an anonymous call to
+`api.github.com`.
 
 ### Start at login
 
@@ -179,8 +202,9 @@ user account.
 | **Giriş yap** | Opens the Blackboard sign-in window (same as `blackboard-sync login`). As soon as you are in, a sync starts. |
 | **Okul klasörünü aç** | Opens the folder chosen in **Ayarlar…** (`~/Documents/Okul` by default) in Finder. |
 | **Son indirilenler** | The last 10 files, notes and announcements that came in. Click one to open it (or its folder, if you moved the file). |
-| **Ayarlar…** | Reopens the [settings window](#settings): school address, folder, start at login. |
+| **Ayarlar…** | Reopens the [settings window](#settings): school address, folder, start at login, update checks. |
 | **Bilgisayar açılınca başlat** | Start the app at login (see above). A check mark means it is on. |
+| **Sürüm … · Güncellemeleri denetle** | Check for a new version now. Reads **Güncelleme var: X — Güncelle** when one is available; click it to download and install it (see [Updates](#updates)). |
 | **Çıkış** | Quit the app. |
 
 The icon tells you the state at a glance:
@@ -430,7 +454,9 @@ and tick **Bilgisayar açılınca başlat** again.
 - Only cookies for the Blackboard site are saved, in a file only your user
   account can read. Single-sign-on cookies stay inside the tool's private
   browser profile.
-- Nothing is sent anywhere except to Blackboard itself.
+- Nothing is sent anywhere except to Blackboard itself, and, for the menu
+  bar app's update check, an anonymous request to GitHub for this project's
+  latest release (switch it off with **Güncellemeleri otomatik denetle**).
 - Session data, sync state and course material are never stored in this
   repository; `.gitignore` also blocks them as a safety net.
 - To remove everything: delete
@@ -516,8 +542,9 @@ it). To release, bump it, merge, then push a matching tag:
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-The `Release` workflow builds the `.dmg` on a macOS runner and attaches it to
-a GitHub Release. The `CI` workflow runs the tests on pull requests.
+The `Release` workflow builds the `.dmg` on a macOS runner and attaches it,
+with a `SHA256SUMS.txt` the app's updater verifies it against, to a GitHub
+Release. The `CI` workflow runs the tests on pull requests.
 
 ## License
 
