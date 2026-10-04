@@ -42,9 +42,11 @@ syncs every hour in the background and shows a macOS notification such as
 
 ## Setup
 
-Requirements: macOS, Python 3.10 or newer (`python3 --version`), and Google
-Chrome, Edge, Brave, Vivaldi, Opera, Opera GX, Chromium, or Arc (any Chromium-based browser) in `/Applications` or `~/Applications`. On Windows, see
-[Windows](#windows).
+Requirements: macOS 11 or newer and Python 3.10 or newer (`python3 --version`).
+Google Chrome, Edge, Brave, Vivaldi, Opera, Opera GX, Chromium, or Arc (any
+Chromium-based browser) in `/Applications` or `~/Applications` is used for
+sign-in when present; without one, sign-in happens in the app's own window. On
+Windows, see [Windows](#windows).
 
 ```sh
 ./scripts/setup.sh
@@ -52,7 +54,8 @@ Chrome, Edge, Brave, Vivaldi, Opera, Opera GX, Chromium, or Arc (any Chromium-ba
 
 This creates a project-local virtual environment in `.venv/` and installs the
 pinned dependencies from `requirements.lock`. Nothing is installed globally and
-no browser is downloaded — sign-in uses the Chromium-based browser you already have.
+no browser is downloaded — sign-in uses the Chromium-based browser you already have,
+or the system's web view.
 After setup the command is `.venv/bin/blackboard-sync` (or activate the
 environment with `source .venv/bin/activate` and type `blackboard-sync`).
 
@@ -75,6 +78,18 @@ that window closes by itself and the terminal prints
 `Signed in as <your user name>`. You have 10 minutes (`--timeout SECONDS` to
 change).
 
+Without any of those browsers, `login` signs you in in its own small window
+instead (also forced with `--browser inapp`): the operating system's web view
+(WKWebView on macOS, Microsoft Edge WebView2 on Windows) opens the same
+Blackboard address, you sign in the same way, and the window closes by itself.
+With `auto`, a browser that fails to start or cannot be reached before the
+sign-in page is up also falls back to that window. The terminal says which one
+opened (`Opening Google Chrome ...` or `Opening the sign-in window ...`), and
+the menu bar / tray status line while waiting names it too. Both methods save
+the same `session.json`, so `sync`, cookie refresh and expiry work the same.
+Some identity providers refuse embedded web views; if the window shows such an
+error, install a Chromium-based browser and sign in again.
+
 The tool never asks for, sees, or stores your password. It only keeps the
 session cookies Blackboard gives your browser after you sign in.
 
@@ -91,6 +106,19 @@ apart by install folder. Arc is tried last on macOS and is not offered on
 Windows (Store app, no stable path). Only Chrome, Edge and Brave have been run
 end to end; the others are the same Chromium flags but untested here, and Arc
 may reuse a running instance instead of honouring the private profile.
+
+In-app window (`blackboard_sync.inapp`, GUI-free; `inapp_macos`,
+`inapp_windows`): `login.choose_browser()` returns the browser to use or `None`
+for the window, `login.login_method_label()` the name shown in the UI (or
+`inapp`). The window polls its web view's cookie store, which includes HttpOnly
+cookies (`WKHTTPCookieStore` on macOS, WebView2's cookie manager through
+pywebview's `get_cookies()` on Windows), keeps only Blackboard-host cookies,
+and stops once `/learn/api/public/v1/users/me` accepts them. macOS keeps the
+window's web data in WebKit's store for the app (`~/Library/WebKit/`), Windows
+in `inapp-profile\` in the data folder; both keep the identity provider's "stay
+signed in", like the browser profile. macOS does not let a process started in
+the background take the keyboard from the active app, so the window opens on
+top of other windows but you may need to click into it once before typing.
 
 ### 2. Check what will be synced
 
@@ -257,7 +285,7 @@ downloads the same files into the same folders as the command does.
 ## Commands and options
 
 ```
-blackboard-sync [--base-url URL] [--data-dir DIR] [-v] login [--browser auto|chrome|edge|brave|vivaldi|opera|operagx|chromium|arc] [--timeout S]
+blackboard-sync [--base-url URL] [--data-dir DIR] [-v] login [--browser auto|chrome|edge|brave|vivaldi|opera|operagx|chromium|arc|inapp] [--timeout S]
 blackboard-sync [...] check [--term NAME | --all-terms] [--course CODE ...]
 blackboard-sync [...] sync  [--term NAME | --all-terms] [--course CODE ...]
                             [--dest DIR] [--json] [--dry-run] [--refetch-missing]
@@ -291,6 +319,7 @@ most recently started term. Courses the instructor has not opened yet
 | Settings (school address, folder) | `~/Library/Application Support/blackboard-sync/settings.json` |
 | Session cookies | `~/Library/Application Support/blackboard-sync/session.json` |
 | Sign-in browser profile | `~/Library/Application Support/blackboard-sync/browser-profile/` |
+| In-app sign-in window's web data | `~/Library/WebKit/` (the app's or Python's folder) |
 | Sync state | `~/Library/Application Support/blackboard-sync/state.json` |
 | Last run summary | `~/Library/Application Support/blackboard-sync/last-run.json` |
 | Menu bar app state and log | `~/Library/Application Support/blackboard-sync/menubar.json`, `menubar.log` |
@@ -435,6 +464,17 @@ run `login` from a plain iTerm or Terminal tab (outside tmux/herdr) and report i
 probably still open with the same private profile. Quit that window (it is the
 one without your usual tabs) and run `login` again.
 
+**"The sign-in window needs the Microsoft Edge WebView2 Runtime" (Windows).**
+WebView2 comes with Windows 10 and 11, but it can be missing on stripped-down
+or very old installations. Install the Evergreen runtime from
+<https://go.microsoft.com/fwlink/p/?LinkId=2124703>, or install Chrome or Edge,
+then sign in again.
+
+**The sign-in window says the browser or app is not allowed.** Some schools'
+identity providers block embedded web views. Install a Chromium-based browser
+(Chrome, Edge, Brave, Opera, Vivaldi, ...) and sign in again; it is used
+automatically.
+
 **`login` keeps waiting after I signed in.** It finishes once Blackboard's own
 pages load for you. If you ended on an error page, open
 <https://blackboard.istun.edu.tr> in that window and finish signing in there.
@@ -462,8 +502,9 @@ and tick **Bilgisayar açılınca başlat** again.
 
 ## Privacy
 
-- Your password is typed only into Blackboard's own sign-in page in a real
-  browser window; this tool never receives it.
+- Your password is typed only into Blackboard's own sign-in page, in a real
+  browser window or the system web view of the in-app window; this tool never
+  receives it.
 - While `login` waits for you, the sign-in browser listens on a random local
   DevTools port (127.0.0.1 only) so the tool can read the Blackboard cookies
   once you are in; the port closes with that window.
@@ -493,12 +534,13 @@ py -3 -m venv .venv
 .venv\Scripts\blackboard-sync sync
 ```
 
-Requirements: Python 3.10 or newer from python.org, and a Chromium-based browser
-(every Windows has Microsoft Edge). `login` picks Chrome if it is installed,
-otherwise Edge, Brave, Vivaldi, Opera, Opera GX or Chromium
-(`--browser chrome|edge|brave|vivaldi|opera|operagx|chromium` to choose),
-and opens it as a separate window with its own private profile, exactly like on
-a Mac.
+Requirements: Python 3.10 or newer from python.org. `login` picks Chrome if it
+is installed, otherwise Edge, Brave, Vivaldi, Opera, Opera GX or Chromium
+(`--browser chrome|edge|brave|vivaldi|opera|operagx|chromium` to choose), and
+opens it as a separate window with its own private profile, exactly like on a
+Mac. Without any of them (or with `--browser inapp`) it signs in in its own
+WebView2 window (pywebview, through pythonnet); see
+[Troubleshooting](#troubleshooting) if the WebView2 Runtime is missing.
 
 | What | Where on Windows |
 | --- | --- |
@@ -610,7 +652,8 @@ MIT, see [LICENSE](../LICENSE).
 
 The Windows 10/11 tray app uses the same menu, hourly sync schedule, settings,
 CLI jobs and locks as the macOS app. Install Python 3.12 from python.org with
-**pip** and **Tcl/Tk** enabled, and install Chrome or Edge for sign-in. Download
+**pip** and **Tcl/Tk** enabled (sign-in uses an installed Chromium-based browser,
+else the app's WebView2 window). Download
 or clone this repository, open PowerShell in its folder, then run:
 
 ```powershell
@@ -621,7 +664,7 @@ py -3.12 -m venv .venv
 
 The first launch opens settings: enter your school's Blackboard URL, choose a
 folder (default: `Documents\Okul`), and select **Giriş yap**. Complete sign-in in
-the browser. Right-click the tray icon next to the clock (possibly inside the
+the window that opens. Right-click the tray icon next to the clock (possibly inside the
 hidden-icons arrow) for the shared menu. Later, launch without a console with:
 
 ```powershell

@@ -10,8 +10,16 @@ VERSION = re.search(
 a = Analysis(
     [str(ROOT / "packaging" / "app_entry.py")],
     pathex=[str(ROOT / "src")],
-    # The sync child run and the menu bar app are imported lazily by app_entry.
-    hiddenimports=["blackboard_sync.cli", "blackboard_sync.menubar.app", "rumps", "playwright.sync_api"],
+    # The sync child run and the menu bar app are imported lazily by app_entry,
+    # the in-app sign-in window (WKWebView) lazily by login.
+    hiddenimports=[
+        "blackboard_sync.cli",
+        "blackboard_sync.menubar.app",
+        "rumps",
+        "playwright.sync_api",
+        "blackboard_sync.inapp_macos",
+        "WebKit",
+    ],
     excludes=["pytest", "tkinter", "unittest", "pydoc_data"],
 )
 pyz = PYZ(a.pure)

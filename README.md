@@ -9,7 +9,7 @@ Yeni ders içeriklerini otomatik indirip Blackboard’daki klasör yapısıyla b
 - **macOS:** `Blackboard-Sync-<version>.dmg` dosyasını aç, **Blackboard Sync** uygulamasını **Uygulamalar (Applications)** klasörüne sürükle. İlk açılışta sağ tık → **Aç** seçeneğini kullan.
 - **Windows:** `Blackboard-Sync-<version>-Setup.exe` dosyasını çalıştır ve kurulumu tamamla. SmartScreen uyarısı çıkarsa **Ek bilgi → Yine de çalıştır** seçeneğini kullan.
 
-Giriş için bilgisayarında Chrome, Edge, Brave, Vivaldi, Opera, Opera GX, Chromium veya Arc (macOS) gibi Chromium tabanlı bir tarayıcı bulunmalı; Python kurman gerekmez. İlk açılışta okulunun Blackboard adresini ve kayıt klasörünü seç, **Giriş yap** düğmesine bas ve tarayıcıda girişini tamamla.
+Python kurman gerekmez. Bilgisayarında Chrome, Edge, Brave, Opera, Vivaldi gibi bir tarayıcı varsa giriş onda açılır; yoksa uygulamanın kendi penceresinde açılır, tarayıcı gerekmez. İlk açılışta okulunun Blackboard adresini ve kayıt klasörünü seç, **Giriş yap** düğmesine bas ve açılan pencerede girişini tamamla.
 
 ## Kullanım
 
@@ -23,6 +23,6 @@ Güncellemeler varsayılan olarak otomatik denetlenir. Menüdeki sürüm satır�
 
 ## Gizlilik
 
-Şifren hiçbir zaman uygulamadan geçmez; girişini tarayıcıda yaparsın. Oturumun sadece bu bilgisayarda saklanır.
+Şifreni yalnızca okulunun giriş sayfasına yazarsın; uygulama şifreni görmez ve saklamaz. Oturumun sadece bu bilgisayarda saklanır.
 
 Lisans: [MIT](LICENSE). Geliştirme ve komut satırı kullanımı: [geliştirici rehberi](docs/DEVELOPMENT.md).

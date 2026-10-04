@@ -91,6 +91,19 @@ def run_login(settings: Settings, runner: Runner = subprocess.run) -> tuple[bool
     return False, lines[-1] if lines else f"exit status {proc.returncode}"
 
 
+def login_method(platform: str | None = None) -> str:
+    """Where ``login`` will ask the student to sign in: a browser's name or ``INAPP``.
+
+    Shown while waiting; "" if it cannot be told (the sign-in itself decides).
+    """
+    from blackboard_sync.login import login_method_label
+
+    try:
+        return login_method_label("auto", platform=platform)
+    except Exception:  # never block a sign-in on this
+        return ""
+
+
 def menubar_state_file(config: Config) -> Path:
     return config.data_dir / "menubar.json"
 

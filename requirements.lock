@@ -11,6 +11,7 @@ pyee==13.0.1
 Pygments==2.21.0
 pyobjc-core==12.2.2; sys_platform == 'darwin'
 pyobjc-framework-Cocoa==12.2.2; sys_platform == 'darwin'
+pyobjc-framework-WebKit==12.2.2; sys_platform == 'darwin'
 pytest==9.1.1
 requests==2.34.2
 rumps==0.4.0; sys_platform == 'darwin'
@@ -20,3 +21,10 @@ urllib3==2.8.0
 pystray==0.19.5; sys_platform == 'win32'
 Pillow==11.3.0; sys_platform == 'win32'
 six==1.17.0; sys_platform == 'win32'
+bottle==0.13.4; sys_platform == 'win32'
+cffi==2.1.1; sys_platform == 'win32'
+clr_loader==0.3.1; sys_platform == 'win32'
+proxy_tools==0.1.0; sys_platform == 'win32'
+pycparser==3.0; sys_platform == 'win32'
+pythonnet==3.1.0; sys_platform == 'win32'
+pywebview==6.2.1; sys_platform == 'win32'

@@ -12,6 +12,7 @@ dist/
 .bbsync/
 session.json
 browser-profile/
+inapp-profile/
 state.json
 last-run.json
 *.partial

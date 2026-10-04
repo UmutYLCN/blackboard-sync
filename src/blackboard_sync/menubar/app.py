@@ -144,7 +144,8 @@ def build_app(config: Config):
         def start_login(self, _sender=None) -> None:
             if not self.model.begin("login"):
                 return
-            log.info("login started (%s)", self.settings.base_url)
+            self.model.login_method = jobs.login_method()
+            log.info("login started (%s, %s)", self.settings.base_url, self.model.login_method)
             self.refresh()
             threading.Thread(target=self._login_worker, args=(self.settings,), daemon=True).start()
 

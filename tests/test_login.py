@@ -107,6 +107,10 @@ class FakeBrowser:
         pass
 
 
+def _no_inapp(*args, **kwargs):
+    raise AssertionError("the in-app window must not open")
+
+
 def _fake_open(calls, port="40000"):
     def run(argv, **kwargs):
         calls.append(argv)
@@ -130,7 +134,7 @@ def test_login_waits_for_sign_in_saves_cookies_and_closes_browser(config, tmp_pa
         connected_to.append(url)
         return browser
 
-    user = login(config, run=_fake_open(calls), connect=connect, platform="darwin",
+    user = login(config, run=_fake_open(calls), connect=connect, platform="darwin", inapp=_no_inapp,
                  check_user=lambda base, cookies: next(users), out=lambda *_: None)
 
     assert user["userName"] == "student.example"
@@ -154,7 +158,7 @@ def test_login_stops_when_window_is_closed(config, tmp_path, monkeypatch):
 
     context.cookies = lambda url: COOKIES
     with pytest.raises(BlackboardSyncError, match="closed before sign-in"):
-        login(config, run=_fake_open([]), connect=lambda url: browser, platform="darwin",
+        login(config, run=_fake_open([]), connect=lambda url: browser, platform="darwin", inapp=_no_inapp,
               check_user=check_user, out=lambda *_: None)
     assert browser.sent == ["Browser.close"]
     assert not config.session_file.exists()
@@ -167,7 +171,8 @@ def test_login_reports_open_failure(config, tmp_path, monkeypatch):
         return subprocess.CompletedProcess(argv, 1, "", "LSOpenURLsWithRole() failed")
 
     with pytest.raises(BlackboardSyncError, match="Could not open Google Chrome"):
-        login(config, run=failing_open, connect=lambda url: None, platform="darwin", out=lambda *_: None)
+        login(config, browser="chrome", run=failing_open, connect=lambda url: None, platform="darwin",
+              out=lambda *_: None, inapp=_no_inapp)
 
 
 def test_session_user_accepts_only_a_real_user(fake_bb):
@@ -248,7 +253,7 @@ def test_windows_login_spawns_a_detached_browser_and_saves_the_session(config, t
         raise AssertionError("Windows must not go through `open`")
 
     browser = FakeBrowser(FakeContext([COOKIES]))
-    user = login(config, run=no_run, spawn=spawn, connect=lambda url: browser, platform="win32",
+    user = login(config, run=no_run, spawn=spawn, connect=lambda url: browser, platform="win32", inapp=_no_inapp,
                  check_user=lambda base, cookies: {"id": "_900_1", "userName": "student.example"},
                  out=lambda *_: None)
     assert user["id"] == "_900_1"
@@ -267,7 +272,8 @@ def test_windows_login_reports_a_browser_that_cannot_start(config, tmp_path, mon
         raise OSError("The system cannot find the file specified")
 
     with pytest.raises(BlackboardSyncError, match="Could not open Microsoft Edge"):
-        login(config, spawn=spawn, connect=lambda url: None, platform="win32", out=lambda *_: None)
+        login(config, browser="edge", spawn=spawn, connect=lambda url: None, platform="win32",
+              out=lambda *_: None, inapp=_no_inapp)
 
 
 # -- More Chromium browsers -------------------------------------------------
@@ -369,5 +375,6 @@ def test_check_runtime_starts_and_stops_the_driver(monkeypatch):
     module.sync_playwright = Manager
     monkeypatch.setitem(sys.modules, "playwright.sync_api", module)
     from blackboard_sync import login
-    login.check_runtime()
-    assert events == ["start", "stop"]
+    monkeypatch.setattr(login, "inapp_check_runtime", lambda: events.append("web view") or "WKWebView")
+    assert login.check_runtime() == "WKWebView"
+    assert events == ["start", "stop", "web view"]

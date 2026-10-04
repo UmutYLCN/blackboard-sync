@@ -23,6 +23,7 @@ from blackboard_sync.errors import (
     BlackboardSyncError,
     LoginRequired,
 )
+from blackboard_sync.inapp import INAPP
 from blackboard_sync.login import BROWSER_LABELS
 from blackboard_sync.report import SyncReport
 from blackboard_sync.session import (
@@ -58,8 +59,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-v", "--verbose", action="store_true", help="log every request")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    login = sub.add_parser("login", help="sign in through a browser window and save the session")
-    login.add_argument("--browser", choices=["auto", *BROWSER_LABELS], default="auto")
+    login = sub.add_parser("login", help="sign in through a browser or the app's window and save the session")
+    login.add_argument(
+        "--browser",
+        choices=["auto", *BROWSER_LABELS, INAPP],
+        default="auto",
+        help="auto: a supported browser if installed, else the app's own window (inapp)",
+    )
     login.add_argument("--timeout", type=float, default=600, help="seconds to wait (default 600)")
 
     sync = sub.add_parser("sync", help="download everything new into the course folders")

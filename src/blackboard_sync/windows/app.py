@@ -93,6 +93,8 @@ class TrayApp:
     def start_job(self, job):
         if self.model.updates.busy == "download" or not self.model.begin(job):
             return
+        if job == "login":
+            self.model.login_method = jobs.login_method()
         self.refresh()
         settings = self.settings
         def worker():

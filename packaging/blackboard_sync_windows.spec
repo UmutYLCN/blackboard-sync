@@ -11,12 +11,18 @@ ICON = str(ROOT / "build" / "app.ico")
 a = Analysis(
     [str(ROOT / "packaging" / "app_entry.py")],
     pathex=[str(ROOT / "src")],
-    # The sync child run and the tray app are imported lazily by app_entry.
+    # The sync child run and the tray app are imported lazily by app_entry, the
+    # in-app sign-in window (pywebview on WebView2, through pythonnet) by login.
+    # pyinstaller-hooks-contrib's pywebview hook bundles the WebView2 interop DLLs.
     hiddenimports=[
         "blackboard_sync.cli",
         "blackboard_sync.windows.app",
         "pystray._win32",
         "playwright.sync_api",
+        "blackboard_sync.inapp_windows",
+        "webview.platforms.winforms",
+        "webview.platforms.edgechromium",
+        "clr",
     ],
     excludes=["pytest", "unittest", "pydoc_data"],
 )
