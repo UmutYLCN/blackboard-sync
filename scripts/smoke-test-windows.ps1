@@ -13,7 +13,9 @@ $env:BBSYNC_DATA_DIR = $dataDir
 function Check($ok, $what) { if (-not $ok) { throw "FAILED: $what" } else { Write-Host "ok: $what" } }
 
 function Install {
-  $p = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=$env:TEMP\bbsync-setup.log" -Wait -PassThru
+  $p = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=$env:TEMP\bbsync-setup.log" -PassThru
+  # Not -Wait: that also waits for the app the installer starts.
+  $p.WaitForExit()
   Check ($p.ExitCode -eq 0) "installer exit code $($p.ExitCode)"
 }
 
@@ -40,7 +42,8 @@ Check ((Get-ItemProperty $runKey).BlackboardSync -eq "`"$app\Blackboard Sync.exe
 New-Item -ItemType Directory -Force $dataDir | Out-Null
 Set-Content "$dataDir\keep.txt" "data"
 $uninstaller = Get-ChildItem "$app\unins*.exe" | Select-Object -First 1
-$p = Start-Process $uninstaller.FullName -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+$p = Start-Process $uninstaller.FullName -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -PassThru
+$p.WaitForExit()
 Check ($p.ExitCode -eq 0) "uninstaller exit code $($p.ExitCode)"
 Start-Sleep -Seconds 2
 Check (-not (Test-Path "$app\Blackboard Sync.exe")) "app removed"
