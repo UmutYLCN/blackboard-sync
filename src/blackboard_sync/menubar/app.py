@@ -16,12 +16,6 @@ from pathlib import Path
 from blackboard_sync.config import Config
 from blackboard_sync.menubar import jobs, launchagent, settings_form
 from blackboard_sync.menubar.model import (
-    T_AUTOSTART,
-    T_OPEN_FOLDER,
-    T_QUIT,
-    T_RECENT,
-    T_RECENT_EMPTY,
-    T_SETTINGS,
     AppModel,
     Icon,
     MenuModel,
@@ -72,6 +66,12 @@ def open_path(path: Path) -> None:
 
 def build_app(config: Config):
     import rumps
+    from AppKit import NSObject, NSColor, NSAttributedString, NSForegroundColorAttributeName
+
+    class MenuDelegate(NSObject):
+        def menuNeedsUpdate_(self, menu):
+            self.owner.refresh()
+
     from PyObjCTools import AppHelper
 
     class MenuBarApp(rumps.App):
@@ -82,6 +82,9 @@ def build_app(config: Config):
             self.model = jobs.load_model(config, jobs.utcnow(), launchagent.is_installed())
             self._drawn: MenuModel | None = None
             self._drawn_icon: Icon | None = None
+            self._menu_delegate = MenuDelegate.alloc().init()
+            self._menu_delegate.owner = self
+            self.menu._menu.setDelegate_(self._menu_delegate)
             self._settings_window = None
             self._login_after_job = False  # asked for while another job was running
             self._timer = rumps.Timer(self.tick, TICK_SECONDS)
@@ -241,6 +244,7 @@ def build_app(config: Config):
                 subprocess.Popen(["osascript", "-e", script], stdin=subprocess.DEVNULL)
 
         def refresh(self) -> None:
+            jobs.refresh_session(self.config, self.model, self.settings)
             self.model.autostart = launchagent.is_installed()
             self._draw_icon(self.model.icon())
             menu = self.model.menu(jobs.utcnow())
@@ -248,28 +252,39 @@ def build_app(config: Config):
                 return
             self._drawn = menu
             self.menu.clear()
-            items: list = [rumps.MenuItem(line) for line in menu.status_lines]  # no callback: greyed out
-            items.append(rumps.separator)
-            items.append(rumps.MenuItem(menu.sync_title, callback=self.start_sync if menu.sync_enabled else None))
-            items.append(
-                rumps.MenuItem(menu.refetch_title, callback=self.start_refetch if menu.refetch_enabled else None)
-            )
-            items.append(rumps.MenuItem(menu.login_title, callback=self.start_login if menu.login_enabled else None))
-            items.append(rumps.MenuItem(T_OPEN_FOLDER, callback=self.open_school_folder))
-            recent = rumps.MenuItem(T_RECENT)
-            if menu.recent:
-                for label, rel_path in menu.recent:
-                    recent.add(rumps.MenuItem(label, callback=lambda _s, p=rel_path: self.open_recent(p)))
-            else:
-                recent.add(rumps.MenuItem(T_RECENT_EMPTY))
-            items.append(recent)
-            items.append(rumps.separator)
-            items.append(rumps.MenuItem(T_SETTINGS, callback=self.open_settings))
-            autostart = rumps.MenuItem(T_AUTOSTART, callback=self.toggle_autostart)
-            autostart.state = 1 if menu.autostart else 0
-            items.append(autostart)
-            items.append(rumps.MenuItem(T_QUIT, callback=self.quit))
-            self.menu.update(items)
+            def render(entry):
+                if not entry.title:
+                    return rumps.separator
+                actions = {
+                    "sync": self.start_sync, "refetch": self.start_refetch,
+                    "login": self.start_login, "folder": self.open_school_folder,
+                    "settings": self.open_settings, "autostart": self.toggle_autostart,
+                    "logout": self.logout, "quit": self.quit,
+                    "open": lambda _s: self.open_recent(entry.value),
+                    "releases": lambda _s: subprocess.Popen(["open", entry.value]),
+                }
+                item = rumps.MenuItem(entry.title, callback=actions.get(entry.action) if entry.enabled else None)
+                item.state = int(entry.checked)
+                if entry.warning:
+                    item._menuitem.setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(
+                        entry.title, {NSForegroundColorAttributeName: NSColor.systemRedColor()}
+                    ))
+                for child in entry.children:
+                    item.add(render(child))
+                return item
+            self.menu.update([render(entry) for entry in menu.entries])
+
+        def logout(self, _sender=None) -> None:
+            if self.model.busy is not None:
+                return
+            if rumps.alert("Hesaptan çıkış yapılsın mı?", "İndirilen dosyalarınız korunacak.",
+                           ok="Çıkış yap", cancel="Vazgeç") != 1:
+                return
+            try:
+                jobs.logout(self.config)
+            except OSError:
+                self.model.note = "Hesaptan çıkış yapılamadı."
+            self.refresh()
 
         def _draw_icon(self, icon: Icon) -> None:
             status_item = getattr(getattr(self, "_nsapp", None), "nsstatusitem", None)

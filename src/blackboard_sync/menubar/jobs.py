@@ -18,17 +18,19 @@ from typing import Callable, IO
 
 from blackboard_sync import runtime
 from blackboard_sync.config import Config
-from blackboard_sync.errors import EXIT_ERROR
+from blackboard_sync.errors import EXIT_ERROR, LoginRequired
 from blackboard_sync.menubar.model import (
     AppModel,
+    CourseChange,
     RunOutcome,
     load_saved_state,
     login_arguments,
     parse_sync_output,
+    parse_iso,
     shorten,
     sync_arguments,
 )
-from blackboard_sync.session import write_private_json
+from blackboard_sync.session import write_private_json, load_session
 from blackboard_sync.settings import Settings, load_settings
 from blackboard_sync.system import try_lock
 
@@ -139,6 +141,14 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
         login_prompted=login_prompted,
         autostart=autostart,
     )
+    if saved and not (last and last.status == "ok") and isinstance(saved.get("courses"), list):
+        try:
+            model.courses = [CourseChange(**item) for item in saved["courses"]]
+        except (TypeError, ValueError):
+            pass
+    if saved and not (last and last.status == "ok"):
+        model.auth_failed_at = model.auth_failed_at or parse_iso(saved.get("auth_failed_at"))
+    refresh_session(config, model, effective_settings(config))
     if saved is None and last is not None and last.status == "ok":
         # First start: show what the last terminal sync brought in.
         model.remember(last)
@@ -180,3 +190,17 @@ def detach(config: Config, python: str | None = None) -> int:
     finally:
         log.close()
     return 0
+
+
+def refresh_session(config: Config, model: AppModel, settings: Settings) -> None:
+    try:
+        model.session = load_session(config.session_file, settings.base_url)
+        model.session_expired = False
+    except (LoginRequired, TypeError, AttributeError, KeyError):
+        model.session = None
+        model.session_expired = config.session_file.exists()
+
+
+def logout(config: Config) -> None:
+    """Remove only credentials; downloaded content and sync state are retained."""
+    config.session_file.unlink(missing_ok=True)

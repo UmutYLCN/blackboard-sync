@@ -71,7 +71,14 @@ def save_session(path: Path, base_url: str, cookies: list[dict], user: dict | No
             "version": SESSION_VERSION,
             "base_url": base_url,
             "saved_at": int(time.time()),
-            "user": {"id": user.get("id"), "userName": user.get("userName")},
+            "user": {
+                "id": user.get("id"),
+                "userName": user.get("userName"),
+                "displayName": user.get("displayName") or " ".join(
+                    str((user.get("name") or {}).get(part) or "").strip()
+                    for part in ("given", "family")
+                ).strip() or user.get("userName"),
+            },
             "cookies": kept,
         },
     )
