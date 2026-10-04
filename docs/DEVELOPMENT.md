@@ -660,6 +660,15 @@ Windows updater launches the installer with
 `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`; the installer must restart the app
 (with `--background`, so an update does not open the settings window).
 
+### One-line installers
+
+`install.sh` (macOS) and `install.ps1` (Windows) download the latest release,
+verify its SHA-256 checksum and install it. The macOS app is unsigned, so only
+the installed app's quarantine attribute is removed, which makes the first-open
+right click → **Aç** step unnecessary. No Python is needed: sign-in uses an
+installed Chromium-based browser (Chrome, Edge, Brave, Opera, Vivaldi) or, if
+there is none, the app's own window.
+
 ## License
 
 MIT, see [LICENSE](../LICENSE).
