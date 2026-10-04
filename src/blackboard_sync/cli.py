@@ -32,6 +32,7 @@ from blackboard_sync.session import (
 )
 from blackboard_sync.state import State
 from blackboard_sync.sync import Syncer, run_lock, run_sync
+from blackboard_sync.system import is_windows
 
 STATUS_EXIT = {
     "ok": EXIT_OK,
@@ -57,12 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     login = sub.add_parser("login", help="sign in through a browser window and save the session")
-    login.add_argument("--browser", choices=["auto", "chrome", "brave"], default="auto")
+    login.add_argument("--browser", choices=["auto", "chrome", "edge", "brave"], default="auto")
     login.add_argument("--timeout", type=float, default=600, help="seconds to wait (default 600)")
 
     sync = sub.add_parser("sync", help="download everything new into the course folders")
     _add_selection_args(sync)
-    sync.add_argument("--dest", type=Path, help="base folder (env BBSYNC_DEST, default ~/Documents/Okul)")
+    sync.add_argument("--dest", type=Path, help="base folder (env BBSYNC_DEST, default Documents/Okul)")
     sync.add_argument("--json", action="store_true", help="print the run summary as JSON")
     sync.add_argument("--dry-run", action="store_true", help="show what would be fetched, write nothing")
     sync.add_argument(
@@ -169,7 +170,17 @@ def cmd_sync(args, config: Config) -> int:
     return STATUS_EXIT[report.status]
 
 
+def _utf8_output() -> None:
+    """Windows: write UTF-8 even when the output is a pipe (Turkish names, JSON)."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
+    if is_windows():
+        _utf8_output()
     parser = build_parser()
     args = parser.parse_args(argv)
     logging.basicConfig(

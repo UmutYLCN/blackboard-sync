@@ -12,10 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from blackboard_sync.settings import load_settings, settings_path
+from blackboard_sync.system import default_data_dir, default_dest, make_private_dir
 
 DEFAULT_BASE_URL = "https://blackboard.istun.edu.tr"
-DEFAULT_DEST = Path.home() / "Documents" / "Okul"
-DEFAULT_DATA_DIR = Path.home() / "Library" / "Application Support" / "blackboard-sync"
+# macOS: ~/Documents/Okul and ~/Library/Application Support/blackboard-sync.
+# Windows: <Documents>\Okul and %APPDATA%\blackboard-sync.
+DEFAULT_DEST = default_dest()
+DEFAULT_DATA_DIR = default_data_dir()
 DEFAULT_ANNOUNCEMENTS_FOLDER = "Duyurular"
 
 
@@ -76,6 +79,4 @@ class Config:
 
     def ensure_data_dir(self) -> Path:
         """Create the private data directory (owner-only permissions)."""
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        os.chmod(self.data_dir, 0o700)
-        return self.data_dir
+        return make_private_dir(self.data_dir)

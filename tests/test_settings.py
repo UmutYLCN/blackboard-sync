@@ -1,3 +1,4 @@
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from blackboard_sync.settings import (
     normalize_dest,
     save_settings,
 )
+
+from .conftest import assert_owner_only
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
 HOME = Path.home()
@@ -65,6 +68,7 @@ def test_destination_folder(tmp_path):
         assert info.value.field == "dest"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS settings window shows POSIX paths")
 def test_display_path_uses_tilde():
     assert display_path(Path("/Users/me/Documents/Okul"), home=Path("/Users/me")) == "~/Documents/Okul"
     assert display_path(Path("/Volumes/USB/Okul"), home=Path("/Users/me")) == "/Volumes/USB/Okul"
@@ -77,7 +81,7 @@ def test_settings_round_trip_privately(tmp_path):
     assert load_settings(data_dir) is None
     path = save_settings(data_dir, Settings("https://bb.example.edu", tmp_path / "Okul"))
     assert path == data_dir / "settings.json"
-    assert (path.stat().st_mode & 0o777) == 0o600
+    assert_owner_only(path)
     assert load_settings(data_dir) == Settings("https://bb.example.edu", tmp_path / "Okul")
 
 
@@ -115,11 +119,13 @@ def test_cli_reads_the_settings_of_its_data_dir(tmp_path, monkeypatch):
 
 # -- the settings window's form -----------------------------------------------
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS settings window shows POSIX paths")
 def test_first_launch_is_prefilled_with_the_defaults_and_autostart():
     values = initial_values(None, ISTUN, autostart=False)
     assert values == FormValues("https://blackboard.istun.edu.tr", "~/Documents/Okul", autostart=True)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS settings window shows POSIX paths")
 def test_later_the_window_shows_what_was_saved():
     saved = Settings("https://bb.example.edu", Path("/Volumes/USB/Okul"))
     assert initial_values(saved, saved, autostart=False) == FormValues(

@@ -1,8 +1,13 @@
 import unicodedata
+from pathlib import Path
 
 from blackboard_sync.paths import (
+    NUMBER_SUFFIX_ROOM,
+    WINDOWS_MAX_NAME_CHARS,
+    WINDOWS_MAX_PATH,
     course_code_and_title,
     course_folder_name,
+    fit_windows_path,
     note_name,
     numbered_variant,
     sanitize_name,
@@ -46,7 +51,7 @@ def test_truncate_respects_bytes_and_keeps_extension():
     out = truncate_name(long_name)
     assert out.endswith(".pdf")
     assert len(out.encode("utf-8")) <= 255
-    assert sanitize_name(long_name) == out
+    assert sanitize_name(long_name, windows=False) == out
 
 
 def test_split_ext():
@@ -77,3 +82,51 @@ def test_course_code_from_name_prefix():
 
 def test_course_code_without_recognizable_code():
     assert course_folder_name("ORIENT", "Student Orientation") == "ORIENT Student Orientation"
+
+
+# -- Windows rules (applied only on Windows; injected here) -------------------
+
+def test_windows_replaces_forbidden_characters():
+    assert sanitize_name('Q1 "Big-O" <draft> a|b back\\slash?*', windows=True) == "Q1 'Big-O' (draft) a-b back-slash"
+    assert sanitize_name("What is a heap?", windows=True) == "What is a heap"
+    assert sanitize_name("???", windows=True) == "untitled"
+
+
+def test_windows_rules_do_not_rename_macos_files():
+    for name in ('Q1 "Big-O" <draft>', "What is a heap?", "CON", "nul.txt", "x" * 200 + ".pdf"):
+        assert sanitize_name(name, windows=False) == name
+
+
+def test_windows_reserved_device_names():
+    assert sanitize_name("CON", windows=True) == "CON_"
+    assert sanitize_name("nul.txt", windows=True) == "nul_.txt"
+    assert sanitize_name("com1.tar.gz", windows=True) == "com1_.tar.gz"
+    assert sanitize_name("LPT9", windows=True) == "LPT9_"
+    assert sanitize_name("Console notes.pdf", windows=True) == "Console notes.pdf"
+    assert sanitize_name("CON.", windows=True) == "CON_"  # trailing dot dropped first
+
+
+def test_windows_trailing_dots_and_spaces():
+    assert sanitize_name("Week 1 . ", windows=True) == "Week 1"
+
+
+def test_windows_names_are_kept_short():
+    out = sanitize_name("a" * 300 + ".pdf", windows=True)
+    assert len(out) == WINDOWS_MAX_NAME_CHARS and out.endswith(".pdf")
+    assert len(note_name("b" * 300, windows=True)) == WINDOWS_MAX_NAME_CHARS
+    variant = numbered_variant("Week 1/" + "c" * 116 + ".pdf", 12, windows=True)
+    assert variant.endswith(" (12).pdf") and len(variant.split("/")[-1]) <= WINDOWS_MAX_NAME_CHARS
+
+
+def test_fit_windows_path_shortens_only_the_file_name():
+    base = Path("C:/Users/student/Documents/Okul")
+    short = "2026 Güz/CSE303/notes.pdf"
+    assert fit_windows_path(base, short) == short
+    folder = "2026-2027 Güz/" + "F" * 100
+    rel = folder + "/" + "n" * 110 + ".pdf"
+    fitted = fit_windows_path(base, rel)
+    assert fitted.startswith(folder + "/") and fitted.endswith(".pdf")
+    assert len(str(base)) + 1 + len(fitted) == WINDOWS_MAX_PATH - NUMBER_SUFFIX_ROOM
+    # A folder that is already too deep keeps a readable stem instead of none.
+    deep = fit_windows_path(base, "D" * 240 + "/" + "x" * 50 + ".pdf")
+    assert deep.endswith("/xxxxxxxx.pdf")

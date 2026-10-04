@@ -1,4 +1,5 @@
 import json
+import os
 import plistlib
 import subprocess
 import sys
@@ -11,8 +12,11 @@ from blackboard_sync.menubar import jobs, launchagent
 from blackboard_sync.menubar.model import Icon
 from blackboard_sync.settings import Settings, save_settings
 
+from .conftest import assert_owner_only
+
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
-SETTINGS = Settings(base_url="https://bb.example.edu", dest=Path("/Users/student/Okul"))
+# Absolute on every OS ("/Users/..." has no drive letter on Windows).
+SETTINGS = Settings(base_url="https://bb.example.edu", dest=Path(os.path.abspath("/Users/student/Okul")))
 
 
 def fake_runner(returncode=0, stdout="", stderr="", raises=None):
@@ -34,7 +38,7 @@ def test_sync_runs_the_cli_json_mode():
     cmd, kwargs = runner.calls[0]
     assert cmd == [
         sys.executable, "-m", "blackboard_sync",
-        "--base-url", "https://bb.example.edu", "sync", "--json", "--dest", "/Users/student/Okul",
+        "--base-url", "https://bb.example.edu", "sync", "--json", "--dest", str(SETTINGS.dest),
     ]
     assert kwargs["capture_output"] and kwargs["stdin"] == subprocess.DEVNULL
     assert result.status == "ok" and result.finished_at == NOW
@@ -98,7 +102,7 @@ def test_model_is_restored_from_last_run_and_saved_state(tmp_path):
 
     model.login_prompted = True
     jobs.save_model(config, model)
-    assert (jobs.menubar_state_file(config).stat().st_mode & 0o777) == 0o600
+    assert_owner_only(jobs.menubar_state_file(config))
     restored = jobs.load_model(config, NOW, autostart=False)
     assert restored.login_prompted is True
     assert [r.path for r in restored.recent] == [f"{folder}/a.pdf"]

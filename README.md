@@ -42,7 +42,8 @@ syncs every hour in the background and shows a macOS notification such as
 ## Setup
 
 Requirements: macOS, Python 3.10 or newer (`python3 --version`), and Google
-Chrome or Brave in `/Applications`.
+Chrome or Brave in `/Applications`. On Windows, see
+[Windows (preview)](#windows-preview).
 
 ```sh
 ./scripts/setup.sh
@@ -62,8 +63,8 @@ environment with `source .venv/bin/activate` and type `blackboard-sync`).
 .venv/bin/blackboard-sync login
 ```
 
-A separate Chrome window (Brave if Chrome is missing; force one with
-`--browser chrome|brave`) opens in front, on the Blackboard sign-in page, which
+A separate Chrome window (Brave if Chrome is missing, then Microsoft Edge;
+force one with `--browser chrome|brave|edge`) opens in front, on the Blackboard sign-in page, which
 for blackboard.istun.edu.tr forwards to the university's Microsoft sign-in.
 It is started like any app you open from the Dock, with its own private profile,
 so your everyday browser and its tabs are not touched. Sign in exactly as you
@@ -216,7 +217,7 @@ downloads the same files into the same folders as the command does.
 ## Commands and options
 
 ```
-blackboard-sync [--base-url URL] [--data-dir DIR] [-v] login [--browser auto|chrome|brave] [--timeout S]
+blackboard-sync [--base-url URL] [--data-dir DIR] [-v] login [--browser auto|chrome|edge|brave] [--timeout S]
 blackboard-sync [...] check [--term NAME | --all-terms] [--course CODE ...]
 blackboard-sync [...] sync  [--term NAME | --all-terms] [--course CODE ...]
                             [--dest DIR] [--json] [--dry-run] [--refetch-missing]
@@ -256,12 +257,15 @@ most recently started term. Courses the instructor has not opened yet
 | Start-at-login item | `~/Library/LaunchAgents/io.github.umutylcn.blackboard-sync.menubar.plist` |
 
 The data folder is created with owner-only permissions (`700`) and the files in
-it are `600`. None of it lives in this repository.
+it are `600`. None of it lives in this repository. (Windows paths are listed
+under [Windows (preview)](#windows-preview).)
 
 File and folder names are kept as on Blackboard. Only what macOS cannot store
 safely is changed: `/` and `:` become `-` (`"Intro: Sorting"` becomes
 `Intro - Sorting`), control characters and leading dots are removed, and very
 long names are shortened to the 255-byte limit while keeping the extension.
+On Windows a few more rules apply there only (see
+[Windows (preview)](#windows-preview)); names on a Mac are not affected.
 
 ## How the incremental state works
 
@@ -432,6 +436,50 @@ and tick **Bilgisayar açılınca başlat** again.
 - To remove everything: delete
   `~/Library/Application Support/blackboard-sync/` (and the course folders if
   you want).
+
+## Windows (preview)
+
+The command-line tool also runs on Windows 10 and 11. A tray app and an
+installer are coming; until then, run it from source:
+
+```powershell
+py -3 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.lock
+.venv\Scripts\python -m pip install --no-deps -e .
+.venv\Scripts\blackboard-sync login
+.venv\Scripts\blackboard-sync sync
+```
+
+Requirements: Python 3.10 or newer from python.org, and Google Chrome or
+Microsoft Edge (every Windows has Edge; Brave works too). `login` picks Chrome
+if it is installed, otherwise Edge (`--browser chrome|edge|brave` to choose),
+and opens it as a separate window with its own private profile, exactly like on
+a Mac.
+
+| What | Where on Windows |
+| --- | --- |
+| Course material | `Documents\Okul\<term>\<course code> <course name>\...` (your Documents folder, also when it is in OneDrive) |
+| Session, sign-in profile, state, last run | `%APPDATA%\blackboard-sync\` |
+
+Differences from macOS:
+
+- **Permissions.** Windows has no `600`/`700` modes. When the data folder is
+  created, its inherited permissions are replaced with full control for your
+  user account (and the Windows system account), and everything inside,
+  including `session.json`, inherits that. Administrators can still take
+  ownership of any file, as on every Windows. If setting the permissions fails,
+  the folder keeps Windows' defaults, which under `%APPDATA%` already keep other
+  standard users out.
+- **Names.** Characters Windows does not allow are changed: `\` and `|` become
+  `-`, `"` becomes `'`, `<` `>` become `(` `)`, and `?` `*` are dropped.
+  Reserved device names get a `_` (`CON` becomes `CON_`, `nul.txt` becomes
+  `nul_.txt`). Names are kept to 120 characters.
+- **Path length.** Windows limits a full path to 260 characters unless long
+  paths are enabled. File names are shortened (keeping the extension) so files
+  fit under that limit; folder names are not, so a very deep folder structure
+  can still be too long. If a sync stops with a path error, choose a shorter
+  destination with `--dest` (for example `C:\Okul`) or enable Windows long
+  paths.
 
 ## Development
 

@@ -1,8 +1,11 @@
 import json
 from datetime import datetime, timezone
 
+from blackboard_sync import sync as sync_mod
 from blackboard_sync.state import State
 from blackboard_sync.sync import Term, choose_current_terms, parse_time, run_sync
+
+from .conftest import assert_owner_only
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
 CSE = "2026-2027 Güz/CSE303 Algorithm Analysis"
@@ -16,7 +19,7 @@ def sync(config, client, **kwargs):
 
 
 def files_under(root):
-    return sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
+    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
 
 
 def test_first_sync_mirrors_the_course_tree(config, client):
@@ -49,7 +52,7 @@ def test_first_sync_mirrors_the_course_tree(config, client):
     assert sorted(cse.new_files) == sorted([SYLLABUS, SLIDES, f"{CSE}/hw1.pdf"])
     assert cse.new_announcements == [f"{CSE}/Duyurular/2026-09-20 Welcome to CSE303.md"]
     assert cse.summary_line() == "CSE303: 3 new files, 3 new notes, 1 new announcement"
-    note = (config.dest / CSE / "Lecture Notes/Week 1/Intro - Asymptotic Notation.md").read_text()
+    note = (config.dest / CSE / "Lecture Notes/Week 1/Intro - Asymptotic Notation.md").read_text(encoding="utf-8")
     assert "Read chapter 3 before class." in note
     assert "- week1-slides.pdf" in note
 
@@ -170,8 +173,8 @@ def test_existing_identical_file_is_adopted(config, client, fake_bb):
 
 def test_state_file_is_private_and_keyed_by_blackboard_ids(config, client):
     sync(config, client)
-    assert (config.state_file.stat().st_mode & 0o777) == 0o600
-    state = json.loads(config.state_file.read_text())
+    assert_owner_only(config.state_file)
+    state = json.loads(config.state_file.read_text(encoding="utf-8"))
     assert state["items"]["content:_13004_1:_c11_1"]["modified"] == "2026-09-01T10:05:00.000Z"
     assert state["outputs"]["attachment:_13004_1:_a11_1"]["path"] == SYLLABUS
     assert "xid:_13004_1:777_1" in state["outputs"]
@@ -240,3 +243,26 @@ def test_state_reload_round_trip(tmp_path):
     assert again.owner_of("T/C/x.pdf") == "attachment:c:a"
     assert again.item_unchanged("content:c:i", "2026-01-01", tmp_path, check_missing=False)
     assert not again.item_unchanged("content:c:i", "2026-02-01", tmp_path, check_missing=False)
+
+
+def _route_item(fake_bb, item_id):
+    for body in fake_bb.routes.values():
+        for item in (body.get("results") or []) if isinstance(body, dict) else []:
+            if item.get("id") == item_id:
+                return item
+    raise KeyError(item_id)
+
+
+def test_windows_names_are_valid_and_paths_fit(config, client, fake_bb, monkeypatch):
+    monkeypatch.setattr(sync_mod, "is_windows", lambda platform=None: True)
+    _route_item(fake_bb, "_c4_1")["title"] = 'Homework "1": done?'
+    _route_item(fake_bb, "_a41_1")["fileName"] = "CON.pdf"
+    _route_item(fake_bb, "_c3_1")["title"] = "Course Website: " + "v" * 300
+    report = sync(config, client)
+    assert report.status == "ok"
+    files = files_under(config.dest)
+    assert f"{CSE}/Homework '1' - done.md" in files
+    assert f"{CSE}/CON_.pdf" in files
+    website = next(f for f in files if f.startswith(f"{CSE}/Course Website - vvv"))
+    assert len(website.rsplit("/", 1)[-1]) <= 120
+    assert all(len(str(config.dest)) + 1 + len(f) <= 259 for f in files)

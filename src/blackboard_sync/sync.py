@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import logging
 import os
@@ -26,6 +25,7 @@ from blackboard_sync.notes import (
 from blackboard_sync.paths import (
     course_code_and_title,
     course_folder_name,
+    fit_windows_path,
     join_rel,
     note_name,
     numbered_variant,
@@ -33,6 +33,7 @@ from blackboard_sync.paths import (
 )
 from blackboard_sync.report import CourseReport, SyncReport
 from blackboard_sync.state import State
+from blackboard_sync.system import is_windows, try_lock
 
 log = logging.getLogger(__name__)
 
@@ -123,9 +124,7 @@ def run_lock(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     fh = open(path, "w")
     try:
-        try:
-            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+        if not try_lock(fh):
             raise AlreadyRunning("Another blackboard-sync run is already in progress.")
         yield
     finally:
@@ -140,6 +139,7 @@ class Syncer:
         state: State,
         dry_run: bool = False,
         refetch_missing: bool = False,
+        windows: bool | None = None,
     ):
         self.client = client
         self.config = config
@@ -147,6 +147,7 @@ class Syncer:
         self.dest = config.dest
         self.dry_run = dry_run
         self.refetch_missing = refetch_missing
+        self.windows = is_windows() if windows is None else windows
 
     # -- course discovery ----------------------------------------------
     def discover(
@@ -212,7 +213,7 @@ class Syncer:
         filters = {f.casefold() for f in course_filters or []}
         for term in selected:
             used: set[str] = set()
-            term_dir = sanitize_name(term.name)
+            term_dir = sanitize_name(term.name, windows=self.windows)
             for course in sorted(term.courses, key=lambda c: (c.code, c.course_id)):
                 if filters and not filters & {
                     course.code.casefold(),
@@ -220,9 +221,9 @@ class Syncer:
                     course.id.casefold(),
                 }:
                     continue
-                folder = course_folder_name(course.course_id, course.name)
+                folder = course_folder_name(course.course_id, course.name, windows=self.windows)
                 if folder.casefold() in used:
-                    folder = sanitize_name(f"{folder} ({course.course_id or course.id})")
+                    folder = sanitize_name(f"{folder} ({course.course_id or course.id})", windows=self.windows)
                 used.add(folder.casefold())
                 course.rel_dir = join_rel(term_dir, folder)
                 courses.append(course)
@@ -252,7 +253,7 @@ class Syncer:
     def walk(self, course: Course, items: list[dict], rel_dir: str, report: CourseReport) -> None:
         for item in sorted(items, key=lambda i: i.get("position", 0)):
             if self.is_folder(item):
-                sub_dir = join_rel(rel_dir, sanitize_name(item.get("title") or "Folder"))
+                sub_dir = join_rel(rel_dir, sanitize_name(item.get("title") or "Folder", windows=self.windows))
                 if not self.dry_run:
                     (self.dest / sub_dir).mkdir(parents=True, exist_ok=True)
                 try:
@@ -294,7 +295,7 @@ class Syncer:
                 attachments = []
             for att in attachments:
                 out_key = f"attachment:{course.id}:{att['id']}"
-                name = sanitize_name(att.get("fileName") or att.get("name") or title)
+                name = sanitize_name(att.get("fileName") or att.get("name") or title, windows=self.windows)
                 url = self.client.attachment_url(course.id, item["id"], att["id"])
                 rel = self.fetch_file(out_key, join_rel(rel_dir, name), url, report)
                 outputs.append(out_key)
@@ -302,7 +303,7 @@ class Syncer:
 
         for embedded in find_embedded_files(body_text(item.get("body"))):
             out_key = f"xid:{course.id}:{embedded.xid}"
-            name = sanitize_name(embedded.name) if embedded.name else ""
+            name = sanitize_name(embedded.name, windows=self.windows) if embedded.name else ""
             # Rebuild the URL: older bodies hold placeholders instead of a real host.
             url = f"/bbcswebdav/xid-{embedded.xid}"
             rel = self.fetch_file(
@@ -314,7 +315,7 @@ class Syncer:
         if needs_note(item):
             note = render_item_note(item, self.course_label(course), self.course_url(course), saved)
             out_key = f"note:{course.id}:{item['id']}"
-            self.write_note(out_key, join_rel(rel_dir, note_name(title)), note, report, "notes")
+            self.write_note(out_key, join_rel(rel_dir, note_name(title, windows=self.windows)), note, report, "notes")
             outputs.append(out_key)
 
         if not self.dry_run:
@@ -326,7 +327,7 @@ class Syncer:
         except ApiError as exc:
             report.warnings.append(f"Could not read announcements: {exc}")
             return
-        folder = join_rel(course.rel_dir, sanitize_name(self.config.announcements_folder))
+        folder = join_rel(course.rel_dir, sanitize_name(self.config.announcements_folder, windows=self.windows))
         for ann in announcements:
             if ann.get("draft"):
                 continue
@@ -336,7 +337,7 @@ class Syncer:
                 continue
             title = ann.get("title") or "Announcement"
             date = announcement_date(ann)
-            name = note_name(f"{date} {title}" if date else title)
+            name = note_name(f"{date} {title}" if date else title, windows=self.windows)
             note = render_announcement_note(
                 ann, self.course_label(course), self.course_url(course, "announcements")
             )
@@ -367,7 +368,7 @@ class Syncer:
         download = self.client.download(url, target_dir, expected_name=expected)
         try:
             if not desired_rel:
-                name = sanitize_name(download.filename or out_key.rsplit(":", 1)[-1])
+                name = sanitize_name(download.filename or out_key.rsplit(":", 1)[-1], windows=self.windows)
                 desired_rel = join_rel(fallback_dir, name)
             outcome, rel = self.place(out_key, desired_rel, download.path, download.sha256, download.size)
         finally:
@@ -420,6 +421,8 @@ class Syncer:
           version is saved beside it as "name (2).ext"; nothing is deleted.
         * An identical file already sitting at the target is adopted as-is.
         """
+        if self.windows:
+            desired_rel = fit_windows_path(self.dest, desired_rel)
         previous = self.state.output(out_key)
         if previous:
             prev_abs = self.dest / previous["path"]
@@ -457,7 +460,7 @@ class Syncer:
                 if owner is None and target.is_file() and sha256_file(target) == sha:
                     return candidate, True
             n += 1
-            candidate = numbered_variant(desired_rel, n)
+            candidate = numbered_variant(desired_rel, n, windows=self.windows)
 
     @staticmethod
     def _move_into(tmp: Path, target: Path) -> None:

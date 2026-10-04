@@ -2,7 +2,8 @@
 
 The session file only ever holds cookies for the Blackboard host plus who they
 belong to; it never contains a password. It is written with owner-only
-permissions inside the private data directory.
+permissions inside the private data directory (on Windows the file inherits
+the data directory's user-only permissions; see ``system.make_private_dir``).
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from urllib.parse import urlsplit
 import requests
 
 from blackboard_sync.errors import LoginRequired
+from blackboard_sync.system import set_private_file_mode
 
 SESSION_VERSION = 1
 
@@ -36,7 +38,7 @@ def write_private_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=".tmp-", dir=path.parent)
     try:
-        os.fchmod(fd, 0o600)
+        set_private_file_mode(fd)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2, ensure_ascii=False)
             fh.write("\n")

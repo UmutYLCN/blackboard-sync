@@ -17,6 +17,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from blackboard_sync.session import write_private_json
+from blackboard_sync.system import make_private_dir
 
 SETTINGS_FILE = "settings.json"
 
@@ -56,8 +57,7 @@ def load_settings(data_dir: Path) -> Settings | None:
 
 
 def save_settings(data_dir: Path, settings: Settings) -> Path:
-    data_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(data_dir, 0o700)
+    make_private_dir(data_dir)
     path = settings_path(data_dir)
     write_private_json(path, settings.to_dict())
     return path

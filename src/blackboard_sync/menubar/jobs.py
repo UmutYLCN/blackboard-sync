@@ -8,7 +8,6 @@ school and folder from the settings window are passed as flags on every run.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import subprocess
@@ -31,6 +30,7 @@ from blackboard_sync.menubar.model import (
 )
 from blackboard_sync.session import write_private_json
 from blackboard_sync.settings import Settings, load_settings
+from blackboard_sync.system import try_lock
 
 # A first sync of a whole term can take a while; this only guards against a hang.
 SYNC_TIMEOUT = 2 * 60 * 60
@@ -154,9 +154,7 @@ def single_instance(config: Config) -> IO | None:
     """Hold a lock for the app's lifetime; None when another copy is running."""
     config.ensure_data_dir()
     fh = open(config.data_dir / "menubar.lock", "w")
-    try:
-        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
+    if not try_lock(fh):
         fh.close()
         return None
     return fh
