@@ -32,6 +32,7 @@ T_DEST_HINT = (
     "Klasörü değiştirmek yalnızca bundan sonraki senkronları etkiler; "
     "mevcut dosyalar taşınmaz ve silinmez."
 )
+T_CHECK_UPDATES = "Güncellemeleri otomatik denetle"
 T_CHOOSE_FOLDER = "Seç…"
 T_CHOOSE_FOLDER_PROMPT = "Bu klasörü kullan"
 T_CHOOSE_FOLDER_MESSAGE = "Ders dosyalarının kaydedileceği klasörü seçin."
@@ -47,6 +48,7 @@ class FormValues:
     base_url: str
     dest: str
     autostart: bool
+    check_updates: bool = True
 
 
 @dataclass(frozen=True)
@@ -73,6 +75,7 @@ def initial_values(saved: Settings | None, current: Settings, autostart: bool) -
         base_url=shown.base_url,
         dest=display_path(shown.dest),
         autostart=autostart or saved is None,
+        check_updates=shown.check_updates,
     )
 
 
@@ -85,6 +88,7 @@ def submit(values: FormValues, current: Settings) -> Submission:
     settings = Settings(
         base_url=normalize_base_url(values.base_url),
         dest=normalize_dest(values.dest),
+        check_updates=values.check_updates,
     )
     return Submission(
         settings=settings,

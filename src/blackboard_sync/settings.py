@@ -34,13 +34,19 @@ class SettingsError(ValueError):
 class Settings:
     base_url: str
     dest: Path
+    # "Güncellemeleri otomatik denetle": look for a new app version once a day.
+    check_updates: bool = True
 
     def to_dict(self) -> dict:
-        return {"base_url": self.base_url, "dest": str(self.dest)}
+        return {"base_url": self.base_url, "dest": str(self.dest), "check_updates": self.check_updates}
 
     @classmethod
     def from_dict(cls, data: dict) -> "Settings":
-        return cls(base_url=normalize_base_url(data["base_url"]), dest=normalize_dest(data["dest"]))
+        return cls(
+            base_url=normalize_base_url(data["base_url"]),
+            dest=normalize_dest(data["dest"]),
+            check_updates=data.get("check_updates", True) is not False,
+        )
 
 
 def settings_path(data_dir: Path) -> Path:

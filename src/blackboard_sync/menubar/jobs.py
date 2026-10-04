@@ -23,6 +23,7 @@ from blackboard_sync.menubar.model import (
     AppModel,
     CourseChange,
     RunOutcome,
+    UpdateState,
     load_saved_state,
     login_arguments,
     parse_sync_output,
@@ -132,14 +133,17 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
     last = load_last_run(config)
     saved = _read_json(menubar_state_file(config))
     recent, login_prompted = load_saved_state(saved)
+    settings = effective_settings(config)
     model = AppModel(
-        dest=effective_settings(config).dest,
+        dest=settings.dest,
         configured=saved_settings(config) is not None,
         now=now,
         last=last,
         recent=recent,
         login_prompted=login_prompted,
         autostart=autostart,
+        check_updates=settings.check_updates,
+        updates=UpdateState.load((saved or {}).get("updates"), now),
     )
     if saved and not (last and last.status == "ok") and isinstance(saved.get("courses"), list):
         try:
@@ -148,7 +152,7 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
             pass
     if saved and not (last and last.status == "ok"):
         model.auth_failed_at = model.auth_failed_at or parse_iso(saved.get("auth_failed_at"))
-    refresh_session(config, model, effective_settings(config))
+    refresh_session(config, model, settings)
     if saved is None and last is not None and last.status == "ok":
         # First start: show what the last terminal sync brought in.
         model.remember(last)

@@ -364,7 +364,7 @@ def test_signed_in_menu_structure_and_version():
         f"Sürüm {__version__} · Güncellemeleri denetle", "Blackboard Sync'ten çık",
     ]
     assert next(e for e in entries(menu) if e.action == "autostart").checked
-    assert next(e for e in entries(menu) if e.action == "releases").value.endswith("/releases")
+    assert next(e for e in entries(menu) if e.title.startswith("Sürüm")).action == "check_updates"
 
 
 def test_expiry_overrides_saved_cookies_and_survives_network_errors():

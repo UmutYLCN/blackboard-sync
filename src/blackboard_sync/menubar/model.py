@@ -22,6 +22,7 @@ from typing import Callable
 from blackboard_sync import __version__
 from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
 from blackboard_sync.settings import Settings
+from blackboard_sync.updater import CheckResult, Release, is_newer
 
 SYNC_INTERVAL = timedelta(hours=1)
 FIRST_SYNC_DELAY = timedelta(seconds=30)
@@ -29,6 +30,11 @@ FIRST_SYNC_DELAY = timedelta(seconds=30)
 # than the hourly schedule (e.g. right after waking up the network may be down).
 RETRY_DELAY = timedelta(minutes=10)
 RECENT_LIMIT = 10
+# Looking for a new app version: once a day, not right at start-up, and after
+# a failed check (offline, rate limited) again an hour later.
+UPDATE_INTERVAL = timedelta(days=1)
+UPDATE_FIRST_DELAY = timedelta(minutes=2)
+UPDATE_RETRY_DELAY = timedelta(hours=1)
 
 # (report key, Turkish label). Turkish keeps the noun singular after a number:
 # "2 yeni dosya".
@@ -58,7 +64,14 @@ T_RECENT_EMPTY = "Henüz yeni bir şey yok"
 T_AUTOSTART = "Bilgisayar açılınca başlat"
 T_SETTINGS = "Ayarlar…"
 T_QUIT = "Blackboard Sync'ten çık"
-RELEASES_URL = "https://github.com/UmutYLCN/blackboard-sync/releases"
+T_VERSION_ROW = f"Sürüm {__version__} · Güncellemeleri denetle"
+T_CHECKING_UPDATES = "Güncellemeler denetleniyor…"
+T_DOWNLOADING_UPDATE = "Güncelleme indiriliyor…"
+
+# Menu actions of the version row. "check_updates" checks right away;
+# "update" downloads the release in ``AppModel.updates.available`` and installs
+# it (macOS: open the .dmg, Windows: run the silent installer and quit).
+UPDATE_ACTIONS = ("check_updates", "update")
 
 
 # Jobs that run `blackboard-sync sync`; "refetch" also brings back files the
@@ -243,12 +256,114 @@ def changes_notification(outcome: RunOutcome, dest: Path) -> Notification | None
     )
 
 
+def update_notification(release: Release) -> Notification:
+    return Notification(
+        title=f"Blackboard Sync {release.version} hazır — Güncelle",
+        message="Yeni sürümü indirmek için tıklayın.",
+        data={"action": "update"},
+    )
+
+
 def login_notification() -> Notification:
     return Notification(
         title="Blackboard oturumu sona erdi",
         message="Yeni dosyaları almak için menüden “Giriş yap”ı seçin.",
         data={"action": "login"},
     )
+
+
+@dataclass
+class UpdateState:
+    """When to look for a new app version and what was found.
+
+    ``checked_at``, ``notified`` and ``available`` are saved in menubar.json so
+    a restart neither checks again before a day has passed nor repeats the
+    notification for a version the student was already told about.
+    """
+
+    checked_at: datetime | None = None  # last check that got an answer
+    notified: str = ""  # the version a notification was posted for
+    available: Release | None = None
+    not_before: datetime | None = None  # start-up delay or retry after a failed check
+    busy: str | None = None  # "check" | "download"
+
+    def due(self, now: datetime, enabled: bool) -> bool:
+        if not enabled or self.busy is not None:
+            return False
+        if self.not_before is not None and now < self.not_before:
+            return False
+        # A check time in the future means the clock was changed: check anyway.
+        return self.checked_at is None or not self.checked_at <= now < self.checked_at + UPDATE_INTERVAL
+
+    def begin(self, job: str) -> bool:
+        if self.busy is not None or (job == "download" and self.available is None):
+            return False
+        self.busy = job
+        return True
+
+    def finish_check(self, result: CheckResult, now: datetime, manual: bool) -> list[Notification]:
+        """Record a check; scheduled checks notify once per version, manual ones always answer."""
+        self.busy = None
+        if result.status == "unknown":
+            self.not_before = now + UPDATE_RETRY_DELAY
+            if manual:
+                return [Notification(
+                    "Güncellemeler denetlenemedi",
+                    "İnternet bağlantınızı kontrol edip daha sonra tekrar deneyin.",
+                    {},
+                )]
+            return []
+        self.checked_at = now
+        self.not_before = None
+        self.available = result.release
+        release = result.release
+        if release is not None and (manual or release.version != self.notified):
+            self.notified = release.version
+            return [update_notification(release)]
+        if manual and release is None:
+            return [Notification("Blackboard Sync güncel", f"Kullandığınız sürüm ({__version__}) en yenisi.", {})]
+        return []
+
+    def finish_download(self, error: str = "") -> list[Notification]:
+        self.busy = None
+        if error:
+            return [Notification("Güncelleme yüklenemedi", error, {})]
+        return []
+
+    def menu_entry(self) -> MenuEntry:
+        if self.busy == "check":
+            return MenuEntry(T_CHECKING_UPDATES, enabled=False)
+        if self.busy == "download":
+            return MenuEntry(T_DOWNLOADING_UPDATE, enabled=False)
+        if self.available is not None:
+            return MenuEntry(f"Güncelleme var: {self.available.version} — Güncelle", "update")
+        return MenuEntry(T_VERSION_ROW, "check_updates")
+
+    def saved_state(self) -> dict:
+        return {
+            "checked_at": self.checked_at.isoformat() if self.checked_at else None,
+            "notified": self.notified,
+            "available": self.available.to_dict() if self.available else None,
+        }
+
+    @classmethod
+    def load(cls, data: dict | None, now: datetime, current: str = __version__) -> "UpdateState":
+        data = data if isinstance(data, dict) else {}
+        available = None
+        try:
+            if data.get("available"):
+                available = Release.from_dict(data["available"])
+        except (TypeError, ValueError):
+            available = None
+        if available is not None and not is_newer(available.version, current):
+            available = None  # already installed
+        notified = data.get("notified")
+        return cls(
+            checked_at=parse_iso(data.get("checked_at")),
+            notified=notified if isinstance(notified, str) else "",
+            available=available,
+            not_before=now + UPDATE_FIRST_DELAY,
+        )
 
 
 @dataclass
@@ -319,6 +434,8 @@ class AppModel:
         session: dict | None = None,
         session_expired: bool = False,
         courses: list[CourseChange] | None = None,
+        check_updates: bool = True,
+        updates: UpdateState | None = None,
     ):
         self.dest = dest
         self.session = session
@@ -333,6 +450,8 @@ class AppModel:
         self.busy: str | None = None  # "sync" | "refetch" | "login"
         self.note = ""  # a transient extra line (lock held, sign-in failed, ...)
         self.next_run_at = now + FIRST_SYNC_DELAY
+        self.check_updates = check_updates  # the "Güncellemeleri otomatik denetle" setting
+        self.updates = updates or UpdateState(not_before=now + UPDATE_FIRST_DELAY)
 
     # -- state ----------------------------------------------------------
     @property
@@ -351,6 +470,10 @@ class AppModel:
     # -- scheduling -----------------------------------------------------
     def due(self, now: datetime) -> bool:
         return self.configured and self.busy is None and now >= self.next_run_at
+
+    def update_due(self, now: datetime) -> bool:
+        """Time for the daily look for a new app version (never while it is switched off)."""
+        return self.updates.due(now, self.check_updates)
 
     def begin(self, job: str) -> bool:
         """Claim the single job slot; False when something is already running."""
@@ -405,7 +528,7 @@ class AppModel:
         else:
             self.note = shorten(f"Giriş tamamlanamadı: {message}", 80)
 
-    def apply_settings(self, dest: Path, school_changed: bool) -> None:
+    def apply_settings(self, dest: Path, school_changed: bool, check_updates: bool | None = None) -> None:
         """The settings window was saved.
 
         A new folder only affects future syncs, so "Son indirilenler" (paths in
@@ -413,6 +536,8 @@ class AppModel:
         old session meaningless: the student has to sign in again.
         """
         self.configured = True
+        if check_updates is not None:
+            self.check_updates = check_updates
         if dest != self.dest:
             self.courses = []
             self.dest = dest
@@ -515,7 +640,7 @@ class AppModel:
             ]),
             MenuEntry(T_AUTOSTART, "autostart", checked=self.autostart),
             MenuEntry(),
-            MenuEntry(f"Sürüm {__version__} · Güncellemeleri denetle", "releases", value=RELEASES_URL),
+            self.updates.menu_entry(),
             MenuEntry(T_QUIT, "quit"),
         ]
         return menu
@@ -527,6 +652,7 @@ class AppModel:
             "courses": [vars(course) for course in self.courses],
             "login_prompted": self.login_prompted,
             "recent": [vars(item) for item in self.recent],
+            "updates": self.updates.saved_state(),
         }
 
 
