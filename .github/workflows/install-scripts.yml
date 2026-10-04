@@ -1,0 +1,50 @@
+name: Install scripts
+
+# Runs the one-line installers against the latest public release.
+on:
+  pull_request:
+    paths:
+      - install.sh
+      - install.ps1
+      - .github/workflows/install-scripts.yml
+  push:
+    branches: [main]
+    paths:
+      - install.sh
+      - install.ps1
+      - .github/workflows/install-scripts.yml
+  workflow_dispatch:
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck install.sh
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run install.sh
+        run: sh install.sh
+      - name: Assert the app is installed
+        run: |
+          test -d "/Applications/Blackboard Sync.app" || test -d "$HOME/Applications/Blackboard Sync.app"
+          app="/Applications/Blackboard Sync.app"; [ -d "$app" ] || app="$HOME/Applications/Blackboard Sync.app"
+          test -x "$app/Contents/MacOS/Blackboard Sync"
+          if xattr "$app" | grep -q com.apple.quarantine; then echo "quarantine flag still set"; exit 1; fi
+          if mount | grep -q blackboard-sync; then echo "disk image still mounted"; exit 1; fi
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run install.ps1 in Windows PowerShell 5.1
+        shell: powershell
+        run: Get-Content -Raw install.ps1 | Invoke-Expression
+      - name: Assert the app is installed
+        shell: powershell
+        run: |
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\Blackboard Sync\Blackboard Sync.exe'
+          if (-not (Test-Path $exe)) { throw "not installed: $exe" }

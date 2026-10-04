@@ -9,6 +9,13 @@ Yeni ders içeriklerini otomatik indirip Blackboard’daki klasör yapısıyla b
 - **macOS:** `Blackboard-Sync-<version>.dmg` dosyasını aç, **Blackboard Sync** uygulamasını **Uygulamalar (Applications)** klasörüne sürükle. İlk açılışta sağ tık → **Aç** seçeneğini kullan.
 - **Windows:** `Blackboard-Sync-<version>-Setup.exe` dosyasını çalıştır ve kurulumu tamamla. SmartScreen uyarısı çıkarsa **Ek bilgi → Yine de çalıştır** seçeneğini kullan.
 
+### Terminalden tek komutla
+
+- **macOS:** `curl -fsSL https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.sh | sh`
+- **Windows (PowerShell):** `irm https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.ps1 | iex`
+
+Komut son sürümü indirir, SHA-256 sağlama toplamını doğrular ve kurar. macOS’ta uygulama imzasız olduğu için yalnızca kurulan uygulamanın karantina işareti kaldırılır; böylece sağ tık → **Aç** adımı gerekmez.
+
 Python kurman gerekmez. Bilgisayarında Chrome, Edge, Brave, Opera, Vivaldi gibi bir tarayıcı varsa giriş onda açılır; yoksa uygulamanın kendi penceresinde açılır, tarayıcı gerekmez. İlk açılışta okulunun Blackboard adresini ve kayıt klasörünü seç, **Giriş yap** düğmesine bas ve açılan pencerede girişini tamamla.
 
 ## Kullanım
