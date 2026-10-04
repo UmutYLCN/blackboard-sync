@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320">
+  <defs>
+    <linearGradient id="bannerBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B0F19" />
+      <stop offset="50%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#1E293B" />
+    </linearGradient>
+
+    <linearGradient id="titleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#F1F5F9" />
+    </linearGradient>
+  </defs>
+
+  <!-- Banner Container Card (compatible with GitHub Light & Dark mode) -->
+  <rect x="8" y="8" width="1264" height="304" rx="24" fill="url(#bannerBg)" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1.5" />
+
+  <!-- Subtle glow line at top border -->
+  <line x1="40" y1="9" x2="1240" y2="9" stroke="rgba(255,255,255,0.18)" stroke-width="1.5" stroke-linecap="round" />
+
+  <!-- Embedded App Icon (240x240) -->
+  <g transform="translate(56, 40)">
+    <svg width="240" height="240" viewBox="0 0 1024 1024">
+      
+  <defs>
+    <linearGradient id="bg1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+
+    <linearGradient id="subtleGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.10)" />
+      <stop offset="40%" stop-color="rgba(255,255,255,0)" />
+      <stop offset="100%" stop-color="rgba(0,0,0,0.32)" />
+    </linearGradient>
+
+    <linearGradient id="c1Back" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1D4ED8" />
+      <stop offset="100%" stop-color="#1E3A8A" />
+    </linearGradient>
+
+    <linearGradient id="c1Front" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+
+    <linearGradient id="c1Sync" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#0284C7" />
+    </linearGradient>
+  </defs>
+
+  <!-- Squircle Background -->
+  <rect x="80" y="80" width="864" height="864" rx="196" ry="196" fill="url(#bg1)" />
+  <rect x="80" y="80" width="864" height="864" rx="196" ry="196" fill="url(#subtleGlow)" />
+  <rect x="81" y="81" width="862" height="862" rx="195" ry="195" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="2" />
+
+  <!-- FOLDER BODY -->
+  <g id="folder">
+    <!-- Back Tab & Plate -->
+    <path d="M 220 280 
+             L 390 280 
+             C 415 280, 435 300, 455 325 
+             L 475 345 
+             C 485 355, 500 360, 515 360 
+             L 804 360 
+             C 826 360, 844 378, 844 400 
+             L 844 470 
+             L 180 470 
+             L 180 320 
+             C 180 298, 198 280, 220 280 Z" 
+          fill="url(#c1Back)" />
+
+    <!-- Back Main Plate -->
+    <rect x="180" y="340" width="664" height="420" rx="40" fill="url(#c1Back)" />
+
+    <!-- White Course Syllabus / Document peeking out -->
+    <rect x="240" y="305" width="544" height="150" rx="16" fill="#F8FAFC" opacity="0.95" />
+    <line x1="280" y1="345" x2="450" y2="345" stroke="#CBD5E1" stroke-width="12" stroke-linecap="round" />
+    <line x1="280" y1="375" x2="540" y2="375" stroke="#CBD5E1" stroke-width="12" stroke-linecap="round" />
+
+    <!-- Front Folder Flap -->
+    <rect x="180" y="395" width="664" height="375" rx="44" fill="url(#c1Front)" />
+    <line x1="228" y1="397" x2="796" y2="397" stroke="rgba(255,255,255,0.35)" stroke-width="4" stroke-linecap="round" />
+
+    <!-- BLACKBOARD LOGO MARK ON FLAP -->
+    
+    
+    <!-- Chalkboard Plaque with Multi-layer Gold Frame & Drop Shadow -->
+    <rect x="267.0" y="436.0" width="426" height="264" rx="30" fill="#0A0F1D" opacity="0.45" />
+    <rect x="265.0" y="432.0" width="430" height="266" rx="28" fill="#B45309" />
+    <rect x="268.0" y="435.0" width="424" height="260" rx="25" fill="#F59E0B" />
+    <rect x="271.0" y="438.0" width="418" height="254" rx="22" fill="#78350F" />
+    <!-- Blackboard Surface -->
+    <rect x="275.0" y="442.0" width="410" height="246" rx="19" fill="#0F172A" />
+    <rect x="275.0" y="442.0" width="410" height="246" rx="19" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2" />
+    
+    <g transform="translate(269.99, 401.51) scale(2.250)">
+        <!-- Chalk Guidelines (slightly thickened with stroke for small-size crispness) -->
+        <path fill="#94A3B8" stroke="#94A3B8" stroke-width="0.8" d="M11.125 72.659h5.804v-3.096h-5.804v3.096zM11.125 30.485h164.439v-4.256H11.125v4.256zM11.125 119.088h164.439v-4.256H11.125v4.256zM21.185 72.659h5.804v-3.096h-5.804v3.096zM30.859 72.659h6.19v-3.096h-6.19v3.096zM80.383 72.659h6.191v-3.096h-6.191v3.096zM90.443 72.659h5.804v-3.096h-5.804v3.096zM100.115 72.659h6.192v-3.096h-6.192v3.096zM110.176 72.659h5.803v-3.096h-5.803v3.096zM129.908 72.659h5.805v-3.096h-5.805v3.096zM139.969 72.659h5.802v-3.096h-5.802v3.096zM149.641 72.659h6.191v-3.096h-6.191v3.096zM159.701 72.659h5.803v-3.096h-5.803v3.096zM169.373 72.659h6.191v-3.096h-6.191v3.096z" />
+        <!-- White Bb Mark -->
+        <path fill="#FFFFFF" stroke="#FFFFFF" stroke-width="1.2" d="M38.209 52.152c0-14.703-11.22-8.899-11.22-13.929 0-1.935 1.161-1.547 1.934-1.547.388 0 1.161.386 6.191.386 9.286 0 18.185-.386 27.084-.386 26.31 0 26.31 15.864 26.31 18.185 0 6.964-3.869 12.768-11.607 15.089v.387c13.155 3.095 17.024 8.899 17.024 18.572 0 14.316-9.672 23.214-27.083 23.214-15.863 0-21.28-.387-26.697-.387-2.708 0-5.417.387-7.739.387s-3.482 0-3.482-1.547c0-3.482 9.286-.773 9.286-11.221V52.152h-.001zm13.156 11.607c0 5.03 1.161 5.804 7.352 6.191h6.19c8.124 0 11.221-4.256 11.221-11.995 0-10.059-7.739-16.637-17.411-16.637-6.965 0-7.352 3.869-7.352 10.06v12.381zm0 30.954c0 10.061 2.709 13.154 13.155 13.154s15.863-6.963 15.863-17.411c0-6.191-3.095-15.863-22.441-15.863-6.19 0-6.577 2.708-6.577 8.125v11.995zM117.914 47.123c0-7.738-6.578-3.096-6.578-6.965 0-2.708 5.029-1.161 15.09-7.351.775-.387 1.16-.774 1.934-.774 1.162 0 .775 2.322.775 3.096v42.173c4.256-3.869 8.898-7.351 14.314-7.351 12.383 0 17.025 10.833 17.025 18.184 0 16.252-9.287 24.762-22.441 24.762-9.674 0-12.768-4.254-14.316-4.254-1.934 0-3.096 4.254-5.416 4.254-.773 0-1.16-.387-1.16-1.16s.773-3.094.773-8.512V47.123zm11.221 51.072c0 8.898 8.125 10.834 11.221 10.834 8.898 0 10.832-8.514 10.832-15.477 0-8.125-3.869-15.864-13.928-15.864-3.096 0-8.125 1.934-8.125 5.804v14.703z" />
+    </g>
+    
+
+    <!-- LOWER-RIGHT CORNER SYNC/DOWNLOAD BADGE -->
+    
+        <!-- Download & Sync Badge -->
+        <circle cx="745" cy="680" r="104" fill="#0A0F1D" opacity="0.6" />
+        <circle cx="745" cy="680" r="94" fill="url(#c1Sync)" stroke="#FFFFFF" stroke-width="6" />
+        <g transform="translate(745, 680)">
+            <!-- Sync ring segments -->
+            <path d="M -54 -32 A 62 62 0 0 1 54 -32" fill="none" stroke="rgba(255,255,255,0.75)" stroke-width="14" stroke-linecap="round" />
+            <polygon points="56,-42 70,-18 42,-22" fill="#FFFFFF" />
+            
+            <path d="M 54 32 A 62 62 0 0 1 -54 32" fill="none" stroke="rgba(255,255,255,0.75)" stroke-width="14" stroke-linecap="round" />
+            <polygon points="-56,42 -70,18 -42,22" fill="#FFFFFF" />
+
+            <!-- Crisp White Download Arrow -->
+            <rect x="-14" y="-36" width="28" height="48" rx="7" fill="#FFFFFF" />
+            <polygon points="0,38 -36,-2 36,-2" fill="#FFFFFF" />
+        </g>
+        
+  </g>
+
+    </svg>
+  </g>
+
+  <!-- Right Text Block -->
+  <g transform="translate(340, 100)">
+    <!-- Title -->
+    <text x="0" y="46" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="54" font-weight="800" fill="url(#titleGrad)" letter-spacing="-0.5">Blackboard Sync</text>
+    
+    <!-- Tagline -->
+    <text x="0" y="94" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="23" font-weight="400" fill="#94A3B8" letter-spacing="0.2">Ders dosyaların, otomatik olarak bilgisayarında.</text>
+
+    <!-- Badges / Feature Pills -->
+    <g transform="translate(0, 126)">
+      <!-- Pill 1: macOS & Windows -->
+      <rect x="0" y="0" width="170" height="30" rx="15" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+      <text x="85" y="19" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#CBD5E1" text-anchor="middle">macOS · Windows</text>
+
+      <!-- Pill 2: Otomatik Senkron -->
+      <rect x="182" y="0" width="150" height="30" rx="15" fill="rgba(56, 189, 248, 0.12)" stroke="rgba(56, 189, 248, 0.3)" stroke-width="1" />
+      <text x="257" y="19" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#38BDF8" text-anchor="middle">Otomatik Senkron</text>
+
+      <!-- Pill 3: Açık Kaynak -->
+      <rect x="344" y="0" width="110" height="30" rx="15" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+      <text x="399" y="19" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#94A3B8" text-anchor="middle">MIT Lisans</text>
+    </g>
+  </g>
+</svg>
