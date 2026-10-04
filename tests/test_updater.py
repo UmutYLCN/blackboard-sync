@@ -299,7 +299,7 @@ AVAILABLE = CheckResult("available", RELEASE)
 
 
 def model(**kwargs):
-    return AppModel(dest=Path("/Users/student/Documents/Okul"), now=NOW, **kwargs)
+    return AppModel(dest=Path("/Users/student/Documents/University"), now=NOW, **kwargs)
 
 
 def version_row(m):
@@ -385,7 +385,7 @@ def test_update_state_survives_a_restart(tmp_path):
     # Ahead of any real version, so the remembered release stays an update.
     ahead = Release("99.0.0", "https://github.com/UmutYLCN/blackboard-sync/releases/tag/v99.0.0",
                     "Blackboard-Sync-99.0.0.dmg", DOWNLOAD + "Blackboard-Sync-99.0.0.dmg")
-    config = Config(data_dir=tmp_path / "data", dest=tmp_path / "Okul")
+    config = Config(data_dir=tmp_path / "data", dest=tmp_path / "University")
     m = jobs.load_model(config, NOW, autostart=False)
     m.updates.finish_check(CheckResult("available", ahead), NOW, manual=False)
     jobs.save_model(config, m)
@@ -403,8 +403,8 @@ def test_update_state_survives_a_restart(tmp_path):
 
 
 def test_setting_reaches_the_model_on_start(tmp_path):
-    config = Config(data_dir=tmp_path / "data", dest=tmp_path / "Okul")
-    save_settings(config.data_dir, Settings("https://bb.example.edu", tmp_path / "Okul", check_updates=False))
+    config = Config(data_dir=tmp_path / "data", dest=tmp_path / "University")
+    save_settings(config.data_dir, Settings("https://bb.example.edu", tmp_path / "University", check_updates=False))
     assert jobs.load_model(config, NOW, autostart=False).check_updates is False
 
 
@@ -412,7 +412,7 @@ def test_setting_reaches_the_model_on_start(tmp_path):
 
 def test_check_updates_setting_defaults_on_and_round_trips(tmp_path):
     assert Settings("https://bb.example.edu", tmp_path).check_updates is True
-    save_settings(tmp_path, Settings("https://bb.example.edu", tmp_path / "Okul", check_updates=False))
+    save_settings(tmp_path, Settings("https://bb.example.edu", tmp_path / "University", check_updates=False))
     assert load_settings(tmp_path).check_updates is False
     # settings.json from before this option counts as on.
     (tmp_path / "settings.json").write_text(json.dumps({"base_url": "https://bb.example.edu", "dest": str(tmp_path)}))

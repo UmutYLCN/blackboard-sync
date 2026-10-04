@@ -6,10 +6,10 @@ For installation, see the [README](../README.md). Commands below run from the re
 `blackboard-sync` signs in to Blackboard Learn Ultra
 (default: <https://blackboard.istun.edu.tr>) using your own browser session,
 finds your courses for the current term, and copies everything in them to
-`~/Documents/Okul/` with the same folder structure you see on the site:
+`~/Documents/University/` with the same folder structure you see on the site:
 
 ```
-~/Documents/Okul/
+~/Documents/University/
   2026-2027 Güz/
     CSE303 Algorithm Analysis/
       Syllabus/
@@ -140,7 +140,7 @@ The first sync downloads everything; later runs only fetch what is new. At the
 end it prints a summary per course, for example:
 
 ```
-Synced 8 course(s) for 2026-2027 Güz into /Users/you/Documents/Okul
+Synced 8 course(s) for 2026-2027 Güz into /Users/you/Documents/University
   CSE303: 2 new files, 1 new announcement
       + 2026-2027 Güz/CSE303 Algorithm Analysis/Lecture Notes/Week 2/week2.pdf
       ...
@@ -184,7 +184,7 @@ asks for:
   `https://blackboard.istun.edu.tr`; students of another university type their
   school's Blackboard address instead (it must be `https://`; a pasted course
   link is reduced to the site address).
-- **Dosyaların kaydedileceği klasör** — prefilled with `~/Documents/Okul`;
+- **Dosyaların kaydedileceği klasör** — prefilled with `~/Documents/University`;
   **Seç…** opens a folder picker.
 - **Bilgisayar açılınca başlat** — ticked by default (see below).
 - **Güncellemeleri otomatik denetle** — ticked by default (see
@@ -242,9 +242,9 @@ user account.
 | --- | --- |
 | `Son senkron: 14:00 · 3 yeni dosya` | Result of the last run (greyed out, information only), followed by when the next one is due. Shows `oturum sona erdi` when you need to sign in again, or `hata` plus the error. |
 | **Şimdi senkronize et** | Sync right away instead of waiting for the next hourly run. Greyed out while a sync or sign-in is running. |
-| **Silinenleri tekrar indir** | Runs one sync that also downloads again the files you deleted locally (the same as `blackboard-sync sync --refetch-missing`), for example after deleting the whole `Okul` folder by mistake. Files you only edited are not touched, and the notification still has one line per course. The hourly runs and **Şimdi senkronize et** keep respecting deletions. |
+| **Silinenleri tekrar indir** | Runs one sync that also downloads again the files you deleted locally (the same as `blackboard-sync sync --refetch-missing`), for example after deleting the whole `University` folder by mistake. Files you only edited are not touched, and the notification still has one line per course. The hourly runs and **Şimdi senkronize et** keep respecting deletions. |
 | **Giriş yap** | Opens the Blackboard sign-in window (same as `blackboard-sync login`). As soon as you are in, a sync starts. |
-| **Okul klasörünü aç** | Opens the folder chosen in **Ayarlar…** (`~/Documents/Okul` by default) in Finder. |
+| **Okul klasörünü aç** | Opens the folder chosen in **Ayarlar…** (`~/Documents/University` by default) in Finder. |
 | **Son indirilenler** | The last 10 files, notes and announcements that came in. Click one to open it (or its folder, if you moved the file). |
 | **Ayarlar…** | Reopens the [settings window](#settings): school address, folder, start at login, update checks. |
 | **Bilgisayar açılınca başlat** | Start the app at login (see above). A check mark means it is on. |
@@ -293,7 +293,7 @@ blackboard-sync [...] sync  [--term NAME | --all-terms] [--course CODE ...]
 
 | Option | Meaning |
 | --- | --- |
-| `--dest DIR` | Base folder (default: the folder saved in the menu bar app's settings, else `~/Documents/Okul`; env `BBSYNC_DEST`). |
+| `--dest DIR` | Base folder (default: the folder saved in the menu bar app's settings, else `~/Documents/University`; env `BBSYNC_DEST`). |
 | `--term NAME` | Sync a specific term by its Blackboard name, e.g. `"2025-2026 Bahar"`. |
 | `--all-terms` | Sync every term, including past ones and courses without a term. |
 | `--course CODE` | Only this course (`CSE303`, or the course id); repeatable. |
@@ -315,7 +315,7 @@ most recently started term. Courses the instructor has not opened yet
 
 | What | Where |
 | --- | --- |
-| Course material | `~/Documents/Okul/<term>/<course code> <course name>/...` |
+| Course material | `~/Documents/University/<term>/<course code> <course name>/...` |
 | Settings (school address, folder) | `~/Library/Application Support/blackboard-sync/settings.json` |
 | Session cookies | `~/Library/Application Support/blackboard-sync/session.json` |
 | Sign-in browser profile | `~/Library/Application Support/blackboard-sync/browser-profile/` |
@@ -398,7 +398,7 @@ summary; the same summary is written to `last-run.json` (dry runs excepted).
   "started_at": "2026-10-03T12:00:00+00:00",
   "finished_at": "2026-10-03T12:00:09+00:00",
   "dry_run": false,
-  "dest": "/Users/you/Documents/Okul",
+  "dest": "/Users/you/Documents/University",
   "terms": ["2026-2027 Güz"],
   "courses": [
     {
@@ -544,7 +544,7 @@ WebView2 window (pywebview, through pythonnet); see
 
 | What | Where on Windows |
 | --- | --- |
-| Course material | `Documents\Okul\<term>\<course code> <course name>\...` (your Documents folder, also when it is in OneDrive) |
+| Course material | `Documents\University\<term>\<course code> <course name>\...` (your Documents folder, also when it is in OneDrive) |
 | Session, sign-in profile, state, last run | `%APPDATA%\blackboard-sync\` |
 
 Differences from macOS:
@@ -564,7 +564,7 @@ Differences from macOS:
   paths are enabled. File names are shortened (keeping the extension) so files
   fit under that limit; folder names are not, so a very deep folder structure
   can still be too long. If a sync stops with a path error, choose a shorter
-  destination with `--dest` (for example `C:\Okul`) or enable Windows long
+  destination with `--dest` (for example `C:\University`) or enable Windows long
   paths.
 
 ## Development
@@ -668,7 +668,7 @@ py -3.12 -m venv .venv
 ```
 
 The first launch opens settings: enter your school's Blackboard URL, choose a
-folder (default: `Documents\Okul`), and select **Giriş yap**. Complete sign-in in
+folder (default: `Documents\University`), and select **Giriş yap**. Complete sign-in in
 the window that opens. Right-click the tray icon next to the clock (possibly inside the
 hidden-icons arrow) for the shared menu. Later, launch without a console with:
 

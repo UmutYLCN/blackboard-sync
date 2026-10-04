@@ -110,7 +110,7 @@ def fake_bb() -> FakeBlackboard:
 
 @pytest.fixture
 def config(tmp_path) -> Config:
-    return Config(base_url=BASE_URL, dest=tmp_path / "Okul", data_dir=tmp_path / "data")
+    return Config(base_url=BASE_URL, dest=tmp_path / "University", data_dir=tmp_path / "data")
 
 
 @pytest.fixture

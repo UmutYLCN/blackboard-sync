@@ -119,7 +119,7 @@ def test_windows_names_are_kept_short():
 
 
 def test_fit_windows_path_shortens_only_the_file_name():
-    base = Path("C:/Users/student/Documents/Okul")
+    base = Path("C:/Users/student/Documents/University")
     short = "2026 Güz/CSE303/notes.pdf"
     assert fit_windows_path(base, short) == short
     folder = "2026-2027 Güz/" + "F" * 100
