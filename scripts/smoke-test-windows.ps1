@@ -9,7 +9,7 @@ $version = python -c "import blackboard_sync; print(blackboard_sync.__version__)
 $app = Join-Path $env:LOCALAPPDATA "Programs\Blackboard Sync"
 $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 $dataDir = Join-Path $env:TEMP "bbsync-smoke-data"
-$env:BLACKBOARD_SYNC_DIR = $dataDir
+$env:BBSYNC_DATA_DIR = $dataDir
 function Check($ok, $what) { if (-not $ok) { throw "FAILED: $what" } else { Write-Host "ok: $what" } }
 
 function Install {
