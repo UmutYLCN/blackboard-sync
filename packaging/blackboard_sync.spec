@@ -7,8 +7,6 @@ VERSION = re.search(
     r'__version__ = "([^"]+)"', (ROOT / "src" / "blackboard_sync" / "__init__.py").read_text()
 ).group(1)
 
-ICON = str(ROOT / "assets" / "icon" / "icon.icns")
-
 a = Analysis(
     [str(ROOT / "packaging" / "app_entry.py")],
     pathex=[str(ROOT / "src")],
@@ -32,16 +30,13 @@ app = BUNDLE(
     name="Blackboard Sync.app",
     bundle_identifier="io.github.umutylcn.blackboard-sync",
     version=VERSION,
-    icon=ICON,
     info_plist={
         "CFBundleName": "Blackboard Sync",
         "CFBundleDisplayName": "Blackboard Sync",
         "CFBundleShortVersionString": VERSION,
         "CFBundleVersion": VERSION,
-        "CFBundleIconFile": "icon.icns",
         "LSUIElement": True,  # menu bar app: no Dock icon
         "LSMinimumSystemVersion": "11.0",
         "NSHumanReadableCopyright": "Copyright (c) 2026 Umut Yalcin. MIT License.",
     },
 )
-

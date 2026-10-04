@@ -731,5 +731,3 @@ then exit after launching it. Installation waits until sync/sign-in is idle and
 blocks new jobs while downloading. Update-toast clicks use the current user's
 `HKCU\Software\Classes\blackboard-sync` URI registration to forward a fixed
 update action to the running tray; no URI-supplied command is executed.
-
-Blackboard Sync is an independent project and is not affiliated with or endorsed by Anthology Inc.; Blackboard is a trademark of its owner.

@@ -1,9 +1,6 @@
-<p align="center">
-  <img src="assets/banner.png" alt="Blackboard Sync" width="800">
-</p>
+# Blackboard Sync
 
 Yeni ders içeriklerini otomatik indirip Blackboard’daki klasör yapısıyla bilgisayarına kaydeder. Arka planda her saat kontrol eder, yeni bir şey geldiğinde bildirim gösterir.
-
 
 ## Ekran görüntüleri
 
