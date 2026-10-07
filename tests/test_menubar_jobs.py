@@ -230,3 +230,34 @@ def test_courses_and_expiry_survive_restart_after_error(config):
     restored = jobs.load_model(config, NOW, False)
     assert restored.courses == model.courses
     assert restored.menu(NOW).entries[0].warning
+
+
+def test_unexpected_exception_in_a_sync_worker_still_clears_busy(monkeypatch):
+    from blackboard_sync.menubar.model import AppModel
+
+    def boom(*args, **kwargs):
+        raise ValueError("unexpected")
+
+    monkeypatch.setattr(jobs, "run_sync", boom)
+    model = AppModel(SETTINGS.dest, NOW)
+    assert model.begin("sync")
+    outcome = jobs.run_sync_guarded("sync", SETTINGS)
+    assert outcome.status == "error" and "unexpected" in outcome.message
+    model.finish_sync(outcome, NOW)
+    assert model.busy is None
+    assert model.begin("sync")  # the next job can start
+
+
+def test_unexpected_exception_in_a_login_worker_still_clears_busy(monkeypatch):
+    from blackboard_sync.menubar.model import AppModel
+
+    def boom(*args, **kwargs):
+        raise ValueError("unexpected")
+
+    monkeypatch.setattr(jobs, "run_login", boom)
+    model = AppModel(SETTINGS.dest, NOW)
+    assert model.begin("login")
+    ok, message = jobs.run_login_guarded(SETTINGS)
+    assert not ok and "unexpected" in message
+    model.finish_login(ok, message, NOW)
+    assert model.busy is None

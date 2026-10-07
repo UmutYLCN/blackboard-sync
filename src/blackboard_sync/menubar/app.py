@@ -145,7 +145,7 @@ def build_app(config: Config):
             self.start_sync(job="refetch")
 
         def _sync_worker(self, job: str, settings) -> None:
-            outcome = jobs.run_sync(job, settings)
+            outcome = jobs.run_sync_guarded(job, settings)
             AppHelper.callAfter(self._sync_done, outcome)
 
         def _sync_done(self, outcome: RunOutcome) -> None:
@@ -167,7 +167,7 @@ def build_app(config: Config):
             threading.Thread(target=self._login_worker, args=(self.settings,), daemon=True).start()
 
         def _login_worker(self, settings) -> None:
-            ok, message = jobs.run_login(settings)
+            ok, message = jobs.run_login_guarded(settings)
             AppHelper.callAfter(self._login_done, ok, message)
 
         def _login_done(self, ok: bool, message: str) -> None:

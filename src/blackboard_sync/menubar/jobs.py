@@ -9,6 +9,7 @@ school and folder from the settings window are passed as flags on every run.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -34,6 +35,8 @@ from blackboard_sync.menubar.model import (
 from blackboard_sync.session import write_private_json, load_session
 from blackboard_sync.settings import Settings, load_settings
 from blackboard_sync.system import try_lock
+
+log = logging.getLogger("blackboard_sync.menubar")
 
 # A first sync of a whole term can take a while; this only guards against a hang.
 SYNC_TIMEOUT = 2 * 60 * 60
@@ -89,6 +92,27 @@ def run_login(settings: Settings, runner: Runner = subprocess.run) -> tuple[bool
         return True, ""
     lines = [line for line in (proc.stderr or proc.stdout or "").strip().splitlines() if line.strip()]
     return False, lines[-1] if lines else f"exit status {proc.returncode}"
+
+
+def run_sync_guarded(job: str, settings: Settings) -> RunOutcome:
+    """``run_sync`` that turns any unexpected exception into a failed outcome.
+
+    Worker threads must always report back, or the model stays busy forever.
+    """
+    try:
+        return run_sync(job, settings)
+    except Exception as exc:
+        log.exception("Sync job failed")
+        return RunOutcome(status="error", message=str(exc), finished_at=utcnow())
+
+
+def run_login_guarded(settings: Settings) -> tuple[bool, str]:
+    """``run_login`` that turns any unexpected exception into a failed login."""
+    try:
+        return run_login(settings)
+    except Exception as exc:
+        log.exception("Login job failed")
+        return False, str(exc)
 
 
 def login_method(platform: str | None = None) -> str:
