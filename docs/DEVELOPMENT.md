@@ -195,7 +195,11 @@ sections:
   touched; the hourly runs and **Şimdi senkronize et** keep respecting
   deletions.
 - **Genel** — **Bilgisayar açılınca başlat**, ticked by default (see
-  [Start at login](#start-at-login)).
+  [Start at login](#start-at-login)), and **Otomatik senkron**: every 30
+  minutes, **every hour** (default), every 3 hours or **Yalnızca elle** (no
+  automatic sync; the menu says "otomatik senkron kapalı" and no notifications
+  arrive until you choose **Şimdi senkronize et**). There is deliberately no
+  shorter choice: an idle sync is a few hundred requests to the school.
 - **Güncellemeler** — **Güncellemeleri otomatik denetle**, ticked by default,
   **Şimdi denetle** and the version number (see [Updates](#updates)).
 
@@ -273,12 +277,15 @@ The icon tells you the state at a glance:
 
 ### When it syncs and notifies
 
-- About 30 seconds after the app starts, then every hour. After the Mac
-  wakes up, an overdue sync runs within half a minute.
+- About 30 seconds after the app starts, then at the chosen **Otomatik
+  senkron** interval (every hour by default). After the Mac wakes up, an
+  overdue sync runs within half a minute. Changing the interval moves the next
+  run; one that would already be overdue starts 30 seconds later.
 - Never two at once: the app runs one sync (normal or **Silinenleri tekrar
   indir**) or sign-in at a time, and if a
   `blackboard-sync sync` from the terminal is already running (the lock file),
-  it waits and tries again in 10 minutes.
+  it waits and tries again in 10 minutes (or after the interval, if that is
+  shorter; never in manual mode).
 - After a run with something new, **one** notification lists each changed
   course on its own line, for example `CSE303: 2 yeni dosya, 1 yeni duyuru`.
   Clicking it opens that course's folder (when several courses changed, the

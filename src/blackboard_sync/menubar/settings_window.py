@@ -25,6 +25,7 @@ from AppKit import (
     NSFont,
     NSModalResponseOK,
     NSOpenPanel,
+    NSPopUpButton,
     NSTextField,
     NSView,
     NSWindow,
@@ -34,6 +35,7 @@ from AppKit import (
 from Foundation import NSURL, NSMakeRect, NSObject
 
 from blackboard_sync.menubar.settings_form import (
+    INTERVAL_OPTIONS,
     T_AUTOSTART,
     T_CANCEL,
     T_CHECK_UPDATES,
@@ -42,7 +44,7 @@ from blackboard_sync.menubar.settings_form import (
     T_CHOOSE_FOLDER_PROMPT,
     T_DEST_HINT,
     T_DEST_LABEL,
-    T_INTRO_FIRST_RUN,
+    T_INTERVAL_LABEL,
     T_REFETCH_HINT,
     T_SAVE,
     T_SECTION_ACCOUNT,
@@ -56,6 +58,8 @@ from blackboard_sync.menubar.settings_form import (
     T_URL_PLACEHOLDER,
     FormValues,
     WindowStatus,
+    interval_title,
+    intro_first_run,
 )
 from blackboard_sync.settings import display_path
 
@@ -190,7 +194,7 @@ class SettingsWindow:
             place(text_field, 34, gap=12, width=CONTENT - ACTION_WIDTH - 12)
 
         if first_run:
-            intro, height = wrapping(T_INTRO_FIRST_RUN)
+            intro, height = wrapping(intro_first_run("bu Mac'e", values.sync_interval_minutes))
             place(intro, height, gap=16)
 
         section(T_SECTION_ACCOUNT, first=True)
@@ -223,6 +227,17 @@ class SettingsWindow:
         self.autostart = NSButton.checkboxWithTitle_target_action_(T_AUTOSTART, None, None)
         self.autostart.setState_(1 if values.autostart else 0)
         place(self.autostart, 18, gap=16)
+        interval_label = label(T_INTERVAL_LABEL + ":")
+        label_width = interval_label.fittingSize().width + 4
+        interval_label.setFrame_(NSMakeRect(MARGIN, y + 4, label_width, 17))
+        view.addSubview_(interval_label)
+        self.interval_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+            NSMakeRect(MARGIN + label_width + 8, y, 170, 25), False
+        )
+        self.interval_popup.addItemsWithTitles_([title for _, title in INTERVAL_OPTIONS])
+        self.interval_popup.selectItemWithTitle_(interval_title(values.sync_interval_minutes))
+        view.addSubview_(self.interval_popup)
+        y += 25 + 4
 
         section(T_SECTION_UPDATES)
         self.check_updates = NSButton.checkboxWithTitle_target_action_(T_CHECK_UPDATES, None, None)
@@ -271,6 +286,9 @@ class SettingsWindow:
             dest=str(self.dest_field.stringValue()),
             autostart=bool(self.autostart.state()),
             check_updates=bool(self.check_updates.state()),
+            sync_interval_minutes=next(
+                (m for m, title in INTERVAL_OPTIONS if title == str(self.interval_popup.titleOfSelectedItem())), 60
+            ),
         )
 
     def update_status(self, status: WindowStatus) -> None:

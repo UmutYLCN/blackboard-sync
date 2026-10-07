@@ -156,6 +156,7 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
         login_prompted=login_prompted,
         autostart=autostart,
         check_updates=settings.check_updates,
+        sync_interval_minutes=settings.sync_interval_minutes,
         updates=UpdateState.load((saved or {}).get("updates"), now),
     )
     if saved and not (last and last.status == "ok") and isinstance(saved.get("courses"), list):

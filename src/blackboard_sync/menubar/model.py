@@ -22,13 +22,15 @@ from typing import Callable
 from blackboard_sync import __version__
 from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
 from blackboard_sync.inapp import INAPP
-from blackboard_sync.settings import Settings
+from blackboard_sync.settings import DEFAULT_SYNC_INTERVAL_MINUTES, Settings, normalize_sync_interval
 from blackboard_sync.updater import CheckResult, Release, is_newer
 
-SYNC_INTERVAL = timedelta(hours=1)
+# The default interval; the student picks another one in the settings window.
+SYNC_INTERVAL = timedelta(minutes=DEFAULT_SYNC_INTERVAL_MINUTES)
 FIRST_SYNC_DELAY = timedelta(seconds=30)
 # After a network error or while another sync holds the lock, try again sooner
-# than the hourly schedule (e.g. right after waking up the network may be down).
+# than the regular schedule (e.g. right after waking up the network may be down);
+# never later than the interval itself.
 RETRY_DELAY = timedelta(minutes=10)
 RECENT_LIMIT = 10
 # Looking for a new app version: once a day, not right at start-up, and after
@@ -65,6 +67,7 @@ T_RECENT = "Son indirilenler"
 T_RECENT_EMPTY = "Henüz yeni bir şey yok"
 T_SETTINGS = "Ayarlar…"
 T_QUIT = "Çık"
+T_AUTO_SYNC_OFF = "otomatik senkron kapalı"
 T_CHECK_NOW = "Şimdi denetle"
 T_CHECKING_UPDATES = "Güncellemeler denetleniyor…"
 T_DOWNLOADING_UPDATE = "Güncelleme indiriliyor…"
@@ -157,6 +160,12 @@ class RunOutcome:
             dest=data.get("dest") or "",
             courses=courses,
         )
+
+
+def sync_interval(minutes: int) -> timedelta | None:
+    """The scheduling interval for a setting value; None for 0 (only by hand)."""
+    minutes = normalize_sync_interval(minutes)
+    return timedelta(minutes=minutes) if minutes else None
 
 
 def parse_iso(value: str | None) -> datetime | None:
@@ -440,6 +449,7 @@ class AppModel:
         courses: list[CourseChange] | None = None,
         check_updates: bool = True,
         updates: UpdateState | None = None,
+        sync_interval_minutes: int = DEFAULT_SYNC_INTERVAL_MINUTES,
     ):
         self.dest = dest
         self.session = session
@@ -454,7 +464,8 @@ class AppModel:
         self.busy: str | None = None  # "sync" | "refetch" | "login"
         self.login_method = ""  # while signing in: a browser's name, INAPP, or "" if unknown
         self.note = ""  # a transient extra line (lock held, sign-in failed, ...)
-        self.next_run_at = now + FIRST_SYNC_DELAY
+        self.sync_interval = sync_interval(sync_interval_minutes)  # None: only by hand
+        self.next_run_at = self.schedule(now, FIRST_SYNC_DELAY)
         self.check_updates = check_updates  # the "Güncellemeleri otomatik denetle" setting
         self.updates = updates or UpdateState(not_before=now + UPDATE_FIRST_DELAY)
 
@@ -473,8 +484,22 @@ class AppModel:
         return Icon.IDLE
 
     # -- scheduling -----------------------------------------------------
+    @property
+    def retry_delay(self) -> timedelta | None:
+        """Wait before trying again after an error; None when syncing is by hand only."""
+        return None if self.sync_interval is None else min(RETRY_DELAY, self.sync_interval)
+
+    def schedule(self, now: datetime, delay: timedelta | None) -> datetime | None:
+        """The next automatic run; None (never) in manual mode."""
+        return None if self.sync_interval is None or delay is None else now + delay
+
     def due(self, now: datetime) -> bool:
-        return self.configured and self.busy is None and now >= self.next_run_at
+        return (
+            self.configured
+            and self.busy is None
+            and self.next_run_at is not None
+            and now >= self.next_run_at
+        )
 
     def update_due(self, now: datetime) -> bool:
         """Time for the daily look for a new app version (never while it is switched off)."""
@@ -500,7 +525,7 @@ class AppModel:
                 if job == "refetch"
                 else "Başka bir senkron sürüyor; birazdan tekrar denenecek."
             )
-            self.next_run_at = now + RETRY_DELAY
+            self.next_run_at = self.schedule(now, self.retry_delay)
             return notes
         self.last = outcome
         if outcome.status == "ok":
@@ -509,18 +534,18 @@ class AppModel:
             self.auth_failed_at = None
             self.courses = outcome.courses
             self.remember(outcome)
-            self.next_run_at = now + SYNC_INTERVAL
+            self.next_run_at = self.schedule(now, self.sync_interval)
             notification = changes_notification(outcome, self.dest)
             if notification:
                 notes.append(notification)
         elif outcome.status == "login_required":
             self.auth_failed_at = outcome.finished_at or now
-            self.next_run_at = now + SYNC_INTERVAL
+            self.next_run_at = self.schedule(now, self.sync_interval)
             if not self.login_prompted:
                 self.login_prompted = True
                 notes.append(login_notification())
         else:
-            self.next_run_at = now + RETRY_DELAY
+            self.next_run_at = self.schedule(now, self.retry_delay)
         return notes
 
     def finish_login(self, ok: bool, message: str, now: datetime) -> None:
@@ -530,12 +555,21 @@ class AppModel:
             self.auth_failed_at = None
             self.session_expired = False
             self.note = ""
-            self.next_run_at = now  # fetch what was missed right away
+            self.next_run_at = self.schedule(now, timedelta(0))  # fetch what was missed right away
         else:
             self.note = shorten(f"Giriş tamamlanamadı: {message}", 80)
 
-    def apply_settings(self, dest: Path, school_changed: bool, check_updates: bool | None = None) -> None:
+    def apply_settings(
+        self,
+        dest: Path,
+        school_changed: bool,
+        check_updates: bool | None = None,
+        sync_interval_minutes: int | None = None,
+        now: datetime | None = None,
+    ) -> None:
         """The settings window was saved.
+
+        A new sync interval moves the next run (see ``reschedule``).
 
         A new folder only affects future syncs, so "Son indirilenler" (paths in
         the old folder) starts over. A new school makes the last result and the
@@ -544,6 +578,11 @@ class AppModel:
         self.configured = True
         if check_updates is not None:
             self.check_updates = check_updates
+        if sync_interval_minutes is not None:
+            interval = sync_interval(sync_interval_minutes)
+            if interval != self.sync_interval:
+                self.sync_interval = interval
+                self.reschedule(now or datetime.now(timezone.utc))
         if dest != self.dest:
             self.courses = []
             self.dest = dest
@@ -555,6 +594,24 @@ class AppModel:
             self.last = None
             self.login_prompted = False
             self.note = "Yeni okul için giriş yapın."
+
+    def reschedule(self, now: datetime) -> None:
+        """Recompute the next run after the interval changed.
+
+        It counts from the end of the last sync (after an error: the shorter
+        retry delay). A run that would already be overdue starts 30 seconds
+        from now instead of immediately, so saving the window never fires a
+        sync at once.
+        """
+        if self.sync_interval is None:
+            self.next_run_at = None
+            return
+        if self.last is None or self.last.finished_at is None:
+            self.next_run_at = now + FIRST_SYNC_DELAY
+            return
+        delay = self.retry_delay if self.last.status == "error" else self.sync_interval
+        next_run = self.last.finished_at + delay
+        self.next_run_at = next_run if next_run > now else now + FIRST_SYNC_DELAY
 
     def remember(self, outcome: RunOutcome) -> None:
         at = (outcome.finished_at or datetime.now(timezone.utc)).isoformat(timespec="seconds")
@@ -617,7 +674,10 @@ class AppModel:
         elif self.last is not None and self.last.status == "error" and self.last.message:
             parts.append(shorten(self.last.message, 50))
         # Overdue: a fixed word, since the current clock time would change the menu every minute.
-        parts.append(f"sonraki: {format_time(self.next_run_at, now) if self.next_run_at > now else 'birazdan'}")
+        if self.next_run_at is None:
+            parts.append(T_AUTO_SYNC_OFF)
+        else:
+            parts.append(f"sonraki: {format_time(self.next_run_at, now) if self.next_run_at > now else 'birazdan'}")
         return parts
 
     def status_lines(self, now: datetime) -> list[str]:
@@ -660,11 +720,12 @@ class AppModel:
                 label += f" ({count} yeni)"
             course_items.append((label, course.folder))
         update = self.updates.menu_entry()
+        sync = MenuEntry(menu.sync_title, "sync", enabled=menu.sync_enabled)
+        status = [MenuEntry(line, enabled=False) for line in menu.status_lines]
+        # Nothing syncs by itself in manual mode, so the button comes first.
+        head = [*top, sync, *status, MenuEntry()] if self.sync_interval is None else [*top, *status, MenuEntry(), sync]
         menu.entries = [
-            *top,
-            *[MenuEntry(line, enabled=False) for line in menu.status_lines],
-            MenuEntry(),
-            MenuEntry(menu.sync_title, "sync", enabled=menu.sync_enabled),
+            *head,
             MenuEntry("Dersler", children=[MenuEntry(label, "open", value=path) for label, path in unique_labels(course_items)] or [MenuEntry("Henüz ders yok", enabled=False)]),
             MenuEntry(T_RECENT, children=[MenuEntry(label, "open", value=path) for label, path in menu.recent] or [MenuEntry(T_RECENT_EMPTY, enabled=False)]),
             MenuEntry(open_folder_title(self.dest), "folder"),
