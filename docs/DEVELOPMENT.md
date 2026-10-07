@@ -252,7 +252,7 @@ user account.
 
 | Item | What it does |
 | --- | --- |
-| `✓ UMUT YALÇIN · 17 dk önce senkronize edildi` | Who is signed in and when the last sync ran (greyed out, information only). When the session expired, a red **⚠ Oturum sona erdi — Giriş yap** row takes its place; when nobody is signed in, **Giriş yap**. Either opens the Blackboard sign-in window (same as `blackboard-sync login`); as soon as you are in, a sync starts. |
+| `✓ UMUT YALÇIN · 14:05 senkronize edildi` | Who is signed in and when the last sync ran (greyed out, information only). When the session expired, a red **⚠ Oturum sona erdi — Giriş yap** row takes its place; when nobody is signed in, **Giriş yap**. Either opens the Blackboard sign-in window (same as `blackboard-sync login`); as soon as you are in, a sync starts. |
 | `14 yeni dosya, 2 yeni not · sonraki: 14:19` | What the last sync brought (or the error) and when the next one is due. While a sync or sign-in runs it says so instead. |
 | **Şimdi senkronize et** | Sync right away instead of waiting for the next hourly run. Greyed out while a sync or sign-in is running. |
 | **Dersler** | The courses of the term; click one to open its folder. |

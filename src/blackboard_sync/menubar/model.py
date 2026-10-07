@@ -212,17 +212,6 @@ def format_time(when: datetime, now: datetime) -> str:
     return local.strftime("%d.%m %H:%M")
 
 
-def relative_time(when: datetime, now: datetime) -> str:
-    if when.astimezone().date() != now.astimezone().date():
-        return format_time(when, now)
-    seconds = max(0, (now - when).total_seconds())
-    if seconds < 60:
-        return "az önce"
-    if seconds < 3600:
-        return f"{int(seconds // 60)} dk önce"
-    return f"{int(seconds // 3600)} sa önce"
-
-
 @dataclass
 class MenuEntry:
     title: str = ""  # empty means separator
@@ -590,10 +579,14 @@ class AppModel:
         return shorten(user.get("displayName") or user.get("userName") or user.get("id") or "Blackboard", 50), False
 
     def headline(self, now: datetime) -> str:
-        """When the last sync ran and how it went: "17 dk önce senkronize edildi"."""
+        """When the last sync ran and how it went: "14:05 senkronize edildi".
+
+        The clock time (not "17 dk önce") keeps the text, and so the menu, unchanged
+        until something really happens; a relative label rebuilt the menu every minute.
+        """
         if self.last is None:
             return "henüz senkronize edilmedi"
-        when = relative_time(self.last.finished_at or now, now)
+        when = format_time(self.last.finished_at or now, now)
         if self.last.status == "ok":
             return f"{when} senkronize edildi"
         if self.last.status == "login_required":
@@ -623,7 +616,8 @@ class AppModel:
             parts.append(counts_text(totals))
         elif self.last is not None and self.last.status == "error" and self.last.message:
             parts.append(shorten(self.last.message, 50))
-        parts.append(f"sonraki: {format_time(max(self.next_run_at, now), now)}")
+        # Overdue: a fixed word, since the current clock time would change the menu every minute.
+        parts.append(f"sonraki: {format_time(self.next_run_at, now) if self.next_run_at > now else 'birazdan'}")
         return parts
 
     def status_lines(self, now: datetime) -> list[str]:
