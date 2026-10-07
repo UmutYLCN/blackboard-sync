@@ -125,7 +125,7 @@ def test_html_attachment_does_not_stop_the_sync(config, client, fake_bb):
     fake_bb.get = get
     report = sync(config, client)
     assert report.totals()["new_files"] >= 1
-    assert any("web page" in w for w in report.warnings)
+    assert any("web page" in w for c in report.courses for w in c.warnings)
 
 
 def test_refresh_saved_cookies_keeps_rotated_values(config):
