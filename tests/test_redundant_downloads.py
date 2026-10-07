@@ -107,3 +107,14 @@ def test_without_validators_the_file_is_still_downloaded_and_compared(config, cl
     fake_bb.calls.clear()
     sync(config, client)
     assert SYLLABUS_DL in fake_bb.downloads()
+
+
+def test_validators_learned_on_an_unchanged_run_are_saved(config, client, fake_bb):
+    _route_item(fake_bb, "_c11_1").pop("modified")
+    sync(config, client)  # server sends no validators yet
+    fake_bb.etags[SYLLABUS_DL] = '"v1"'
+    sync(config, client)
+    from blackboard_sync.state import State
+
+    out = State.load(config.state_file).outputs["attachment:_13004_1:_a11_1"]
+    assert out["etag"] == '"v1"'
