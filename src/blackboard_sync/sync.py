@@ -544,7 +544,9 @@ def run_sync(
 ) -> SyncReport:
     """One complete sync pass. Raises LoginRequired when the session is gone."""
     report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.dest))
-    state = State.load(config.state_file)
+    state = State.load(config.state_file, backup=not dry_run)
+    if state.recovery:
+        report.warnings.append(state.recovery)
     syncer = Syncer(client, config, state, dry_run=dry_run, refetch_missing=refetch_missing)
     me = client.me()  # also the cheapest way to prove the session still works
     user_id = me.get("id") or user_id

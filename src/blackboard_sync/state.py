@@ -16,11 +16,24 @@ what was written locally:
 from __future__ import annotations
 
 import json
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 from blackboard_sync.session import write_private_json
 
 STATE_VERSION = 1
+
+
+def _set_aside(path: Path) -> Path:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    target = path.with_name(f"{path.name}.corrupt-{stamp}")
+    n = 1
+    while target.exists():
+        n += 1
+        target = path.with_name(f"{path.name}.corrupt-{stamp}-{n}")
+    os.replace(path, target)
+    return target
 
 
 class State:
@@ -30,15 +43,40 @@ class State:
         self.items: dict[str, dict] = data.get("items", {})
         self.outputs: dict[str, dict] = data.get("outputs", {})
         self._claimed: dict[str, str] = {o["path"]: key for key, o in self.outputs.items()}
+        self.recovery: str | None = None
 
     @classmethod
-    def load(cls, path: Path) -> "State":
+    def load(cls, path: Path, backup: bool = True) -> "State":
+        """Read the state file; never fail because of its content.
+
+        A file that is not valid JSON, has the wrong shape or comes from another
+        state version is set aside as ``<name>.corrupt-<timestamp>`` (kept, never
+        deleted) and the sync continues with an empty state. That is safe because
+        a re-fetched file that is byte-identical to the one on disk is adopted
+        (no duplicate, no overwrite), so the state rebuilds itself. ``recovery`` then describes what happened so it can be reported.
+        With ``backup=False`` (dry runs) the file is left untouched.
+        """
         if not path.exists():
             return cls(path)
-        data = json.loads(path.read_text(encoding="utf-8"))
-        if data.get("version") != STATE_VERSION:
-            raise ValueError(f"Unsupported state file version in {path}")
-        return cls(path, data)
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("state file is not a JSON object")
+            if data.get("version") != STATE_VERSION:
+                raise ValueError(f"unsupported state file version {data.get('version')!r}")
+            return cls(path, data)
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            state = cls(path)
+            if backup:
+                saved = _set_aside(path)
+                state.recovery = (
+                    f"Could not read {path.name} ({exc}); moved it to {saved.name} "
+                    "and continued with an empty state. Files already on disk that match "
+                    "Blackboard's copy are kept as they are, not duplicated."
+                )
+            else:
+                state.recovery = f"Could not read {path.name} ({exc}); it would be set aside on a real sync."
+            return state
 
     def save(self) -> None:
         write_private_json(
