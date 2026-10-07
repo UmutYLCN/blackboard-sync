@@ -388,11 +388,15 @@ def build_app(config: Config):
         def logout(self, _sender=None) -> None:
             if self.model.busy is not None:
                 return
-            if rumps.alert("Hesaptan çıkış yapılsın mı?", "İndirilen dosyalarınız korunacak.",
+            if rumps.alert("Hesaptan çıkış yapılsın mı?",
+                           "Tüm giriş verileri silinir; yeniden giriş yaparken okul bilgilerinizi "
+                           "tekrar girmeniz gerekir. İndirilen dosyalarınız korunacak.",
                            ok="Çıkış yap", cancel="Vazgeç") != 1:
                 return
             try:
-                jobs.logout(self.config)
+                warnings = jobs.logout(self.config)
+                if warnings:
+                    self.model.note = warnings[0]
             except OSError:
                 self.model.note = "Hesaptan çıkış yapılamadı."
             self.refresh()

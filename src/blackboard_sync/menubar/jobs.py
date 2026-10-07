@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, IO
 
-from blackboard_sync import runtime
+from blackboard_sync import runtime, signout
 from blackboard_sync.config import Config
 from blackboard_sync.errors import EXIT_ERROR, LoginRequired
 from blackboard_sync.menubar.model import (
@@ -243,6 +243,7 @@ def refresh_session(config: Config, model: AppModel, settings: Settings) -> None
         model.session_expired = config.session_file.exists()
 
 
-def logout(config: Config) -> None:
-    """Remove only credentials; downloaded content and sync state are retained."""
-    config.session_file.unlink(missing_ok=True)
+def logout(config: Config) -> list[str]:
+    """Remove the session and all login browser data; downloaded content, settings
+    and sync state are retained. Returns warnings for data that could not be removed."""
+    return signout.sign_out(config)

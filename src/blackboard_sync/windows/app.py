@@ -289,9 +289,16 @@ class TrayApp:
         elif action == "logout" and self.model.busy is None:
             # Asked from the settings window, so the question belongs in front of it.
             parent = self.window.window if self.window is not None else self.root
-            if messagebox.askyesno("Hesaptan çıkış yapılsın mı?", "İndirilen dosyalarınız korunacak.", parent=parent):
+            if messagebox.askyesno(
+                "Hesaptan çıkış yapılsın mı?",
+                "Tüm giriş verileri silinir; yeniden giriş yaparken okul bilgilerinizi "
+                "tekrar girmeniz gerekir. İndirilen dosyalarınız korunacak.",
+                parent=parent,
+            ):
                 try:
-                    jobs.logout(self.config)
+                    warnings = jobs.logout(self.config)
+                    if warnings:
+                        self.model.note = warnings[0]
                 except OSError:
                     self.model.note = "Hesaptan çıkış yapılamadı."
         elif action == "quit":
