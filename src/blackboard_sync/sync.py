@@ -29,7 +29,9 @@ from blackboard_sync.paths import (
     course_code_and_title,
     course_folder_name,
     fit_windows_path,
+    fold_course_key,
     join_rel,
+    legacy_course_folder_name,
     note_name,
     numbered_variant,
     sanitize_name,
@@ -64,6 +66,8 @@ class Course:
     rel_dir: str  # "<term>/<code> <title>" relative to the destination
     code: str
     created: str | None = None
+    # Where versions with ASCII-only course codes put this course, when that differs.
+    legacy_rel_dir: str = ""
 
 
 @dataclass
@@ -243,24 +247,74 @@ class Syncer:
             selected = choose_current_terms(list(terms.values()), now)
 
         courses: list[Course] = []
-        filters = {f.casefold() for f in course_filters or []}
+        filters = {fold_course_key(f) for f in course_filters or []}
         for term in selected:
             used: set[str] = set()
+            legacy_used: set[str] = set()
             term_dir = sanitize_name(term.name, windows=self.windows)
             for course in sorted(term.courses, key=lambda c: (c.code, c.course_id)):
                 if filters and not filters & {
-                    course.code.casefold(),
-                    course.course_id.casefold(),
-                    course.id.casefold(),
+                    fold_course_key(course.code),
+                    fold_course_key(course.course_id),
+                    fold_course_key(course.id),
                 }:
                     continue
-                folder = course_folder_name(course.course_id, course.name, windows=self.windows)
-                if folder.casefold() in used:
-                    folder = sanitize_name(f"{folder} ({course.course_id or course.id})", windows=self.windows)
-                used.add(folder.casefold())
+                folder = self.unique_folder(course, course_folder_name, used)
+                legacy = self.unique_folder(course, legacy_course_folder_name, legacy_used)
                 course.rel_dir = join_rel(term_dir, folder)
+                if legacy != folder:
+                    course.legacy_rel_dir = join_rel(term_dir, legacy)
                 courses.append(course)
         return selected, courses
+
+    def unique_folder(self, course: Course, folder_name, used: set[str]) -> str:
+        folder = folder_name(course.course_id, course.name, windows=self.windows)
+        if folder.casefold() in used:
+            folder = sanitize_name(f"{folder} ({course.course_id or course.id})", windows=self.windows)
+        used.add(folder.casefold())
+        return folder
+
+    def migrate_course_folder(self, course: Course, warnings: list[str]) -> None:
+        """Rename a folder an older version named differently ("İNG101-1 İNG101 ...").
+
+        The folder is moved in one step and the recorded paths follow it, so
+        nothing is downloaded again. When the new name is already taken or the
+        move fails (a file open on Windows), the old folder is kept and used as
+        before; the next run tries again. A run interrupted right after the move
+        only has to update the recorded paths, which happens when the old folder
+        is gone.
+        """
+        old_rel, new_rel = course.legacy_rel_dir, course.rel_dir
+        if self.dry_run or not old_rel or old_rel == new_rel:
+            return
+        old, new = self.dest / old_rel, self.dest / new_rel
+        if not old.is_dir():
+            if self.state.move_tree(old_rel, new_rel):
+                log.info("Recorded files of %s now live in %s", old_rel, new_rel)
+            return
+        if new.exists() and not self._same_entry(old, new):
+            warnings.append(
+                f"Kept folder {old_rel!r}: could not rename it to {new_rel!r} because that "
+                "folder already exists. Move your files into one of them to finish."
+            )
+            course.rel_dir = old_rel
+            return
+        try:
+            os.rename(old, new)
+        except OSError as exc:
+            warnings.append(f"Kept folder {old_rel!r}: could not rename it to {new_rel!r} ({exc}).")
+            course.rel_dir = old_rel
+            return
+        self.state.move_tree(old_rel, new_rel)
+        log.info("Renamed %s to %s", old_rel, new_rel)
+
+    @staticmethod
+    def _same_entry(a: Path, b: Path) -> bool:
+        # A name that differs only in case is the same folder on macOS and Windows.
+        try:
+            return a.samefile(b)
+        except OSError:
+            return False
 
     # -- per course ----------------------------------------------------
     def course_url(self, course: Course, page: str = "outline") -> str:
@@ -629,6 +683,10 @@ def run_sync(
         warnings=report.warnings,
     )
     report.terms = [t.name for t in terms]
+    for course in courses:
+        syncer.migrate_course_folder(course, report.warnings)
+    if not dry_run:
+        state.save()  # a renamed folder must never be left with stale recorded paths
     if not courses:
         report.warnings.append("No courses found for the selected term.")
     try:

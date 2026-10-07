@@ -146,6 +146,20 @@ class State:
         if entry != before:
             self.dirty = True
 
+    def move_tree(self, old_dir: str, new_dir: str) -> int:
+        """Point every output recorded under ``old_dir`` at ``new_dir``; returns how many."""
+        prefix = old_dir.rstrip("/") + "/"
+        moved = 0
+        for entry in self.outputs.values():
+            path = entry["path"]
+            if path.startswith(prefix):
+                entry["path"] = new_dir.rstrip("/") + "/" + path[len(prefix):]
+                moved += 1
+        if moved:
+            self._claimed = {o["path"]: key for key, o in self.outputs.items()}
+            self.dirty = True
+        return moved
+
     def move_output(self, old_key: str, new_key: str) -> None:
         """Hand a mirrored file over to a new key (the file was replaced upstream)."""
         entry = self.outputs.pop(old_key, None)

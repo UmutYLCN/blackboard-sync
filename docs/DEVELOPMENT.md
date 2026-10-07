@@ -314,7 +314,7 @@ blackboard-sync [...] sync  [--term NAME | --all-terms] [--course CODE ...]
 | `--dest DIR` | Base folder (default: the folder saved in the menu bar app's settings, else `~/Documents/University`; env `BBSYNC_DEST`). |
 | `--term NAME` | Sync a specific term by its Blackboard name, e.g. `"2025-2026 Bahar"`. |
 | `--all-terms` | Sync every term, including past ones and courses without a term. |
-| `--course CODE` | Only this course (`CSE303`, or the course id); repeatable. |
+| `--course CODE` | Only this course (`CSE303`, or the course id); repeatable. Case and Turkish dots do not matter: `bil101` finds `BİL101`. |
 | `--dry-run` | Show what would be fetched; write and download nothing. |
 | `--refetch-missing` | Download again files you deleted locally (normally deletions are respected). |
 | `--json` | Print the run summary as JSON (see below). |
@@ -346,6 +346,14 @@ most recently started term. Courses the instructor has not opened yet
 The data folder is created with owner-only permissions (`700`) and the files in
 it are `600`. None of it lives in this repository. (Windows paths are listed
 under [Windows](#windows).)
+
+Course codes may contain Turkish letters (`İNG101`, `TÜR101`). Versions
+before this support named such folders after the full course id
+(`İNG101-1 İNG101 İngilizce I`); the first sync after updating renames them to
+`İNG101 İngilizce I` without downloading anything again. If that name is
+already taken or the folder cannot be moved (for example a file in it is open
+on Windows), the old folder is kept and used, a warning says why, and the next
+sync tries again.
 
 File and folder names are kept as on Blackboard. Only what macOS cannot store
 safely is changed: `/` and `:` become `-` (`"Intro: Sorting"` becomes
