@@ -72,8 +72,10 @@ class BlackboardClient:
             raise ApiError(resp.status_code, path, _error_message(resp))
         ctype = resp.headers.get("Content-Type", "")
         if "json" not in ctype:
-            # An HTML page where JSON was expected is the login page in disguise.
-            raise LoginRequired("Blackboard answered with a web page instead of data.")
+            # A real sign-in redirect was already caught by _check_login via the final
+            # URL; any other HTML (e.g. a maintenance page) is transient, not an expired
+            # session, so retry on the next run instead of asking the user to sign in.
+            raise ApiError(resp.status_code, path, "Blackboard answered with a web page instead of data.")
         return resp.json()
 
     def get_paged(self, path: str, params: dict | None = None) -> Iterator[dict]:
@@ -158,9 +160,13 @@ class BlackboardClient:
             ctype = resp.headers.get("Content-Type", "")
             filename = filename_from_disposition(resp.headers.get("Content-Disposition", ""))
             name = (filename or expected_name).lower()
-            if "text/html" in ctype and not name.endswith((".html", ".htm")):
-                # A web page where a PDF/slide deck was expected is the sign-in page.
-                raise LoginRequired("Blackboard answered a download with a web page.")
+            if "text/html" in ctype and not filename and not name.endswith((".html", ".htm")):
+                # A web page where a PDF/slide deck was expected, with no file name from the
+                # server, is an error page. A sign-in redirect was already caught above via
+                # the final URL, so skip just this item instead of reporting an expired
+                # session. A file the server names explicitly (Content-Disposition) is saved
+                # as-is, so a real .php/.xhtml/extensionless upload is never dropped.
+                raise ApiError(resp.status_code, url, "Blackboard answered a download with a web page.")
             digest = hashlib.sha256()
             size = 0
             fd, tmp = _mkstemp(into_dir)

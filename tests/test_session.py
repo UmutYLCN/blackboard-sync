@@ -4,7 +4,7 @@ import time
 import pytest
 
 from blackboard_sync import cli
-from blackboard_sync.errors import EXIT_LOGIN_REQUIRED, EXIT_OK, LoginRequired
+from blackboard_sync.errors import EXIT_LOGIN_REQUIRED, EXIT_OK, ApiError, LoginRequired
 from blackboard_sync.session import (
     http_session,
     load_session,
@@ -75,16 +75,57 @@ def test_sso_redirect_to_other_host_means_login_required(client, fake_bb):
         client.me()
 
 
-def test_html_download_means_login_required(client, fake_bb, tmp_path):
+def test_html_download_is_an_item_error_not_an_expired_session(client, fake_bb, tmp_path):
     fake_bb.get = lambda url, **kw: FakeResponse(
-        200, url, content=b"<html>sign in</html>", headers={"Content-Type": "text/html"}
+        200, url, content=b"<html>error</html>", headers={"Content-Type": "text/html"}
     )
-    with pytest.raises(LoginRequired):
+    with pytest.raises(ApiError):
         client.download("/bbcswebdav/xid-1_1", tmp_path, expected_name="slides.pdf")
     assert list(tmp_path.iterdir()) == []
     # ...but an actual .html course file is fine.
     dl = client.download("/bbcswebdav/xid-1_1", tmp_path, expected_name="page.html")
-    assert dl.path.read_bytes() == b"<html>sign in</html>"
+    assert dl.path.read_bytes() == b"<html>error</html>"
+
+
+def test_html_download_named_by_the_server_is_saved(client, fake_bb, tmp_path):
+    fake_bb.get = lambda url, **kw: FakeResponse(
+        200, url, content=b"<?php ?>",
+        headers={"Content-Type": "text/html", "Content-Disposition": 'attachment; filename="lab.php"'},
+    )
+    dl = client.download("/bbcswebdav/xid-1_1", tmp_path, expected_name="")
+    assert dl.filename == "lab.php" and dl.path.read_bytes() == b"<?php ?>"
+
+
+def test_html_download_redirected_to_login_is_login_required(client, fake_bb, tmp_path):
+    fake_bb.get = lambda url, **kw: FakeResponse(
+        200, f"{BASE_URL}/webapps/login/?action=relogin", content=b"<html>", headers={"Content-Type": "text/html"}
+    )
+    with pytest.raises(LoginRequired):
+        client.download("/bbcswebdav/xid-1_1", tmp_path, expected_name="slides.pdf")
+
+
+def test_html_from_json_endpoint_is_transient_api_error(client, fake_bb):
+    fake_bb.get = lambda url, **kw: FakeResponse(
+        200, url, content=b"<html>maintenance</html>", headers={"Content-Type": "text/html"}
+    )
+    with pytest.raises(ApiError):
+        client.me()
+
+
+def test_html_attachment_does_not_stop_the_sync(config, client, fake_bb):
+    from .test_sync import sync
+
+    real_get = fake_bb.get
+
+    def get(url, **kw):
+        if url.endswith("/attachments/_a11_1/download"):
+            return FakeResponse(200, url, content=b"<html>oops</html>", headers={"Content-Type": "text/html"})
+        return real_get(url, **kw)
+
+    fake_bb.get = get
+    report = sync(config, client)
+    assert report.totals()["new_files"] >= 1
+    assert any("web page" in w for w in report.warnings)
 
 
 def test_refresh_saved_cookies_keeps_rotated_values(config):
