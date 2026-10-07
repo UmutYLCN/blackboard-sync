@@ -311,7 +311,10 @@ def build_app(config: Config):
             )
             self.settings = submission.settings
             self.model.apply_settings(
-                submission.settings.dest, submission.school_changed, submission.settings.check_updates
+                submission.settings.dest,
+                submission.school_changed,
+                submission.settings.check_updates,
+                submission.settings.sync_interval_minutes,
             )
             if submission.autostart != launchagent.is_installed():
                 self.toggle_autostart()

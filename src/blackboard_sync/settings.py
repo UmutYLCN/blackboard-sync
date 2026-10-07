@@ -21,6 +21,18 @@ from blackboard_sync.system import make_private_dir
 
 SETTINGS_FILE = "settings.json"
 
+# "Otomatik senkron": minutes between scheduled syncs, 0 = only by hand. No
+# shorter choice on purpose: an idle sync is a few hundred requests to the school.
+SYNC_INTERVAL_CHOICES = (30, 60, 180, 0)
+DEFAULT_SYNC_INTERVAL_MINUTES = 60
+
+
+def normalize_sync_interval(value: object) -> int:
+    """A known choice, else the default (a missing, hand-edited or bad value keeps 1 hour)."""
+    if isinstance(value, int) and not isinstance(value, bool) and value in SYNC_INTERVAL_CHOICES:
+        return value
+    return DEFAULT_SYNC_INTERVAL_MINUTES
+
 
 class SettingsError(ValueError):
     """An invalid value in the settings window; ``field`` names the input."""
@@ -36,9 +48,15 @@ class Settings:
     dest: Path
     # "Güncellemeleri otomatik denetle": look for a new app version once a day.
     check_updates: bool = True
+    sync_interval_minutes: int = DEFAULT_SYNC_INTERVAL_MINUTES
 
     def to_dict(self) -> dict:
-        return {"base_url": self.base_url, "dest": str(self.dest), "check_updates": self.check_updates}
+        return {
+            "base_url": self.base_url,
+            "dest": str(self.dest),
+            "check_updates": self.check_updates,
+            "sync_interval_minutes": self.sync_interval_minutes,
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Settings":
@@ -46,6 +64,7 @@ class Settings:
             base_url=normalize_base_url(data["base_url"]),
             dest=normalize_dest(data["dest"]),
             check_updates=data.get("check_updates", True) is not False,
+            sync_interval_minutes=normalize_sync_interval(data.get("sync_interval_minutes")),
         )
 
 

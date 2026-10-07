@@ -231,7 +231,7 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
         def set(self, value):
             self.value = value
 
-    ttk = SimpleNamespace(**{name: Widget for name in ('Frame', 'Label', 'Entry', 'Button', 'Checkbutton', 'Separator')})
+    ttk = SimpleNamespace(**{name: Widget for name in ('Frame', 'Label', 'Entry', 'Button', 'Checkbutton', 'Separator', 'Combobox')})
     fake = SimpleNamespace(Toplevel=Widget, StringVar=Variable, BooleanVar=Variable, ttk=ttk,
                            filedialog=SimpleNamespace(askdirectory=lambda **kw: str(tmp_path)))
     monkeypatch.setitem(sys.modules, 'tkinter', fake)
@@ -251,7 +251,7 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
     assert sections == ['Hesap', 'Klasör', 'Genel', 'Güncellemeler']
     assert all(label in labels for label in ('Okulunuzun Blackboard adresi', 'Henüz giriş yapılmadı.',
         'Dosyaların kaydedileceği klasör', 'Silinenleri tekrar indir', 'Bilgisayar açılınca başlat',
-        'Güncellemeleri otomatik denetle', 'Şimdi denetle', 'Kaydet', 'Giriş yap', 'Vazgeç', 'Seç…'))
+        'Güncellemeleri otomatik denetle', 'Otomatik senkron:', 'Şimdi denetle', 'Kaydet', 'Giriş yap', 'Vazgeç', 'Seç…'))
     assert any(label and label.startswith('Sürüm ') for label in labels)
     assert window.fields['base_url'].grid_options['sticky'] == 'ew'
     assert window.refetch_button.options['state'] == 'disabled'  # nothing to bring back yet
@@ -281,8 +281,10 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
     assert not window.window.destroyed
     assert window.error.options['text'] == 'Geçerli bir adres yazın.'
     window.check_updates.set(False)
+    window.interval.set('Yalnızca elle')
     login.options['command']()
     assert submitted[-1][0].check_updates is False
+    assert submitted[-1][0].sync_interval_minutes == 0
     assert submitted[-1][1] is True
     assert closed == [True]
     assert window.window.destroyed

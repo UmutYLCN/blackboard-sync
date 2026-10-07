@@ -345,7 +345,12 @@ class TrayApp:
             log.exception("Could not save settings")
             return f"Ayarlar kaydedilemedi: {exc}", "dest"
         self.settings = submission.settings
-        self.model.apply_settings(self.settings.dest, submission.school_changed, self.settings.check_updates)
+        self.model.apply_settings(
+            self.settings.dest,
+            submission.school_changed,
+            self.settings.check_updates,
+            self.settings.sync_interval_minutes,
+        )
         self.save()
         if submission.needs_login(login):
             self.start_job("login")

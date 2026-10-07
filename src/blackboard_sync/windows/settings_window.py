@@ -2,9 +2,7 @@
 
 from blackboard_sync.menubar import settings_form as form
 
-INTRO = ("Ders dosyalarınız her saat bu bilgisayara indirilir. Okulunuzun Blackboard "
-         "adresini ve dosyaların kaydedileceği klasörü kontrol edin, sonra “Giriş yap” "
-         "ile Blackboard'a girin.")
+INTRO = form.intro_first_run("bu bilgisayara")
 # Buttons whose title follows the app's state keep one width (in characters).
 ACTION_WIDTH = 24
 
@@ -28,6 +26,7 @@ class SettingsWindow:
         self.dest = tk.StringVar(value=values.dest)
         self.autostart = tk.BooleanVar(value=values.autostart)
         self.check_updates = tk.BooleanVar(value=values.check_updates)
+        self.interval = tk.StringVar(value=form.interval_title(values.sync_interval_minutes))
         row = 0
 
         def place(widget, **options):
@@ -53,7 +52,8 @@ class SettingsWindow:
             return button
 
         if first_run:
-            place(ttk.Label(frame, text=INTRO, wraplength=520), pady=(0, 16))
+            intro = form.intro_first_run("bu bilgisayara", values.sync_interval_minutes)
+            place(ttk.Label(frame, text=intro, wraplength=520), pady=(0, 16))
         self.fields = {}
 
         section(form.T_SECTION_ACCOUNT)
@@ -81,7 +81,14 @@ class SettingsWindow:
                                          lambda: self.on_action("refetch"))
 
         section(form.T_SECTION_GENERAL)
-        place(ttk.Checkbutton(frame, text=form.T_AUTOSTART, variable=self.autostart), pady=(0, 12))
+        place(ttk.Checkbutton(frame, text=form.T_AUTOSTART, variable=self.autostart), pady=(0, 8))
+        interval_row = ttk.Frame(frame)
+        ttk.Label(interval_row, text=form.T_INTERVAL_LABEL + ":").pack(side="left", padx=(0, 8))
+        ttk.Combobox(
+            interval_row, textvariable=self.interval, state="readonly", width=20,
+            values=[title for _, title in form.INTERVAL_OPTIONS],
+        ).pack(side="left")
+        place(interval_row, pady=(0, 12))
 
         section(form.T_SECTION_UPDATES)
         place(ttk.Checkbutton(frame, text=form.T_CHECK_UPDATES, variable=self.check_updates), pady=(0, 8))
@@ -116,7 +123,10 @@ class SettingsWindow:
             self.on_action(self.status.account_action)
 
     def submit(self, login):
-        values = form.FormValues(self.url.get(), self.dest.get(), self.autostart.get(), self.check_updates.get())
+        minutes = next((m for m, title in form.INTERVAL_OPTIONS if title == self.interval.get()), 60)
+        values = form.FormValues(
+            self.url.get(), self.dest.get(), self.autostart.get(), self.check_updates.get(), minutes
+        )
         error = self.on_submit(values, login)
         if error:
             message, field = error

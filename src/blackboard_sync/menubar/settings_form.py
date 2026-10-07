@@ -2,7 +2,7 @@
 
 The window has four sections: Hesap (school address, who is signed in, sign
 in or out), Klasör (destination, bring back deleted files), Genel (start at
-login) and Güncellemeler (automatic checks, check now, version). The GUI
+login, sync interval) and Güncellemeler (automatic checks, check now, version). The GUI
 layers (``settings_window.py`` on macOS, ``windows/settings_window.py``) only
 draw ``FormValues`` and ``WindowStatus`` and report which button was pressed.
 The first launch (no ``settings.json`` yet) and the "Ayarlar…" menu item open
@@ -23,22 +23,56 @@ from blackboard_sync.menubar.model import (
     T_LOGOUT,
     T_REFETCH,
     T_REFETCHING,
+    T_SYNC_NOW,
     AppModel,
     login_waiting_line,
 )
 from blackboard_sync.settings import (
+    SYNC_INTERVAL_CHOICES,
     Settings,
     display_path,
     normalize_base_url,
     normalize_dest,
+    normalize_sync_interval,
 )
 
 T_TITLE_FIRST_RUN = "Blackboard Sync kurulumu"
 T_TITLE = "Blackboard Sync ayarları"
-T_INTRO_FIRST_RUN = (
-    "Ders dosyalarınız her saat bu Mac'e indirilir. Okulunuzun Blackboard adresini ve "
-    "dosyaların kaydedileceği klasörü kontrol edin, sonra “Giriş yap” ile Blackboard'a girin."
+T_INTERVAL_LABEL = "Otomatik senkron"
+# (minutes, menu text); 0 means only by hand. Order is the order in the window.
+INTERVAL_OPTIONS = (
+    (30, "Her 30 dakikada"),
+    (60, "Her saat"),
+    (180, "Her 3 saatte"),
+    (0, "Yalnızca elle"),
 )
+assert tuple(minutes for minutes, _ in INTERVAL_OPTIONS) == SYNC_INTERVAL_CHOICES
+_INTRO_WHEN = {
+    30: "her 30 dakikada bir",
+    60: "her saat",
+    180: "her 3 saatte bir",
+}
+
+
+def interval_title(minutes: int) -> str:
+    return dict(INTERVAL_OPTIONS)[normalize_sync_interval(minutes)]
+
+
+def intro_first_run(device: str, sync_interval_minutes: int = 60) -> str:
+    """The first-run intro; ``device`` is "bu Mac'e" or "bu bilgisayara"."""
+    when = _INTRO_WHEN.get(normalize_sync_interval(sync_interval_minutes))
+    start = (
+        f"Ders dosyalarınız {when} {device} indirilir."
+        if when
+        else f"Ders dosyalarınız “{T_SYNC_NOW}” dediğinizde {device} indirilir."
+    )
+    return (
+        f"{start} Okulunuzun Blackboard adresini ve dosyaların kaydedileceği klasörü "
+        "kontrol edin, sonra “Giriş yap” ile Blackboard'a girin."
+    )
+
+
+T_INTRO_FIRST_RUN = intro_first_run("bu Mac'e")
 T_SECTION_ACCOUNT = "Hesap"
 T_SECTION_FOLDER = "Klasör"
 T_SECTION_GENERAL = "Genel"
@@ -69,6 +103,7 @@ class FormValues:
     dest: str
     autostart: bool
     check_updates: bool = True
+    sync_interval_minutes: int = 60  # 0: only by hand
 
 
 @dataclass(frozen=True)
@@ -79,6 +114,7 @@ class Submission:
     autostart: bool
     school_changed: bool  # the old session belongs to another host: sign in again
     dest_changed: bool  # future syncs go to the new folder; nothing is moved
+    interval_changed: bool = False  # the next automatic run is recomputed
 
     def needs_login(self, login_pressed: bool) -> bool:
         return login_pressed or self.school_changed
@@ -153,6 +189,7 @@ def initial_values(saved: Settings | None, current: Settings, autostart: bool) -
         dest=display_path(shown.dest),
         autostart=autostart or saved is None,
         check_updates=shown.check_updates,
+        sync_interval_minutes=shown.sync_interval_minutes,
     )
 
 
@@ -166,11 +203,13 @@ def submit(values: FormValues, current: Settings) -> Submission:
         base_url=normalize_base_url(values.base_url),
         dest=normalize_dest(values.dest),
         check_updates=values.check_updates,
+        sync_interval_minutes=normalize_sync_interval(values.sync_interval_minutes),
     )
     return Submission(
         settings=settings,
         autostart=values.autostart,
         school_changed=settings.base_url != current.base_url.rstrip("/"),
         dest_changed=settings.dest != current.dest,
+        interval_changed=settings.sync_interval_minutes != current.sync_interval_minutes,
     )
 
