@@ -1,8 +1,14 @@
 name: Release
 
 # A v* tag builds the macOS .dmg and the Windows Setup.exe and publishes one
-# release holding both plus SHA256SUMS.txt. A manual run (workflow_dispatch)
-# builds and smoke-tests the same files as workflow artifacts and publishes nothing.
+# release holding both plus SHA256SUMS.txt. A tag with a "-" (v1.3.0-rc1) is
+# published as a pre-release, which install.sh and the in-app updater ignore.
+# A manual run (workflow_dispatch) builds and smoke-tests the same files as
+# workflow artifacts and publishes nothing.
+#
+# The macOS app is signed and notarized only on a v* tag push and only when the
+# signing secrets exist (docs/SIGNING.md); otherwise the release gets the
+# unsigned .dmg as before. No pull request can reach this workflow.
 on:
   push:
     tags: ["v*"]
@@ -15,8 +21,8 @@ jobs:
   dmg:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
       - name: Check the tag matches the app version
@@ -33,17 +39,179 @@ jobs:
       # sign-in window needs WebKit.
       - name: Check the app can start the sign-in runtime
         run: dist/"Blackboard Sync.app"/Contents/MacOS/"Blackboard Sync" --check-login-runtime
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dmg
+          path: dist/Blackboard-Sync-*.dmg
+          if-no-files-found: error
+      # The macos-sign job signs this app. ditto keeps the bundle's symlinks,
+      # which the artifact zip would not.
+      - name: Pack the app for signing
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/Blackboard Sync.app" dist/Blackboard-Sync-app.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: app-unsigned
+          path: dist/Blackboard-Sync-app.zip
+          if-no-files-found: error
+
+  # Signs the app with the Developer ID, notarizes and staples it, then packs,
+  # signs, notarizes and staples the .dmg. It runs on its own runner after the
+  # build, so no dependency or build tool runs while the certificate is in a
+  # keychain; the app itself only runs (self-test) after the keychain and the
+  # notary key are gone. Without the secrets it signs nothing and the release
+  # keeps the dmg job's unsigned .dmg.
+  macos-sign:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: dmg
+    runs-on: macos-latest
+    timeout-minutes: 120
+    outputs:
+      signed: ${{ steps.secrets.outputs.signed }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Check which signing secrets are set
+        id: secrets
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_NOTARY_API_KEY: ${{ secrets.MACOS_NOTARY_API_KEY }}
+          MACOS_NOTARY_API_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
+          MACOS_NOTARY_API_ISSUER_ID: ${{ secrets.MACOS_NOTARY_API_ISSUER_ID }}
+          MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          MACOS_NOTARY_APP_PASSWORD: ${{ secrets.MACOS_NOTARY_APP_PASSWORD }}
+        # Prints only secret names, never values.
+        run: |
+          missing() { for name in "$@"; do [ -n "$(printenv "$name")" ] || printf '%s ' "$name"; done; }
+          CERT="MACOS_CERTIFICATE_P12_BASE64 MACOS_CERTIFICATE_PASSWORD"
+          API="MACOS_NOTARY_API_KEY MACOS_NOTARY_API_KEY_ID MACOS_NOTARY_API_ISSUER_ID"
+          APPLE_ID="MACOS_NOTARY_APPLE_ID MACOS_NOTARY_APP_PASSWORD"
+          ALL="$CERT $API $APPLE_ID"
+          # shellcheck disable=SC2086
+          if [ "$(missing $ALL)" = "$ALL " ]; then
+            echo "::notice::No macOS signing secrets: the release gets the unsigned .dmg."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # shellcheck disable=SC2086
+          if [ -n "$(missing $CERT)" ]; then
+            echo "::error::Signing secrets are incomplete, missing: $(missing $CERT)(see docs/SIGNING.md)"
+            exit 1
+          fi
+          # shellcheck disable=SC2086
+          if [ -z "$(missing $API)" ]; then
+            echo "notary=api" >> "$GITHUB_OUTPUT"
+          elif [ -z "$(missing $APPLE_ID)" ]; then
+            echo "notary=apple-id" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Notarization secrets are incomplete, set either $API or $APPLE_ID (see docs/SIGNING.md)"
+            exit 1
+          fi
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+      # A temporary keychain that only this job uses, deleted at the end. The
+      # certificate must belong to the team install.sh trusts (TEAM_ID).
+      - name: Import the Developer ID certificate
+        if: steps.secrets.outputs.signed == 'true'
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 7200 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          (umask 077 && printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12")
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" -f pkcs12 -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          LINE="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep '"Developer ID Application: ' | head -n 1 || true)"
+          [ -n "$LINE" ] || { echo "::error::MACOS_CERTIFICATE_P12_BASE64 holds no valid Developer ID Application identity."; exit 1; }
+          TEAM="$(printf '%s\n' "$LINE" | sed -n 's/.*(\([A-Z0-9]*\))"$/\1/p')"
+          EXPECTED="$(sed -n 's/^TEAM_ID="\(.*\)"$/\1/p' install.sh)"
+          if [ "$TEAM" != "$EXPECTED" ]; then
+            echo "::error::The certificate is of team $TEAM, install.sh trusts $EXPECTED: fix TEAM_ID in install.sh first (docs/SIGNING.md)."
+            exit 1
+          fi
+          echo "Signing as: $(printf '%s\n' "$LINE" | cut -d '"' -f 2)"
+          echo "MACOS_SIGN_IDENTITY=$(printf '%s\n' "$LINE" | awk '{print $2}')" >> "$GITHUB_ENV"
+          echo "TEAM_ID=$TEAM" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: steps.secrets.outputs.signed == 'true'
+        with:
+          name: app-unsigned
+          path: unsigned
+      - name: Sign, notarize and staple the app and the .dmg
+        if: steps.secrets.outputs.signed == 'true'
+        env:
+          NOTARY: ${{ steps.secrets.outputs.notary }}
+          MACOS_NOTARY_API_KEY: ${{ secrets.MACOS_NOTARY_API_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_API_ISSUER_ID }}
+          APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_APP_PASSWORD }}
+        run: |
+          if [ "$NOTARY" = api ]; then
+            (umask 077 && printf '%s\n' "$MACOS_NOTARY_API_KEY" > "$RUNNER_TEMP/AuthKey.p8")
+            export MACOS_NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          else
+            export MACOS_NOTARY_APPLE_ID="$APPLE_ID" MACOS_NOTARY_TEAM_ID="$TEAM_ID"
+          fi
+          mkdir -p dist
+          ditto -x -k unsigned/Blackboard-Sync-app.zip dist
+          APP="dist/Blackboard Sync.app"
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+          DMG="dist/Blackboard-Sync-$VERSION.dmg"
+          echo "DMG=$DMG" >> "$GITHUB_ENV"
+          ./scripts/sign-macos.sh app "$APP" "$MACOS_SIGN_IDENTITY"
+          ./scripts/notarize-macos.sh "$APP"
+          ./scripts/make-dmg.sh "$APP" "$DMG"
+          ./scripts/sign-macos.sh dmg "$DMG" "$MACOS_SIGN_IDENTITY"
+          ./scripts/notarize-macos.sh "$DMG"
+      - name: Remove the keychain and the notary key
+        if: always() && steps.secrets.outputs.signed == 'true'
+        run: |
+          rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/certificate.p12"
+          if [ -n "${KEYCHAIN:-}" ] && [ -e "$KEYCHAIN" ]; then security delete-keychain "$KEYCHAIN"; fi
+      # The checks install.sh makes, on the app inside the final .dmg.
+      - name: Verify the signed .dmg
+        if: steps.secrets.outputs.signed == 'true'
+        run: |
+          codesign --verify --strict --verbose=2 "$DMG"
+          xcrun stapler validate "$DMG"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG"
+          MNT="$(mktemp -d)"
+          hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$MNT" -quiet "$DMG"
+          trap 'hdiutil detach "$MNT" -quiet' EXIT
+          APP="$MNT/Blackboard Sync.app"
+          eval "$(grep -E '^(TEAM_ID|BUNDLE_ID|REQUIREMENT)=' install.sh)"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --verify --test-requirement="=$REQUIREMENT" --verbose=2 "$APP"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose=4 "$APP" 2>&1 | tee "$RUNNER_TEMP/spctl.txt"
+          grep -q '^source=Notarized Developer ID$' "$RUNNER_TEMP/spctl.txt"
+      # Under the hardened runtime: Playwright's driver must still start and
+      # WebKit still load.
+      - name: Check the signed app can start the sign-in runtime
+        if: steps.secrets.outputs.signed == 'true'
+        run: '"dist/Blackboard Sync.app/Contents/MacOS/Blackboard Sync" --check-login-runtime'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.secrets.outputs.signed == 'true'
+        with:
+          name: dmg-signed
           path: dist/Blackboard-Sync-*.dmg
           if-no-files-found: error
 
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
       - name: Check the tag matches the app version
@@ -65,7 +233,7 @@ jobs:
       # then uninstall and check nothing but the app was removed.
       - name: Smoke-test the installer
         run: ./scripts/smoke-test-windows.ps1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: setup
           path: dist/Blackboard-Sync-*-Setup.exe
@@ -73,15 +241,19 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [dmg, windows]
+    needs: [dmg, windows, macos-sign]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
+          name: setup
           path: dist
-          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.macos-sign.outputs.signed == 'true' && 'dmg-signed' || 'dmg' }}
+          path: dist
       # The app's updater (src/blackboard_sync/updater.py) finds installers by
       # name, so keep these exact: macOS "Blackboard-Sync-<version>.dmg",
       # Windows "Blackboard-Sync-<version>-Setup.exe". It refuses an installer
@@ -96,8 +268,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           FILES="dist/Blackboard-Sync-*.dmg dist/Blackboard-Sync-*-Setup.exe dist/SHA256SUMS.txt"
+          PRERELEASE=""
+          case "$GITHUB_REF_NAME" in *-*) PRERELEASE="--prerelease" ;; esac
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" $FILES --clobber
           else
-            gh release create "$GITHUB_REF_NAME" $FILES --title "$GITHUB_REF_NAME" --generate-notes
+            gh release create "$GITHUB_REF_NAME" $FILES --title "$GITHUB_REF_NAME" --generate-notes $PRERELEASE
           fi

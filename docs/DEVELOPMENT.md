@@ -246,9 +246,10 @@ right away and answers with a notification; with an update waiting it reads
 **Güncelle** downloads `Blackboard-Sync-<version>.dmg` into Downloads, checks
 it against the release's `SHA256SUMS.txt`, opens it and explains the last
 step: quit Blackboard Sync and drag the new app over the old one in
-Applications. The app is not signed with a paid Apple certificate, so it does
-not replace itself silently. Run from a checkout, **Güncelle** opens the
-release page instead.
+Applications. The app does not replace itself silently (an app without a
+Developer ID signature cannot do that reliably, and signed releases keep the
+same flow for now). Run from a checkout, **Güncelle** opens the release page
+instead.
 
 Checking needs the GitHub repository to be public: without signing in, GitHub
 does not show a private repository's releases, and the app then simply finds
@@ -636,9 +637,11 @@ only `menubar/app.py` touches AppKit.
 ```
 
 The app is built with PyInstaller (installed into `.venv` only) and bundles
-Python and all dependencies. It is ad-hoc signed, not notarized, so on first
+Python and all dependencies. A local build is ad-hoc signed, not notarized, so on first
 launch macOS says the developer cannot be verified: right-click the app →
-**Open** once. Sync and sign-in runs re-invoke the app's own executable with
+**Open** once. Release builds are signed with the maintainer's Developer ID and
+notarized by the `Release` workflow once the signing secrets are set; see
+[SIGNING.md](SIGNING.md). Sync and sign-in runs re-invoke the app's own executable with
 the CLI subcommand (`packaging/app_entry.py`).
 
 The version lives in `src/blackboard_sync/__init__.py` (`pyproject.toml` reads
@@ -655,7 +658,9 @@ installer on a Windows runner, then publishes one GitHub Release holding both
 plus a `SHA256SUMS.txt` covering both, which the app's updater verifies them
 against. Rerunning it for the same tag replaces the release's assets. Running
 the workflow by hand (Actions > Release > Run workflow) builds and smoke-tests
-both files as workflow artifacts and publishes nothing.
+both files as workflow artifacts and publishes nothing. A tag with a `-`
+(`v1.3.0-rc1`) is published as a pre-release, which `install.sh` and the
+updater ignore.
 
 ### Windows installer
 
@@ -699,9 +704,11 @@ Windows updater launches the installer with
 ### One-line installers
 
 `install.sh` (macOS) and `install.ps1` (Windows) download the latest release,
-verify its SHA-256 checksum and install it. The macOS app is unsigned, so only
-the installed app's quarantine attribute is removed, which makes the first-open
-right click → **Aç** step unnecessary. No Python is needed: sign-in uses an
+verify its SHA-256 checksum and install it. A macOS release signed with the
+Developer ID must also pass `install.sh`'s signature, team and notarization
+checks or nothing is installed. For an unsigned release only the installed
+app's quarantine attribute is removed, which makes the first-open right click →
+**Aç** step unnecessary. No Python is needed: sign-in uses an
 installed Chromium-based browser (Chrome, Edge, Brave, Opera, Vivaldi) or, if
 there is none, the app's own window.
 
