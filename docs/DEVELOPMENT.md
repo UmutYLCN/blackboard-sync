@@ -186,7 +186,7 @@ sections:
   school's Blackboard address instead (it must be `https://`; a pasted course
   link is reduced to the site address). Below it, who is signed in and
   **Giriş yap** (saves the window and opens the Blackboard sign-in window) or
-  **Hesaptan çıkış yap** (asks first; downloaded files are kept).
+  **Hesaptan çıkış yap** (asks first; removes the session and all login browser data, so the next sign-in asks for the school credentials again; downloaded files, settings and sync state are kept).
 - **Klasör** — **Dosyaların kaydedileceği klasör**, prefilled with
   `~/Documents/University`; **Seç…** opens a folder picker. **Silinenleri tekrar
   indir** runs one sync that also downloads again the files you deleted
