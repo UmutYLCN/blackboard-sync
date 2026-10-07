@@ -18,7 +18,6 @@ def test_R3_failing_attachment_does_not_redownload_its_siblings(config, client, 
     _bad_sibling(fake_bb)
     first = sync(config, client)
     assert SYLLABUS_DL in fake_bb.downloads()
-    print(first.warnings, [c.warnings for c in first.courses])
     assert any("Skipped" in w for c in first.courses for w in c.warnings)
     for _ in range(2):
         fake_bb.calls.clear()
