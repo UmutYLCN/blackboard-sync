@@ -16,6 +16,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from blackboard_sync.errors import LoginRequired
 from blackboard_sync.system import set_private_file_mode
@@ -102,8 +104,20 @@ def load_session(path: Path, base_url: str) -> dict:
     return data
 
 
+RETRY = Retry(
+    total=3,
+    backoff_factor=1,
+    status_forcelist=(429, 500, 502, 503, 504),
+    allowed_methods=frozenset({"GET"}),  # only idempotent reads are ever retried
+    raise_on_status=False,  # a last 5xx still reaches the caller as an ApiError
+)
+
+
 def http_session(session_data: dict) -> requests.Session:
     http = requests.Session()
+    adapter = HTTPAdapter(max_retries=RETRY)
+    http.mount("https://", adapter)
+    http.mount("http://", adapter)
     for c in session_data["cookies"]:
         http.cookies.set(
             c["name"],
