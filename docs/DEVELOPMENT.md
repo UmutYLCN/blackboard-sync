@@ -587,11 +587,18 @@ Differences from macOS:
   Reserved device names get a `_` (`CON` becomes `CON_`, `nul.txt` becomes
   `nul_.txt`). Names are kept to 120 characters.
 - **Path length.** Windows limits a full path to 260 characters unless long
-  paths are enabled. File names are shortened (keeping the extension) so files
-  fit under that limit; folder names are not, so a very deep folder structure
-  can still be too long. If a sync stops with a path error, choose a shorter
-  destination with `--dest` (for example `C:\University`) or enable Windows long
-  paths.
+  paths are enabled, and Explorer, Office and Acrobat often cannot open longer
+  ones even then. So paths are kept under that limit whether or not long paths
+  are enabled: a long folder name below the course folder may use at most half
+  of the room still left (never less than 16 characters), keeping its start
+  and end around a `…` (`Week 05 - Normalizati…Part 2`), and file names are
+  shortened (keeping the extension) to fit what remains. Folders that an older
+  version created with the full name are renamed on the next sync, the same way
+  as course folders with Turkish codes: nothing is downloaded again, and if the
+  folder cannot be moved it is kept and used, with a warning. With a very long
+  destination folder and many nested folders a path can still be too long;
+  that item is skipped with a warning, and a shorter destination with `--dest`
+  (for example `C:\University`) fixes it.
 
 ## Development
 

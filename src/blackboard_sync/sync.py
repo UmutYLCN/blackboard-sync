@@ -28,6 +28,7 @@ from blackboard_sync.notes import (
 from blackboard_sync.paths import (
     course_code_and_title,
     course_folder_name,
+    fit_windows_folder,
     fit_windows_path,
     fold_course_key,
     join_rel,
@@ -275,7 +276,11 @@ class Syncer:
         return folder
 
     def migrate_course_folder(self, course: Course, warnings: list[str]) -> None:
-        """Rename a folder an older version named differently ("İNG101-1 İNG101 ...").
+        """Rename a folder an older version named differently ("İNG101-1 İNG101 ...")."""
+        course.rel_dir = self.move_folder(course.legacy_rel_dir, course.rel_dir, warnings)
+
+    def move_folder(self, old_rel: str, new_rel: str, warnings: list[str]) -> str:
+        """Rename folder ``old_rel`` to ``new_rel``; return the folder to use from now on.
 
         The folder is moved in one step and the recorded paths follow it, so
         nothing is downloaded again. When the new name is already taken or the
@@ -284,29 +289,40 @@ class Syncer:
         only has to update the recorded paths, which happens when the old folder
         is gone.
         """
-        old_rel, new_rel = course.legacy_rel_dir, course.rel_dir
         if self.dry_run or not old_rel or old_rel == new_rel:
-            return
+            return new_rel
         old, new = self.dest / old_rel, self.dest / new_rel
         if not old.is_dir():
             if self.state.move_tree(old_rel, new_rel):
                 log.info("Recorded files of %s now live in %s", old_rel, new_rel)
-            return
+            return new_rel
         if new.exists() and not self._same_entry(old, new):
             warnings.append(
                 f"Kept folder {old_rel!r}: could not rename it to {new_rel!r} because that "
                 "folder already exists. Move your files into one of them to finish."
             )
-            course.rel_dir = old_rel
-            return
+            return old_rel
         try:
             os.rename(old, new)
         except OSError as exc:
             warnings.append(f"Kept folder {old_rel!r}: could not rename it to {new_rel!r} ({exc}).")
-            course.rel_dir = old_rel
-            return
+            return old_rel
         self.state.move_tree(old_rel, new_rel)
         log.info("Renamed %s to %s", old_rel, new_rel)
+        return new_rel
+
+    def folder_path(self, rel_dir: str, title: str, warnings: list[str]) -> str:
+        """Where the Blackboard folder ``title`` inside ``rel_dir`` is mirrored.
+
+        On Windows a long name is shortened so deep trees stay within the path
+        limit (``fit_windows_folder``); a folder an older version created with the
+        full name is renamed to the shortened one.
+        """
+        name = sanitize_name(title, windows=self.windows)
+        if not self.windows:
+            return join_rel(rel_dir, name)
+        fitted = join_rel(rel_dir, fit_windows_folder(self.dest, rel_dir, name))
+        return self.move_folder(join_rel(rel_dir, name), fitted, warnings)
 
     @staticmethod
     def _same_entry(a: Path, b: Path) -> bool:
@@ -350,8 +366,8 @@ class Syncer:
     ) -> None:
         for item in sorted(items, key=lambda i: i.get("position", 0)):
             if self.is_folder(item):
-                sub_dir = join_rel(rel_dir, sanitize_name(item.get("title") or "Folder", windows=self.windows))
                 try:
+                    sub_dir = self.folder_path(rel_dir, item.get("title") or "Folder", report.warnings)
                     if not self.dry_run:
                         (self.dest / sub_dir).mkdir(parents=True, exist_ok=True)
                     children = self.client.children(course.id, item["id"])
