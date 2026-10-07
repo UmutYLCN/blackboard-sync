@@ -102,6 +102,26 @@ def windows_documents_dir() -> Path | None:
         return None
 
 
+FILE_ATTRIBUTE_HIDDEN = 0x02
+FILE_ATTRIBUTE_NORMAL = 0x80
+
+
+def set_hidden(path: Path, hidden: bool, platform: str | None = None) -> None:
+    """Set or clear the Windows hidden attribute; best effort and a no-op elsewhere.
+
+    Dot-files are only hidden on macOS, so temp files get the attribute on Windows.
+    """
+    if not is_windows(platform):
+        return
+    try:
+        import ctypes
+
+        attrs = FILE_ATTRIBUTE_HIDDEN if hidden else FILE_ATTRIBUTE_NORMAL
+        ctypes.windll.kernel32.SetFileAttributesW(str(path), attrs)
+    except Exception:  # hiding is cosmetic, never fail a download over it
+        log.debug("Could not change the hidden attribute of %s", path)
+
+
 def make_private_dir(
     path: Path,
     platform: str | None = None,

@@ -92,3 +92,10 @@ def test_run_lock_is_exclusive(tmp_path):
         assert system.try_lock(second)
     finally:
         second.close()
+
+
+def test_set_hidden_is_a_noop_off_windows(tmp_path):
+    f = tmp_path / "a"
+    f.write_bytes(b"x")
+    system.set_hidden(f, True, platform="darwin")
+    assert f.read_bytes() == b"x"

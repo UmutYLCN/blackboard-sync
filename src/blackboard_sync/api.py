@@ -20,11 +20,15 @@ from urllib.parse import unquote, urljoin, urlsplit
 import requests
 
 from blackboard_sync.errors import ApiError, LoginRequired
+from blackboard_sync.system import set_hidden
 
 log = logging.getLogger(__name__)
 
 PUBLIC = "/learn/api/public"
 PRIVATE = "/learn/api/v1"
+# Temp files of in-flight downloads; sync start removes the ones a killed run left.
+PARTIAL_PREFIX = ".bbsync-"
+PARTIAL_SUFFIX = ".partial"
 USER_AGENT = "blackboard-sync/0.1 (+personal course mirror)"
 # Paths that mean Blackboard bounced us to a login page instead of answering.
 _LOGIN_MARKERS = ("/webapps/login", "/auth-saml", "/webapps/bb-auth-provider", "/ultra/logout")
@@ -186,7 +190,9 @@ class BlackboardClient:
 
 
 def _mkstemp(directory: Path) -> tuple[int, str]:
-    return tempfile.mkstemp(prefix=".bbsync-", suffix=".partial", dir=directory)
+    fd, tmp = tempfile.mkstemp(prefix=PARTIAL_PREFIX, suffix=PARTIAL_SUFFIX, dir=directory)
+    set_hidden(Path(tmp), True)
+    return fd, tmp
 
 
 def _error_message(resp: requests.Response) -> str:
