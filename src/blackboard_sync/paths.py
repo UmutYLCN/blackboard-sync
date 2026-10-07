@@ -19,6 +19,14 @@ WINDOWS_MAX_NAME_CHARS = 120
 NUMBER_SUFFIX_ROOM = 6
 # A file name stem is never shortened below this to fit the path limit.
 MIN_STEM_CHARS = 8
+# Room kept below every folder for "\" plus a file name, so files keep readable
+# names and the ".bbsync-*.partial" temp file (24 characters) of a download fits.
+WINDOWS_FILE_ROOM = 40
+# A folder name is never shortened below this, and keeps up to this much of its end.
+MIN_FOLDER_CHARS = 16
+FOLDER_TAIL_CHARS = 10
+# Marks where a folder name was shortened: "Week 05 - Normalizati…Part 2".
+ELLIPSIS = "\u2026"
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _WHITESPACE = re.compile(r"\s+")
@@ -118,9 +126,9 @@ def fit_windows_path(base: Path, rel_path: str, limit: int = WINDOWS_MAX_PATH - 
     """Shorten the file name in ``rel_path`` so ``base / rel_path`` fits Windows' path limit.
 
     Only the last component is shortened (keeping its extension and at least
-    ``MIN_STEM_CHARS`` characters); folder names stay as they are so every file
-    of a folder lands in the same place. A path that still does not fit is
-    returned as short as it can be.
+    ``MIN_STEM_CHARS`` characters); folders were already fitted when they were
+    created (``fit_windows_folder``). A path that still does not fit is returned
+    as short as it can be.
     """
     full = len(str(base).rstrip("/\\")) + 1 + len(rel_path)
     over = full - limit
@@ -131,6 +139,28 @@ def fit_windows_path(base: Path, rel_path: str, limit: int = WINDOWS_MAX_PATH - 
     keep = max(len(stem) - over, min(MIN_STEM_CHARS, len(stem)))
     short = stem[:keep].rstrip(". ") or stem[:keep]
     return str(path.with_name(short + ext))
+
+
+def fit_windows_folder(base: Path, parent_rel: str, name: str) -> str:
+    """Shorten folder ``name`` so a deep tree under ``base / parent_rel`` fits Windows' path limit.
+
+    Without long-path support Windows, and with it Explorer, Office and Acrobat,
+    cannot open a path over ``WINDOWS_MAX_PATH`` characters. Each folder may use
+    at most half of the room still left for folders (never less than
+    ``MIN_FOLDER_CHARS``), so the folders below it get the other half and every
+    file keeps ``WINDOWS_FILE_ROOM`` for its name. The result depends only on the
+    parent path and the name, so every run and every file of a folder picks the
+    same folder. A shortened name keeps its start and its end ("... Part 2").
+    """
+    used = len(str(base).rstrip("/\\")) + 1 + (len(parent_rel) + 1 if parent_rel else 0)
+    cap = max(MIN_FOLDER_CHARS, (WINDOWS_MAX_PATH - WINDOWS_FILE_ROOM - used) // 2)
+    if len(name) <= cap:
+        return name
+    tail = name[len(name) - min(FOLDER_TAIL_CHARS, cap // 3):].lstrip(" .")
+    if " " in tail:
+        tail = tail.split(" ", 1)[1].lstrip(" .")  # start at a word: "…Part 2", not "…rt 2"
+    head = name[: cap - len(ELLIPSIS) - len(tail)].rstrip(" ")
+    return head + ELLIPSIS + tail
 
 
 def course_code_and_title(course_id: str, name: str) -> tuple[str, str]:

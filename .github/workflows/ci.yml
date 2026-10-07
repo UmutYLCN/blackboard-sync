@@ -23,3 +23,12 @@ jobs:
       # Both sign-in methods can load what they need: the Playwright driver and
       # the in-app window's web component (WKWebView / WebView2).
       - run: python packaging/app_entry.py --check-login-runtime
+      # Windows' default is no long paths (MAX_PATH = 260). Switch them off for a
+      # new process and sync a deep course tree into a real folder (audit B9).
+      - name: Deep folders without long paths
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Set-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem -Name LongPathsEnabled -Value 0
+          $env:BBSYNC_TEST_MAX_PATH = "1"
+          python -m pytest -q tests/test_windows_long_paths.py -k "real_windows or enforces_max_path"
