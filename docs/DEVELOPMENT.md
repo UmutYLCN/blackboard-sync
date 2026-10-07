@@ -647,7 +647,8 @@ installed app and `--version`, checks the GUI (within 45 s `windows-tray.log`
 exists, the app runs and its first-run window "Blackboard Sync kurulumu" is
 visible; closed and started again, the running copy shows it), upgrades, and
 uninstalls. On a failure it prints `scripts/windows-gui-snapshot.ps1`: the
-app's windows, its data folder and the log with periodic thread stacks.
+app's windows, its data folder and the logs (the periodic thread stacks are in
+`windows-tray-faults.log`).
 
 The `CI` workflow runs the tests on macOS and Windows for pull requests and pushes to `main`.
 
@@ -708,10 +709,11 @@ Keep this checkout and its virtual environment in place while it is enabled;
 disable the option before moving or deleting them. No administrator rights are
 needed. Settings and logs (`windows-tray.log`) live under
 `%APPDATA%\blackboard-sync` unless `BBSYNC_DATA_DIR` overrides it. The log is
-opened before anything else is imported (`windows/startup.py`), together with
-`faulthandler`; an unhandled error shows a message box naming the log. To see
+opened before anything else is imported (`windows/startup.py`; it rotates at
+1 MB, keeping three older files), together with `faulthandler`, which writes
+to `windows-tray-faults.log`; an unhandled error shows a message box naming the log. To see
 where a running app waits, start it with `BBSYNC_STACK_DUMP=<seconds>`: every
-thread's stack is then written to the log at that interval.
+thread's stack is then written to `windows-tray-faults.log` at that interval.
 
 Toasts show one Turkish summary line per changed course. Clicking opens the
 course folder, or the common parent folder when several courses changed, via a

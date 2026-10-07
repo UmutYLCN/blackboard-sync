@@ -58,8 +58,10 @@ function Show-AppSnapshot([string]$Label, [string]$ProcessName = "Blackboard Syn
   Get-AppWindows $ProcessName | Format-Table -AutoSize | Out-String -Width 250 | Write-Host
   Write-Host "data folder ${Dir}:"
   Get-ChildItem $Dir -Force -ErrorAction SilentlyContinue | Format-Table Name, Length, LastWriteTime -AutoSize | Out-String | Write-Host
-  $log = Join-Path $Dir "windows-tray.log"
-  if (Test-Path $log) { Write-Host "--- windows-tray.log"; Get-Content $log -Tail 200 | Write-Host } else { Write-Host "no windows-tray.log" }
+  foreach ($name in "windows-tray.log", "windows-tray-faults.log") {
+    $log = Join-Path $Dir $name
+    if (Test-Path $log) { Write-Host "--- $name"; Get-Content $log -Tail 200 | Write-Host } else { Write-Host "no $name" }
+  }
 }
 
 if ($MyInvocation.InvocationName -ne ".") { Show-AppSnapshot "snapshot" }

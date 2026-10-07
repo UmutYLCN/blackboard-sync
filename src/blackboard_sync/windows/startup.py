@@ -10,6 +10,7 @@ imported here, so a missing module of the frozen build is caught as well.
 
 import faulthandler
 import logging
+import logging.handlers
 import os
 import sys
 import threading
@@ -20,6 +21,11 @@ from blackboard_sync.system import default_data_dir, make_private_dir
 log = logging.getLogger(__name__)
 
 LOG_NAME = "windows-tray.log"
+# faulthandler writes through its own handle, which would block renaming the
+# log on Windows, so interpreter crashes and stack dumps get a file of their own.
+FAULT_LOG_NAME = "windows-tray-faults.log"
+LOG_MAX_BYTES = 1_000_000
+LOG_BACKUPS = 3  # windows-tray.log plus three older ones: 4 MB at most
 # Hidden diagnostic: BBSYNC_STACK_DUMP=<seconds> writes the stack of every
 # thread to the log every <seconds> (to see where a running app waits).
 STACK_DUMP_ENV = "BBSYNC_STACK_DUMP"
@@ -52,9 +58,11 @@ def setup_logging(env=None) -> Path:
     # The private folder is made here, before anything else creates it, so it
     # still gets its owner-only permissions.
     make_private_dir(path.parent)
-    logging.basicConfig(filename=str(path), encoding="utf-8", level=logging.INFO,
+    handler = logging.handlers.RotatingFileHandler(path, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUPS,
+                                                   encoding="utf-8")
+    logging.basicConfig(handlers=[handler], level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s %(message)s", force=True)
-    _fault_file = open(path, "a", encoding="utf-8")
+    _fault_file = open(path.with_name(FAULT_LOG_NAME), "a", encoding="utf-8")
     faulthandler.enable(_fault_file, all_threads=True)
     threading.excepthook = _log_thread_error
     interval = _stack_dump_interval(env.get(STACK_DUMP_ENV))
