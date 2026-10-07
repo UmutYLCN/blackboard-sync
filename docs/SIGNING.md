@@ -193,10 +193,26 @@ spctl --assess --type execute --verbose=2 "$APP"     # accepted, source=Notarize
 xcrun stapler validate "$APP"
 ```
 
-Clean up afterwards (deletes the pre-release and its tag):
+Clean up afterwards. If the pre-release was published, delete it and the tag
+on GitHub:
 
 ```sh
 gh release delete v1.3.0-rc1 --cleanup-tag --yes -R UmutYLCN/blackboard-sync
+```
+
+If the run failed before the `release` job, there is no release: that command
+fails with `release not found` and leaves the tag. Delete the tag on GitHub
+instead:
+
+```sh
+git push origin :refs/tags/v1.3.0-rc1
+```
+
+Either way, then remove the local tag (so a later `git push --tags` cannot push
+it again) and the branch:
+
+```sh
+git tag -d v1.3.0-rc1
 git switch main && git branch -D signing-test
 ```
 

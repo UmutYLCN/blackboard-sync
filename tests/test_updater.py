@@ -391,8 +391,12 @@ def test_download_needs_a_known_release():
     assert not UpdateState().begin("download")
 
 
-def test_update_state_survives_a_restart(tmp_path):
-    # Ahead of any real version, so the remembered release stays an update.
+def test_update_state_survives_a_restart(tmp_path, monkeypatch):
+    # A remembered release stays an update only while it is newer than the
+    # running version, and a pre-release build (__version__ "1.3.0-rc1") never
+    # sees a release as newer. Restart as release 1.0.0, whatever __version__ is.
+    real_load = UpdateState.load
+    monkeypatch.setattr(UpdateState, "load", lambda data, now, current="1.0.0": real_load(data, now, current))
     ahead = Release("99.0.0", "https://github.com/UmutYLCN/blackboard-sync/releases/tag/v99.0.0",
                     "Blackboard-Sync-99.0.0.dmg", DOWNLOAD + "Blackboard-Sync-99.0.0.dmg")
     config = Config(data_dir=tmp_path / "data", dest=tmp_path / "University")
