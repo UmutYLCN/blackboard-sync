@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 
+import requests
+
 from blackboard_sync.api import BlackboardClient
 from blackboard_sync.config import Config
 from blackboard_sync.errors import AlreadyRunning, ApiError, LoginRequired
@@ -47,6 +49,8 @@ NO_ATTACHMENTS_MESSAGE = "does not support file attachments"
 NO_TERM = "No term"
 # Courses usually open a little before the term officially starts.
 TERM_LEAD_TIME = timedelta(days=30)
+# One failing file or request must not stop the rest of the sync: it becomes a warning.
+ITEM_ERRORS = (OSError, requests.RequestException)
 
 
 @dataclass
@@ -242,15 +246,18 @@ class Syncer:
     def sync_course(self, course: Course) -> CourseReport:
         code, title = course_code_and_title(course.course_id, course.name)
         report = CourseReport(code=code, name=title, folder=course.rel_dir)
-        if not self.dry_run:
-            (self.dest / course.rel_dir).mkdir(parents=True, exist_ok=True)
         try:
+            if not self.dry_run:
+                (self.dest / course.rel_dir).mkdir(parents=True, exist_ok=True)
             roots = self.client.contents(course.id)
-        except ApiError as exc:
+        except (ApiError, *ITEM_ERRORS) as exc:
             report.warnings.append(f"Could not read course content: {exc}")
         else:
             self.walk(course, roots, course.rel_dir, report)
-        self.sync_announcements(course, report)
+        try:
+            self.sync_announcements(course, report)
+        except ITEM_ERRORS as exc:
+            report.warnings.append(f"Could not sync announcements: {exc}")
         return report
 
     def walk(
@@ -264,18 +271,18 @@ class Syncer:
         for item in sorted(items, key=lambda i: i.get("position", 0)):
             if self.is_folder(item):
                 sub_dir = join_rel(rel_dir, sanitize_name(item.get("title") or "Folder", windows=self.windows))
-                if not self.dry_run:
-                    (self.dest / sub_dir).mkdir(parents=True, exist_ok=True)
                 try:
+                    if not self.dry_run:
+                        (self.dest / sub_dir).mkdir(parents=True, exist_ok=True)
                     children = self.client.children(course.id, item["id"])
-                except ApiError as exc:
+                except (ApiError, *ITEM_ERRORS) as exc:
                     report.warnings.append(f"Could not open folder {item.get('title')!r}: {exc}")
                     continue
                 self.walk(course, children, sub_dir, report, item.get("title") or "")
             else:
                 try:
                     self.process_item(course, item, rel_dir, report, parent_title)
-                except ApiError as exc:
+                except (ApiError, *ITEM_ERRORS) as exc:
                     report.warnings.append(f"Skipped {item.get('title')!r}: {exc}")
 
     @staticmethod
@@ -387,7 +394,11 @@ class Syncer:
                 ann, self.course_label(course), self.course_url(course, "announcements")
             )
             out_key = f"announcement-note:{course.id}:{ann['id']}"
-            self.write_note(out_key, join_rel(folder, name), note, report, "announcements")
+            try:
+                self.write_note(out_key, join_rel(folder, name), note, report, "announcements")
+            except OSError as exc:
+                report.warnings.append(f"Skipped announcement {title!r}: {exc}")
+                continue
             if not self.dry_run:
                 self.state.record_item(key, modified, [out_key], title)
 

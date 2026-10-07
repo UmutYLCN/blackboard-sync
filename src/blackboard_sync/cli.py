@@ -163,6 +163,9 @@ def cmd_sync(args, config: Config) -> int:
         report.status, report.message = "error", str(exc)
     except requests.RequestException as exc:
         report.status, report.message = "error", f"Network error talking to Blackboard: {exc}"
+    except Exception as exc:  # last resort: the report and last-run.json must always be written
+        logging.getLogger(__name__).exception("Unexpected error during sync")
+        report.status, report.message = "error", f"Unexpected error: {type(exc).__name__}: {exc}"
     if not report.finished_at:
         report.finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
