@@ -480,4 +480,8 @@ def test_status_line_is_stable_while_time_passes():
     first = m.menu(local + timedelta(minutes=5))
     assert first.status_lines[0].startswith("14:00 senkronize edildi · ")
     assert m.menu(local + timedelta(minutes=6)) == first  # no per-minute change, so no rebuild
+    m.next_run_at = local + timedelta(minutes=2)  # overdue: no ticking clock either
+    overdue = m.menu(local + timedelta(minutes=5))
+    assert overdue.status_lines[0].endswith("sonraki: birazdan")
+    assert m.menu(local + timedelta(minutes=6)) == overdue
     assert m.menu(local + timedelta(days=1)).status_lines[0].startswith("Dün 14:00 senkronize edildi · ")

@@ -616,7 +616,8 @@ class AppModel:
             parts.append(counts_text(totals))
         elif self.last is not None and self.last.status == "error" and self.last.message:
             parts.append(shorten(self.last.message, 50))
-        parts.append(f"sonraki: {format_time(max(self.next_run_at, now), now)}")
+        # Overdue: a fixed word, since the current clock time would change the menu every minute.
+        parts.append(f"sonraki: {format_time(self.next_run_at, now) if self.next_run_at > now else 'birazdan'}")
         return parts
 
     def status_lines(self, now: datetime) -> list[str]:
