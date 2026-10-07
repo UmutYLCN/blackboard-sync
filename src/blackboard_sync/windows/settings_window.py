@@ -154,3 +154,44 @@ class SettingsWindow:
     def close(self):
         self.window.destroy()
         self.on_close()
+
+
+def ask_dest_choice(parent, old, new, files):
+    """Ask what happens to the files in ``old``; a ``DEST_CHOICES`` key, or None for "Vazgeç".
+
+    Modal over ``parent``. "Taşı" has the focus, so Enter moves; Escape and
+    closing the window cancel the save.
+    """
+    import tkinter as tk
+    from tkinter import ttk
+
+    dialog = tk.Toplevel(parent)
+    dialog.title(form.T_DEST_CHANGE_TITLE)
+    dialog.transient(parent)
+    dialog.resizable(False, False)
+    answer = []
+
+    def choose(choice):
+        answer.append(choice)
+        dialog.destroy()
+
+    frame = ttk.Frame(dialog, padding=20)
+    frame.grid(sticky="nsew")
+    ttk.Label(frame, text=form.T_DEST_CHANGE_TITLE, font=("Segoe UI", 11, "bold")).grid(sticky="w", pady=(0, 8))
+    ttk.Label(frame, text=form.dest_change_message(old, new, files), wraplength=480,
+              justify="left").grid(sticky="w", pady=(0, 16))
+    buttons = ttk.Frame(frame)
+    buttons.grid(sticky="e")
+    first = None
+    for choice, title in form.DEST_CHOICES:
+        button = ttk.Button(buttons, text=title, command=lambda c=choice: choose(c))
+        button.pack(side="left", padx=4)
+        first = first or button
+    ttk.Button(buttons, text=form.T_CANCEL, command=dialog.destroy).pack(side="left", padx=4)
+    dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+    dialog.bind("<Return>", lambda _e: choose(form.DEST_CHOICES[0][0]))
+    dialog.bind("<Escape>", lambda _e: dialog.destroy())
+    first.focus_set()
+    dialog.grab_set()
+    dialog.wait_window()
+    return answer[0] if answer else None

@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, IO
 
-from blackboard_sync import runtime, signout
+from blackboard_sync import relocate, runtime, signout
 from blackboard_sync.config import Config
 from blackboard_sync.errors import EXIT_ERROR, LoginRequired
 from blackboard_sync.menubar.model import (
@@ -113,6 +113,20 @@ def run_login_guarded(settings: Settings) -> tuple[bool, str]:
     except Exception as exc:
         log.exception("Login job failed")
         return False, str(exc)
+
+
+def synced_file_count(config: Config, dest: Path) -> int:
+    """How many downloaded files ``dest`` holds: whether a folder change needs asking."""
+    return relocate.count_synced_files(config.state_file, dest)
+
+
+def run_move_guarded(config: Config, old: Path, new: Path) -> relocate.MoveResult:
+    """Move the downloaded files to the new folder; never raises (a worker thread runs it)."""
+    try:
+        return relocate.move_destination(config.state_file, config.lock_file, old, new)
+    except Exception as exc:
+        log.exception("Moving the files failed")
+        return relocate.MoveResult(status="error", message=str(exc))
 
 
 def login_method(platform: str | None = None) -> str:

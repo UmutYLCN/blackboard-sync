@@ -11,10 +11,10 @@ import time
 import webbrowser
 from pathlib import Path
 
-from blackboard_sync import runtime, updater
+from blackboard_sync import relocate, runtime, updater
 from blackboard_sync.config import Config
 from blackboard_sync.menubar import jobs, settings_form
-from blackboard_sync.menubar.model import open_target, RunOutcome, UPDATE_ACTIONS
+from blackboard_sync.menubar.model import DEST_KEEP, MOVE_JOB, open_target, RunOutcome, UPDATE_ACTIONS
 from blackboard_sync.settings import SettingsError, save_settings
 from . import activation, autostart, notifications
 from .presentation import icon_image, render_menu
@@ -81,6 +81,7 @@ class TrayApp:
         self.events = queue.Queue()
         self.poll_errors = LogThrottle()
         self.window = None
+        self.login_after_job = False  # a new school's sign-in waits for the file move
         self.closed = False
         self.drawn = None
         self.drawn_icon = None
@@ -134,39 +135,63 @@ class TrayApp:
             self.root.after(REQUEST_CHECK_MS, self.poll)
 
     def tick(self):
-        if self.model.due(jobs.utcnow()):
-            self.start_job("sync")
+        self.start_next()
         if self.model.update_due(jobs.utcnow()):
             self.start_update_check(manual=False)
         self.refresh()
         self.root.after(30000, self.tick)
 
+    def start_next(self):
+        """A job a folder change asked for goes first, then the scheduled sync."""
+        jobs.refresh_session(self.config, self.model, self.settings)  # a refetch waits for it
+        job = self.model.pending_job()
+        if job is not None:
+            self.start_job(job)
+        elif self.model.due(jobs.utcnow()):
+            self.start_job("sync")
+
     def start_job(self, job):
+        old, new = self.model.move_from, self.model.dest
+        if job == MOVE_JOB and old is None:
+            return
         if self.model.updates.busy == "download" or not self.model.begin(job):
             return
         if job == "login":
             self.model.login_method = jobs.login_method()
         self.refresh()
-        settings = self.settings
+        settings, config = self.settings, self.config
         def worker():
             try:
-                result = (jobs.run_login(settings, runner=cli_runner) if job == "login"
-                          else jobs.run_sync(job, settings, runner=cli_runner))
+                if job == "login":
+                    result = jobs.run_login(settings, runner=cli_runner)
+                elif job == MOVE_JOB:
+                    result = jobs.run_move_guarded(config, old, new)
+                else:
+                    result = jobs.run_sync(job, settings, runner=cli_runner)
             except Exception as exc:
                 log.exception("CLI job failed")
-                result = (False, str(exc)) if job == "login" else RunOutcome(status="error", message=str(exc))
+                result = ((False, str(exc)) if job == "login"
+                          else relocate.MoveResult(status="error", message=str(exc)) if job == MOVE_JOB
+                          else RunOutcome(status="error", message=str(exc)))
             self.post(self.job_done, job, result)
         threading.Thread(target=worker, daemon=True).start()
 
     def job_done(self, job, result):
         if job == "login":
             self.model.finish_login(*result, jobs.utcnow())
+        elif job == MOVE_JOB:
+            log.info("Move finished: %s, %d moved, %d kept", result.status, result.moved, len(result.kept))
+            self.post_notifications(
+                self.model.finish_move(result.status, result.moved, len(result.kept), result.message))
         else:
             for note in self.model.finish_sync(result, jobs.utcnow()):
                 threading.Thread(target=self.notify, args=(note,), daemon=True).start()
         self.save()
-        if self.model.due(jobs.utcnow()):
-            self.start_job("sync")
+        if self.login_after_job:
+            self.login_after_job = False
+            self.start_job("login")
+        elif job != MOVE_JOB:  # a move that found the folders locked waits for the timer
+            self.start_next()
         self.refresh()
 
     def post_notifications(self, notes):
@@ -341,13 +366,20 @@ class TrayApp:
     def settings_submitted(self, values, login):
         # Do not apply a new destination/school to the result of an in-flight job.
         if self.model.busy or self.model.updates.busy == "download":
-            return "Önce çalışan işlemin tamamlanmasını bekleyin.", "base_url"
+            return settings_form.T_BUSY, "base_url"
         try:
             submission = settings_form.submit(values, self.settings)
-            autostart.set_enabled(submission.autostart)
-            save_settings(self.config.data_dir, submission.settings)
         except SettingsError as exc:
             return str(exc), exc.field
+        choice = DEST_KEEP
+        files = jobs.synced_file_count(self.config, self.settings.dest) if submission.dest_changed else 0
+        if files:
+            choice = self.ask_dest_choice(self.settings.dest, submission.settings.dest, files)
+            if choice is None:
+                return settings_form.T_DEST_NOT_CHANGED, "dest"
+        try:
+            autostart.set_enabled(submission.autostart)
+            save_settings(self.config.data_dir, submission.settings)
         except OSError as exc:
             log.exception("Could not save settings")
             return f"Ayarlar kaydedilemedi: {exc}", "dest"
@@ -357,12 +389,23 @@ class TrayApp:
             submission.school_changed,
             self.settings.check_updates,
             self.settings.sync_interval_minutes,
+            dest_choice=choice,
         )
         self.save()
+        self.start_next()  # a move goes before signing in to a new school
         if submission.needs_login(login):
-            self.start_job("login")
+            if self.model.busy is None:
+                self.start_job("login")
+            else:
+                self.login_after_job = True
         self.refresh()
         return None
+
+    def ask_dest_choice(self, old, new, files):
+        from .settings_window import ask_dest_choice
+
+        parent = self.window.window if self.window is not None else self.root
+        return ask_dest_choice(parent, old, new, files)
 
     def save(self):
         try:

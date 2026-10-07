@@ -7,6 +7,7 @@ from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 from xml.etree import ElementTree as ET
 
+from blackboard_sync.config import Config
 from blackboard_sync.menubar.model import AppModel, CourseChange, RunOutcome, changes_notification
 from blackboard_sync.menubar.settings_form import FormValues
 from blackboard_sync.settings import Settings
@@ -122,8 +123,9 @@ def test_utf8_runner(monkeypatch):
 
 def make_app(tmp_path):
     app = TrayApp.__new__(TrayApp)
-    app.config = SimpleNamespace(data_dir=tmp_path)
+    app.config = Config(data_dir=tmp_path, dest=tmp_path / 'old')
     app.settings = Settings('https://old.school.edu', tmp_path / 'old')
+    app.login_after_job = False
     app.model = AppModel(app.settings.dest, datetime.now(timezone.utc))
     app.save = lambda: None
     app.refresh = lambda: None
