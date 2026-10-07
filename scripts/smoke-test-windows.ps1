@@ -10,7 +10,7 @@ $app = Join-Path $env:LOCALAPPDATA "Programs\Blackboard Sync"
 $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 $dataDir = Join-Path $env:TEMP "bbsync-smoke-data"
 $env:BBSYNC_DATA_DIR = $dataDir
-# Every thread's stack goes to windows-tray.log every 10 s, printed on a failure.
+# Every thread's stack goes to windows-tray-faults.log every 10 s, printed on a failure.
 $env:BBSYNC_STACK_DUMP = "10"
 $log = Join-Path $dataDir "windows-tray.log"
 $firstRunTitle = "Blackboard Sync kurulumu"

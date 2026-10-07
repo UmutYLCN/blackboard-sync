@@ -1,5 +1,6 @@
 """Per-user toast activation, forwarded to the single running tray instance."""
 
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -69,3 +70,12 @@ def _take(config, name) -> bool:
         return True
     except FileNotFoundError:
         return False
+
+
+def take_requests(config) -> tuple[bool, bool]:
+    """(update, settings) requests found, consumed. One directory scan when idle."""
+    names = {UPDATE_REQUEST, SETTINGS_REQUEST}
+    with os.scandir(config.data_dir) as entries:
+        found = {entry.name for entry in entries} & names
+    return (UPDATE_REQUEST in found and _take(config, UPDATE_REQUEST),
+            SETTINGS_REQUEST in found and _take(config, SETTINGS_REQUEST))

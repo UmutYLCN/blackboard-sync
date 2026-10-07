@@ -7,6 +7,7 @@ import queue
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
@@ -28,6 +29,29 @@ TRAY_HINT_TITLE = "Blackboard Sync arka planda çalışıyor"
 TRAY_HINT = ("Menü için saatin yanındaki Blackboard Sync simgesine sağ tıklayın. "
              "Simge görünmüyorsa gizli simgeleri gösteren ^ okuna tıklayın.")
 TRAY_HINT_SHOWN = "tray-hint-shown"
+# Workers wake Tk with this virtual event, so the UI never polls its queue.
+WAKE_EVENT = "<<bbsync>>"
+# The request files (toast click, second start) come from other processes and
+# cannot wake Tk, so they are checked on a slow timer; this is also the safety
+# net should a wake-up ever be lost.
+REQUEST_CHECK_MS = 2000
+# The same failing check is logged with its traceback at most this often.
+ERROR_LOG_INTERVAL = 60.0
+
+
+class LogThrottle:
+    """Lets the same key through at most once per ``interval`` seconds."""
+
+    def __init__(self, interval=ERROR_LOG_INTERVAL, clock=time.monotonic):
+        self.interval, self.clock = interval, clock
+        self.last = {}
+
+    def allow(self, key):
+        now = self.clock()
+        if key in self.last and now - self.last[key] < self.interval:
+            return False
+        self.last[key] = now
+        return True
 
 
 def cli_runner(command, **kwargs):
@@ -55,6 +79,7 @@ class TrayApp:
         self.settings = jobs.effective_settings(config)
         self.model = jobs.load_model(config, jobs.utcnow(), autostart.is_installed())
         self.events = queue.Queue()
+        self.poll_errors = LogThrottle()
         self.window = None
         self.closed = False
         self.drawn = None
@@ -65,13 +90,23 @@ class TrayApp:
     def run(self):
         self.icon.run_detached()
         log.info("Tray icon started (configured %s)", self.model.configured)
-        self.root.after(100, self.poll)
+        self.root.bind(WAKE_EVENT, self.drain)
+        self.root.after(REQUEST_CHECK_MS, self.poll)
         self.root.after(1000, self.tick)
         if self.show_settings or not self.model.configured:
             self.root.after(200, self.open_settings)
         self.root.mainloop()
 
-    def poll(self):
+    def post(self, callback, *args):
+        """Queue ``callback(*args)`` for the Tk thread and wake it (any thread)."""
+        self.events.put((callback, args))
+        try:
+            self.root.event_generate(WAKE_EVENT, when="tail")
+        except Exception:
+            # Tk is gone (quitting), so the event would never run anyway.
+            log.debug("Could not wake Tk", exc_info=True)
+
+    def drain(self, _event=None):
         try:
             while not self.closed:
                 callback, args = self.events.get_nowait()
@@ -81,16 +116,22 @@ class TrayApp:
                     log.exception("UI event failed")
         except queue.Empty:
             pass
+
+    def poll(self):
+        self.drain()
         if not self.closed:
             try:
-                if activation.take_update_request(self.config):
+                update, settings = activation.take_requests(self.config)
+                if update:
                     self.notification_clicked({"action": "update"})
-                if activation.take_settings_request(self.config):
+                if settings:
                     log.info("Started again; showing the settings window")
                     self.open_settings()
-            except OSError:
-                log.exception("Could not read toast activation")
-            self.root.after(100, self.poll)
+            except OSError as exc:
+                # A persistent failure (say a denied folder) must not flood the log.
+                if self.poll_errors.allow((type(exc), exc.errno, exc.filename)):
+                    log.exception("Could not read toast activation")
+            self.root.after(REQUEST_CHECK_MS, self.poll)
 
     def tick(self):
         if self.model.due(jobs.utcnow()):
@@ -114,7 +155,7 @@ class TrayApp:
             except Exception as exc:
                 log.exception("CLI job failed")
                 result = (False, str(exc)) if job == "login" else RunOutcome(status="error", message=str(exc))
-            self.events.put((self.job_done, (job, result)))
+            self.post(self.job_done, job, result)
         threading.Thread(target=worker, daemon=True).start()
 
     def job_done(self, job, result):
@@ -144,7 +185,7 @@ class TrayApp:
         except Exception:
             log.exception("Update check failed")
             result = updater.CheckResult("unknown")
-        self.events.put((self.update_checked, (result, manual)))
+        self.post(self.update_checked, result, manual)
 
     def update_checked(self, result, manual):
         self.post_notifications(self.model.updates.finish_check(result, jobs.utcnow(), manual))
@@ -179,7 +220,7 @@ class TrayApp:
         except Exception:
             log.exception("Update installation failed")
             error = "Güncelleme yüklenemedi; daha sonra tekrar deneyin."
-        self.events.put((self.update_installed, (error,)))
+        self.post(self.update_installed, error)
 
     def update_installed(self, error):
         self.post_notifications(self.model.updates.finish_download(error))
@@ -221,7 +262,7 @@ class TrayApp:
         menu = self.model.menu(jobs.utcnow())
         if menu != self.drawn:
             self.icon.menu = render_menu(menu.entries,
-                                        lambda action, value: self.events.put((self.dispatch, (action, value))),
+                                        lambda action, value: self.post(self.dispatch, action, value),
                                         pystray.Menu, pystray.MenuItem)
             self.drawn = menu
 

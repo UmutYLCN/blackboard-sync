@@ -11,7 +11,7 @@ from blackboard_sync.menubar.model import AppModel, CourseChange, RunOutcome, ch
 from blackboard_sync.menubar.settings_form import FormValues
 from blackboard_sync.settings import Settings
 from blackboard_sync.windows import autostart, notifications, presentation
-from blackboard_sync.windows.app import TrayApp, cli_runner
+from blackboard_sync.windows.app import LogThrottle, TrayApp, cli_runner
 
 
 class Menu:
@@ -295,7 +295,8 @@ def update_app(tmp_path, monkeypatch):
     app = make_app(tmp_path)
     app.events = queue.Queue()
     app.closed = False
-    app.root = SimpleNamespace(after=lambda *args: None)
+    app.root = SimpleNamespace(after=lambda *args: None, event_generate=lambda *args, **kw: None)
+    app.poll_errors = LogThrottle()
     app.notices = []
     app.post_notifications = app.notices.extend
     workers = []
@@ -545,3 +546,104 @@ def test_sign_out_from_settings_window_asks_in_front_of_it(tmp_path, monkeypatch
     app.model.begin('sync')
     app.dispatch('logout')
     assert len(asked) == 2  # never while a job runs
+
+
+def test_take_requests_consumes_each_request_once(tmp_path):
+    from blackboard_sync.windows import activation
+    config = SimpleNamespace(data_dir=tmp_path)
+    assert activation.take_requests(config) == (False, False)
+    activation.request_update(config)
+    assert activation.take_requests(config) == (True, False)
+    assert activation.take_requests(config) == (False, False)
+    activation.request_update(config)
+    (tmp_path / activation.SETTINGS_REQUEST).touch()
+    assert activation.take_requests(config) == (True, True)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_idle_request_check_makes_no_delete_attempts(tmp_path, monkeypatch):
+    from blackboard_sync.windows import activation
+    (tmp_path / 'state.json').write_text('{}')
+    unlinked = []
+    monkeypatch.setattr(Path, 'unlink', lambda self, *a, **kw: unlinked.append(self))
+    assert activation.take_requests(SimpleNamespace(data_dir=tmp_path)) == (False, False)
+    assert unlinked == []
+
+
+def test_post_wakes_tk_from_the_worker_and_poll_is_slow(tmp_path, monkeypatch):
+    app, workers = update_app(tmp_path, monkeypatch)
+    woken, scheduled = [], []
+    app.root = SimpleNamespace(event_generate=lambda *a, **kw: woken.append((a, kw)),
+                               after=lambda ms, fn: scheduled.append(ms))
+    ran = []
+    app.post(ran.append, 'x')
+    assert woken == [(('<<bbsync>>',), {'when': 'tail'})]
+    assert ran == []
+    app.drain()
+    assert ran == ['x']
+    app.poll()
+    assert scheduled == [2000]  # the timer is only for the request files
+
+
+def test_post_survives_a_destroyed_tk(tmp_path, monkeypatch):
+    app, workers = update_app(tmp_path, monkeypatch)
+    def gone(*args, **kwargs):
+        raise RuntimeError('main thread is not in main loop')
+    app.root = SimpleNamespace(event_generate=gone)
+    app.post(lambda: None)
+    assert app.events.qsize() == 1
+
+
+def test_persistent_poll_error_is_logged_once_a_minute(tmp_path, monkeypatch, caplog):
+    import logging
+    from blackboard_sync.windows import app as module
+    app, workers = update_app(tmp_path, monkeypatch)
+    now = [100.0]
+    app.poll_errors = LogThrottle(clock=lambda: now[0])
+    def denied(config):
+        raise PermissionError(13, 'denied', 'settings-request')
+    monkeypatch.setattr(module.activation, 'take_requests', denied)
+    with caplog.at_level(logging.ERROR, logger=module.log.name):
+        for _ in range(30):
+            app.poll()
+        assert len(caplog.records) == 1
+        now[0] += 61
+        app.poll()
+        assert len(caplog.records) == 2
+
+
+def test_log_throttle_is_per_key():
+    now = [0.0]
+    throttle = LogThrottle(interval=60, clock=lambda: now[0])
+    assert throttle.allow('a') and not throttle.allow('a')
+    assert throttle.allow('b')
+    now[0] = 59.9
+    assert not throttle.allow('a')
+    now[0] = 60.0
+    assert throttle.allow('a')
+
+
+def test_tray_log_rotates_and_faults_have_their_own_file(tmp_path, monkeypatch):
+    import logging
+    from logging.handlers import RotatingFileHandler
+    from blackboard_sync.windows import startup
+    monkeypatch.setenv('BBSYNC_DATA_DIR', str(tmp_path / 'data'))
+    monkeypatch.setattr(startup.faulthandler, 'enable', lambda *a, **kw: None)
+    monkeypatch.setattr(startup, 'LOG_MAX_BYTES', 2000)
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
+    try:
+        path = startup.setup_logging()
+        added = [h for h in root.handlers if h not in handlers]
+        assert [type(h) for h in added] == [RotatingFileHandler]
+        for _ in range(100):
+            logging.getLogger('t').info('x' * 100)
+    finally:
+        for handler in root.handlers:
+            if handler not in handlers:
+                handler.close()
+        root.handlers[:], root.level = handlers, level
+        startup._fault_file.close()
+    names = sorted(p.name for p in path.parent.iterdir())
+    assert 'windows-tray.log.1' in names and 'windows-tray-faults.log' in names
+    assert max(p.stat().st_size for p in path.parent.iterdir()) < 3000
