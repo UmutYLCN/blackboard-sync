@@ -31,7 +31,7 @@ from blackboard_sync.settings import (
 )
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
-DEST = Path("/Users/student/Documents/University")
+DEST = Path.home() / "Documents" / "University"  # absolute on every OS
 SCHOOL = "https://blackboard.istun.edu.tr"
 
 
