@@ -22,8 +22,14 @@ MIN_STEM_CHARS = 8
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _WHITESPACE = re.compile(r"\s+")
-# "CSE303", "MTH 101", "COE309A" ... optionally followed by a section like "-1".
-_COURSE_CODE = re.compile(r"\b([A-Za-z]{2,6})\s?(\d{3,4}[A-Za-z]?)(?:[-_.]\d{1,3})?\b")
+# "CSE303", "MTH 101", "COE309A", "İNG101" ... optionally followed by a section like "-1".
+# ``[^\W\d_]`` is any Unicode letter, so Turkish codes such as "BİL101" are recognized.
+_COURSE_CODE = re.compile(r"\b([^\W\d_]{2,6})\s?(\d{3,4}[^\W\d_]?)(?:[-_.]\d{1,3})?\b")
+# What versions before Turkish code support recognized; only used to find their folders.
+_LEGACY_COURSE_CODE = re.compile(r"\b([A-Za-z]{2,6})\s?(\d{3,4}[A-Za-z]?)(?:[-_.]\d{1,3})?\b")
+# Turkish dotted/dotless i, which plain ``upper()``/``casefold()`` get wrong.
+_TURKISH_UPPER = str.maketrans({"i": "İ", "ı": "I"})
+_TURKISH_FOLD = str.maketrans({"ı": "i"})
 # Characters Windows does not allow in names (":" and "/" are handled for both).
 _WINDOWS_REPLACEMENTS = str.maketrans({"\\": "-", "|": "-", '"': "'", "<": "(", ">": ")", "?": "", "*": ""})
 # Device names Windows reserves in any case, with or without an extension.
@@ -133,25 +139,61 @@ def course_code_and_title(course_id: str, name: str) -> tuple[str, str]:
     Blackboard names look like "CSE303-1 Algorithm Analysis" or just
     "Algorithm Analysis" with the code in the course id ("CSE303-1"). The
     section suffix ("-1") is dropped so the folder reads like the course code.
+    Codes may use any letters, so "İNG101-1" gives "İNG101".
     """
+    # Decomposed letters ("I" + combining dot) would split a code in two.
+    nfc = unicodedata.normalize
+    return _code_and_title(nfc("NFC", course_id or ""), nfc("NFC", name or ""), _COURSE_CODE, _upper_code)
+
+
+def course_folder_name(course_id: str, name: str, *, windows: bool | None = None) -> str:
+    return _folder_name(course_code_and_title(course_id, name), windows)
+
+
+def legacy_course_folder_name(course_id: str, name: str, *, windows: bool | None = None) -> str:
+    """The folder older versions (ASCII-only course codes) gave this course.
+
+    Only differs from ``course_folder_name`` for codes with non-ASCII letters,
+    e.g. "İNG101-1 İNG101 İngilizce I" instead of "İNG101 İngilizce I".
+    """
+    return _folder_name(_code_and_title(course_id, name, _LEGACY_COURSE_CODE, str.upper), windows)
+
+
+def fold_course_key(text: str) -> str:
+    """Case- and accent-insensitive form of a course code or id for ``--course``.
+
+    "BİL101", "bil101", "BIL101" and "bıl101" all fold to "bil101"; plain
+    ``casefold()`` turns "İ" into "i" plus a combining dot, which never matches.
+    """
+    text = unicodedata.normalize("NFKD", text.translate(_TURKISH_FOLD))
+    return "".join(c for c in text if not unicodedata.combining(c)).casefold()
+
+
+def _upper_code(code: str) -> str:
+    # ASCII codes keep plain upper-casing (so existing folders keep their names);
+    # a code with Turkish letters is upper-cased the Turkish way ("işl" -> "İŞL").
+    return code.upper() if code.isascii() else code.translate(_TURKISH_UPPER).upper()
+
+
+def _code_and_title(course_id: str, name: str, pattern: re.Pattern, upper) -> tuple[str, str]:
     name = _WHITESPACE.sub(" ", html.unescape(name or "")).strip()
     course_id = (course_id or "").strip()
 
-    match = _COURSE_CODE.match(name)
+    match = pattern.match(name)
     if match:
-        code = (match.group(1) + match.group(2)).upper()
+        code = upper(match.group(1) + match.group(2))
         title = name[match.end():].strip(" -_:|")
         return code, title or name
 
-    match = _COURSE_CODE.search(course_id)
+    match = pattern.search(course_id)
     if match:
-        code = (match.group(1) + match.group(2)).upper()
+        code = upper(match.group(1) + match.group(2))
         return code, name or course_id
     return course_id or "Course", name or course_id
 
 
-def course_folder_name(course_id: str, name: str, *, windows: bool | None = None) -> str:
-    code, title = course_code_and_title(course_id, name)
+def _folder_name(code_and_title: tuple[str, str], windows: bool | None) -> str:
+    code, title = code_and_title
     if title and title.upper() != code:
         return sanitize_name(f"{code} {title}", windows=windows)
     return sanitize_name(code, windows=windows)
