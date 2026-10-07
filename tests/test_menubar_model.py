@@ -13,7 +13,6 @@ from blackboard_sync.menubar.model import (
     changes_notification,
     course_line,
     format_time,
-    relative_time,
     load_saved_state,
     open_target,
     parse_sync_output,
@@ -155,7 +154,7 @@ def test_error_retries_soon_and_shows_error_icon():
     assert m.icon() == Icon.ERROR
     assert m.next_run_at == NOW + RETRY_DELAY
     assert m.status_lines(NOW) == [
-        f"Az önce denendi · hata · Network error · sonraki: {format_time(NOW + RETRY_DELAY, NOW)}"
+        f"{format_time(NOW, NOW)} denendi · hata · Network error · sonraki: {format_time(NOW + RETRY_DELAY, NOW)}"
     ]
 
 
@@ -221,11 +220,11 @@ def test_menu_after_a_sync_with_new_files():
     m.finish_sync(outcome(), NOW)
     menu = m.menu(NOW)
     assert menu.status_lines == [
-        f"Az önce senkronize edildi · 2 yeni dosya, 1 yeni duyuru · sonraki: {format_time(NOW + SYNC_INTERVAL, NOW)}",
+        f"{format_time(NOW, NOW)} senkronize edildi · 2 yeni dosya, 1 yeni duyuru · sonraki: {format_time(NOW + SYNC_INTERVAL, NOW)}",
     ]
     m.session = signed_session()
     assert m.menu(NOW).status_lines == [
-        "✓ Ada Student · az önce senkronize edildi",
+        f"✓ Ada Student · {format_time(NOW, NOW)} senkronize edildi",
         f"2 yeni dosya, 1 yeni duyuru · sonraki: {format_time(NOW + SYNC_INTERVAL, NOW)}",
     ]
     assert menu.sync_enabled and menu.entries[0].action == "login" and menu.entries[0].enabled
@@ -378,7 +377,7 @@ def test_signed_in_menu_structure():
     m = model(session=signed_session(), last=outcome(), autostart=True)
     menu = m.menu(NOW)
     assert [e.title for e in menu.entries] == [
-        "✓ Ada Student · az önce senkronize edildi",
+        f"✓ Ada Student · {format_time(NOW, NOW)} senkronize edildi",
         f"2 yeni dosya, 1 yeni duyuru · sonraki: {format_time(m.next_run_at, NOW)}",
         "",
         "Şimdi senkronize et", "Dersler", "Son indirilenler", "University klasörünü aç",
@@ -413,7 +412,7 @@ def test_expiry_overrides_saved_cookies_and_survives_network_errors():
     row = menu.entries[0]
     assert row.title == "⚠ Oturum sona erdi — Giriş yap" and row.warning
     assert row.action == "login"
-    assert menu.entries[1].title == f"Az önce denendi · sonraki: {format_time(NOW + SYNC_INTERVAL, NOW)}"
+    assert menu.entries[1].title == f"{format_time(NOW, NOW)} denendi · sonraki: {format_time(NOW + SYNC_INTERVAL, NOW)}"
     assert menu.entries[2].title == ""  # still two lines at the top
     status = window_status(m)
     assert status.account_warning and (status.account_title, status.account_action) == ("Giriş yap", "login")
@@ -446,7 +445,7 @@ def test_syncing_disables_mutating_actions_but_keeps_folders():
     assert actions["sync"].title == "Senkronize ediliyor…"
     assert not actions["sync"].enabled
     assert actions["folder"].enabled and actions["settings"].enabled
-    assert menu.status_lines == ["✓ Ada Student · az önce senkronize edildi", "Yeni içerik kontrol ediliyor…"]
+    assert menu.status_lines == [f"✓ Ada Student · {format_time(NOW, NOW)} senkronize edildi", "Yeni içerik kontrol ediliyor…"]
     status = window_status(m)
     assert not status.account_enabled and not status.refetch_enabled
     assert status.update_enabled  # update checks do not use the job slot
@@ -475,11 +474,10 @@ def test_course_display_name_and_recent_dates():
     assert menu.recent[0][0] == f"{NOW.astimezone():%d.%m %H:%M} · CSE303 · a.pdf"
 
 
-def test_relative_time_refreshes_and_handles_yesterday():
+def test_status_line_is_stable_while_time_passes():
     local = datetime(2026, 10, 3, 14, 0).astimezone()
-    assert relative_time(local, local + timedelta(seconds=30)) == "az önce"
-    assert relative_time(local, local + timedelta(minutes=5)) == "5 dk önce"
-    assert relative_time(local, local + timedelta(hours=2)) == "2 sa önce"
-    assert relative_time(local, local + timedelta(days=1)) == "dün 14:00"
     m = model(last=RunOutcome("ok", finished_at=local))
-    assert m.menu(local + timedelta(minutes=5)).status_lines[0].startswith("5 dk önce senkronize edildi · ")
+    first = m.menu(local + timedelta(minutes=5))
+    assert first.status_lines[0].startswith("14:00 senkronize edildi · ")
+    assert m.menu(local + timedelta(minutes=6)) == first  # no per-minute change, so no rebuild
+    assert m.menu(local + timedelta(days=1)).status_lines[0].startswith("Dün 14:00 senkronize edildi · ")

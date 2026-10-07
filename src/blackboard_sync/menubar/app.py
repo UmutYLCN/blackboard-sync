@@ -53,6 +53,23 @@ T_UPDATE_STEPS = (
 )
 
 
+def forget_menu_items(menu) -> None:
+    """Drop the callback registry entries of every item in ``menu`` (submenus too).
+
+    rumps 0.4.0 keeps each item, its NSMenuItem and callback in a class-level dict
+    that ``Menu.clear()`` never prunes, so every rebuild would leak the old menu.
+    """
+    from rumps.rumps import NSApp
+
+    registry = NSApp._ns_to_py_and_callback
+    stack = list(menu.values())
+    while stack:
+        item = stack.pop()
+        registry.pop(item._menuitem, None)
+        if getattr(item, "_menu", None) is not None:
+            stack.extend(item.values())
+
+
 def symbol_image(icon: Icon):
     from AppKit import NSColor, NSImage, NSImageSymbolConfiguration
 
@@ -343,6 +360,7 @@ def build_app(config: Config):
             if menu == self._drawn:
                 return
             self._drawn = menu
+            forget_menu_items(self.menu)
             self.menu.clear()
             def render(entry):
                 if not entry.title:
