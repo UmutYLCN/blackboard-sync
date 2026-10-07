@@ -1,3 +1,4 @@
+import os
 import json
 from datetime import datetime, timezone
 
@@ -502,3 +503,47 @@ def test_dry_run_leaves_corrupt_state_untouched(config, client):
     assert config.state_file.read_text(encoding="utf-8") == "{ truncated"
     assert _corrupt_backups(config) == []
     assert any("state.json" in w for w in report.warnings)
+
+
+def _age(path, seconds):
+    old = path.stat().st_mtime - seconds
+    os.utime(path, (old, old))
+
+
+def test_stale_partial_files_are_removed_at_sync_start(config, client):
+    sync(config, client)
+    stale = config.dest / CSE / ".bbsync-deadbeef.partial"
+    stale.write_bytes(b"x" * 1024)
+    _age(stale, 2 * 3600)
+    sync(config, client)
+    assert not stale.exists()
+
+
+def test_fresh_partial_files_and_other_dotfiles_are_kept(config, client):
+    sync(config, client)
+    fresh = config.dest / CSE / ".bbsync-live.partial"
+    fresh.write_bytes(b"x")
+    other = config.dest / CSE / ".bbsync-notes.txt"
+    other.write_bytes(b"y")
+    _age(other, 2 * 3600)
+    sync(config, client)
+    assert fresh.exists() and other.exists()
+
+
+def test_dry_run_keeps_stale_partial_files(config, client):
+    sync(config, client)
+    stale = config.dest / CSE / ".bbsync-deadbeef.partial"
+    stale.write_bytes(b"x")
+    _age(stale, 2 * 3600)
+    sync(config, client, dry_run=True)
+    assert stale.exists()
+
+
+def test_temp_files_are_hidden_on_windows_and_unhidden_when_placed(config, client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(sync_mod, "set_hidden", lambda path, hidden: calls.append((path.name, hidden)))
+    sync(config, client)
+    hidden = [name for name, flag in calls if flag]
+    shown = [name for name, flag in calls if not flag]
+    assert hidden and all(n.startswith(".bbsync-") and n.endswith(".partial") for n in hidden)
+    assert shown

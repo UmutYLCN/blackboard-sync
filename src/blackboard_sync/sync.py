@@ -6,6 +6,7 @@ import hashlib
 import logging
 import os
 import tempfile
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -13,7 +14,7 @@ from pathlib import Path, PurePosixPath
 
 import requests
 
-from blackboard_sync.api import BlackboardClient
+from blackboard_sync.api import PARTIAL_PREFIX, PARTIAL_SUFFIX, BlackboardClient
 from blackboard_sync.config import Config
 from blackboard_sync.errors import AlreadyRunning, ApiError, LoginRequired
 from blackboard_sync.htmltext import body_text, find_embedded_files
@@ -35,7 +36,7 @@ from blackboard_sync.paths import (
 )
 from blackboard_sync.report import CourseReport, SyncReport
 from blackboard_sync.state import State
-from blackboard_sync.system import is_windows, try_lock
+from blackboard_sync.system import is_windows, set_hidden, try_lock
 
 log = logging.getLogger(__name__)
 
@@ -136,6 +137,31 @@ def run_lock(path: Path):
         yield
     finally:
         fh.close()
+
+
+# A live download refreshes its temp file constantly; one untouched for this long
+# belongs to a run that was killed.
+STALE_PARTIAL_AGE = timedelta(hours=1)
+
+
+def remove_stale_partials(dest: Path, now: float | None = None, max_age: timedelta = STALE_PARTIAL_AGE) -> int:
+    """Delete leftover ``.bbsync-*.partial`` files under *dest*; returns how many went.
+
+    Call this only while holding the run lock. The age check keeps a concurrent
+    run's live temp file safe even when the lock was not taken.
+    """
+    cutoff = (time.time() if now is None else now) - max_age.total_seconds()
+    removed = 0
+    for path in dest.rglob(f"{PARTIAL_PREFIX}*{PARTIAL_SUFFIX}"):
+        try:
+            if path.is_file() and not path.is_symlink() and path.stat().st_mtime < cutoff:
+                path.unlink()
+                removed += 1
+        except OSError as exc:
+            log.warning("Could not remove leftover %s: %s", path, exc)
+    if removed:
+        log.info("Removed %d leftover partial download(s)", removed)
+    return removed
 
 
 class Syncer:
@@ -455,7 +481,8 @@ class Syncer:
             return previous["path"] if previous else desired_rel
         target_dir = self.dest / PurePosixPath(desired_rel).parent
         target_dir.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix=".bbsync-", suffix=".partial", dir=target_dir)
+        fd, tmp = tempfile.mkstemp(prefix=PARTIAL_PREFIX, suffix=PARTIAL_SUFFIX, dir=target_dir)
+        set_hidden(Path(tmp), True)
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
         tmp_path = Path(tmp)
@@ -524,6 +551,7 @@ class Syncer:
     @staticmethod
     def _move_into(tmp: Path, target: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
+        set_hidden(tmp, False)  # the attribute would otherwise follow the file to its final name
         os.replace(tmp, target)
 
 
@@ -547,6 +575,8 @@ def run_sync(
     state = State.load(config.state_file, backup=not dry_run)
     if state.recovery:
         report.warnings.append(state.recovery)
+    if not dry_run:
+        remove_stale_partials(config.dest)
     syncer = Syncer(client, config, state, dry_run=dry_run, refetch_missing=refetch_missing)
     me = client.me()  # also the cheapest way to prove the session still works
     user_id = me.get("id") or user_id
