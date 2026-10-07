@@ -59,6 +59,11 @@ class FakeBlackboard:
         self.calls: list[str] = []
         self.expired = False
         self.redirect_to_login = False
+        # Opt-in HTTP validators: download path -> ETag. Sent with Content-Length and
+        # honoured on If-None-Match (304) like a real file server.
+        self.etags: dict[str, str] = {}
+        self.conditional_requests: list[str] = []
+        self.ignore_conditional = False
 
     def get(self, url, params=None, timeout=None, stream=False, headers=None):
         parts = urlsplit(url)
@@ -79,9 +84,15 @@ class FakeBlackboard:
                 headers={"Content-Type": "text/html"},
             )
         if key in self.files:
-            return FakeResponse(
-                200, url, content=self.files[key], headers={"Content-Type": "application/octet-stream"}
-            )
+            resp_headers = {"Content-Type": "application/octet-stream"}
+            etag = self.etags.get(key)
+            if etag:
+                resp_headers["ETag"] = etag
+                resp_headers["Content-Length"] = str(len(self.files[key]))
+                if not self.ignore_conditional and (headers or {}).get("If-None-Match") == etag:
+                    self.conditional_requests.append(key)
+                    return FakeResponse(304, url, content=b"", headers=resp_headers)
+            return FakeResponse(200, url, content=self.files[key], headers=resp_headers)
         if key in self.routes:
             return FakeResponse(200, url, copy.deepcopy(self.routes[key]))
         return FakeResponse(404, url, {"status": 404, "message": "Not found"})

@@ -92,7 +92,7 @@ class State:
     # -- items ----------------------------------------------------------
     def item_unchanged(self, key: str, modified: str | None, dest: Path, check_missing: bool) -> bool:
         entry = self.items.get(key)
-        if entry is None or modified is None or entry.get("modified") != modified:
+        if entry is None or modified is None or entry.get("modified") != modified or entry.get("partial"):
             return False
         if check_missing:
             for out_key in entry.get("outputs", []):
@@ -101,8 +101,13 @@ class State:
                     return False
         return True
 
-    def record_item(self, key: str, modified: str | None, outputs: list[str], title: str) -> None:
+    def record_item(
+        self, key: str, modified: str | None, outputs: list[str], title: str, partial: bool = False
+    ) -> None:
+        """``partial`` marks an item some of whose files failed: it is retried next run."""
         entry = {"modified": modified, "outputs": outputs, "title": title}
+        if partial:
+            entry["partial"] = True
         if self.items.get(key) != entry:
             self.items[key] = entry
             self.dirty = True
@@ -123,6 +128,23 @@ class State:
             self.outputs[key] = entry
             self.dirty = True
         self._claimed[rel_path] = key
+
+    def set_validators(self, key: str, etag: str | None, last_modified: str | None) -> None:
+        """Remember the HTTP validators of the copy recorded under ``key``.
+
+        They let the next run skip the body of a download the server says is unchanged.
+        """
+        entry = self.outputs.get(key)
+        if entry is None:
+            return
+        before = dict(entry)
+        for field, value in (("etag", etag), ("last_modified", last_modified)):
+            if value:
+                entry[field] = value
+            else:
+                entry.pop(field, None)
+        if entry != before:
+            self.dirty = True
 
     def move_output(self, old_key: str, new_key: str) -> None:
         """Hand a mirrored file over to a new key (the file was replaced upstream)."""

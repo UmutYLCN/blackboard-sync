@@ -343,6 +343,9 @@ class Syncer:
         hid = handler_id(item)
         outputs: list[str] = []
         saved: list[str] = []
+        # After a partial failure the files that did arrive are not downloaded again
+        # while the item is unchanged.
+        kept = self.kept_attachments(previous_item, modified)
 
         if hid not in NO_ATTACHMENT_HANDLERS and not ultra_body:
             try:
@@ -355,13 +358,28 @@ class Syncer:
                 if hid == "resource/x-bb-file" or not no_attachments:
                     raise
                 attachments = []
+            failure: Exception | None = None
             for att in attachments:
                 out_key = f"attachment:{course.id}:{att['id']}"
+                if out_key in kept:
+                    outputs.append(out_key)
+                    saved.append(PurePosixPath(self.state.outputs[out_key]["path"]).name)
+                    continue
                 name = sanitize_name(att.get("fileName") or att.get("name") or title, windows=self.windows)
                 url = self.client.attachment_url(course.id, item["id"], att["id"])
-                rel = self.fetch_file(out_key, join_rel(rel_dir, name), url, report)
+                try:
+                    rel = self.fetch_file(out_key, join_rel(rel_dir, name), url, report)
+                except (ApiError, *ITEM_ERRORS) as exc:
+                    # Keep going so the files that did arrive are recorded and not fetched
+                    # again next run; only this attachment is retried.
+                    failure = failure or exc
+                    continue
                 outputs.append(out_key)
                 saved.append(PurePosixPath(rel).name)
+            if failure is not None:
+                if not self.dry_run:
+                    self.state.record_item(key, modified, outputs, title, partial=True)
+                raise failure
 
         stale = [k for k in previous_item.get("outputs", []) if k.startswith("xid:") and k not in embedded_keys]
         for embedded, out_key in zip(embedded_files, embedded_keys):
@@ -386,6 +404,18 @@ class Syncer:
 
         if not self.dry_run:
             self.state.record_item(key, modified, outputs, title)
+
+    def kept_attachments(self, previous_item: dict, modified: str | None) -> set[str]:
+        if self.dry_run or modified is None or not previous_item.get("partial"):
+            return set()
+        if previous_item.get("modified") != modified:
+            return set()
+        kept = set()
+        for out_key in previous_item.get("outputs", []):
+            out = self.state.output(out_key)
+            if out_key.startswith("attachment:") and out and (self.dest / out["path"]).exists():
+                kept.add(out_key)
+        return kept
 
     @staticmethod
     def embedded_key(course: Course, item: dict, embedded) -> str:
@@ -450,12 +480,20 @@ class Syncer:
             return rel
         target_dir = self.dest / (PurePosixPath(desired_rel).parent if desired_rel else fallback_dir)
         expected = PurePosixPath(desired_rel).name if desired_rel else ""
-        download = self.client.download(url, target_dir, expected_name=expected)
+        known = None
+        if previous and (previous.get("etag") or previous.get("last_modified")):
+            # A recorded copy that is gone from disk must be fetched again when asked to.
+            if (self.dest / previous["path"]).exists() or not self.refetch_missing:
+                known = previous
+        download = self.client.download(url, target_dir, expected_name=expected, known=known)
+        if download.unchanged:
+            return previous["path"]
         try:
             if not desired_rel:
                 name = sanitize_name(download.filename or out_key.rsplit(":", 1)[-1], windows=self.windows)
                 desired_rel = join_rel(fallback_dir, name)
             outcome, rel = self.place(out_key, desired_rel, download.path, download.sha256, download.size)
+            self.state.set_validators(out_key, download.etag, download.last_modified)
         finally:
             if download.path.exists():
                 download.path.unlink()

@@ -38,10 +38,13 @@ _FILENAME = re.compile(r'filename\s*=\s*"?([^";]+)"?', re.IGNORECASE)
 
 @dataclass
 class Download:
-    path: Path  # temporary file holding the body
+    path: Path | None  # temporary file holding the body (None when unchanged)
     sha256: str
     size: int
     filename: str | None  # from Content-Disposition, if any
+    unchanged: bool = False  # the server confirmed our recorded copy is current; no body was read
+    etag: str | None = None
+    last_modified: str | None = None
 
 
 class BlackboardClient:
@@ -150,15 +153,31 @@ class BlackboardClient:
             f"/attachments/{attachment_id}/download"
         )
 
-    def download(self, path_or_url: str, into_dir: Path, expected_name: str = "") -> Download:
-        """Stream a file into a temporary ``.partial`` file inside ``into_dir``."""
+    def download(
+        self,
+        path_or_url: str,
+        into_dir: Path,
+        expected_name: str = "",
+        known: dict | None = None,
+    ) -> Download:
+        """Stream a file into a temporary ``.partial`` file inside ``into_dir``.
+
+        ``known`` holds what was recorded for the copy we already have (``etag``,
+        ``last_modified``, ``size``). It is sent as a conditional request, and when the
+        response headers show that copy is still current the body is never read and
+        the result has ``unchanged=True`` and no file.
+        """
         url = self.url(path_or_url) if "://" not in path_or_url else path_or_url
-        into_dir.mkdir(parents=True, exist_ok=True)
-        resp = self.http.get(
-            url, stream=True, timeout=self.timeout, headers={"Accept": "*/*"}
-        )
+        headers = {"Accept": "*/*"}
+        if known and known.get("etag"):
+            headers["If-None-Match"] = known["etag"]
+        elif known and known.get("last_modified"):
+            headers["If-Modified-Since"] = known["last_modified"]
+        resp = self.http.get(url, stream=True, timeout=self.timeout, headers=headers)
         try:
             self._check_login(resp, same_host=False)
+            if known and _still_current(resp, known):
+                return Download(None, "", int(known.get("size") or 0), None, unchanged=True)
             if resp.status_code >= 400:
                 raise ApiError(resp.status_code, url, _error_message(resp))
             ctype = resp.headers.get("Content-Type", "")
@@ -184,9 +203,35 @@ class BlackboardClient:
             except BaseException:
                 os.unlink(tmp)
                 raise
-            return Download(Path(tmp), digest.hexdigest(), size, filename)
+            return Download(
+                Path(tmp),
+                digest.hexdigest(),
+                size,
+                filename,
+                etag=resp.headers.get("ETag"),
+                last_modified=resp.headers.get("Last-Modified"),
+            )
         finally:
             resp.close()
+
+
+def _still_current(resp: requests.Response, known: dict) -> bool:
+    """True when the headers prove the copy we recorded is what the server would send."""
+    if resp.status_code == 304:
+        return True
+    if resp.status_code != 200:
+        return False
+    etag, modified = resp.headers.get("ETag"), resp.headers.get("Last-Modified")
+    if etag and known.get("etag"):
+        same = etag == known["etag"]
+    elif modified and known.get("last_modified"):
+        same = modified == known["last_modified"]
+    else:
+        return False  # no validator to compare: only the body can tell
+    length = resp.headers.get("Content-Length")
+    if same and length and known.get("size") is not None and length.isdigit():
+        same = int(length) == known["size"]
+    return same
 
 
 def _mkstemp(directory: Path) -> tuple[int, str]:
