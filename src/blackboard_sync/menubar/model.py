@@ -89,6 +89,13 @@ UPDATE_ACTIONS = ("check_updates", "update")
 # student deleted locally. Scheduled runs and "Şimdi senkronize et" are plain
 # "sync" runs, so they keep respecting deletions.
 SYNC_JOBS = ("sync", "refetch")
+# Moves the downloaded files into a new destination folder (``relocate.py``).
+MOVE_JOB = "move"
+
+# What happens to the downloaded files when the destination folder changes:
+# move them over, download them again into the new folder (the old one is left
+# alone), or leave them where they are and only sync new content into the new one.
+DEST_MOVE, DEST_REFETCH, DEST_KEEP = "move", "refetch", "keep"
 
 
 def sync_arguments(job: str, settings: Settings) -> list[str]:
@@ -283,6 +290,14 @@ def login_waiting_line(method: str) -> str:
     return "Tarayıcıda giriş yapmanız bekleniyor…"
 
 
+def move_summary(moved: int, kept: int) -> str:
+    """ "12 dosya yeni klasöre taşındı." plus what stayed behind, if anything."""
+    text = f"{moved} dosya yeni klasöre taşındı." if moved else "Hiçbir dosya taşınmadı."
+    if kept:
+        text += f" {kept} dosya taşınamadı ve eski klasörde kaldı."
+    return text
+
+
 def login_notification() -> Notification:
     return Notification(
         title="Blackboard oturumu sona erdi",
@@ -461,7 +476,11 @@ class AppModel:
         self.recent = list(recent or [])
         self.login_prompted = login_prompted
         self.autostart = autostart
-        self.busy: str | None = None  # "sync" | "refetch" | "login"
+        self.busy: str | None = None  # "sync" | "refetch" | "login" | "move"
+        # A job asked for by a destination change, started as soon as the slot is free:
+        # MOVE_JOB (from ``move_from``) or "refetch".
+        self.pending: str | None = None
+        self.move_from: Path | None = None
         self.login_method = ""  # while signing in: a browser's name, INAPP, or "" if unknown
         self.note = ""  # a transient extra line (lock held, sign-in failed, ...)
         self.sync_interval = sync_interval(sync_interval_minutes)  # None: only by hand
@@ -475,7 +494,7 @@ class AppModel:
         return self.last.status if self.last else "ok"
 
     def icon(self) -> Icon:
-        if self.busy in SYNC_JOBS:
+        if self.busy in SYNC_JOBS or self.busy == MOVE_JOB:
             return Icon.SYNCING
         if self.health == "login_required":
             return Icon.EXPIRED
@@ -505,11 +524,25 @@ class AppModel:
         """Time for the daily look for a new app version (never while it is switched off)."""
         return self.updates.due(now, self.check_updates)
 
+    def pending_job(self) -> str | None:
+        """The job a destination change asked for, if it can start now.
+
+        It goes before any scheduled sync. A refetch waits until the student is
+        signed in (it would only fail otherwise); a move needs no session.
+        """
+        if not self.configured or self.busy is not None or self.pending is None:
+            return None
+        if self.pending == "refetch" and self.session is None:
+            return None
+        return self.pending
+
     def begin(self, job: str) -> bool:
         """Claim the single job slot; False when something is already running."""
         if self.busy is not None:
             return False
         self.busy = job
+        if job == self.pending:
+            self.pending = None
         return True
 
     def finish_sync(self, outcome: RunOutcome, now: datetime) -> list[Notification]:
@@ -548,6 +581,26 @@ class AppModel:
             self.next_run_at = self.schedule(now, self.retry_delay)
         return notes
 
+    def finish_move(self, status: str, moved: int, kept: int, message: str = "") -> list[Notification]:
+        """The files were moved from ``move_from`` to ``dest`` (``relocate.MoveResult``)."""
+        self.busy = None
+        if status == "locked":
+            # A sync from the terminal holds the folders; move once it is done,
+            # still before any sync into the new folder.
+            self.pending = MOVE_JOB
+            self.note = "Başka bir senkron sürüyor; dosyalar birazdan taşınacak."
+            return []
+        self.move_from = None
+        if status != "ok":
+            self.note = shorten(f"Dosyalar taşınamadı: {message}", 80)
+            return []
+        summary = move_summary(moved, kept)
+        self.note = shorten(summary, 80) if kept else ""
+        if not moved and not kept:
+            return []
+        return [Notification("Dosyalar taşındı" if not kept else "Bazı dosyalar taşınamadı",
+                             summary, {"open": str(self.dest)})]
+
     def finish_login(self, ok: bool, message: str, now: datetime) -> None:
         self.busy = None
         self.login_method = ""
@@ -566,14 +619,18 @@ class AppModel:
         check_updates: bool | None = None,
         sync_interval_minutes: int | None = None,
         now: datetime | None = None,
+        dest_choice: str = DEST_KEEP,
     ) -> None:
         """The settings window was saved.
 
         A new sync interval moves the next run (see ``reschedule``).
 
-        A new folder only affects future syncs, so "Son indirilenler" (paths in
-        the old folder) starts over. A new school makes the last result and the
-        old session meaningless: the student has to sign in again.
+        A new folder gets what the student chose for the files already
+        downloaded (``dest_choice``): DEST_MOVE queues moving them over, so
+        "Son indirilenler" stays valid; DEST_REFETCH queues downloading them
+        again; DEST_KEEP leaves them alone. Without a move the recent list
+        (paths in the old folder) starts over. A new school makes the last
+        result and the old session meaningless: the student has to sign in again.
         """
         self.configured = True
         if check_updates is not None:
@@ -584,9 +641,15 @@ class AppModel:
                 self.sync_interval = interval
                 self.reschedule(now or datetime.now(timezone.utc))
         if dest != self.dest:
-            self.courses = []
+            self.pending, self.move_from = None, None
+            if dest_choice == DEST_MOVE:
+                self.pending, self.move_from = MOVE_JOB, self.dest
+            else:
+                self.courses = []
+                self.recent = []
+                if dest_choice == DEST_REFETCH:
+                    self.pending = "refetch"
             self.dest = dest
-            self.recent = []
         if school_changed:
             self.session = None
             self.auth_failed_at = None
@@ -658,6 +721,8 @@ class AppModel:
             return "Silinen dosyalar tekrar indiriliyor…"
         if self.busy == "login":
             return login_waiting_line(self.login_method)
+        if self.busy == MOVE_JOB:
+            return "Dosyalar yeni klasöre taşınıyor…"
         if not self.configured:
             return f"Kurulumu tamamlamak için “{T_SETTINGS}”ı seçin"
         return ""

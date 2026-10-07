@@ -13,6 +13,8 @@ from typing import Callable
 
 import objc
 from AppKit import (
+    NSAlert,
+    NSAlertFirstButtonReturn,
     NSApp,
     NSBackingStoreBuffered,
     NSBox,
@@ -35,6 +37,7 @@ from AppKit import (
 from Foundation import NSURL, NSMakeRect, NSObject
 
 from blackboard_sync.menubar.settings_form import (
+    DEST_CHOICES,
     INTERVAL_OPTIONS,
     T_AUTOSTART,
     T_CANCEL,
@@ -42,6 +45,7 @@ from blackboard_sync.menubar.settings_form import (
     T_CHOOSE_FOLDER,
     T_CHOOSE_FOLDER_MESSAGE,
     T_CHOOSE_FOLDER_PROMPT,
+    T_DEST_CHANGE_TITLE,
     T_DEST_HINT,
     T_DEST_LABEL,
     T_INTERVAL_LABEL,
@@ -58,6 +62,7 @@ from blackboard_sync.menubar.settings_form import (
     T_URL_PLACEHOLDER,
     FormValues,
     WindowStatus,
+    dest_change_message,
     interval_title,
     intro_first_run,
 )
@@ -342,3 +347,19 @@ class SettingsWindow:
 
     def closed(self) -> None:
         self.on_close()
+
+
+def ask_dest_choice(old: Path, new: Path, files: int) -> str | None:
+    """Ask what happens to the files in ``old``; a ``DEST_CHOICES`` key, or None for "Vazgeç".
+
+    "Taşı" is the default button (Return); Escape cancels the save.
+    """
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_(T_DEST_CHANGE_TITLE)
+    alert.setInformativeText_(dest_change_message(old, new, files))
+    for _, title in DEST_CHOICES:
+        alert.addButtonWithTitle_(title)
+    alert.addButtonWithTitle_(T_CANCEL).setKeyEquivalent_("\x1b")
+    NSApp.activateIgnoringOtherApps_(True)
+    index = alert.runModal() - NSAlertFirstButtonReturn
+    return DEST_CHOICES[index][0] if 0 <= index < len(DEST_CHOICES) else None

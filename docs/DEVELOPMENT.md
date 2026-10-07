@@ -211,8 +211,21 @@ on a schedule until the window has been saved once. When you save later:
 
 - A different school address requires signing in again; the sign-in window
   opens as soon as you save.
-- A different folder applies to future syncs only. Files already downloaded
-  stay where they are; nothing is moved or deleted.
+- A different folder, when the old one holds downloaded files, asks what to do
+  with them:
+  - **Taşı** (the default) moves every downloaded file to the same place in
+    the new folder without downloading it again. A file that cannot be moved
+    (a different file of that name is already there, or it is open in another
+    program) stays in the old folder and is reported; nothing is overwritten.
+    Your own files in the old folder are left alone, and the old folders are
+    removed only once every downloaded file moved and they are empty.
+  - **Yeniden indir** downloads the files again into the new folder (like
+    **Silinenleri tekrar indir**); the old folder is left untouched.
+  - **Sadece yeni dosyalar** leaves the old files where they are; only content
+    that appears from now on lands in the new folder.
+
+  **Vazgeç** (or closing the question) keeps the old folder and saves nothing.
+  While a sync runs the folder cannot be changed; wait for it to finish.
 
 The choices are stored in `settings.json` in the data folder (see
 [Where things go](#where-things-go)). The `blackboard-sync` command reads the

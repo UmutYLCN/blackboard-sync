@@ -17,6 +17,8 @@ from blackboard_sync import runtime, updater
 from blackboard_sync.config import Config
 from blackboard_sync.menubar import jobs, launchagent, settings_form
 from blackboard_sync.menubar.model import (
+    DEST_KEEP,
+    MOVE_JOB,
     AppModel,
     Icon,
     MenuModel,
@@ -128,11 +130,21 @@ def build_app(config: Config):
 
         # -- events ------------------------------------------------------
         def tick(self, _sender=None) -> None:
-            if self.model.due(jobs.utcnow()):
-                self.start_sync()
+            self.start_next()
             if self.model.update_due(jobs.utcnow()):
                 self.start_update_check(manual=False)
             self.refresh()
+
+        def start_next(self) -> None:
+            """A job a folder change asked for goes first, then the scheduled sync."""
+            jobs.refresh_session(self.config, self.model, self.settings)  # a refetch waits for it
+            job = self.model.pending_job()
+            if job == MOVE_JOB:
+                self.start_move()
+            elif job is not None:
+                self.start_sync(job=job)
+            elif self.model.due(jobs.utcnow()):
+                self.start_sync()
 
         def start_sync(self, _sender=None, job: str = "sync") -> None:
             if not self.model.begin(job):
@@ -153,6 +165,29 @@ def build_app(config: Config):
             for note in self.model.finish_sync(outcome, jobs.utcnow()):
                 self.notify(note)
             self._save()
+            if self._login_after_job:
+                self._login_after_job = False
+                self.start_login()
+            self.refresh()
+
+        def start_move(self) -> None:
+            old, new = self.model.move_from, self.model.dest
+            if old is None or not self.model.begin(MOVE_JOB):
+                return
+            log.info("moving the files from %s to %s", old, new)
+            self.refresh()
+            threading.Thread(target=self._move_worker, args=(old, new), daemon=True).start()
+
+        def _move_worker(self, old: Path, new: Path) -> None:
+            result = jobs.run_move_guarded(self.config, old, new)
+            AppHelper.callAfter(self._move_done, result)
+
+        def _move_done(self, result) -> None:
+            log.info("move finished: %s, %d moved, %d kept", result.status, result.moved, len(result.kept))
+            for note in self.model.finish_move(result.status, result.moved, len(result.kept), result.message):
+                self.notify(note)
+            self._save()
+            # No tick here: a move that found the folders locked waits for the timer.
             if self._login_after_job:
                 self._login_after_job = False
                 self.start_login()
@@ -300,9 +335,19 @@ def build_app(config: Config):
             """Save the window; returns (error, field) to show instead of closing."""
             try:
                 submission = settings_form.submit(values, self.settings)
-                save_settings(self.config.data_dir, submission.settings)
             except SettingsError as exc:
                 return str(exc), exc.field
+            choice = DEST_KEEP
+            files = jobs.synced_file_count(self.config, self.settings.dest) if submission.dest_changed else 0
+            if files:
+                # A running sync still writes into the old folder.
+                if self.model.busy is not None:
+                    return settings_form.T_BUSY, "dest"
+                choice = self.ask_dest_choice(self.settings.dest, submission.settings.dest, files)
+                if choice is None:
+                    return settings_form.T_DEST_NOT_CHANGED, "dest"
+            try:
+                save_settings(self.config.data_dir, submission.settings)
             except OSError as exc:
                 log.warning("could not save the settings: %s", exc)
                 return f"Ayarlar kaydedilemedi: {exc.strerror or exc}", "dest"
@@ -315,10 +360,12 @@ def build_app(config: Config):
                 submission.school_changed,
                 submission.settings.check_updates,
                 submission.settings.sync_interval_minutes,
+                dest_choice=choice,
             )
             if submission.autostart != launchagent.is_installed():
                 self.toggle_autostart()
             self._save()
+            self.start_next()  # a move goes before signing in to a new school
             if submission.needs_login(login):
                 if self.model.busy is None:
                     self.start_login()
@@ -326,6 +373,11 @@ def build_app(config: Config):
                     self._login_after_job = True
             self.refresh()
             return None
+
+        def ask_dest_choice(self, old: Path, new: Path, files: int) -> str | None:
+            from blackboard_sync.menubar.settings_window import ask_dest_choice
+
+            return ask_dest_choice(old, new, files)
 
         def notification_clicked(self, notification) -> None:
             data = notification.data if isinstance(notification.data, dict) else {}

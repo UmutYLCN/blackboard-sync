@@ -11,6 +11,10 @@ what was written locally:
   keyed by Blackboard attachment/file id, holding the path relative to the
   destination folder, its SHA-256 and size. This is what prevents
   re-downloads and protects files the student changed locally.
+* ``folders`` - Windows only: the full Blackboard name of every folder whose
+  name was shortened to fit the path limit, keyed by its relative path. Moving
+  to another destination folder needs it to give the folders the names a sync
+  there would choose.
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from blackboard_sync.session import write_private_json
 
@@ -42,6 +46,7 @@ class State:
         data = data or {}
         self.items: dict[str, dict] = data.get("items", {})
         self.outputs: dict[str, dict] = data.get("outputs", {})
+        self.folders: dict[str, str] = data.get("folders", {})
         self._claimed: dict[str, str] = {o["path"]: key for key, o in self.outputs.items()}
         self.recovery: str | None = None
         self.dirty = False  # True while there are changes not yet written to disk
@@ -83,10 +88,10 @@ class State:
         """Write the state file, but only if something changed since the last write."""
         if not self.dirty:
             return
-        write_private_json(
-            self.path,
-            {"version": STATE_VERSION, "items": self.items, "outputs": self.outputs},
-        )
+        data = {"version": STATE_VERSION, "items": self.items, "outputs": self.outputs}
+        if self.folders:
+            data["folders"] = self.folders
+        write_private_json(self.path, data)
         self.dirty = False
 
     # -- items ----------------------------------------------------------
@@ -158,7 +163,39 @@ class State:
         if moved:
             self._claimed = {o["path"]: key for key, o in self.outputs.items()}
             self.dirty = True
+        folders = {
+            new_dir.rstrip("/") + rel[len(old_dir.rstrip("/")):] if rel == old_dir or rel.startswith(prefix) else rel: name
+            for rel, name in self.folders.items()
+        }
+        if folders != self.folders:
+            self.folders = folders
+            self.dirty = True
         return moved
+
+    def move_file(self, old_rel: str, new_rel: str) -> None:
+        """Point the output recorded at ``old_rel`` at ``new_rel`` (the file was moved)."""
+        changed = False
+        for entry in self.outputs.values():
+            if entry["path"] == old_rel:
+                entry["path"] = new_rel
+                changed = True
+        if changed:
+            self._claimed = {o["path"]: key for key, o in self.outputs.items()}
+            self.dirty = True
+
+    # -- folders (Windows) ----------------------------------------------
+    def remember_folder(self, rel_dir: str, name: str) -> None:
+        """Record that folder ``rel_dir`` stands for the Blackboard folder ``name``."""
+        if PurePosixPath(rel_dir).name == name:
+            if self.folders.pop(rel_dir, None) is not None:
+                self.dirty = True
+        elif self.folders.get(rel_dir) != name:
+            self.folders[rel_dir] = name
+            self.dirty = True
+
+    def folder_name(self, rel_dir: str) -> str:
+        """The full name of folder ``rel_dir``: what was recorded, else its own name."""
+        return self.folders.get(rel_dir, PurePosixPath(rel_dir).name)
 
     def move_output(self, old_key: str, new_key: str) -> None:
         """Hand a mirrored file over to a new key (the file was replaced upstream)."""

@@ -315,14 +315,19 @@ class Syncer:
         """Where the Blackboard folder ``title`` inside ``rel_dir`` is mirrored.
 
         On Windows a long name is shortened so deep trees stay within the path
-        limit (``fit_windows_folder``); a folder an older version created with the
-        full name is renamed to the shortened one.
+        limit (``fit_windows_folder``) and the full name is recorded in the state;
+        a folder an older version created with the full name is renamed to the
+        shortened one.
         """
         name = sanitize_name(title, windows=self.windows)
         if not self.windows:
             return join_rel(rel_dir, name)
         fitted = join_rel(rel_dir, fit_windows_folder(self.dest, rel_dir, name))
-        return self.move_folder(join_rel(rel_dir, name), fitted, warnings)
+        used = self.move_folder(join_rel(rel_dir, name), fitted, warnings)
+        if not self.dry_run:
+            # Moving to another destination folder fits the full name again (``relocate``).
+            self.state.remember_folder(used, name)
+        return used
 
     @staticmethod
     def _same_entry(a: Path, b: Path) -> bool:

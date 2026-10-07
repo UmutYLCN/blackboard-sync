@@ -14,9 +14,13 @@ User-facing strings are Turkish on purpose: the window is read by the student.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from blackboard_sync import __version__
 from blackboard_sync.menubar.model import (
+    DEST_KEEP,
+    DEST_MOVE,
+    DEST_REFETCH,
     T_CHECK_NOW,
     T_LOGGING_IN,
     T_LOGIN,
@@ -82,8 +86,8 @@ T_URL_PLACEHOLDER = "https://blackboard.okul.edu.tr"
 T_URL_HINT = "Adresi değiştirirseniz yeni okul için tekrar giriş yapmanız gerekir."
 T_DEST_LABEL = "Dosyaların kaydedileceği klasör"
 T_DEST_HINT = (
-    "Klasörü değiştirmek yalnızca bundan sonraki senkronları etkiler; "
-    "mevcut dosyalar taşınmaz ve silinmez."
+    "Klasörü değiştirirseniz indirilmiş dosyaları yeni klasöre taşımayı ya da "
+    "yeniden indirmeyi seçebilirsiniz."
 )
 T_REFETCH_HINT = "Bilgisayarınızdan sildiğiniz ders dosyalarını yeniden indirir."
 T_AUTOSTART = "Bilgisayar açılınca başlat"
@@ -93,6 +97,28 @@ T_CHOOSE_FOLDER_PROMPT = "Bu klasörü kullan"
 T_CHOOSE_FOLDER_MESSAGE = "Ders dosyalarının kaydedileceği klasörü seçin."
 T_SAVE = "Kaydet"
 T_CANCEL = "Vazgeç"
+T_BUSY = "Önce çalışan işlemin tamamlanmasını bekleyin."
+T_DEST_NOT_CHANGED = "Klasör değiştirilmedi."
+
+# Asked when the folder changes and the old one holds downloaded files.
+T_DEST_CHANGE_TITLE = "İndirilen dosyalar ne olsun?"
+T_MOVE = "Taşı"
+T_REDOWNLOAD = "Yeniden indir"
+T_NEW_ONLY = "Sadece yeni dosyalar"
+# (choice, button); the first one is the default.
+DEST_CHOICES = ((DEST_MOVE, T_MOVE), (DEST_REFETCH, T_REDOWNLOAD), (DEST_KEEP, T_NEW_ONLY))
+
+
+def dest_change_message(old: Path, new: Path, files: int) -> str:
+    """The question under ``T_DEST_CHANGE_TITLE``; ``files`` were synced into ``old``."""
+    return (
+        f"“{display_path(old)}” klasöründe Blackboard'dan indirilmiş {files} dosya var.\n\n"
+        f"{T_MOVE}: dosyalar “{display_path(new)}” klasörüne taşınır, yeniden indirilmez. "
+        "Kendi eklediğiniz dosyalar eski klasörde kalır.\n"
+        f"{T_REDOWNLOAD}: dosyalar yeni klasöre yeniden indirilir; eski klasöre dokunulmaz.\n"
+        f"{T_NEW_ONLY}: dosyalar eski klasörde kalır; yeni klasöre yalnızca bundan sonra "
+        "eklenenler indirilir."
+    )
 
 
 @dataclass
@@ -113,7 +139,7 @@ class Submission:
     settings: Settings
     autostart: bool
     school_changed: bool  # the old session belongs to another host: sign in again
-    dest_changed: bool  # future syncs go to the new folder; nothing is moved
+    dest_changed: bool  # future syncs go to the new folder; see ``DEST_CHOICES``
     interval_changed: bool = False  # the next automatic run is recomputed
 
     def needs_login(self, login_pressed: bool) -> bool:
