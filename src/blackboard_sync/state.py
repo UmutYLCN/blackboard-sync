@@ -44,6 +44,7 @@ class State:
         self.outputs: dict[str, dict] = data.get("outputs", {})
         self._claimed: dict[str, str] = {o["path"]: key for key, o in self.outputs.items()}
         self.recovery: str | None = None
+        self.dirty = False  # True while there are changes not yet written to disk
 
     @classmethod
     def load(cls, path: Path, backup: bool = True) -> "State":
@@ -79,10 +80,14 @@ class State:
             return state
 
     def save(self) -> None:
+        """Write the state file, but only if something changed since the last write."""
+        if not self.dirty:
+            return
         write_private_json(
             self.path,
             {"version": STATE_VERSION, "items": self.items, "outputs": self.outputs},
         )
+        self.dirty = False
 
     # -- items ----------------------------------------------------------
     def item_unchanged(self, key: str, modified: str | None, dest: Path, check_missing: bool) -> bool:
@@ -97,7 +102,10 @@ class State:
         return True
 
     def record_item(self, key: str, modified: str | None, outputs: list[str], title: str) -> None:
-        self.items[key] = {"modified": modified, "outputs": outputs, "title": title}
+        entry = {"modified": modified, "outputs": outputs, "title": title}
+        if self.items.get(key) != entry:
+            self.items[key] = entry
+            self.dirty = True
 
     # -- outputs --------------------------------------------------------
     def output(self, key: str) -> dict | None:
@@ -110,7 +118,10 @@ class State:
         old = self.outputs.get(key)
         if old and self._claimed.get(old["path"]) == key:
             del self._claimed[old["path"]]
-        self.outputs[key] = {"path": rel_path, "sha256": sha256, "size": size}
+        entry = {"path": rel_path, "sha256": sha256, "size": size}
+        if old != entry:
+            self.outputs[key] = entry
+            self.dirty = True
         self._claimed[rel_path] = key
 
     def move_output(self, old_key: str, new_key: str) -> None:
@@ -122,3 +133,4 @@ class State:
             return
         self.outputs[new_key] = entry
         self._claimed[entry["path"]] = new_key
+        self.dirty = True

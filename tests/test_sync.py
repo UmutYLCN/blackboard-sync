@@ -547,3 +547,60 @@ def test_temp_files_are_hidden_on_windows_and_unhidden_when_placed(config, clien
     shown = [name for name, flag in calls if not flag]
     assert hidden and all(n.startswith(".bbsync-") and n.endswith(".partial") for n in hidden)
     assert shown
+
+
+def test_idle_sync_does_not_rewrite_state(config, client, monkeypatch):
+    sync(config, client)
+    writes = []
+    real = State.save
+
+    def counting_save(self):
+        before = self.dirty
+        real(self)
+        if before:
+            writes.append(1)
+
+    monkeypatch.setattr(State, "save", counting_save)
+    mtime = config.state_file.stat().st_mtime_ns
+    sync(config, client)
+    assert writes == []
+    assert config.state_file.stat().st_mtime_ns == mtime
+
+
+def test_state_saves_only_when_changed(tmp_path):
+    path = tmp_path / "state.json"
+    state = State(path)
+    state.save()
+    assert not path.exists()  # nothing recorded, nothing written
+    state.record_output("attachment:c:a", "x.pdf", "abc", 3)
+    state.record_item("content:c:i", "2026-01-01", ["attachment:c:a"], "x")
+    state.save()
+    mtime = path.stat().st_mtime_ns
+    # Recording identical values is not a change.
+    state.record_output("attachment:c:a", "x.pdf", "abc", 3)
+    state.record_item("content:c:i", "2026-01-01", ["attachment:c:a"], "x")
+    assert not state.dirty
+    state.save()
+    assert path.stat().st_mtime_ns == mtime
+    state.record_item("content:c:i", "2026-02-01", ["attachment:c:a"], "x")
+    assert state.dirty
+    state.save()
+    assert not state.dirty
+    assert State.load(path).items["content:c:i"]["modified"] == "2026-02-01"
+    state.move_output("attachment:c:a", "attachment:c:b")
+    assert state.dirty
+
+
+def test_progress_is_saved_after_each_changed_course_and_on_failure(config, client, fake_bb, monkeypatch):
+    saved = []
+    real = State.save
+
+    def tracking_save(self):
+        if self.dirty:
+            saved.append(len(self.items))
+        real(self)
+
+    monkeypatch.setattr(State, "save", tracking_save)
+    sync(config, client)
+    assert saved and saved[0] > 0
+    assert State.load(config.state_file).items
