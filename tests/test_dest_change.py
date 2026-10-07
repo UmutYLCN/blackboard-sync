@@ -226,6 +226,70 @@ def test_move_files_keeps_state_untouched(config, client, tmp_path):
     assert not loaded.dirty
 
 
+# -- Windows: folder names follow the new destination's path budget -------------
+
+# Relative to the test's folder, so the lengths do not depend on where pytest keeps it.
+SHORT_DEST = Path("U")
+# As long as a OneDrive "Belgeler" folder, so deep folders get shortened more.
+LONG_DEST = Path(("OneDrive - ISTUN " * 4).strip()) / "Belgeler" / "University"
+
+
+@pytest.mark.parametrize("direction", ["to a longer path", "to a shorter path"])
+def test_windows_move_renames_folders_for_the_new_path_budget(config, client, fake_bb, tmp_path, monkeypatch, direction):
+    from blackboard_sync import sync as sync_mod
+    from blackboard_sync.paths import ELLIPSIS, WINDOWS_MAX_PATH
+
+    from .test_windows_long_paths import SLIDES, _deep_tree
+
+    monkeypatch.setattr(sync_mod, "is_windows", lambda platform=None: True)
+    monkeypatch.setattr(relocate, "is_windows", lambda platform=None: True)
+    _deep_tree(fake_bb)
+    monkeypatch.chdir(tmp_path)
+    old, new = (SHORT_DEST, LONG_DEST) if direction == "to a longer path" else (LONG_DEST, SHORT_DEST)
+    config.dest = old
+    files = synced(config, client)
+    assert any(ELLIPSIS in f for f in files)
+    downloads = len(fake_bb.downloads())
+
+    result = move(config, new)
+
+    assert result.status == "ok" and result.kept == [] and result.moved == len(files)
+    assert not old.exists()
+    moved = files_under(new)
+    assert len(moved) == len(files) and moved != files  # the shortened folders were named again
+    assert all(len(str(new)) + 1 + len(f) <= WINDOWS_MAX_PATH for f in moved)
+    assert sorted(o["path"] for o in state(config).outputs.values()) == moved  # the state follows
+    slides = next(f for f in moved if f.endswith("/slides.pdf"))
+    assert (new / slides).read_bytes() == SLIDES
+
+    # A sync in the new folder picks exactly these folders: nothing new, nothing doubled.
+    config.dest = new
+    report = sync(config, client)
+    assert report.warnings == [] and all(c.warnings == [] for c in report.courses)
+    assert report.totals() == {k: 0 for k in report.totals()}
+    assert len(fake_bb.downloads()) == downloads
+    assert files_under(new) == moved
+    # No second copy of a shortened folder appeared next to the moved one.
+    course = new / CSE
+    assert len([p for p in course.iterdir() if p.is_dir() and p.name.startswith("Haftalık")]) == 1
+
+
+def test_windows_sync_records_full_names_of_shortened_folders(config, client, fake_bb, monkeypatch):
+    from blackboard_sync import sync as sync_mod
+    from blackboard_sync.paths import ELLIPSIS
+
+    from .test_windows_long_paths import DOC, MODULE, _deep_tree
+
+    monkeypatch.setattr(sync_mod, "is_windows", lambda platform=None: True)
+    _deep_tree(fake_bb)
+    monkeypatch.chdir(config.dest.parent)
+    config.dest = LONG_DEST
+    sync(config, client)
+    folders = state(config).folders
+    assert sorted(folders.values()) == sorted([MODULE, DOC])
+    assert all(ELLIPSIS in Path(rel).name for rel in folders)
+
+
 # -- Yeniden indir / Sadece yeni dosyalar ---------------------------------------
 
 def test_redownload_fills_the_new_folder_and_leaves_the_old_one(config, client, tmp_path):
@@ -265,7 +329,8 @@ def test_move_choice_queues_the_move_before_any_sync():
     assert m.icon() == Icon.SYNCING and "taşınıyor" in m.activity()
     notes = m.finish_move("ok", 12, 0)
     assert m.busy is None and m.move_from is None and m.note == ""
-    assert notes[0].message == "12 dosya yeni klasöre taşındı." and notes[0].data == {"open": "/Volumes/USB/Okul"}
+    assert notes[0].message == "12 dosya yeni klasöre taşındı."
+    assert notes[0].data == {"open": str(Path("/Volumes/USB/Okul"))}
 
 
 def test_files_left_behind_are_reported():
@@ -313,8 +378,9 @@ def test_new_files_only_choice_queues_nothing():
 def test_dialog_offers_move_first_and_names_both_folders():
     assert [c for c, _ in settings_form.DEST_CHOICES] == [DEST_MOVE, DEST_REFETCH, DEST_KEEP]
     assert [t for _, t in settings_form.DEST_CHOICES] == ["Taşı", "Yeniden indir", "Sadece yeni dosyalar"]
-    text = settings_form.dest_change_message(Path("/tmp/University"), Path("/tmp/Okul"), 7)
-    assert "/tmp/University" in text and "/tmp/Okul" in text and "7 dosya" in text
+    old, new = Path("/tmp/University"), Path("/tmp/Okul")
+    text = settings_form.dest_change_message(old, new, 7)
+    assert str(old) in text and str(new) in text and "7 dosya" in text
     assert "taşınmaz" not in settings_form.T_DEST_HINT
 
 
