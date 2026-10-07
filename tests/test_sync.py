@@ -445,3 +445,60 @@ def test_empty_folders_from_the_failed_runs_get_filled(config, client, fake_bb):
     sync(config, client)
 
     assert (config.dest / WEEK / "CSE301 - WEEK 01 - FUNDAMENTALS.pptx").exists()
+
+
+def _corrupt_backups(config):
+    return sorted(config.state_file.parent.glob("state.json.corrupt-*"))
+
+
+def test_corrupt_state_is_backed_up_and_sync_continues(config, client):
+    sync(config, client)
+    files_before = files_under(config.dest)
+    config.state_file.write_text("{ truncated", encoding="utf-8")
+
+    report = sync(config, client)
+
+    assert report.status in ("ok", "warnings")
+    backups = _corrupt_backups(config)
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == "{ truncated"
+    assert any("state.json" in w and backups[0].name in w for w in report.warnings)
+    # the state healed: it is valid again and the next run is clean
+    assert json.loads(config.state_file.read_text(encoding="utf-8"))["version"] == 1
+    again = sync(config, client)
+    assert not any("state.json" in w for w in again.warnings)
+    assert len(_corrupt_backups(config)) == 1
+    # existing files were adopted, not duplicated
+    assert not any("(2)" in p for p in files_under(config.dest))
+    assert files_under(config.dest) == files_before
+
+
+def test_newer_state_version_is_kept_as_backup(config, client):
+    sync(config, client)
+    original = json.loads(config.state_file.read_text(encoding="utf-8"))
+    original["version"] = 99
+    config.state_file.write_text(json.dumps(original), encoding="utf-8")
+
+    report = sync(config, client)
+
+    backups = _corrupt_backups(config)
+    assert len(backups) == 1
+    assert json.loads(backups[0].read_text(encoding="utf-8"))["version"] == 99
+    assert any("version" in w for w in report.warnings)
+
+
+def test_state_with_wrong_shape_is_recovered(config, client):
+    config.ensure_data_dir()
+    config.state_file.write_text("[1, 2]", encoding="utf-8")
+    report = sync(config, client)
+    assert len(_corrupt_backups(config)) == 1
+    assert any("state.json" in w for w in report.warnings)
+
+
+def test_dry_run_leaves_corrupt_state_untouched(config, client):
+    config.ensure_data_dir()
+    config.state_file.write_text("{ truncated", encoding="utf-8")
+    report = sync(config, client, dry_run=True)
+    assert config.state_file.read_text(encoding="utf-8") == "{ truncated"
+    assert _corrupt_backups(config) == []
+    assert any("state.json" in w for w in report.warnings)
