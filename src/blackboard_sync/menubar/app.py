@@ -155,14 +155,44 @@ def build_app(config: Config):
                 return
             log.info("%s started", job)
             self.refresh()
-            threading.Thread(target=self._sync_worker, args=(job, self.settings, refetch_keys), daemon=True).start()
+            threading.Thread(target=self._sync_worker, args=(job, self.settings, refetch_keys, self.model.past_term), daemon=True).start()
 
         def start_refetch(self, _sender=None) -> None:
             self.start_sync(job="refetch")
 
-        def _sync_worker(self, job: str, settings, refetch_keys=None) -> None:
-            outcome = jobs.run_sync_guarded(job, settings, refetch_keys=refetch_keys)
+        def _sync_worker(self, job: str, settings, refetch_keys=None, term_name: str = "") -> None:
+            outcome = jobs.run_sync_guarded(job, settings, refetch_keys=refetch_keys, term_name=term_name)
             AppHelper.callAfter(self._sync_done, outcome)
+
+        def open_past_terms(self, _sender=None) -> None:
+            from blackboard_sync.menubar.past_term_window import PastTermWindow
+
+            if getattr(self, "past_term_window", None) is not None:
+                self.past_term_window.window.makeKeyAndOrderFront_(None)
+                return
+            if not self.model.begin("past_terms"):
+                return
+            self.past_term_window = PastTermWindow(self.download_past_term, self._past_terms_closed)
+            self.refresh()
+            threading.Thread(target=self._past_terms_worker, args=(self.settings,), daemon=True).start()
+
+        def _past_terms_worker(self, settings) -> None:
+            AppHelper.callAfter(self._past_terms_done, *jobs.run_past_terms(settings))
+
+        def _past_terms_done(self, names, outcome) -> None:
+            self.model.finish_past_terms(names, outcome)
+            if self.past_term_window is not None:
+                self.past_term_window.update(names, self.model.note)
+            self.refresh()
+
+        def _past_terms_closed(self) -> None:
+            self.past_term_window = None
+
+        def download_past_term(self, name: str) -> bool:
+            if not self.model.select_past_term(name):
+                return False
+            self.start_sync(job="past_term")
+            return True
 
         def _sync_done(self, outcome: RunOutcome) -> None:
             log.info("sync finished: %s %s", outcome.status, outcome.message)
@@ -469,6 +499,8 @@ def build_app(config: Config):
             self._draw_icon(self.model.icon())
             if self._settings_window is not None:
                 self._settings_window.update_status(settings_form.window_status(self.model))
+            if getattr(self, "past_term_window", None) is not None:
+                self.past_term_window.set_enabled(self.model.can_download_past_term)
             menu = self.model.menu(jobs.utcnow())
             if menu == self._drawn:
                 return
@@ -483,6 +515,7 @@ def build_app(config: Config):
                     "folder": self.open_school_folder, "settings": self.open_settings,
                     "quit": self.quit, "uninstall": self.start_uninstall, "open": lambda _s: self.open_recent(entry.value),
                     "update": self.start_update,
+                    "past_terms": self.open_past_terms,
                 }
                 item = rumps.MenuItem(entry.title, callback=actions.get(entry.action) if entry.enabled else None)
                 item.state = int(entry.checked)

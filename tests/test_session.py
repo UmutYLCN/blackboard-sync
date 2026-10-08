@@ -170,7 +170,7 @@ def test_cli_without_session_says_to_log_in(config, fake_bb, monkeypatch, capsys
 
 def test_cli_sync_json_summary(config, fake_bb, monkeypatch, capsys):
     _save(config)
-    code = _run_cli(config, fake_bb, monkeypatch, "--json", "--term", "2026-2027 Güz")
+    code = _run_cli(config, fake_bb, monkeypatch, "--json")
     assert code == EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert out["status"] == "ok"
