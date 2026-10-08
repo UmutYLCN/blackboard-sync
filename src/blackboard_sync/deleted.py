@@ -8,6 +8,7 @@ from typing import Iterable
 from blackboard_sync.config import Config
 from blackboard_sync.state import State
 from blackboard_sync.sync import run_lock
+from blackboard_sync.system import sync_root
 
 T_TAB = "Silinenler"
 T_EMPTY = "Silinmiş dosya yok."
@@ -28,17 +29,17 @@ class MissingOutput:
     folder: str
 
 
-def missing_outputs(state: State, dest: Path) -> list[MissingOutput]:
-    """Only safe relative paths inside this destination, never dismissed entries."""
+def missing_outputs(state: State, root: Path) -> list[MissingOutput]:
+    """Only safe relative paths inside this University folder, never dismissed entries."""
     result = []
-    root = dest.resolve()
+    resolved = root.resolve()
     for key, output in state.outputs.items():
         rel = PurePosixPath(output["path"])
         if output.get("dismissed") or rel.is_absolute() or ".." in rel.parts:
             continue
-        target = dest / rel
+        target = root / rel
         try:
-            target.resolve().relative_to(root)
+            target.resolve().relative_to(resolved)
         except ValueError:
             continue
         if target.exists():
@@ -50,7 +51,8 @@ def missing_outputs(state: State, dest: Path) -> list[MissingOutput]:
 
 
 def load_missing(config: Config, dest: Path) -> list[MissingOutput]:
-    return missing_outputs(State.load(config.state_file, backup=False), dest)
+    """The missing files of the chosen folder ``dest`` (they belong in its University folder)."""
+    return missing_outputs(State.load(config.state_file, backup=False), sync_root(dest))
 
 
 def dismiss_missing(config: Config, dest: Path, keys: Iterable[str]) -> None:
@@ -58,7 +60,7 @@ def dismiss_missing(config: Config, dest: Path, keys: Iterable[str]) -> None:
     config.ensure_data_dir()
     with run_lock(config.lock_file):
         state = State.load(config.state_file, backup=False)
-        eligible = {row.key for row in missing_outputs(state, dest)}
+        eligible = {row.key for row in missing_outputs(state, sync_root(dest))}
         state.dismiss_outputs(set(keys) & eligible)
         state.save()
 

@@ -40,6 +40,7 @@ from blackboard_sync.settings import (
     normalize_dest,
     normalize_sync_interval,
 )
+from blackboard_sync.system import sync_root
 
 T_TITLE_FIRST_RUN = "Blackboard Sync kurulumu"
 T_TITLE = "Blackboard Sync ayarları"
@@ -86,7 +87,10 @@ T_URL_LABEL = "Okulunuzun Blackboard adresi"
 T_URL_PLACEHOLDER = "https://blackboard.okul.edu.tr"
 T_URL_HINT = "Adresi değiştirirseniz yeni okul için tekrar giriş yapmanız gerekir."
 T_DEST_LABEL = "Dosyaların kaydedileceği klasör"
+# Under the folder field: what ``system.sync_root`` does with the chosen folder.
+T_DEST_ROOT_NOTE = "Dosyalar seçtiğiniz klasörün içindeki University klasörüne kaydedilir."
 T_DEST_HINT = (
+    f"{T_DEST_ROOT_NOTE} "
     "Klasörü değiştirirseniz indirilmiş dosyaları yeni klasöre taşımayı ya da "
     "yeniden indirmeyi seçebilirsiniz."
 )
@@ -110,7 +114,11 @@ DEST_CHOICES = ((DEST_MOVE, T_MOVE), (DEST_REFETCH, T_REDOWNLOAD), (DEST_KEEP, T
 
 
 def dest_change_message(old: Path, new: Path, files: int) -> str:
-    """The question under ``T_DEST_CHANGE_TITLE``; ``files`` were synced into ``old``."""
+    """The question under ``T_DEST_CHANGE_TITLE``; ``files`` were synced into ``old``.
+
+    ``old`` and ``new`` are the chosen folders; the text names their University folders.
+    """
+    old, new = sync_root(old), sync_root(new)
     return (
         f"“{display_path(old)}” klasöründe Blackboard'dan indirilmiş {files} dosya var.\n\n"
         f"{T_MOVE}: dosyalar “{display_path(new)}” klasörüne taşınır, yeniden indirilmez. "
@@ -139,7 +147,9 @@ class Submission:
     settings: Settings
     autostart: bool
     school_changed: bool  # the old session belongs to another host: sign in again
-    dest_changed: bool  # future syncs go to the new folder; see ``DEST_CHOICES``
+    # Future syncs go to another University folder; see ``DEST_CHOICES``. Choosing
+    # ``~/X/University`` instead of ``~/X`` (or back) changes nothing.
+    dest_changed: bool
     interval_changed: bool = False  # the next automatic run is recomputed
 
     def needs_login(self, login_pressed: bool) -> bool:
@@ -242,7 +252,7 @@ def submit(values: FormValues, current: Settings) -> Submission:
         settings=settings,
         autostart=values.autostart,
         school_changed=settings.base_url != current.base_url.rstrip("/"),
-        dest_changed=settings.dest != current.dest,
+        dest_changed=sync_root(settings.dest) != sync_root(current.dest),
         interval_changed=settings.sync_interval_minutes != current.sync_interval_minutes,
     )
 

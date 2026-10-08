@@ -12,8 +12,8 @@ import logging
 import os
 import subprocess
 import sys
-from pathlib import Path
-from typing import IO, Callable, Mapping
+from pathlib import Path, PurePath
+from typing import IO, Callable, Mapping, TypeVar
 
 log = logging.getLogger(__name__)
 
@@ -24,6 +24,8 @@ DEST_FOLDER = "University"
 CREATE_NO_WINDOW = 0x08000000
 # Well-known SID of the operating system account (LocalSystem).
 SYSTEM_SID = "S-1-5-18"
+
+P = TypeVar("P", bound=PurePath)
 
 
 def is_windows(platform: str | None = None) -> bool:
@@ -65,6 +67,16 @@ def default_dest(
         found = (documents or windows_documents_dir)()
         return (found or home / "Documents") / DEST_FOLDER
     return home / "Documents" / DEST_FOLDER
+
+
+def sync_root(dest: P) -> P:
+    """Where the term folders go: the ``University`` folder inside the chosen folder.
+
+    A chosen folder that is already called University (in any case, like the
+    default ``~/Documents/University``) is used as it is, never
+    ``University/University``. The folder is created by the first download.
+    """
+    return dest if dest.name.casefold() == DEST_FOLDER.casefold() else dest / DEST_FOLDER
 
 
 def windows_documents_dir() -> Path | None:

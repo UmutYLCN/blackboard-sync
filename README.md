@@ -29,6 +29,23 @@ irm https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.ps1 
 
 İlk açılışta okul adresini ve kayıt klasörünü seç, ardından **Giriş yap**.
 
+## Kayıt klasörü
+
+Dosyalar seçtiğin klasörün içindeki **University** klasörüne, dönem ve ders klasörleri
+hâlinde kaydedilir; University klasörünü uygulama kendisi açar. Örneğin iCloud Drive'ı
+seçersen dosyalar `iCloud Drive/University/2026-2027 Güz/…` altına iner. Seçtiğin
+klasörün adı zaten University ise (varsayılan `Belgeler/University` gibi) içine ikinci bir
+University klasörü açılmaz.
+
+Önceki sürümler dönem klasörlerini doğrudan seçilen klasöre koyuyordu
+(`iCloud Drive/2026-2027 Güz/…`). Güncellemeden sonraki ilk açılışta veya ilk
+senkronizasyonda bu dosyalar bir kez University klasörüne taşınır; yeniden indirilmez.
+Taşınamayan bir dosya (başka bir programda açık, ya da University klasöründe aynı adda
+farklı bir dosya var) olduğu yerde kalır ve bildirimle haber verilir.
+
+Ayarlar'da klasörü değiştirirsen **Taşı**, **Yeniden indir** ve **Sadece yeni dosyalar**
+seçenekleri eski ve yeni klasörlerin University klasörleri arasında çalışır.
+
 ## Güncelleme
 
 Yeni sürüm çıkınca bildirim gelir; menüden veya Ayarlar'dan **Güncelle**'ye bas.
@@ -59,8 +76,9 @@ dönem adını kullan). Kullanılabilir adları `blackboard-sync past-terms` ile
 Menü çubuğunda veya Windows sistem tepsisinde **Uygulamayı kaldır…** seçeneğini aç.
 Uygulama kayıtları, günlükler, ayarlar, giriş verileri ve açılışta başlatma kaydı silinir.
 İndirilmiş ders dosyaları varsayılan olarak korunur. **İndirilmiş ders dosyalarını da sil**
-seçeneği yalnızca uygulamanın kayıtlı dosyalarını ve boşalan klasörlerini Çöp Sepeti’ne /
-Geri Dönüşüm Kutusu’na taşır; diğer dosyalar ve ana indirme klasörü korunur.
+seçeneği yalnızca uygulamanın kayıtlı dosyalarını ve boşalan klasörlerini (boşaldıysa
+uygulamanın açtığı University klasörü dahil) Çöp Sepeti’ne / Geri Dönüşüm Kutusu’na taşır;
+diğer dosyalar ve seçtiğin kayıt klasörü korunur.
 Senkronizasyon veya klasör taşıma sürerken kaldırma yapılamaz.
 
 Terminalden (önce menüden uygulamadan çık):

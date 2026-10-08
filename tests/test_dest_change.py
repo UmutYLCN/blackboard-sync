@@ -24,6 +24,7 @@ from blackboard_sync.menubar.model import (
 from blackboard_sync.relocate import CONFLICT, FAILED, move_destination, move_files
 from blackboard_sync.state import State
 from blackboard_sync.sync import run_lock, run_sync
+from blackboard_sync.system import sync_root
 
 from .test_sync import CSE, SYLLABUS, files_under
 
@@ -36,9 +37,9 @@ def sync(config, client, **kwargs):
 
 
 def synced(config, client):
-    """A first sync into ``config.dest``; returns its files."""
+    """A first sync into ``config.dest``'s University folder; returns its files."""
     sync(config, client)
-    return files_under(config.dest)
+    return files_under(config.root)
 
 
 def state(config):
@@ -60,9 +61,9 @@ def test_move_takes_every_synced_file_and_nothing_is_downloaded_again(config, cl
     result = move(config, new)
 
     assert result.status == "ok" and result.moved == len(files) and result.kept == []
-    assert files_under(new) == files
+    assert files_under(sync_root(new)) == files
     assert result.old_removed and not config.dest.exists()  # it held nothing else
-    assert (new / CSE / "Lecture Notes" / "Week 2").is_dir()  # empty Blackboard folders come along
+    assert (sync_root(new) / CSE / "Lecture Notes" / "Week 2").is_dir()  # empty Blackboard folders come along
     after = state(config)
     assert after.outputs == before.outputs and after.items == before.items  # paths are relative
 
@@ -70,7 +71,7 @@ def test_move_takes_every_synced_file_and_nothing_is_downloaded_again(config, cl
     report = sync(config, client)
     assert len(fake_bb.downloads()) == downloads
     assert report.totals() == {k: 0 for k in report.totals()}
-    assert files_under(new) == files
+    assert files_under(sync_root(new)) == files
 
 
 def test_move_leaves_the_students_own_files_and_their_folder(config, client, tmp_path):
@@ -85,7 +86,7 @@ def test_move_leaves_the_students_own_files_and_their_folder(config, client, tmp
     assert result.moved == len(files) and not result.old_removed
     assert own.read_text(encoding="utf-8") == "mine"
     assert files_under(config.dest) == [f"{CSE}/.DS_Store", f"{CSE}/my notes.txt"]
-    assert files_under(new) == files
+    assert files_under(sync_root(new)) == files
     # Only the folder with the student's file is left.
     assert [p.name for p in (config.dest / "2026-2027 Güz").iterdir()] == ["CSE303 Algorithm Analysis"]
     assert [p.name for p in config.dest.iterdir()] == ["2026-2027 Güz"]
@@ -102,14 +103,14 @@ def test_old_folder_with_only_system_leftovers_is_removed(config, client, tmp_pa
 def test_conflicting_file_in_the_new_folder_is_never_overwritten(config, client, tmp_path):
     files = synced(config, client)
     new = tmp_path / "Okul"
-    (new / SYLLABUS).parent.mkdir(parents=True)
-    (new / SYLLABUS).write_bytes(b"another file")
+    (sync_root(new) / SYLLABUS).parent.mkdir(parents=True)
+    (sync_root(new) / SYLLABUS).write_bytes(b"another file")
 
     result = move(config, new)
 
     assert result.kept == [(SYLLABUS, CONFLICT)]
     assert result.moved == len(files) - 1
-    assert (new / SYLLABUS).read_bytes() == b"another file"
+    assert (sync_root(new) / SYLLABUS).read_bytes() == b"another file"
     assert (config.dest / SYLLABUS).read_bytes() == b"%PDF syllabus v1"
     assert not result.old_removed and config.dest.is_dir()
 
@@ -117,13 +118,13 @@ def test_conflicting_file_in_the_new_folder_is_never_overwritten(config, client,
 def test_identical_file_already_in_the_new_folder_counts_as_moved(config, client, tmp_path):
     files = synced(config, client)
     new = tmp_path / "Okul"
-    (new / SYLLABUS).parent.mkdir(parents=True)
-    (new / SYLLABUS).write_bytes(b"%PDF syllabus v1")
+    (sync_root(new) / SYLLABUS).parent.mkdir(parents=True)
+    (sync_root(new) / SYLLABUS).write_bytes(b"%PDF syllabus v1")
 
     result = move(config, new)
 
     assert result.kept == [] and result.moved == len(files)
-    assert files_under(new) == files and not config.dest.exists()
+    assert files_under(sync_root(new)) == files and not config.dest.exists()
 
 
 def test_locked_file_stays_and_keeps_the_old_folder(config, client, tmp_path, monkeypatch):
@@ -142,7 +143,7 @@ def test_locked_file_stays_and_keeps_the_old_folder(config, client, tmp_path, mo
     assert result.kept == [(f"{CSE}/hw1.pdf", FAILED)]
     assert result.moved == len(files) - 1 and not result.old_removed
     assert files_under(config.dest) == [f"{CSE}/hw1.pdf"]
-    assert not (new / CSE / "hw1.pdf").exists()
+    assert not (sync_root(new) / CSE / "hw1.pdf").exists()
 
 
 def test_files_deleted_by_the_student_stay_deleted(config, client, tmp_path):
@@ -151,7 +152,7 @@ def test_files_deleted_by_the_student_stay_deleted(config, client, tmp_path):
     new = tmp_path / "Okul"
     result = move(config, new)
     assert result.kept == [] and result.moved == len(files) - 1
-    assert SYLLABUS not in files_under(new)
+    assert SYLLABUS not in files_under(sync_root(new))
 
 
 def test_move_between_drives_copies_then_removes_the_original(config, client, tmp_path, monkeypatch):
@@ -165,8 +166,8 @@ def test_move_between_drives_copies_then_removes_the_original(config, client, tm
     result = move(config, new)
 
     assert result.kept == [] and result.moved == len(files)
-    assert files_under(new) == files
-    assert (new / SYLLABUS).read_bytes() == b"%PDF syllabus v1"
+    assert files_under(sync_root(new)) == files
+    assert (sync_root(new) / SYLLABUS).read_bytes() == b"%PDF syllabus v1"
     assert not config.dest.exists()
 
 
@@ -186,7 +187,7 @@ def test_copy_is_dropped_when_the_original_cannot_be_removed(config, client, tmp
 
     assert result.kept == [(f"{CSE}/hw1.pdf", FAILED)] and result.moved == len(files) - 1
     assert (config.dest / CSE / "hw1.pdf").is_file()
-    assert not (new / CSE / "hw1.pdf").exists()
+    assert not (sync_root(new) / CSE / "hw1.pdf").exists()
     assert not [p for p in new.rglob("*") if p.name.startswith(".bbsync-")]
 
 
@@ -195,8 +196,8 @@ def test_move_into_a_subfolder_of_the_old_one(config, client):
     new = config.dest / "Blackboard"
     result = move(config, new)
     assert result.kept == [] and result.moved == len(files)
-    assert files_under(new) == files
-    assert files_under(config.dest) == [f"Blackboard/{f}" for f in files]
+    assert files_under(sync_root(new)) == files
+    assert files_under(config.dest) == [f"Blackboard/University/{f}" for f in files]
 
 
 def test_same_folder_moves_nothing(config, client):
@@ -254,13 +255,13 @@ def test_windows_move_renames_folders_for_the_new_path_budget(config, client, fa
     result = move(config, new)
 
     assert result.status == "ok" and result.kept == [] and result.moved == len(files)
-    assert not old.exists()
-    moved = files_under(new)
+    assert not sync_root(old).exists()  # the chosen folder itself is not ours to remove
+    moved = files_under(sync_root(new))
     assert len(moved) == len(files) and moved != files  # the shortened folders were named again
-    assert all(len(str(new)) + 1 + len(f) <= WINDOWS_MAX_PATH for f in moved)
+    assert all(len(str(sync_root(new))) + 1 + len(f) <= WINDOWS_MAX_PATH for f in moved)
     assert sorted(o["path"] for o in state(config).outputs.values()) == moved  # the state follows
     slides = next(f for f in moved if f.endswith("/slides.pdf"))
-    assert (new / slides).read_bytes() == SLIDES
+    assert (sync_root(new) / slides).read_bytes() == SLIDES
 
     # A sync in the new folder picks exactly these folders: nothing new, nothing doubled.
     config.dest = new
@@ -268,9 +269,9 @@ def test_windows_move_renames_folders_for_the_new_path_budget(config, client, fa
     assert report.warnings == [] and all(c.warnings == [] for c in report.courses)
     assert report.totals() == {k: 0 for k in report.totals()}
     assert len(fake_bb.downloads()) == downloads
-    assert files_under(new) == moved
+    assert files_under(sync_root(new)) == moved
     # No second copy of a shortened folder appeared next to the moved one.
-    course = new / CSE
+    course = sync_root(new) / CSE
     assert len([p for p in course.iterdir() if p.is_dir() and p.name.startswith("Haftalık")]) == 1
 
 
@@ -297,7 +298,7 @@ def test_redownload_fills_the_new_folder_and_leaves_the_old_one(config, client, 
     old = config.dest
     config.dest = tmp_path / "Okul"
     sync(config, client, refetch_missing=True)
-    assert files_under(config.dest) == files
+    assert files_under(config.root) == files
     assert files_under(old) == files
 
 
@@ -330,7 +331,7 @@ def test_move_choice_queues_the_move_before_any_sync():
     notes = m.finish_move("ok", 12, 0)
     assert m.busy is None and m.move_from is None and m.note == ""
     assert notes[0].message == "12 dosya yeni klasöre taşındı."
-    assert notes[0].data == {"open": str(Path("/Volumes/USB/Okul"))}
+    assert notes[0].data == {"open": str(Path("/Volumes/USB/Okul/University"))}
 
 
 def test_files_left_behind_are_reported():

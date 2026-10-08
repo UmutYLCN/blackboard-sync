@@ -393,9 +393,9 @@ def test_folder_item_is_named_after_the_destination():
     assert next(e.title for e in model().menu(NOW).entries if e.action == "folder") == "University klasörünü aç"
     m = AppModel(dest=Path("/Users/student/Documents/Okul"), now=NOW)  # an existing user's folder
     folder = next(e for e in m.menu(NOW).entries if e.action == "folder")
-    assert folder.title == "Okul klasörünü aç"
-    m.apply_settings(Path("/Volumes/USB/Ders Notları"), school_changed=False)
-    assert next(e for e in m.menu(NOW).entries if e.action == "folder").title == "Ders Notları klasörünü aç"
+    assert folder.title == "University klasörünü aç"  # the files are in Okul/University
+    m.apply_settings(Path("/Volumes/USB/university"), school_changed=False)
+    assert next(e for e in m.menu(NOW).entries if e.action == "folder").title == "university klasörünü aç"
 
 
 def test_update_row_only_when_a_new_version_waits():

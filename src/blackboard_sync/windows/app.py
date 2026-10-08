@@ -17,6 +17,7 @@ from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, settings_form
 from blackboard_sync.menubar.model import DEST_KEEP, MOVE_JOB, open_target, RunOutcome, UPDATE_ACTIONS
 from blackboard_sync.settings import SettingsError, save_settings
+from blackboard_sync.system import sync_root
 from . import activation, autostart, notifications
 from .presentation import icon_image, render_menu
 
@@ -320,7 +321,7 @@ class TrayApp:
         elif action == "settings":
             self.open_settings()
         elif action in ("folder", "open"):
-            target = self.model.dest if action == "folder" else open_target(self.model.dest, value)
+            target = self.model.root if action == "folder" else open_target(self.model.root, value)
             if target and target.exists():
                 try:
                     os.startfile(str(target))
@@ -392,7 +393,7 @@ class TrayApp:
             messagebox.showinfo("Blackboard Sync", uninstall.BUSY, parent=parent)
             return
         self.uninstalling = True
-        choice = ask_uninstall(parent, self.settings.dest)
+        choice = ask_uninstall(parent, sync_root(self.settings.dest))
         if choice is None:
             self.uninstalling = False
             return

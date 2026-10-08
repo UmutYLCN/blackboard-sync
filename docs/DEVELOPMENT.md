@@ -188,7 +188,12 @@ and Windows it has **Genel** and **Silinenler** tabs. **Genel** has four section
   **Giriş yap** (saves the window and opens the Blackboard sign-in window) or
   **Hesaptan çıkış yap** (asks first; removes the session and all login browser data, so the next sign-in asks for the school credentials again; downloaded files, settings and sync state are kept).
 - **Klasör** — **Dosyaların kaydedileceği klasör**, prefilled with
-  `~/Documents/University`; **Seç…** opens a folder picker.
+  `~/Documents/University`; **Seç…** opens a folder picker. The files go into
+  the **University** folder inside the chosen one (created when needed), or
+  into the chosen folder itself when it is already named University (any case);
+  the note under the field says so. Files an older version put directly into the
+  chosen folder are moved into University once, at the next app start or sync
+  (`relocate.migrate_to_root`); a file that cannot be moved stays and is reported.
 - **Genel** — **Bilgisayar açılınca başlat**, ticked by default (see
   [Start at login](#start-at-login)), and **Otomatik senkron**: every 30
   minutes, **every hour** (default), every 3 hours or **Yalnızca elle** (no
@@ -296,7 +301,7 @@ user account.
 | **Şimdi senkronize et** | Sync right away instead of waiting for the next hourly run. Greyed out while a sync or sign-in is running. |
 | **Dersler** | The courses of the term; click one to open its folder. |
 | **Son indirilenler** | The last 10 files, notes and announcements that came in. Click one to open it (or its folder, if you moved the file). |
-| **University klasörünü aç** | Opens the folder chosen in **Ayarlar…** in Finder; the item carries that folder's name. |
+| **University klasörünü aç** | Opens the University folder inside the folder chosen in **Ayarlar…** in Finder; the item carries that folder's name. |
 | **Güncelleme var: X — Güncelle** | Only when a new version is available: download and install it (see [Updates](#updates)). |
 | **Ayarlar…** | Opens the [settings window](#settings): account, folder, start at login, updates. |
 | **Çık** | Quit the app. |
@@ -346,7 +351,7 @@ blackboard-sync [...] sync  [--term NAME | --all-terms] [--course CODE ...]
 
 | Option | Meaning |
 | --- | --- |
-| `--dest DIR` | Base folder (default: the folder saved in the menu bar app's settings, else `~/Documents/University`; env `BBSYNC_DEST`). |
+| `--dest DIR` | Base folder (default: the folder saved in the menu bar app's settings, else `~/Documents/University`; env `BBSYNC_DEST`). Files go into its `University` subfolder unless the folder is already named University. |
 | `--term NAME` | Sync a specific term by its Blackboard name, e.g. `"2025-2026 Bahar"`. |
 | `--all-terms` | Sync every term, including past ones and courses without a term. |
 | `--course CODE` | Only this course (`CSE303`, or the course id); repeatable. Case and Turkish dots do not matter: `bil101` finds `BİL101`. |
@@ -368,7 +373,7 @@ most recently started term. Courses the instructor has not opened yet
 
 | What | Where |
 | --- | --- |
-| Course material | `~/Documents/University/<term>/<course code> <course name>/...` |
+| Course material | `~/Documents/University/<term>/<course code> <course name>/...` (another chosen folder: `<folder>/University/<term>/...`) |
 | Settings (school address, folder) | `~/Library/Application Support/blackboard-sync/settings.json` |
 | Session cookies | `~/Library/Application Support/blackboard-sync/session.json` |
 | Sign-in browser profile | `~/Library/Application Support/blackboard-sync/browser-profile/` |
@@ -479,7 +484,10 @@ summary; the same summary is written to `last-run.json` (dry runs excepted).
 }
 ```
 
-Paths in the summary are relative to `dest`. `changed_courses[].summary` is a
+`dest` is the University folder the files are in, and paths in the summary are
+relative to it. When the run first moved an older version's files into it,
+`moved_into_root` counts them and `left_outside_root` lists the ones that could
+not be moved. `changed_courses[].summary` is a
 ready-made one-line notification text. Concurrent runs are prevented with a
 lock file.
 
@@ -605,7 +613,7 @@ WebView2 window (pywebview, through pythonnet); see
 
 | What | Where on Windows |
 | --- | --- |
-| Course material | `Documents\University\<term>\<course code> <course name>\...` (your Documents folder, also when it is in OneDrive) |
+| Course material | `Documents\University\<term>\<course code> <course name>\...` (your Documents folder, also when it is in OneDrive; another chosen folder: `<folder>\University\<term>\...`) |
 | Session, sign-in profile, state, last run | `%APPDATA%\blackboard-sync\` |
 
 Differences from macOS:

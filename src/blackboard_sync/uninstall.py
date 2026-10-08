@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from blackboard_sync import runtime, signout
 from blackboard_sync.config import Config
 from blackboard_sync.errors import AlreadyRunning, BlackboardSyncError
+from blackboard_sync.relocate import migration_pending
 from blackboard_sync.state import State
 from blackboard_sync.sync import run_lock
 from blackboard_sync.system import try_lock
@@ -90,20 +91,20 @@ def remove_app() -> list[str]:
     return ["Uygulama dosyalarını elle kaldırın."]
 
 
-def _recorded_path(dest: Path, value) -> Path | None:
+def _recorded_path(root: Path, value) -> Path | None:
     if not isinstance(value, str) or not value or "\\" in value or "\0" in value:
         return None
     rel = PurePosixPath(value)
     if rel.is_absolute() or PureWindowsPath(value).drive or any(p in (".", "..") for p in value.split("/")):
         return None
-    path = dest.joinpath(*rel.parts)
-    # Refuse symlinks/junctions at any level below the configured destination.
-    # resolve() also catches Windows reparse points and paths escaping the root.
-    root = dest.resolve()
+    path = root.joinpath(*rel.parts)
+    # Refuse symlinks/junctions at any level below the University folder.
+    # resolve() also catches Windows reparse points and paths escaping it.
+    resolved = root.resolve()
     for candidate in (path, *path.parents):
-        if candidate == dest:
+        if candidate == root:
             break
-        if candidate.is_symlink() or candidate.resolve() != root / candidate.relative_to(dest):
+        if candidate.is_symlink() or candidate.resolve() != resolved / candidate.relative_to(root):
             return None
     return path
 
@@ -116,22 +117,28 @@ def trash_course_files(config: Config, send_to_trash=trash) -> list[str]:
     folders: set[Path] = set()
     paths = {entry.get("path") for entry in state.outputs.values() if isinstance(entry, dict)
              and isinstance(entry.get("path"), str)}
-    for rel in sorted(paths):
-        path = _recorded_path(config.dest, rel)
-        if path is None:
-            continue
-        # The state records files, never permission to remove a directory tree.
-        if path.exists() and not path.is_file():
-            continue
-        parent = path.parent
-        while parent != config.dest:
-            folders.add(parent)
-            parent = parent.parent
-        if path.is_file():
-            try:
-                send_to_trash(path)
-            except OSError as exc:
-                warnings.append(f"Dosya Çöp Sepeti'ne taşınamadı: {path} ({exc})")
+    # The files are in the University folder; until an older version's files were
+    # moved in (``relocate.migrate_to_root``) they are still directly in the chosen folder.
+    roots = [config.root, *([config.dest] if migration_pending(state, config.dest) else [])]
+    for root in roots:
+        for rel in sorted(paths):
+            path = _recorded_path(root, rel)
+            if path is None:
+                continue
+            # The state records files, never permission to remove a directory tree.
+            if path.exists() and not path.is_file():
+                continue
+            parent = path.parent
+            while parent != root:
+                folders.add(parent)
+                parent = parent.parent
+            if path.is_file():
+                try:
+                    send_to_trash(path)
+                except OSError as exc:
+                    warnings.append(f"Dosya Çöp Sepeti'ne taşınamadı: {path} ({exc})")
+    if config.root != config.dest:
+        folders.add(config.root)  # created by the app; removed only once empty
     for folder in sorted(folders, key=lambda p: len(p.parts), reverse=True):
         try:
             if folder.is_dir() and not any(folder.iterdir()):

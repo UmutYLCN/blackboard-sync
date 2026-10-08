@@ -29,6 +29,7 @@ from blackboard_sync.menubar.model import (
     open_target,
 )
 from blackboard_sync.settings import SettingsError, save_settings
+from blackboard_sync.system import sync_root
 from blackboard_sync.updater import CheckResult, Release, UpdateError
 
 log = logging.getLogger("blackboard_sync.menubar")
@@ -343,14 +344,14 @@ def build_app(config: Config):
                 self._save()
 
         def open_school_folder(self, _sender=None) -> None:
-            if self.model.dest.is_dir():
-                open_path(self.model.dest)
+            if self.model.root.is_dir():
+                open_path(self.model.root)
             else:
-                self.model.note = f"{self.model.dest.name or self.model.dest} klasörü henüz yok; önce senkronize edin."
+                self.model.note = f"{self.model.root.name or self.model.root} klasörü henüz yok; önce senkronize edin."
                 self.refresh()
 
         def open_recent(self, rel_path: str) -> None:
-            target = open_target(self.model.dest, rel_path)
+            target = open_target(self.model.root, rel_path)
             if target is None:
                 self.model.note = "Dosya bulunamadı."
                 self.refresh()
@@ -471,7 +472,7 @@ def build_app(config: Config):
                 self.start_update()
             elif data.get("open"):
                 path = Path(data["open"])
-                open_path(path if path.exists() else self.model.dest)
+                open_path(path if path.exists() else self.model.root)
 
         def start_uninstall(self, _sender=None) -> None:
             from blackboard_sync.menubar.settings_window import ask_uninstall
@@ -481,7 +482,7 @@ def build_app(config: Config):
                 return
             self._uninstalling = True  # modal dialogs also run timers/wake events
             self._timer.stop()
-            choice = ask_uninstall(self.settings.dest)
+            choice = ask_uninstall(sync_root(self.settings.dest))
             if choice is None:
                 self._uninstalling = False
                 self._timer.start()
