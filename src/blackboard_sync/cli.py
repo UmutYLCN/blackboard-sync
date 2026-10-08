@@ -79,6 +79,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="download again files that were deleted locally (default: respect deletions)",
     )
 
+    sync.add_argument("--refetch-selection", type=Path,
+                      help="JSON array of output keys; limits --refetch-missing to these files")
+
     check = sub.add_parser("check", help="verify the session and list the courses that would sync")
     _add_selection_args(check)
     check.add_argument("--dest", type=Path, help=argparse.SUPPRESS)
@@ -144,6 +147,14 @@ def cmd_sync(args, config: Config) -> int:
     try:
         config.ensure_data_dir()
         with run_lock(config.lock_file):
+            selected = None
+            if args.refetch_selection is not None:
+                if not args.refetch_missing:
+                    raise BlackboardSyncError("--refetch-selection requires --refetch-missing")
+                selected = json.loads(args.refetch_selection.read_text(encoding="utf-8"))
+                if not isinstance(selected, list) or not all(isinstance(k, str) for k in selected):
+                    raise BlackboardSyncError("Refetch selection must be a JSON array of output keys")
+                selected = set(selected)
             client, session_data = open_client(config)
             try:
                 report = run_sync(
@@ -154,6 +165,7 @@ def cmd_sync(args, config: Config) -> int:
                     course_filters=args.course,
                     dry_run=args.dry_run,
                     refetch_missing=args.refetch_missing,
+                    refetch_keys=selected,
                     user_id=(session_data.get("user") or {}).get("id"),
                 )
             finally:

@@ -10,7 +10,8 @@ what was written locally:
 * ``outputs`` - one entry per local file (attachment, embedded file or note),
   keyed by Blackboard attachment/file id, holding the path relative to the
   destination folder, its SHA-256 and size. This is what prevents
-  re-downloads and protects files the student changed locally.
+  re-downloads and protects files the student changed locally. Optional
+  ``dismissed`` flags permanently exclude outputs from missing-file recovery.
 * ``folders`` - Windows only: the full Blackboard name of every folder whose
   name was shortened to fit the path limit, keyed by its relative path. Moving
   to another destination folder needs it to give the folders the names a sync
@@ -23,6 +24,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+from typing import Iterable
 
 from blackboard_sync.session import write_private_json
 
@@ -95,13 +97,17 @@ class State:
         self.dirty = False
 
     # -- items ----------------------------------------------------------
-    def item_unchanged(self, key: str, modified: str | None, dest: Path, check_missing: bool) -> bool:
+    def item_unchanged(self, key: str, modified: str | None, dest: Path, check_missing: bool, selected_keys: set[str] | None = None) -> bool:
         entry = self.items.get(key)
         if entry is None or modified is None or entry.get("modified") != modified or entry.get("partial"):
             return False
         if check_missing:
             for out_key in entry.get("outputs", []):
                 out = self.outputs.get(out_key)
+                if out is not None and out.get("dismissed"):
+                    continue
+                if selected_keys is not None and out_key not in selected_keys:
+                    continue
                 if out is None or not (dest / out["path"]).exists():
                     return False
         return True
@@ -118,6 +124,13 @@ class State:
             self.dirty = True
 
     # -- outputs --------------------------------------------------------
+    def dismiss_outputs(self, keys: Iterable[str]) -> None:
+        for key in keys:
+            entry = self.outputs.get(key)
+            if entry is not None and not entry.get("dismissed"):
+                entry["dismissed"] = True
+                self.dirty = True
+
     def output(self, key: str) -> dict | None:
         return self.outputs.get(key)
 
@@ -129,6 +142,8 @@ class State:
         if old and self._claimed.get(old["path"]) == key:
             del self._claimed[old["path"]]
         entry = {"path": rel_path, "sha256": sha256, "size": size}
+        if old and old.get("dismissed"):
+            entry["dismissed"] = True
         if old != entry:
             self.outputs[key] = entry
             self.dirty = True

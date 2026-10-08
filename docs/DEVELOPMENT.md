@@ -178,8 +178,8 @@ To start it **without a terminal**, build the standalone app (see
 ### Settings
 
 The first time the app starts, the settings window opens as **Blackboard Sync
-kurulumu**; later **Ayarlar…** in the menu opens the same window. It has four
-sections:
+kurulumu**; later **Ayarlar…** in the menu opens the same window. On macOS
+and Windows it has **Genel** and **Silinenler** tabs. **Genel** has four sections:
 
 - **Hesap** — **Okulunuzun Blackboard adresi**, prefilled with
   `https://blackboard.istun.edu.tr`; students of another university type their
@@ -188,12 +188,7 @@ sections:
   **Giriş yap** (saves the window and opens the Blackboard sign-in window) or
   **Hesaptan çıkış yap** (asks first; removes the session and all login browser data, so the next sign-in asks for the school credentials again; downloaded files, settings and sync state are kept).
 - **Klasör** — **Dosyaların kaydedileceği klasör**, prefilled with
-  `~/Documents/University`; **Seç…** opens a folder picker. **Silinenleri tekrar
-  indir** runs one sync that also downloads again the files you deleted
-  locally (the same as `blackboard-sync sync --refetch-missing`), for example
-  after deleting the whole folder by mistake. Files you only edited are not
-  touched; the hourly runs and **Şimdi senkronize et** keep respecting
-  deletions.
+  `~/Documents/University`; **Seç…** opens a folder picker.
 - **Genel** — **Bilgisayar açılınca başlat**, ticked by default (see
   [Start at login](#start-at-login)), and **Otomatik senkron**: every 30
   minutes, **every hour** (default), every 3 hours or **Yalnızca elle** (no
@@ -203,8 +198,22 @@ sections:
 - **Güncellemeler** — **Güncellemeleri otomatik denetle**, ticked by default,
   **Şimdi denetle** and the version number (see [Updates](#updates)).
 
+**Silinenler** lists downloaded files whose recorded path is missing under the
+saved destination, grouped by term and course, with their name and folder.
+Check the files to recover, then **Seçilenleri indir**; **Tümünü seç** checks
+all listed files. **Listeden kaldır** permanently dismisses checked entries
+from the list and future refetches. Unchecked deletions stay respected during
+normal syncs. An empty list says **Silinmiş dosya yok.** These actions use the
+saved destination; save a folder change on **Genel** first.
+
+The CLI still accepts `sync --refetch-missing` for all missing, undismissed
+outputs. To recover selected outputs only (including past terms), add
+`--refetch-selection selection.json`, where the file is a JSON array of keys
+from `state.json`'s `outputs`. Selection jobs only restore those outputs and
+leave unrelated new or changed content for normal sync.
+
 **Kaydet** saves the fields and check boxes; **Giriş yap**, **Hesaptan çıkış
-yap**, **Silinenleri tekrar indir** and **Şimdi denetle** act right away. The
+yap**, **Seçilenleri indir**, **Listeden kaldır** and **Şimdi denetle** act right away. The
 buttons that need the app's single job slot (sign in, sign out, bring back
 deleted files) are greyed out while a sync or sign-in runs. Nothing is synced
 on a schedule until the window has been saved once. When you save later:
@@ -219,8 +228,8 @@ on a schedule until the window has been saved once. When you save later:
     program) stays in the old folder and is reported; nothing is overwritten.
     Your own files in the old folder are left alone, and the old folders are
     removed only once every downloaded file moved and they are empty.
-  - **Yeniden indir** downloads the files again into the new folder (like
-    **Silinenleri tekrar indir**); the old folder is left untouched.
+  - **Yeniden indir** downloads undismissed files again into the new folder;
+    the old folder is left untouched.
   - **Sadece yeni dosyalar** leaves the old files where they are; only content
     that appears from now on lands in the new folder.
 

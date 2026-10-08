@@ -360,7 +360,7 @@ def test_refetch_notification_is_one_line_per_course():
         "MTH201: 2 yeni dosya",
     ]
     status = window_status(m)
-    assert status.refetch_enabled and status.refetch_title == "Silinenleri tekrar indir"
+    assert status.refetch_enabled and status.refetch_title == "Seçilenleri indir"
 
 
 def entries(menu):

@@ -28,6 +28,9 @@ from AppKit import (
     NSModalResponseOK,
     NSOpenPanel,
     NSPopUpButton,
+    NSScrollView,
+    NSTabView,
+    NSTabViewItem,
     NSTextField,
     NSView,
     NSWindow,
@@ -36,6 +39,7 @@ from AppKit import (
 )
 from Foundation import NSURL, NSMakeRect, NSObject
 
+from blackboard_sync import deleted
 from blackboard_sync.menubar.settings_form import (
     DEST_CHOICES,
     INTERVAL_OPTIONS,
@@ -49,7 +53,6 @@ from blackboard_sync.menubar.settings_form import (
     T_DEST_HINT,
     T_DEST_LABEL,
     T_INTERVAL_LABEL,
-    T_REFETCH_HINT,
     T_SAVE,
     T_SECTION_ACCOUNT,
     T_SECTION_FOLDER,
@@ -83,7 +86,7 @@ EDIT_KEYS = {"x": "cut:", "c": "copy:", "v": "paste:", "a": "selectAll:", "z": "
 
 # Called with (values, login pressed); returns (error, field) to show, or None to close.
 SubmitHandler = Callable[[FormValues, bool], "tuple[str, str] | None"]
-# Called with "logout", "refetch", "check_updates" or "update": acts without saving.
+# Called with "logout", "check_updates" or "update": acts without saving.
 ActionHandler = Callable[[str], None]
 
 
@@ -110,7 +113,21 @@ class _Target(NSObject):
         self.owner.account_pressed()
 
     def refetch_(self, _sender):
-        self.owner.on_action("refetch")
+        self.owner.deleted_action("refetch")
+
+    def dismiss_(self, _sender):
+        self.owner.deleted_action("dismiss")
+
+    def selectAll_(self, _sender):
+        self.owner.select_all()
+
+    def checked_(self, sender):
+        key = self.owner.check_keys[int(sender.tag())]
+        self.owner.selection.select(key, bool(sender.state()))
+        self.owner.update_deleted_buttons()
+
+    def tabView_didSelectTabViewItem_(self, _tabs, _item):
+        self.owner.refresh_deleted()
 
     def update_(self, _sender):
         self.owner.on_action(self.owner.status.update_action)
@@ -137,10 +154,14 @@ class SettingsWindow:
         on_submit: SubmitHandler,
         on_action: ActionHandler,
         on_close: Callable[[], None],
+        on_missing=lambda: [],
+        on_deleted_action=lambda action, keys: None,
     ):
         self.on_submit = on_submit
         self.on_action = on_action
         self.on_close = on_close
+        self.on_missing, self.on_deleted_action = on_missing, on_deleted_action
+        self.selection = deleted.DeletedSelection()
         self.status = status
         self.first_run = first_run
         self.target = _Target.alloc().init()
@@ -224,9 +245,6 @@ class SettingsWindow:
         view.addSubview_(choose)
         hint, height = wrapping(T_DEST_HINT, small=True)
         place(hint, height, gap=12)
-        refetch_hint, _ = wrapping(T_REFETCH_HINT, small=True)
-        self.refetch_button = NSButton.buttonWithTitle_target_action_("", self.target, "refetch:")
-        action_row(refetch_hint, self.refetch_button)
 
         section(T_SECTION_GENERAL)
         self.autostart = NSButton.checkboxWithTitle_target_action_(T_AUTOSTART, None, None)
@@ -275,11 +293,25 @@ class SettingsWindow:
         y += BUTTON_HEIGHT + MARGIN
 
         view.setFrame_(NSMakeRect(0, 0, WIDTH, y))
-        self.window.setContentView_(view)
-        self.window.setContentSize_((WIDTH, y))
+        tabs = NSTabView.alloc().initWithFrame_(NSMakeRect(0, 0, WIDTH + 32, y + 48))
+        general = NSTabViewItem.alloc().initWithIdentifier_("general")
+        general.setLabel_("Genel")
+        general.setView_(view)
+        tabs.addTabViewItem_(general)
+        removed = NSTabViewItem.alloc().initWithIdentifier_("deleted")
+        removed.setLabel_(deleted.T_TAB)
+        self.deleted_view = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, WIDTH, y))
+        removed.setView_(self.deleted_view)
+        tabs.addTabViewItem_(removed)
+        self._build_deleted(y)
+        tabs.setDelegate_(self.target)
+        self.tabs = tabs
+        self.window.setContentView_(tabs)
+        self.window.setContentSize_((WIDTH + 32, y + 48))
 
     # -- behaviour ------------------------------------------------------------
     def show(self) -> None:
+        self.refresh_deleted()
         NSApp.activateIgnoringOtherApps_(True)
         if not self.window.isVisible():
             self.window.center()
@@ -306,11 +338,107 @@ class SettingsWindow:
         if self.first_run:  # Return signs in, never out
             self.account_button.setKeyEquivalent_("\r" if status.account_action == "login" else "")
         self.account_button.setEnabled_(status.account_enabled)
-        self.refetch_button.setTitle_(status.refetch_title)
-        self.refetch_button.setEnabled_(status.refetch_enabled)
         self.version_label.setStringValue_(status.version)
         self.update_button.setTitle_(status.update_title)
         self.update_button.setEnabled_(status.update_enabled)
+        self.deleted_result.setStringValue_(status.deleted_message)
+        self.refresh_deleted()
+
+    def _build_deleted(self, height):
+        hint = NSTextField.wrappingLabelWithString_(deleted.T_HINT)
+        hint.setFrame_(NSMakeRect(MARGIN, MARGIN, CONTENT, 50))
+        self.deleted_view.addSubview_(hint)
+        self.deleted_scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(MARGIN, 78, CONTENT, height - 194))
+        self.deleted_scroll.setHasVerticalScroller_(True)
+        self.deleted_scroll.setAutohidesScrollers_(True)
+        self.deleted_view.addSubview_(self.deleted_scroll)
+        self.select_all_button = NSButton.buttonWithTitle_target_action_(deleted.T_SELECT_ALL, self.target, "selectAll:")
+        self.refetch_button = NSButton.buttonWithTitle_target_action_(deleted.T_DOWNLOAD, self.target, "refetch:")
+        self.dismiss_button = NSButton.buttonWithTitle_target_action_(deleted.T_DISMISS, self.target, "dismiss:")
+        x = MARGIN
+        for button in (self.select_all_button, self.refetch_button, self.dismiss_button):
+            width = max(button.fittingSize().width + 8, 110)
+            button.setFrame_(NSMakeRect(x, height - 102, width, BUTTON_HEIGHT))
+            self.deleted_view.addSubview_(button)
+            x += width + 4
+        self.deleted_result = NSTextField.wrappingLabelWithString_("")
+        self.deleted_result.setFrame_(NSMakeRect(MARGIN, height - 62, CONTENT, 50))
+        self.deleted_view.addSubview_(self.deleted_result)
+        self._drawn_rows = None
+        self.checks = {}
+        self.check_keys = []
+
+    def refresh_deleted(self):
+        rows = self.on_missing()
+        self.selection.refresh(rows)
+        if rows != self._drawn_rows:
+            document = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, CONTENT - 20, 1))
+            y = 0
+            group = None
+            self.checks = {}
+            self.check_keys = []
+            def label(text, height, bold=False):
+                nonlocal y
+                control = NSTextField.wrappingLabelWithString_(text)
+                if bold:
+                    control.setFont_(NSFont.boldSystemFontOfSize_(NSFont.systemFontSize()))
+                else:
+                    control.setFont_(NSFont.systemFontOfSize_(NSFont.smallSystemFontSize()))
+                    control.setTextColor_(NSColor.secondaryLabelColor())
+                control.setPreferredMaxLayoutWidth_(CONTENT - 20)
+                height = max(height, control.fittingSize().height)
+                control.setToolTip_(text)
+                control.setFrame_(NSMakeRect(0, y, CONTENT - 20, height))
+                document.addSubview_(control)
+                y += height + 6
+            if not rows:
+                label(deleted.T_EMPTY, 32)
+            for row in rows:
+                if group != (row.term, row.course):
+                    group = (row.term, row.course)
+                    label(f"{row.term} / {row.course}", 40, bold=True)
+                button = NSButton.checkboxWithTitle_target_action_(row.name, self.target, "checked:")
+                button.cell().setWraps_(True)
+                button_height = max(24, button.cell().cellSizeForBounds_(NSMakeRect(0, 0, CONTENT - 20, 1000)).height)
+                button.setFrame_(NSMakeRect(0, y, CONTENT - 20, button_height))
+                button.setToolTip_(row.name)
+                button.setTag_(len(self.check_keys))
+                button.setState_(1 if row.key in self.selection.selected else 0)
+                self.check_keys.append(row.key)
+                self.checks[row.key] = button
+                document.addSubview_(button)
+                y += button_height + 4
+                label(row.folder, 40)
+            document.setFrame_(NSMakeRect(0, 0, CONTENT - 20, max(y, 1)))
+            self.deleted_scroll.setDocumentView_(document)
+            self._drawn_rows = rows
+        self.update_deleted_buttons()
+
+    def update_deleted_buttons(self):
+        enabled = self.status.refetch_enabled
+        self.select_all_button.setEnabled_(enabled and bool(self.selection.rows))
+        self.refetch_button.setTitle_(self.status.refetch_title)
+        self.refetch_button.setEnabled_(enabled and bool(self.selection.keys()))
+        self.dismiss_button.setEnabled_(enabled and bool(self.selection.keys()))
+        for button in self.checks.values():
+            button.setEnabled_(enabled)
+
+    def select_all(self):
+        self.selection.select_all()
+        for button in self.checks.values():
+            button.setState_(1)
+        self.update_deleted_buttons()
+
+    def deleted_action(self, action):
+        keys = self.selection.keys()
+        if not keys or not self.status.refetch_enabled:
+            return
+        error = self.on_deleted_action(action, keys)
+        self.refresh_deleted()
+        if error:
+            self.deleted_result.setStringValue_(error)
+        elif action == "dismiss":
+            self.deleted_result.setStringValue_("Seçilen dosyalar listeden kaldırıldı.")
 
     def account_pressed(self) -> None:
         if self.status.account_action == "login":

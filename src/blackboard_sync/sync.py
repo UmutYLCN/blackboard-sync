@@ -178,6 +178,7 @@ class Syncer:
         dry_run: bool = False,
         refetch_missing: bool = False,
         windows: bool | None = None,
+        refetch_keys: set[str] | None = None,
     ):
         self.client = client
         self.config = config
@@ -185,7 +186,21 @@ class Syncer:
         self.dest = config.dest
         self.dry_run = dry_run
         self.refetch_missing = refetch_missing
+        self.refetch_keys = refetch_keys
         self.windows = is_windows() if windows is None else windows
+
+    def should_refetch(self, key: str) -> bool:
+        previous = self.state.output(key)
+        return bool(self.refetch_missing and previous and not previous.get("dismissed")
+                    and (self.refetch_keys is None or key in self.refetch_keys))
+
+    def skip_output(self, key: str) -> bool:
+        previous = self.state.output(key)
+        if previous and previous.get("dismissed"):
+            return True
+        if self.refetch_keys is not None:
+            return not self.should_refetch(key) or (self.dest / previous["path"]).exists()
+        return False
 
     # -- course discovery ----------------------------------------------
     def discover(
@@ -402,6 +417,11 @@ class Syncer:
     ) -> None:
         key = f"content:{course.id}:{item['id']}"
         modified = item.get("modified")
+        if self.refetch_keys is not None and not any(
+            self.should_refetch(k) and not (self.dest / self.state.outputs[k]["path"]).exists()
+            for k in self.state.items.get(key, {}).get("outputs", [])
+        ):
+            return
         # Bodies come fresh with every listing, so the signed file URLs in them are
         # still valid for the downloads below.
         embedded_files = find_embedded_files(body_text(item.get("body")))
@@ -409,7 +429,7 @@ class Syncer:
         previous_item = self.state.items.get(key) or {}
         # A replaced file shows up as a new id even when "modified" stays put.
         if set(embedded_keys) <= set(previous_item.get("outputs", [])) and self.state.item_unchanged(
-            key, modified, self.dest, self.refetch_missing
+            key, modified, self.dest, self.refetch_missing, self.refetch_keys
         ):
             return
         ultra_body = self.is_ultra_body(item)
@@ -452,7 +472,7 @@ class Syncer:
                 outputs.append(out_key)
                 saved.append(PurePosixPath(rel).name)
             if failure is not None:
-                if not self.dry_run:
+                if not self.dry_run and self.refetch_keys is None:
                     self.state.record_item(key, modified, outputs, title, partial=True)
                 raise failure
 
@@ -477,7 +497,7 @@ class Syncer:
             self.write_note(out_key, join_rel(rel_dir, note_name(title, windows=self.windows)), note, report, "notes")
             outputs.append(out_key)
 
-        if not self.dry_run:
+        if not self.dry_run and self.refetch_keys is None:
             self.state.record_item(key, modified, outputs, title)
 
     def kept_attachments(self, previous_item: dict, modified: str | None) -> set[str]:
@@ -515,8 +535,10 @@ class Syncer:
             if ann.get("draft"):
                 continue
             key = f"announcement:{course.id}:{ann['id']}"
+            if self.refetch_keys is not None and not self.should_refetch(f"announcement-note:{course.id}:{ann['id']}"):
+                continue
             modified = ann.get("modified")
-            if self.state.item_unchanged(key, modified, self.dest, self.refetch_missing):
+            if self.state.item_unchanged(key, modified, self.dest, self.refetch_missing, self.refetch_keys):
                 continue
             title = ann.get("title") or "Announcement"
             date = announcement_date(ann)
@@ -530,7 +552,7 @@ class Syncer:
             except OSError as exc:
                 report.warnings.append(f"Skipped announcement {title!r}: {exc}")
                 continue
-            if not self.dry_run:
+            if not self.dry_run and self.refetch_keys is None:
                 self.state.record_item(key, modified, [out_key], title)
 
     # -- writing files -------------------------------------------------
@@ -544,9 +566,11 @@ class Syncer:
         replaces: str | None = None,
     ) -> str:
         """Download one file unless it is already mirrored; return its local path."""
-        if replaces and not self.dry_run and self.state.output(out_key) is None:
+        if replaces and self.refetch_keys is None and not self.dry_run and self.state.output(out_key) is None:
             self.state.move_output(replaces, out_key)
         previous = self.state.output(out_key)
+        if self.skip_output(out_key):
+            return previous["path"] if previous else desired_rel
         if self.dry_run:
             if previous:
                 return previous["path"]
@@ -558,7 +582,7 @@ class Syncer:
         known = None
         if previous and (previous.get("etag") or previous.get("last_modified")):
             # A recorded copy that is gone from disk must be fetched again when asked to.
-            if (self.dest / previous["path"]).exists() or not self.refetch_missing:
+            if (self.dest / previous["path"]).exists() or not self.should_refetch(out_key):
                 known = previous
         download = self.client.download(url, target_dir, expected_name=expected, known=known)
         if download.unchanged:
@@ -581,6 +605,9 @@ class Syncer:
     def write_note(
         self, out_key: str, desired_rel: str, text: str, report: CourseReport, kind: str
     ) -> str:
+        if self.skip_output(out_key):
+            previous = self.state.output(out_key)
+            return previous["path"] if previous else desired_rel
         new_list = getattr(report, f"new_{kind}")
         updated_list = getattr(report, f"updated_{kind}")
         data = text.encode("utf-8")
@@ -626,7 +653,7 @@ class Syncer:
         if previous:
             prev_abs = self.dest / previous["path"]
             if previous["sha256"] == sha:
-                if not prev_abs.exists() and self.refetch_missing:
+                if not prev_abs.exists() and self.should_refetch(out_key):
                     self._move_into(tmp, prev_abs)
                     return "new", previous["path"]
                 return "unchanged", previous["path"]
@@ -682,6 +709,7 @@ def run_sync(
     refetch_missing: bool = False,
     user_id: str | None = None,
     now: datetime | None = None,
+    refetch_keys: set[str] | None = None,
 ) -> SyncReport:
     """One complete sync pass. Raises LoginRequired when the session is gone."""
     report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.dest))
@@ -690,7 +718,18 @@ def run_sync(
         report.warnings.append(state.recovery)
     if not dry_run:
         remove_stale_partials(config.dest)
-    syncer = Syncer(client, config, state, dry_run=dry_run, refetch_missing=refetch_missing)
+    if refetch_keys is not None:
+        from blackboard_sync.deleted import missing_outputs
+        refetch_keys = refetch_keys & {row.key for row in missing_outputs(state, config.dest)}
+        all_terms = True
+        term_name = None
+        course_filters = sorted({key.split(":")[1] for key in refetch_keys})
+        if not refetch_keys:
+            report.message = "Seçilen dosyalar zaten mevcut veya listeden kaldırılmış."
+            report.finished_at = _now_iso()
+            return report
+    syncer = Syncer(client, config, state, dry_run=dry_run, refetch_missing=refetch_missing,
+                    refetch_keys=refetch_keys)
     me = client.me()  # also the cheapest way to prove the session still works
     user_id = me.get("id") or user_id
     if not user_id:
@@ -720,4 +759,9 @@ def run_sync(
         if not dry_run:
             state.save()
         report.finished_at = _now_iso()
+    if refetch_keys is not None:
+        remaining = sum(not (config.dest / state.outputs[key]["path"]).exists() for key in refetch_keys)
+        report.message = f"{len(refetch_keys) - remaining} dosya indirildi."
+        if remaining:
+            report.message += f" {remaining} dosya indirilemedi; listede tutuldu."
     return report

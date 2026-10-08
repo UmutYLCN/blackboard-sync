@@ -13,6 +13,7 @@ import logging
 import os
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, IO
@@ -58,10 +59,21 @@ def run_sync(
     settings: Settings,
     runner: Runner = subprocess.run,
     now: Callable[[], datetime] = utcnow,
+    refetch_keys: list[str] | None = None,
 ) -> RunOutcome:
+    selection = None
     try:
+        args = sync_arguments(job, settings)
+        if refetch_keys is not None:
+            if job != "refetch":
+                raise ValueError("Selections require a refetch job")
+            fd, name = tempfile.mkstemp(prefix="bbsync-refetch-", suffix=".json")
+            selection = Path(name)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(refetch_keys, fh)
+            args.extend(["--refetch-selection", str(selection)])
         proc = runner(
-            cli_command(*sync_arguments(job, settings)),
+            cli_command(*args),
             capture_output=True,
             text=True,
             timeout=SYNC_TIMEOUT,
@@ -71,6 +83,9 @@ def run_sync(
         return RunOutcome(status="error", message="Senkron çok uzun sürdü ve durduruldu.", finished_at=now())
     except OSError as exc:
         return RunOutcome(status="error", message=str(exc), finished_at=now())
+    finally:
+        if selection is not None:
+            selection.unlink(missing_ok=True)
     return parse_sync_output(proc.stdout, proc.returncode, proc.stderr, now())
 
 
@@ -94,13 +109,13 @@ def run_login(settings: Settings, runner: Runner = subprocess.run) -> tuple[bool
     return False, lines[-1] if lines else f"exit status {proc.returncode}"
 
 
-def run_sync_guarded(job: str, settings: Settings) -> RunOutcome:
+def run_sync_guarded(job: str, settings: Settings, refetch_keys: list[str] | None = None) -> RunOutcome:
     """``run_sync`` that turns any unexpected exception into a failed outcome.
 
     Worker threads must always report back, or the model stays busy forever.
     """
     try:
-        return run_sync(job, settings)
+        return run_sync(job, settings, refetch_keys=refetch_keys)
     except Exception as exc:
         log.exception("Sync job failed")
         return RunOutcome(status="error", message=str(exc), finished_at=utcnow())

@@ -13,7 +13,7 @@ import sys
 import threading
 from pathlib import Path
 
-from blackboard_sync import runtime, updater, uninstall
+from blackboard_sync import deleted, runtime, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, launchagent, settings_form
@@ -150,18 +150,18 @@ def build_app(config: Config):
             elif self.model.due(jobs.utcnow()):
                 self.start_sync()
 
-        def start_sync(self, _sender=None, job: str = "sync") -> None:
+        def start_sync(self, _sender=None, job: str = "sync", refetch_keys=None) -> None:
             if not self.model.begin(job):
                 return
             log.info("%s started", job)
             self.refresh()
-            threading.Thread(target=self._sync_worker, args=(job, self.settings), daemon=True).start()
+            threading.Thread(target=self._sync_worker, args=(job, self.settings, refetch_keys), daemon=True).start()
 
         def start_refetch(self, _sender=None) -> None:
             self.start_sync(job="refetch")
 
-        def _sync_worker(self, job: str, settings) -> None:
-            outcome = jobs.run_sync_guarded(job, settings)
+        def _sync_worker(self, job: str, settings, refetch_keys=None) -> None:
+            outcome = jobs.run_sync_guarded(job, settings, refetch_keys=refetch_keys)
             AppHelper.callAfter(self._sync_done, outcome)
 
         def _sync_done(self, outcome: RunOutcome) -> None:
@@ -322,8 +322,23 @@ def build_app(config: Config):
                     on_submit=self.settings_submitted,
                     on_action=self.settings_action,
                     on_close=self._settings_closed,
+                    on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
+                    on_deleted_action=self.deleted_action,
                 )
             self._settings_window.show()
+
+        def deleted_action(self, action, keys):
+            if self._uninstalling or self.model.busy is not None or self.model.updates.busy == "download":
+                return settings_form.T_BUSY
+            try:
+                if action == "dismiss":
+                    deleted.dismiss_missing(self.config, self.settings.dest, keys)
+                elif keys:
+                    self.start_sync(job="refetch", refetch_keys=keys)
+            except Exception as exc:
+                log.warning("Deleted-file action failed: %s", exc)
+                return "İşlem tamamlanamadı; çalışan senkron varsa bitmesini bekleyin."
+            return None
 
         def settings_action(self, action: str) -> None:
             """A button in the settings window that acts right away instead of saving."""

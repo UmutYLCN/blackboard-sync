@@ -1,8 +1,9 @@
 """What the settings window shows and what saving it means, without any GUI code.
 
-The window has four sections: Hesap (school address, who is signed in, sign
-in or out), Klasör (destination, bring back deleted files), Genel (start at
-login, sync interval) and Güncellemeler (automatic checks, check now, version). The GUI
+The Genel tab has four sections: Hesap (school address, who is signed in, sign
+in or out), Klasör (destination), Genel (start at
+login, sync interval) and Güncellemeler (automatic checks, check now, version). Silinenler lists
+missing outputs for selective recovery or permanent dismissal. The GUI
 layers (``settings_window.py`` on macOS, ``windows/settings_window.py``) only
 draw ``FormValues`` and ``WindowStatus`` and report which button was pressed.
 The first launch (no ``settings.json`` yet) and the "Ayarlar…" menu item open
@@ -17,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from blackboard_sync import __version__
+from blackboard_sync.deleted import T_DOWNLOAD
 from blackboard_sync.menubar.model import (
     DEST_KEEP,
     DEST_MOVE,
@@ -25,7 +27,6 @@ from blackboard_sync.menubar.model import (
     T_LOGGING_IN,
     T_LOGIN,
     T_LOGOUT,
-    T_REFETCH,
     T_REFETCHING,
     T_SYNC_NOW,
     AppModel,
@@ -89,7 +90,6 @@ T_DEST_HINT = (
     "Klasörü değiştirirseniz indirilmiş dosyaları yeni klasöre taşımayı ya da "
     "yeniden indirmeyi seçebilirsiniz."
 )
-T_REFETCH_HINT = "Bilgisayarınızdan sildiğiniz ders dosyalarını yeniden indirir."
 T_AUTOSTART = "Bilgisayar açılınca başlat"
 T_CHECK_UPDATES = "Güncellemeleri otomatik denetle"
 T_CHOOSE_FOLDER = "Seç…"
@@ -165,6 +165,7 @@ class WindowStatus:
     update_title: str
     update_action: str  # "check_updates" | "update"
     update_enabled: bool
+    deleted_message: str = ""
 
 
 def window_status(model: AppModel) -> WindowStatus:
@@ -193,13 +194,19 @@ def window_status(model: AppModel) -> WindowStatus:
         account_title=title,
         account_action=action,
         account_enabled=idle,
-        refetch_title=T_REFETCHING if model.busy == "refetch" else T_REFETCH,
+        refetch_title=T_REFETCHING if model.busy == "refetch" else T_DOWNLOAD,
         # Before the first save there is no folder to bring files back to.
-        refetch_enabled=idle and model.configured,
+        refetch_enabled=idle and model.configured and model.updates.busy != "download",
         version=f"Sürüm {__version__}",
         update_title=update_title,
         update_action=update_action,
         update_enabled=updates.busy is None,
+        deleted_message=model.activity() or model.note or (
+            (model.last.message or "Son işlem tamamlandı.") if model.last and model.last.status == "ok"
+            else "Oturum sona erdi; tekrar giriş yapın." if model.last and model.last.status == "login_required"
+            else "Başka bir senkron çalışıyor; bitmesini bekleyin." if model.last and model.last.status == "locked"
+            else "İşlem tamamlanamadı. Ayrıntılar uygulama menüsünde." if model.last else ""
+        ),
     )
 
 
