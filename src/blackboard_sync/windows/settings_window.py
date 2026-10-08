@@ -195,3 +195,46 @@ def ask_dest_choice(parent, old, new, files):
     dialog.grab_set()
     dialog.wait_window()
     return answer[0] if answer else None
+
+
+def ask_uninstall(parent, dest):
+    from blackboard_sync import uninstall
+    import tkinter as tk
+    from tkinter import ttk
+
+    dialog = tk.Toplevel(parent)
+    dialog.title(uninstall.TITLE)
+    dialog.transient(parent)
+    dialog.resizable(False, False)
+    answer = []
+    delete_files = tk.BooleanVar(dialog, value=False)
+
+    def confirm():
+        answer.append(delete_files.get())
+        dialog.destroy()
+
+    frame = ttk.Frame(dialog, padding=20)
+    frame.grid(sticky="nsew")
+    ttk.Label(frame, text=uninstall.MESSAGE, wraplength=480, justify="left").grid(sticky="w", pady=(0, 16))
+    path = ttk.Label(frame, text=f"Geri Dönüşüm Kutusu'na taşınacak dosyaların klasörü:\n{dest}",
+                     wraplength=480, justify="left")
+
+    def toggled():
+        if delete_files.get():
+            path.grid(row=2, column=0, sticky="w", pady=12)
+        else:
+            path.grid_remove()
+
+    ttk.Checkbutton(frame, text=uninstall.CHECKBOX, variable=delete_files,
+                    command=toggled).grid(row=1, column=0, sticky="w")
+    buttons = ttk.Frame(frame)
+    buttons.grid(row=3, column=0, sticky="e", pady=(16, 0))
+    ttk.Button(buttons, text="Kaldır", command=confirm).pack(side="left", padx=4)
+    cancel = ttk.Button(buttons, text="Vazgeç", command=dialog.destroy)
+    cancel.pack(side="left", padx=4)
+    dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+    dialog.bind("<Escape>", lambda _e: dialog.destroy())
+    cancel.focus_set()
+    dialog.grab_set()
+    dialog.wait_window()
+    return answer[0] if answer else None

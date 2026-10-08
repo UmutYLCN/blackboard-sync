@@ -1,4 +1,4 @@
-"""Command-line entry point: ``blackboard-sync login | sync | check``."""
+"""Command-line entry point: ``blackboard-sync login | sync | check | uninstall``."""
 
 from __future__ import annotations
 
@@ -82,6 +82,9 @@ def build_parser() -> argparse.ArgumentParser:
     check = sub.add_parser("check", help="verify the session and list the courses that would sync")
     _add_selection_args(check)
     check.add_argument("--dest", type=Path, help=argparse.SUPPRESS)
+    uninstall = sub.add_parser("uninstall", help="uygulamayı ve tüm uygulama verilerini kaldır")
+    uninstall.add_argument("--delete-course-files", action="store_true",
+                           help="kayıtlı ders dosyalarını da Çöp Sepeti’ne taşı (varsayılan: koru)")
     return parser
 
 
@@ -180,6 +183,16 @@ def cmd_sync(args, config: Config) -> int:
     return STATUS_EXIT[report.status]
 
 
+def cmd_uninstall(args, config: Config) -> int:
+    from blackboard_sync.uninstall import uninstall
+
+    warnings = uninstall(config, delete_course_files=args.delete_course_files)
+    for warning in warnings:
+        print(warning, file=sys.stderr)
+    print("Blackboard Sync uygulama verileri kaldırıldı.")
+    return EXIT_ERROR if warnings else EXIT_OK
+
+
 def _utf8_output() -> None:
     """Windows: write UTF-8 even when the output is a pipe (Turkish names, JSON)."""
     for stream in (sys.stdout, sys.stderr):
@@ -201,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
         # urllib3 logs full URLs at DEBUG only; keep it quiet by default.
         logging.getLogger("urllib3").setLevel(logging.WARNING)
     config = make_config(args)
-    handlers = {"login": cmd_login, "sync": cmd_sync, "check": cmd_check}
+    handlers = {"login": cmd_login, "sync": cmd_sync, "check": cmd_check, "uninstall": cmd_uninstall}
     try:
         return handlers[args.command](args, config)
     except LoginRequired as exc:

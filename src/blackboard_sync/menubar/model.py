@@ -797,6 +797,7 @@ class AppModel:
             MenuEntry(),
             *([update] if update else []),
             MenuEntry(T_SETTINGS, "settings"),
+            MenuEntry("Uygulamayı kaldır…", "uninstall"),
             MenuEntry(T_QUIT, "quit"),
         ]
         return menu

@@ -74,6 +74,19 @@ def setup_logging(env=None) -> Path:
     return path
 
 
+def close_logging() -> None:
+    """Release both log handles before uninstall deletes the data folder contents."""
+    global _fault_file
+    from blackboard_sync.uninstall import close_file_logs
+
+    faulthandler.cancel_dump_traceback_later()
+    faulthandler.disable()
+    if _fault_file is not None:
+        _fault_file.close()
+        _fault_file = None
+    close_file_logs()
+
+
 def _stack_dump_interval(value):
     try:
         seconds = float(value or 0)

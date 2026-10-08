@@ -363,3 +363,36 @@ def ask_dest_choice(old: Path, new: Path, files: int) -> str | None:
     NSApp.activateIgnoringOtherApps_(True)
     index = alert.runModal() - NSAlertFirstButtonReturn
     return DEST_CHOICES[index][0] if 0 <= index < len(DEST_CHOICES) else None
+
+
+class _UninstallChoice(NSObject):
+    def changed_(self, checkbox):
+        self.path_label.setHidden_(not bool(checkbox.state()))
+
+
+def ask_uninstall(dest: Path) -> bool | None:
+    """False keeps course files, True trashes them, None cancels everything."""
+    from blackboard_sync import uninstall
+
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_(uninstall.TITLE)
+    alert.setInformativeText_(uninstall.MESSAGE)
+    alert.addButtonWithTitle_("Kaldır")
+    cancel = alert.addButtonWithTitle_("Vazgeç")
+    cancel.setKeyEquivalent_("\x1b")
+    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 440, 110))
+    target = _UninstallChoice.alloc().init()
+    checkbox = NSButton.checkboxWithTitle_target_action_(uninstall.CHECKBOX, target, "changed:")
+    checkbox.setState_(0)
+    checkbox.setFrame_(NSMakeRect(0, 80, 440, 24))
+    label = NSTextField.wrappingLabelWithString_(f"Çöp Sepeti'ne taşınacak dosyaların klasörü:\n{dest}")
+    label.setFrame_(NSMakeRect(0, 0, 440, 72))
+    label.setHidden_(True)
+    target.path_label = label
+    view.addSubview_(checkbox)
+    view.addSubview_(label)
+    alert.setAccessoryView_(view)
+    NSApp.activateIgnoringOtherApps_(True)
+    if alert.runModal() != NSAlertFirstButtonReturn:
+        return None
+    return bool(checkbox.state())

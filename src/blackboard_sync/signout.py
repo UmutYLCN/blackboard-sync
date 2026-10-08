@@ -64,13 +64,21 @@ def clear_webkit_data() -> None:
     """
     if sys.platform != "darwin":
         return
-    from Foundation import NSDate
+    from Foundation import NSDate, NSRunLoop
     from WebKit import WKWebsiteDataStore
 
     store = WKWebsiteDataStore.defaultDataStore()
+    finished = []
     store.removeDataOfTypes_modifiedSince_completionHandler_(
-        WKWebsiteDataStore.allWebsiteDataTypes(), NSDate.distantPast(), lambda: None
+        WKWebsiteDataStore.allWebsiteDataTypes(), NSDate.distantPast(), lambda: finished.append(True)
     )
+    # Uninstall quits immediately after sign-out; let WebKit finish its async
+    # removal before returning, also when invoked from the command line.
+    deadline = time.monotonic() + 10
+    while not finished:
+        if time.monotonic() >= deadline:
+            raise TimeoutError("WebKit login data cleanup did not finish")
+        NSRunLoop.currentRunLoop().runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(0.05))
 
 
 def sign_out(config: Config, clear_web=None, sleep=time.sleep) -> list[str]:
