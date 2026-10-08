@@ -76,6 +76,7 @@ T_AUTO_SYNC_OFF = "otomatik senkron kapalı"
 T_CHECK_NOW = "Şimdi denetle"
 T_CHECKING_UPDATES = "Güncellemeler denetleniyor…"
 T_DOWNLOADING_UPDATE = "Güncelleme indiriliyor…"
+T_UPDATE_WAIT = "Güncellemeden önce çalışan işlemin tamamlanmasını bekleyin; sonra tekrar deneyin."
 
 
 def open_folder_title(dest: Path) -> str:
@@ -85,8 +86,9 @@ def open_folder_title(dest: Path) -> str:
 
 # Update actions of the menu row and the settings window. "check_updates"
 # checks right away; "update" downloads the release in
-# ``AppModel.updates.available`` and installs it (macOS: open the .dmg,
-# Windows: run the silent installer and quit).
+# ``AppModel.updates.available`` and installs it (macOS: swap the app in and
+# restart it, or open the .dmg where it cannot; Windows: run the silent
+# installer and quit).
 UPDATE_ACTIONS = ("check_updates", "update")
 
 
@@ -327,13 +329,16 @@ class UpdateState:
     ``checked_at``, ``notified`` and ``available`` are saved in menubar.json so
     a restart neither checks again before a day has passed nor repeats the
     notification for a version the student was already told about.
+    ``installing`` is the version the macOS app quit to swap in; the app it
+    restarts reads it back to tell whether the swap took effect.
     """
 
     checked_at: datetime | None = None  # last check that got an answer
     notified: str = ""  # the version a notification was posted for
     available: Release | None = None
     not_before: datetime | None = None  # start-up delay or retry after a failed check
-    busy: str | None = None  # "check" | "download"
+    busy: str | None = None  # "check" | "download" (until the app quits to install)
+    installing: str = ""
 
     def due(self, now: datetime, enabled: bool) -> bool:
         if not enabled or self.busy is not None:
@@ -378,6 +383,23 @@ class UpdateState:
             return [Notification("Güncelleme yüklenemedi", error, {})]
         return []
 
+    def finish_install(self, current: str = __version__) -> list[Notification]:
+        """After the restart that followed an in-place update: did it take effect?"""
+        version, self.installing = self.installing, ""
+        if not version:
+            return []
+        if version == current:
+            return [Notification(
+                f"Blackboard Sync {version} sürümüne güncellendi",
+                "Ayarlarınız ve indirdiğiniz ders dosyaları korundu.",
+                {},
+            )]
+        return [Notification(
+            "Güncelleme yüklenemedi",
+            f"Blackboard Sync {version} yerine konamadı; {current} sürümü kullanılmaya devam ediyor.",
+            {},
+        )]
+
     def menu_entry(self) -> MenuEntry | None:
         """The menu row, only while a new version is waiting or downloading."""
         if self.busy == "download":
@@ -391,6 +413,7 @@ class UpdateState:
             "checked_at": self.checked_at.isoformat() if self.checked_at else None,
             "notified": self.notified,
             "available": self.available.to_dict() if self.available else None,
+            "installing": self.installing,
         }
 
     @classmethod
@@ -405,9 +428,11 @@ class UpdateState:
         if available is not None and not is_newer(available.version, current):
             available = None  # already installed
         notified = data.get("notified")
+        installing = data.get("installing")
         return cls(
             checked_at=parse_iso(data.get("checked_at")),
             notified=notified if isinstance(notified, str) else "",
+            installing=installing if isinstance(installing, str) else "",
             available=available,
             not_before=now + UPDATE_FIRST_DELAY,
         )
@@ -553,8 +578,11 @@ class AppModel:
         return self.pending
 
     def begin(self, job: str) -> bool:
-        """Claim the single job slot; False when something is already running."""
-        if self.busy is not None:
+        """Claim the single job slot; False when something is already running.
+
+        Nothing starts while an update downloads: it may end with the app quitting.
+        """
+        if self.busy is not None or self.updates.busy == "download":
             return False
         self.busy = job
         if job == self.pending:

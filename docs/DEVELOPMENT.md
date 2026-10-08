@@ -252,12 +252,24 @@ while there is no update). **Şimdi denetle** in the settings window checks
 right away and answers with a notification; with an update waiting it reads
 **1.1.0 sürümüne güncelle** instead.
 
-**Güncelle** downloads `Blackboard-Sync-<version>.dmg` into Downloads, checks
-it against the release's `SHA256SUMS.txt`, opens it and explains the last
-step: quit Blackboard Sync and drag the new app over the old one in
-Applications. The app does not replace itself silently (an app without a
-Developer ID signature cannot do that reliably, and signed releases keep the
-same flow for now). Run from a checkout, **Güncelle** opens the release page
+On macOS **Güncelle** updates the app in place (`update_macos.py`). It
+downloads `Blackboard-Sync-<version>.dmg` into a temporary folder, checks it
+against the release's `SHA256SUMS.txt`, attaches it hidden and read-only, and
+checks the app on it the way `install.sh` does: this release's bundle
+identifier and version, a valid Developer ID signature of the running app's
+team, and Gatekeeper's notarization verdict. Any failure keeps the current
+app and says why in a notification. The verified app is copied with `ditto`
+to a hidden sibling of the running one, the image is detached, and the app
+quits; a detached shell helper waits for it to exit, swaps the new app in
+(the old one is restored if a step fails) and opens it again, which then
+posts "Blackboard Sync X sürümüne güncellendi". No update starts while a
+sync or folder move runs (the run lock is held throughout).
+
+Where the app cannot replace itself (it runs from the mounted image or a
+translocated path, its folder is not writable, or it is an unsigned build)
+**Güncelle** downloads the `.dmg` into Downloads, opens it and explains the
+last step: quit Blackboard Sync and drag the new app over the old one in
+Applications. Run from a checkout, **Güncelle** opens the release page
 instead.
 
 Checking needs the GitHub repository to be public: without signing in, GitHub

@@ -29,6 +29,20 @@ irm https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.ps1 
 
 İlk açılışta okul adresini ve kayıt klasörünü seç, ardından **Giriş yap**.
 
+## Güncelleme
+
+Yeni sürüm çıkınca bildirim gelir; menüden veya Ayarlar'dan **Güncelle**'ye bas.
+
+- **macOS:** Uygulama yeni sürümü arka planda indirir, imzasını ve Apple onayını
+  (notarization) doğrular, eskisinin yerine koyar ve kendini yeniden açar; Finder penceresi
+  veya sürükleme gerekmez. Doğrulama başarısız olursa mevcut sürüm korunur. Uygulama
+  disk görüntüsünden, yazılamayan bir klasörden çalışıyorsa ya da imzasız eski bir sürümse
+  `.dmg` açılır ve uygulamayı **Applications** klasörüne elle sürüklersin.
+- **Windows:** Kurulum programı sessizce çalışır ve uygulamayı yeniden başlatır.
+
+Senkronizasyon veya klasör taşıma sürerken güncelleme başlamaz; bittikten sonra tekrar dene.
+Ayarların ve indirdiğin ders dosyaları korunur.
+
 ## Eski dönem indirme
 
 Menü çubuğunda veya Windows sistem tepsisinde **Eski dönemi indir…** seçeneğini aç,
