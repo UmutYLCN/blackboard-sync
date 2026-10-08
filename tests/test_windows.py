@@ -292,23 +292,44 @@ def test_pythonw_parent_runs_hidden_console_child(monkeypatch):
 def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
     import sys
     from blackboard_sync.menubar.settings_form import window_status
-    from blackboard_sync.windows.settings_window import SettingsWindow, INTRO
+    from blackboard_sync.menubar.settings_form import SCREEN_MARGIN
+    from blackboard_sync.windows import settings_window as module
+    from blackboard_sync.windows.settings_window import CHROME, SettingsWindow, INTRO
     widgets = []
 
     class Widget:
         def __init__(self, *args, **kwargs):
+            self.parent = args[0] if args else None
             self.options = kwargs
             self.focused = False
             self.destroyed = False
+            self.bindings = {}
+            self.view = (0.0, 1.0)
+            self.scrolled = []
             widgets.append(self)
         def add(self, child, **kwargs):
             self.options.setdefault("tabs", []).append(kwargs["text"])
-        def bind(self, *args):
-            pass
+            self.options.setdefault("pages", []).append(child)
+        def index(self, which):
+            return self.current
+        def bind(self, event, callback):
+            self.bindings[event] = callback
         def rowconfigure(self, *args, **kwargs):
             pass
         def yview(self, *args):
+            return self.view
+        def yview_scroll(self, *args):
+            self.scrolled.append(args)
+        def withdraw(self):
             pass
+        def update_idletasks(self):
+            pass
+        def winfo_reqwidth(self):
+            return 600
+        def winfo_reqheight(self):
+            return 900
+        def geometry(self, spec):
+            self.size = spec
         def set(self, *args):
             pass
         def create_window(self, *args, **kwargs):
@@ -324,7 +345,7 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
         def title(self, text):
             self.caption = text
         def minsize(self, *args):
-            pass
+            self.minimum = args
         def protocol(self, *args):
             pass
         def configure(self, **kwargs):
@@ -356,6 +377,8 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
     fake = SimpleNamespace(Toplevel=Widget, Canvas=Widget, StringVar=Variable, BooleanVar=Variable, ttk=ttk,
                            filedialog=SimpleNamespace(askdirectory=lambda **kw: str(tmp_path)))
     monkeypatch.setitem(sys.modules, 'tkinter', fake)
+    monkeypatch.setattr(module, 'work_area', lambda window: (0, 0, 1366, 728))  # 768 px, taskbar 40
+    Widget.current = 0
     model = AppModel(tmp_path, datetime.now(timezone.utc), configured=False)
     submitted, closed, actions = [], [], []
     def submit(values, login):
@@ -372,6 +395,36 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
                             submit, actions.append, lambda: closed.append(True),
                             on_missing=lambda: list(rows), on_deleted_action=deleted_action,
                             on_past_term=past_downloads.append)
+    # A 768 px screen: the window fits above the taskbar, centred; the form scrolls.
+    total = 728 - SCREEN_MARGIN
+    assert window.window.size == f"600x{total - CHROME}+383+{SCREEN_MARGIN // 2}"
+    assert window.window.minimum[0] == 560 and window.window.minimum[1] < total - CHROME
+    assert window.form_canvas.options['height'] == 900  # all of it when there is room
+    general = window.notebook.options["pages"][0]
+    assert window.form_canvas.parent is general and window.button_bar.parent is general
+    form_frame = window.fields['base_url'].parent
+    assert form_frame.parent is window.form_canvas
+    assert window.uninstall_button.parent is form_frame
+    monkeypatch.setattr(module, 'work_area', lambda window: (0, 0, 2560, 1400))
+    window.fit(form_frame)
+    assert window.window.size == "600x900+980+230"  # a big screen shows everything
+    # Vazgeç and Kaydet (and the error line) stay below the scrolling form.
+    bottom = [w for w in widgets if w.options.get('text') in ('Vazgeç', 'Kaydet')]
+    assert len(bottom) == 2 and all(w.parent.parent is window.button_bar for w in bottom)
+    assert window.error.parent is window.button_bar
+    # The wheel scrolls the open tab, also over a drop-down list, and not a tab that fits.
+    window.form_canvas.view = (0.0, 0.7)
+    window.window.bindings['<MouseWheel>'](SimpleNamespace(delta=-120))
+    assert window.interval_dropdown.bindings['<MouseWheel>'](SimpleNamespace(delta=120)) == 'break'
+    assert window.form_canvas.scrolled == [(1, 'units'), (-1, 'units')]
+    Widget.current = 1
+    window.window.bindings['<MouseWheel>'](SimpleNamespace(delta=-30))
+    assert window.canvas.scrolled == []
+    window.canvas.view = (0.2, 0.9)
+    window.past_dropdown.bindings['<MouseWheel>'](SimpleNamespace(delta=-30))
+    assert window.canvas.scrolled == [(1, 'units')]
+    Widget.current = 0
+
     assert window.window.topmost is True
     window.window.later()
     assert window.window.topmost is False
@@ -455,6 +508,18 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
     assert submitted[-1][1] is True
     assert closed == [True]
     assert window.window.destroyed
+
+
+def test_work_area_is_the_screen_above_the_taskbar():
+    import sys
+    from blackboard_sync.windows.settings_window import work_area
+
+    window = SimpleNamespace(winfo_screenwidth=lambda: 1366, winfo_screenheight=lambda: 768)
+    left, top, width, height = work_area(window)
+    if sys.platform == "win32":
+        assert width > 0 and 0 < height
+    else:
+        assert (left, top, width, height) == (0, 0, 1366, 720)
 
 
 def update_app(tmp_path, monkeypatch):

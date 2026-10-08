@@ -186,3 +186,17 @@ def test_new_school_forgets_the_old_result():
     m.apply_settings(ISTUN.dest, school_changed=True)
     assert m.last is None and m.login_prompted is False
     assert "giriş" in m.note
+
+
+def test_settings_window_opens_no_taller_than_the_screen():
+    from blackboard_sync.menubar.settings_form import MIN_WINDOW_HEIGHT, SCREEN_MARGIN, window_height
+
+    # A 13-inch MacBook (1440x900 points; about 800 left by the menu bar and Dock)
+    # and a 768 px Windows laptop (728 above the taskbar): the form scrolls.
+    assert window_height(content=900, chrome=28, available=800) == 800 - SCREEN_MARGIN
+    assert window_height(content=900, chrome=40, available=728) == 728 - SCREEN_MARGIN
+    # A big screen shows everything at once.
+    assert window_height(content=900, chrome=28, available=1415) == 928
+    assert window_height(content=900, chrome=40, available=1400) == 940
+    # A tiny work area still leaves a usable window.
+    assert window_height(content=900, chrome=28, available=300) == MIN_WINDOW_HEIGHT

@@ -121,6 +121,22 @@ T_NEW_ONLY = "Sadece yeni dosyalar"
 DEST_CHOICES = ((DEST_MOVE, T_MOVE), (DEST_REFETCH, T_REDOWNLOAD), (DEST_KEEP, T_NEW_ONLY))
 
 
+# The window never grows past the screen: what does not fit scrolls inside it,
+# under the fixed Vazgeç/Kaydet row. Heights include the title bar.
+SCREEN_MARGIN = 40  # kept free between the window and the Dock, menu bar or taskbar
+MIN_WINDOW_HEIGHT = 400  # the smallest height the student can resize the window to
+
+
+def window_height(content: float, chrome: float, available: float) -> int:
+    """The settings window's opening height: everything when it fits on the screen.
+
+    ``content`` is what the tabs and buttons need, ``chrome`` what the window
+    adds around them (title bar, borders) and ``available`` the screen height
+    left by the menu bar and Dock (the work area above the taskbar on Windows).
+    """
+    return int(min(content + chrome, max(available - SCREEN_MARGIN, MIN_WINDOW_HEIGHT)))
+
+
 def dest_change_message(old: Path, new: Path, files: int) -> str:
     """The question under ``T_DEST_CHANGE_TITLE``; ``files`` were synced into ``old``.
 

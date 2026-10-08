@@ -28,13 +28,17 @@ from AppKit import (
     NSModalResponseOK,
     NSOpenPanel,
     NSPopUpButton,
+    NSScreen,
     NSScrollView,
     NSTabView,
     NSTabViewItem,
     NSTextField,
     NSView,
+    NSViewHeightSizable,
+    NSViewMinYMargin,
     NSWindow,
     NSWindowStyleMaskClosable,
+    NSWindowStyleMaskResizable,
     NSWindowStyleMaskTitled,
 )
 from Foundation import NSURL, NSMakeRect, NSObject
@@ -43,6 +47,7 @@ from blackboard_sync import deleted
 from blackboard_sync.menubar.settings_form import (
     DEST_CHOICES,
     INTERVAL_OPTIONS,
+    MIN_WINDOW_HEIGHT,
     T_AUTOSTART,
     T_CANCEL,
     T_CHECK_UPDATES,
@@ -72,6 +77,7 @@ from blackboard_sync.menubar.settings_form import (
     dest_change_message,
     interval_title,
     intro_first_run,
+    window_height,
 )
 from blackboard_sync.settings import display_path
 
@@ -83,6 +89,11 @@ BUTTON_HEIGHT = 32
 # Buttons whose title changes with the app's state ("Giriş yap" / "Hesaptan
 # çıkış yap") keep one width so the row does not jump.
 ACTION_WIDTH = 190
+# Below the scrolling form, always in view: the error line, then [Vazgeç] [Kaydet].
+BAR_HEIGHT = 42 + BUTTON_HEIGHT + MARGIN
+# What the tab view adds around a tab's view.
+TABS_WIDTH = WIDTH + 32
+TABS_CHROME = 46
 
 # The app has no main menu (menu bar accessory), so Cmd+V and friends would not
 # reach the text fields; the window forwards them itself.
@@ -181,7 +192,7 @@ class SettingsWindow:
         self.target.owner = self
         self.window = _EditableWindow.alloc().initWithContentRect_styleMask_backing_defer_(
             NSMakeRect(0, 0, WIDTH, 100),
-            NSWindowStyleMaskTitled | NSWindowStyleMaskClosable,
+            NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable,
             NSBackingStoreBuffered,
             False,
         )
@@ -299,52 +310,88 @@ class SettingsWindow:
         action_row(self.version_label, self.update_button)
         self.uninstall_button = NSButton.buttonWithTitle_target_action_(T_UNINSTALL, self.target, "uninstall:")
         place(self.uninstall_button, BUTTON_HEIGHT, gap=8, x=WIDTH - MARGIN - ACTION_WIDTH, width=ACTION_WIDTH)
+        view.setFrame_(NSMakeRect(0, 0, WIDTH, y))
+
+        # The form scrolls when the screen is too short for it; the bar under
+        # it does not.
+        height = y + BAR_HEIGHT
+        general_view = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, WIDTH, height))
+        self.form_scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, WIDTH, y))
+        self.form_scroll.setHasVerticalScroller_(True)
+        self.form_scroll.setAutohidesScrollers_(True)
+        self.form_scroll.setDrawsBackground_(False)
+        self.form_scroll.setAutoresizingMask_(NSViewHeightSizable)
+        self.form_scroll.setDocumentView_(view)
+        general_view.addSubview_(self.form_scroll)
+        self.button_bar = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, y, WIDTH, BAR_HEIGHT))
+        self.button_bar.setAutoresizingMask_(NSViewMinYMargin)
+        general_view.addSubview_(self.button_bar)
 
         self.error_label, _ = wrapping("")
         self.error_label.setTextColor_(NSColor.systemRedColor())
-        place(self.error_label, 34, gap=8)
+        self.error_label.setFrame_(NSMakeRect(MARGIN, 0, CONTENT, 34))
+        self.button_bar.addSubview_(self.error_label)
 
         # Right-aligned buttons: [Vazgeç] [Kaydet]; Return presses "Giriş yap"
         # (in Hesap) on the first launch and "Kaydet" afterwards.
-        buttons = [
-            NSButton.buttonWithTitle_target_action_(T_CANCEL, self.target, "cancel:"),
-            NSButton.buttonWithTitle_target_action_(T_SAVE, self.target, "save:"),
-        ]
-        buttons[0].setKeyEquivalent_("\x1b")
+        self.cancel_button = NSButton.buttonWithTitle_target_action_(T_CANCEL, self.target, "cancel:")
+        self.save_button = NSButton.buttonWithTitle_target_action_(T_SAVE, self.target, "save:")
+        self.cancel_button.setKeyEquivalent_("\x1b")
         if not first_run:
-            buttons[1].setKeyEquivalent_("\r")
+            self.save_button.setKeyEquivalent_("\r")
         x = WIDTH - MARGIN
-        for button in reversed(buttons):
+        for button in (self.save_button, self.cancel_button):
             width = max(button.fittingSize().width + 12, 90)
             x -= width
-            button.setFrame_(NSMakeRect(x, y, width, BUTTON_HEIGHT))
-            view.addSubview_(button)
+            button.setFrame_(NSMakeRect(x, 42, width, BUTTON_HEIGHT))
+            self.button_bar.addSubview_(button)
             x -= 8
-        y += BUTTON_HEIGHT + MARGIN
 
-        view.setFrame_(NSMakeRect(0, 0, WIDTH, y))
-        tabs = NSTabView.alloc().initWithFrame_(NSMakeRect(0, 0, WIDTH + 32, y + 48))
+        tabs = NSTabView.alloc().initWithFrame_(NSMakeRect(0, 0, TABS_WIDTH, height + TABS_CHROME))
         general = NSTabViewItem.alloc().initWithIdentifier_("general")
         general.setLabel_("Genel")
-        general.setView_(view)
+        general.setView_(general_view)
         tabs.addTabViewItem_(general)
         removed = NSTabViewItem.alloc().initWithIdentifier_("deleted")
         removed.setLabel_(deleted.T_TAB)
-        self.deleted_view = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, WIDTH, y))
+        self.deleted_view = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, WIDTH, height))
         removed.setView_(self.deleted_view)
         tabs.addTabViewItem_(removed)
-        self._build_deleted(y)
+        self._build_deleted(height)
         tabs.setDelegate_(self.target)
         self.tabs = tabs
+        self.content_height = height + TABS_CHROME  # everything in view, no scrolling
+        # Sized first: a smaller window would squeeze the views it gets.
+        self.window.setContentSize_((TABS_WIDTH, self.content_height))
         self.window.setContentView_(tabs)
-        self.window.setContentSize_((WIDTH + 32, y + 48))
+
+    def fit_to_screen(self, screen=None) -> None:
+        """Open at the height that shows everything, but never taller than ``screen`` allows.
+
+        Only the height can change by hand; the window keeps its width.
+        """
+        screen = screen or self.window.screen() or NSScreen.mainScreen()
+        if screen is None:
+            return
+        visible = screen.visibleFrame()
+        frame = self.window.frameRectForContentRect_(NSMakeRect(0, 0, TABS_WIDTH, self.content_height))
+        chrome = frame.size.height - self.content_height
+        height = window_height(self.content_height, chrome, visible.size.height)
+        self.window.setContentMinSize_((TABS_WIDTH, min(MIN_WINDOW_HEIGHT, height) - chrome))
+        self.window.setContentMaxSize_((TABS_WIDTH, 100_000))
+        self.window.setContentSize_((TABS_WIDTH, height - chrome))
+        self.window.center()
+        # center() leans towards the top; keep the whole window above the Dock.
+        origin = self.window.frame().origin
+        top = visible.origin.y + visible.size.height - height
+        self.window.setFrameOrigin_((origin.x, max(visible.origin.y, min(origin.y, top))))
 
     # -- behaviour ------------------------------------------------------------
     def show(self) -> None:
         self.refresh_deleted()
         NSApp.activateIgnoringOtherApps_(True)
         if not self.window.isVisible():
-            self.window.center()
+            self.fit_to_screen()
         self.window.makeKeyAndOrderFront_(None)
 
     def values(self) -> FormValues:
@@ -393,6 +440,7 @@ class SettingsWindow:
         self.deleted_scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(MARGIN, 78, CONTENT, height - 194))
         self.deleted_scroll.setHasVerticalScroller_(True)
         self.deleted_scroll.setAutohidesScrollers_(True)
+        self.deleted_scroll.setAutoresizingMask_(NSViewHeightSizable)  # the list takes a resize
         self.deleted_view.addSubview_(self.deleted_scroll)
         self.select_all_button = NSButton.buttonWithTitle_target_action_(deleted.T_SELECT_ALL, self.target, "selectAll:")
         self.refetch_button = NSButton.buttonWithTitle_target_action_(deleted.T_DOWNLOAD, self.target, "refetch:")
@@ -401,10 +449,12 @@ class SettingsWindow:
         for button in (self.select_all_button, self.refetch_button, self.dismiss_button):
             width = max(button.fittingSize().width + 8, 110)
             button.setFrame_(NSMakeRect(x, height - 102, width, BUTTON_HEIGHT))
+            button.setAutoresizingMask_(NSViewMinYMargin)
             self.deleted_view.addSubview_(button)
             x += width + 4
         self.deleted_result = NSTextField.wrappingLabelWithString_("")
         self.deleted_result.setFrame_(NSMakeRect(MARGIN, height - 62, CONTENT, 50))
+        self.deleted_result.setAutoresizingMask_(NSViewMinYMargin)
         self.deleted_view.addSubview_(self.deleted_result)
         self._drawn_rows = None
         self.checks = {}

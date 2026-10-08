@@ -100,7 +100,7 @@ def test_settings_past_terms_section_and_uninstall_button(tmp_path):
                             window_status(model), False, lambda v, l: None, actions.append,
                             lambda: None, on_past_term=downloads.append)
     try:
-        labels = [str(view.stringValue()) for view in window.tabs.tabViewItems()[0].view().subviews()
+        labels = [str(view.stringValue()) for view in window.form_scroll.documentView().subviews()
                   if hasattr(view, 'stringValue')]
         sections = [label for label in labels if label in ('Hesap', 'Klasör', 'Eski dönemler', 'Genel', 'Güncellemeler')]
         assert sections == ['Hesap', 'Klasör', 'Eski dönemler', 'Genel', 'Güncellemeler']
@@ -131,5 +131,67 @@ def test_settings_past_terms_section_and_uninstall_button(tmp_path):
         assert not window.past_button.isEnabled() and not window.uninstall_button.isEnabled()
         window.target.pastTerm_(None)
         assert downloads == ['2025-2026 Güz']
+    finally:
+        window.window.close()
+
+
+def test_settings_window_scrolls_on_a_short_screen_with_the_buttons_in_view(tmp_path):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from AppKit import NSApplication, NSScrollView, NSWindowStyleMaskResizable
+    from Foundation import NSMakeRect
+    from blackboard_sync.menubar.model import AppModel
+    from blackboard_sync.menubar.settings_form import FormValues, SCREEN_MARGIN, window_status
+    from blackboard_sync.menubar.settings_window import SettingsWindow
+
+    NSApplication.sharedApplication()
+    model = AppModel(tmp_path, datetime.now(timezone.utc), configured=True)
+    window = SettingsWindow(FormValues('https://bb.example.edu', str(tmp_path), True),
+                            window_status(model), True, lambda v, l: None, lambda a: None, lambda: None)
+
+    def screen(height):  # visibleFrame: the screen without the menu bar and Dock
+        return SimpleNamespace(visibleFrame=lambda: NSMakeRect(0, 0, 1440, height))
+
+    try:
+        assert window.window.styleMask() & NSWindowStyleMaskResizable
+        assert isinstance(window.form_scroll, NSScrollView)
+        assert window.form_scroll.hasVerticalScroller() and window.form_scroll.autohidesScrollers()
+        form = window.form_scroll.documentView()
+        assert window.url_field.superview() is form and window.uninstall_button.superview() is form
+        # Vazgeç, Kaydet and the error line sit below the scrolling form, not in it.
+        assert [str(b.title()) for b in (window.cancel_button, window.save_button)] == ['Vazgeç', 'Kaydet']
+        for control in (window.cancel_button, window.save_button, window.error_label):
+            assert control.superview() is window.button_bar
+        general = window.tabs.tabViewItems()[0].view()
+        assert window.form_scroll.superview() is general and window.button_bar.superview() is general
+
+        # A 13-inch MacBook (1440x900, about 800 points free): the window fits and the form scrolls.
+        window.fit_to_screen(screen(800))
+        assert window.window.frame().size.height == 800 - SCREEN_MARGIN
+        clip = window.form_scroll.contentView().frame().size.height
+        assert clip < form.frame().size.height
+        bar = window.button_bar.frame()
+        assert bar.origin.y + bar.size.height == general.frame().size.height  # at the bottom
+        assert window.form_scroll.frame().size.height == bar.origin.y
+        minimum = window.window.contentMinSize()
+        assert minimum.width == window.window.contentMaxSize().width == window.window.contentView().frame().size.width
+        assert minimum.height < window.window.contentView().frame().size.height
+
+        # Taller by hand: the form gets the room, the bar follows the bottom edge.
+        frame = window.window.frame()
+        window.window.setFrame_display_(NSMakeRect(frame.origin.x, frame.origin.y, frame.size.width,
+                                                   frame.size.height + 50), False)
+        assert window.form_scroll.contentView().frame().size.height == clip + 50
+        assert window.button_bar.frame().origin.y == bar.origin.y + 50
+        window.tabs.selectTabViewItemAtIndex_(1)  # the Silinenler list keeps scrolling on its own
+        deleted_list = window.deleted_scroll.frame()
+        assert window.refetch_button.frame().origin.y > deleted_list.origin.y + deleted_list.size.height
+        window.tabs.selectTabViewItemAtIndex_(0)
+
+        # A big screen shows the whole form, nothing to scroll.
+        window.fit_to_screen(screen(1400))
+        assert window.window.frame().size.height < 1400 - SCREEN_MARGIN
+        assert window.window.contentView().frame().size.height == window.content_height
+        assert window.form_scroll.contentView().frame().size.height == form.frame().size.height
     finally:
         window.window.close()
