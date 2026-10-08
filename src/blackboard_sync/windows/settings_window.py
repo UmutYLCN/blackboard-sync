@@ -1,11 +1,40 @@
 """Resizable native Tk settings form, using the shared validation and status model."""
 
+import sys
+
 from blackboard_sync import deleted
 from blackboard_sync.menubar import settings_form as form
 
 INTRO = form.intro_first_run("bu bilgisayara")
 # Buttons whose title follows the app's state keep one width (in characters).
 ACTION_WIDTH = 24
+MIN_WIDTH = 560
+# Title bar and borders Windows draws around the window (pixels).
+CHROME = 40
+
+
+def work_area(window):
+    """(left, top, width, height) of the screen above the taskbar."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        rect = wintypes.RECT()
+        if ctypes.windll.user32.SystemParametersInfoW(0x30, 0, ctypes.byref(rect), 0):  # SPI_GETWORKAREA
+            return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
+    return 0, 0, window.winfo_screenwidth(), window.winfo_screenheight() - 48
+
+
+def scrolling(canvas, inner):
+    """Show ``inner`` in ``canvas`` at the canvas's width, scrolling vertically."""
+    child = canvas.create_window((0, 0), window=inner, anchor="nw")
+    inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.bind("<Configure>", lambda e: canvas.itemconfigure(child, width=e.width))
+
+
+def wheel_steps(delta):
+    """Lines to scroll for one mouse-wheel event; a touchpad's small deltas still move."""
+    return int(-delta / 120) or (-1 if delta > 0 else 1)
 
 
 class SettingsWindow:
@@ -16,8 +45,8 @@ class SettingsWindow:
         from tkinter import ttk, filedialog
 
         self.window = window = tk.Toplevel(root)
+        window.withdraw()  # shown by show(), once it has its size
         window.title(form.T_TITLE_FIRST_RUN if first_run else form.T_TITLE)
-        window.minsize(560, 480)
         window.columnconfigure(0, weight=1)
         window.rowconfigure(0, weight=1)
         self.on_submit, self.on_action, self.on_close = on_submit, on_action, on_close
@@ -28,8 +57,19 @@ class SettingsWindow:
         self.selection = deleted.DeletedSelection()
         self.notebook = ttk.Notebook(window)
         self.notebook.grid(sticky="nsew")
-        frame = ttk.Frame(self.notebook, padding=20)
-        self.notebook.add(frame, text="Genel")
+        # Genel: the form scrolls when the screen is too short for it; the
+        # error line and [Vazgeç] [Kaydet] below it do not.
+        general = ttk.Frame(self.notebook)
+        general.columnconfigure(0, weight=1)
+        general.rowconfigure(0, weight=1)
+        self.notebook.add(general, text="Genel")
+        self.form_canvas = tk.Canvas(general, highlightthickness=0)
+        self.form_canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(general, orient="vertical", command=self.form_canvas.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.form_canvas.configure(yscrollcommand=scrollbar.set)
+        frame = ttk.Frame(self.form_canvas, padding=(20, 20, 20, 8))
+        scrolling(self.form_canvas, frame)
         self.deleted_frame = ttk.Frame(self.notebook, padding=20)
         self.notebook.add(self.deleted_frame, text=deleted.T_TAB)
         frame.columnconfigure(0, weight=1)
@@ -105,10 +145,11 @@ class SettingsWindow:
         place(ttk.Checkbutton(frame, text=form.T_AUTOSTART, variable=self.autostart), pady=(0, 8))
         interval_row = ttk.Frame(frame)
         ttk.Label(interval_row, text=form.T_INTERVAL_LABEL + ":").pack(side="left", padx=(0, 8))
-        ttk.Combobox(
+        self.interval_dropdown = ttk.Combobox(
             interval_row, textvariable=self.interval, state="readonly", width=20,
             values=[title for _, title in form.INTERVAL_OPTIONS],
-        ).pack(side="left")
+        )
+        self.interval_dropdown.pack(side="left")
         place(interval_row, pady=(0, 12))
 
         section(form.T_SECTION_UPDATES)
@@ -120,16 +161,45 @@ class SettingsWindow:
         self.uninstall_button.grid(row=row, column=1, sticky="e", padx=(8, 0))
         row += 1
 
-        self.error = ttk.Label(frame, foreground="#b00020", wraplength=520)
-        place(self.error, pady=8)
-        buttons = ttk.Frame(frame)
-        buttons.grid(row=row, columnspan=2, sticky="e")
+        self.button_bar = bar = ttk.Frame(general, padding=(20, 0, 20, 20))
+        bar.grid(row=1, column=0, columnspan=2, sticky="ew")
+        bar.columnconfigure(0, weight=1)
+        self.error = ttk.Label(bar, foreground="#b00020", wraplength=520)
+        self.error.grid(row=0, column=0, sticky="w", pady=8)
+        buttons = ttk.Frame(bar)
+        buttons.grid(row=1, column=0, sticky="e")
         for label, callback in ((form.T_CANCEL, self.close), (form.T_SAVE, lambda: self.submit(False))):
             ttk.Button(buttons, text=label, command=callback).pack(side="left", padx=4)
         self._build_deleted()
         self.notebook.bind("<<NotebookTabChanged>>", lambda _e: self.refresh_deleted())
+        # The wheel scrolls the open tab wherever the pointer is; over a list
+        # it scrolls too instead of changing the choice.
+        window.bind("<MouseWheel>", self.wheel)
+        for combobox in (self.past_dropdown, self.interval_dropdown):
+            combobox.bind("<MouseWheel>", lambda e: self.wheel(e) or "break")
         self.update_status(status)
+        self.fit(frame)
         self.show()
+
+    def fit(self, form_frame):
+        """Open showing the whole form, but never taller than the work area; centred in it."""
+        window = self.window
+        window.update_idletasks()
+        self.form_canvas.configure(width=form_frame.winfo_reqwidth(), height=form_frame.winfo_reqheight())
+        window.update_idletasks()
+        left, top, width, height = work_area(window)
+        total = form.window_height(window.winfo_reqheight(), CHROME, height)
+        inner_width = max(MIN_WIDTH, window.winfo_reqwidth())
+        window.minsize(MIN_WIDTH, min(form.MIN_WINDOW_HEIGHT, total) - CHROME)
+        x = left + max(0, (width - inner_width) // 2)
+        y = top + max(0, (height - total) // 2)
+        window.geometry(f"{inner_width}x{total - CHROME}+{x}+{y}")
+
+    def wheel(self, event):
+        canvas = self.canvas if self.notebook.index("current") == 1 else self.form_canvas
+        first, last = canvas.yview()
+        if first > 0 or last < 1:  # a tab that fits stays put
+            canvas.yview_scroll(wheel_steps(event.delta), "units")
 
     def update_status(self, status):
         self.status = status
@@ -166,10 +236,7 @@ class SettingsWindow:
         scrollbar.grid(row=1, column=1, sticky="ns")
         self.canvas.configure(yscrollcommand=scrollbar.set)
         self.rows_frame = ttk.Frame(self.canvas)
-        child = self.canvas.create_window((0, 0), window=self.rows_frame, anchor="nw")
-        self.rows_frame.bind("<Configure>", lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
-        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(child, width=e.width))
-        self.canvas.bind("<MouseWheel>", lambda e: self.canvas.yview_scroll(-int(e.delta / 120), "units"))
+        scrolling(self.canvas, self.rows_frame)
         buttons = ttk.Frame(frame)
         buttons.grid(row=2, column=0, columnspan=2, sticky="ew", pady=12)
         self.select_all_button = ttk.Button(buttons, text=deleted.T_SELECT_ALL, command=self.select_all)
