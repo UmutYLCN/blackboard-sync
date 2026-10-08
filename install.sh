@@ -82,19 +82,46 @@ if codesign -dv --verbose=2 "$MNT/$APP" 2>&1 | grep -q '^Authority=Developer ID 
   say "    Doğrulandı."
 fi
 
+# BBSYNC_SYSTEM_APPLICATIONS only exists so the tests do not touch the real /Applications.
+SYSTEM_APPS="${BBSYNC_SYSTEM_APPLICATIONS:-/Applications}"
+USER_APPS="$HOME/Applications"
 if [ -n "${BBSYNC_INSTALL_DIR:-}" ]; then
   dest_dir="$BBSYNC_INSTALL_DIR"
   mkdir -p "$dest_dir"
 else
-  dest_dir="/Applications"
+  dest_dir="$SYSTEM_APPS"
 fi
 if [ ! -w "$dest_dir" ]; then
-  dest_dir="$HOME/Applications"
+  dest_dir="$USER_APPS"
   mkdir -p "$dest_dir"
-  say "    /Applications yazılabilir değil, $dest_dir kullanılıyor."
+  say "    $SYSTEM_APPS yazılabilir değil, $dest_dir kullanılıyor."
 fi
-rm -rf "${dest_dir:?}/$APP" 2>/dev/null || die "Eski sürüm silinemedi: $dest_dir/$APP"
-ditto "$MNT/$APP" "$dest_dir/$APP" || die "Uygulama $dest_dir klasörüne kopyalanamadı."
+
+# The new copy is built next to the old app and swapped in only once it is complete, so a failed
+# or interrupted copy never leaves the machine without an app. The old app is set aside under a
+# temporary name for the swap and deleted only after the new one is in place.
+new_app="$dest_dir/.$APP.new.$$"
+old_app="$dest_dir/.$APP.old.$$"
+rm -rf "$new_app" "$old_app" 2>/dev/null || true
+ditto "$MNT/$APP" "$new_app" || { rm -rf "$new_app"; die "Uygulama $dest_dir klasörüne kopyalanamadı; mevcut sürüm değiştirilmedi."; }
+if [ -e "$dest_dir/$APP" ]; then
+  mv "$dest_dir/$APP" "$old_app" || { rm -rf "$new_app"; die "Eski sürüm kenara alınamadı: $dest_dir/$APP; mevcut sürüm değiştirilmedi."; }
+fi
+if ! mv "$new_app" "$dest_dir/$APP"; then
+  [ ! -e "$old_app" ] || mv "$old_app" "$dest_dir/$APP" || true
+  rm -rf "$new_app"
+  die "Yeni sürüm yerine konamadı; eski sürüm geri yüklendi."
+fi
+rm -rf "$old_app" 2>/dev/null || say "    Uyarı: Eski sürümün geçici kopyası silinemedi: $old_app"
+
+# An app in the other standard folder is not touched, but it may be the one that gets opened.
+for other_dir in "$SYSTEM_APPS" "$USER_APPS"; do
+  [ "$other_dir" != "$dest_dir" ] || continue
+  if [ -e "$other_dir/$APP" ]; then
+    say "    Uyarı: $other_dir/$APP içinde başka bir kopya var ve güncellenmedi; güncel sürüm $dest_dir/$APP içinde."
+    say "    Karışıklığı önlemek için eski kopyayı kendin silebilirsin: $other_dir/$APP"
+  fi
+done
 
 hdiutil detach "$MNT" -quiet >/dev/null 2>&1 && MOUNTED=0
 

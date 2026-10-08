@@ -72,6 +72,13 @@ case "$FAKE_GATEKEEPER" in
 esac
 """,
     "xattr": 'echo "$*" >> "$FAKE_LOG/xattr"',
+    # FAKE_DITTO_FAIL=1: writes half of the app and fails, like a full disk.
+    "ditto": """
+if [ "${FAKE_DITTO_FAIL:-}" = 1 ]; then
+  mkdir -p "$2/Contents"; echo "half" > "$2/Contents/partial"; exit 1
+fi
+exec /usr/bin/ditto "$@"
+""",
     "pgrep": "exit 1",
     "open": 'echo "$*" >> "$FAKE_LOG/open"',
     "osascript": "exit 0",
@@ -100,6 +107,8 @@ def env(tmp_path):
     old.write_text("old version")
     return {
         **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "BBSYNC_SYSTEM_APPLICATIONS": str(tmp_path / "system-apps"),
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "TMPDIR": str(tmp_path),
         "FAKE_RELEASE": str(release),
@@ -181,3 +190,64 @@ def test_checksum_mismatch_is_not_installed(env):
     assert result.returncode != 0
     assert "Sağlama toplamı uyuşmuyor" in result.stderr
     assert installed(env) == "old version"
+
+
+def leftovers(env: dict) -> list[str]:
+    return sorted(p.name for p in Path(env["BBSYNC_INSTALL_DIR"]).iterdir() if p.name != "Blackboard Sync.app")
+
+
+def test_failed_copy_keeps_the_old_app_and_removes_the_temporary_copy(env):
+    env["FAKE_DITTO_FAIL"] = "1"
+    result = run(env)
+    assert result.returncode != 0
+    assert "kopyalanamadı" in result.stderr
+    assert installed(env) == "old version"
+    assert leftovers(env) == []
+    assert logged(env, "open") == ""
+
+
+def test_successful_install_replaces_the_app_and_leaves_no_temporary_copy(env):
+    result = run(env)
+    assert result.returncode == 0, result.stderr
+    assert installed(env) == "new version"
+    assert leftovers(env) == []
+
+
+def test_fresh_install_without_an_old_app(env):
+    old = Path(env["BBSYNC_INSTALL_DIR"]) / "Blackboard Sync.app"
+    subprocess.run(["rm", "-rf", str(old)], check=True)
+    result = run(env)
+    assert result.returncode == 0, result.stderr
+    assert installed(env) == "new version"
+    assert leftovers(env) == []
+
+
+def test_refused_signature_leaves_no_temporary_copy(env):
+    env.update(FAKE_SIGNATURE="devid-broken")
+    assert run(env).returncode != 0
+    assert installed(env) == "old version"
+    assert leftovers(env) == []
+
+
+def test_other_location_copy_is_reported_and_not_deleted(env, tmp_path):
+    # /Applications (faked) is not writable, so the app goes to ~/Applications.
+    system = tmp_path / "system-apps"
+    stale = system / "Blackboard Sync.app" / "Contents"
+    stale.mkdir(parents=True)
+    system.chmod(0o555)
+    try:
+        del env["BBSYNC_INSTALL_DIR"]
+        result = run(env)
+    finally:
+        system.chmod(0o755)
+    assert result.returncode == 0, result.stderr
+    user_app = tmp_path / "home/Applications/Blackboard Sync.app/Contents/MacOS/Blackboard Sync"
+    assert user_app.read_text() == "new version"
+    assert stale.exists()
+    assert f"{system}/Blackboard Sync.app içinde başka bir kopya var" in result.stdout
+    assert f"güncel sürüm {tmp_path}/home/Applications/Blackboard Sync.app" in result.stdout
+
+
+def test_no_warning_when_there_is_no_other_copy(env):
+    result = run(env)
+    assert "başka bir kopya" not in result.stdout
