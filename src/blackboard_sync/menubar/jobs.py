@@ -22,6 +22,7 @@ from blackboard_sync import relocate, runtime, signout
 from blackboard_sync.config import Config
 from blackboard_sync.errors import EXIT_ERROR, LoginRequired
 from blackboard_sync.menubar.model import (
+    MOVE_JOB,
     AppModel,
     CourseChange,
     RunOutcome,
@@ -149,12 +150,12 @@ def run_past_terms(settings: Settings, runner: Runner = subprocess.run) -> tuple
 
 
 def synced_file_count(config: Config, dest: Path) -> int:
-    """How many downloaded files ``dest`` holds: whether a folder change needs asking."""
+    """How many downloaded files the chosen folder ``dest`` holds: whether a folder change needs asking."""
     return relocate.count_synced_files(config.state_file, dest)
 
 
 def run_move_guarded(config: Config, old: Path, new: Path) -> relocate.MoveResult:
-    """Move the downloaded files to the new folder; never raises (a worker thread runs it)."""
+    """Move the downloaded files from the chosen folder ``old`` to ``new``; never raises (a worker thread runs it)."""
     try:
         return relocate.move_destination(config.state_file, config.lock_file, old, new)
     except Exception as exc:
@@ -237,6 +238,10 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
             pass
     if saved and not (last and last.status == "ok"):
         model.auth_failed_at = model.auth_failed_at or parse_iso(saved.get("auth_failed_at"))
+    if model.configured and relocate.root_migration_pending(config.state_file, settings.dest):
+        # Files of a version before the University folder: move them in first, so the
+        # folder, the Silinenler tab and "Son indirilenler" find them before the next sync.
+        model.pending, model.move_from = MOVE_JOB, settings.dest
     refresh_session(config, model, settings)
     if saved is None and last is not None and last.status == "ok":
         # First start: show what the last terminal sync brought in.

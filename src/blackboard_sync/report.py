@@ -60,6 +60,10 @@ class SyncReport:
     courses: list[CourseReport] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     past_term: str = ""
+    # The one-time move of an older version's files from the chosen folder into
+    # the University folder (``relocate.migrate_to_root``), done before syncing.
+    moved_into_root: int = 0
+    left_outside_root: list[str] = field(default_factory=list)  # relative paths that stayed
 
     def totals(self) -> dict[str, int]:
         keys = (
@@ -82,11 +86,21 @@ class SyncReport:
         ]
         return data
 
+    def migration_lines(self) -> list[str]:
+        if not self.moved_into_root and not self.left_outside_root:
+            return []
+        lines = [f"Moved {self.moved_into_root} file(s) into {self.dest}"]
+        if self.left_outside_root:
+            lines.append(f"{len(self.left_outside_root)} file(s) could not be moved and stayed where they were:")
+            lines += [f"  ! {rel}" for rel in self.left_outside_root]
+        return lines
+
     def render_text(self) -> str:
         if self.status != "ok":
-            return self.message
+            return "\n".join([*self.migration_lines(), self.message])
         verb = "Would sync" if self.dry_run else "Synced"
-        lines = [f"{verb} {len(self.courses)} course(s) for {', '.join(self.terms) or 'no term'} into {self.dest}"]
+        lines = self.migration_lines()
+        lines.append(f"{verb} {len(self.courses)} course(s) for {', '.join(self.terms) or 'no term'} into {self.dest}")
         if self.past_term:
             lines.append("Eski dönem: bir kez indirilir, otomatik güncellenmez.")
         for course in self.courses:

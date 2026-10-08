@@ -26,6 +26,12 @@ Nothing is ever overwritten or lost:
 
 A file left behind is treated as deleted in the new folder until it is moved by
 hand or brought back with "Silinenleri tekrar indir".
+
+The files live in the University folder inside the chosen folder
+(``system.sync_root``), so a move goes from the old one's University folder to
+the new one's. Versions before that folder wrote the term folders straight into
+the chosen folder; ``migrate_to_root`` moves those files in once, with the same
+rules, before anything is downloaded there.
 """
 
 from __future__ import annotations
@@ -43,7 +49,7 @@ from blackboard_sync.errors import AlreadyRunning
 from blackboard_sync.paths import fit_windows_folder, fit_windows_path, join_rel
 from blackboard_sync.state import State
 from blackboard_sync.sync import run_lock, sha256_file
-from blackboard_sync.system import is_windows, set_hidden
+from blackboard_sync.system import is_windows, set_hidden, sync_root
 
 log = logging.getLogger(__name__)
 
@@ -77,17 +83,66 @@ def synced_files(state: State, dest: Path) -> list[str]:
 
 
 def count_synced_files(state_file: Path, dest: Path) -> int:
-    """How many mirrored files ``dest`` holds; 0 also when the state cannot be read."""
+    """How many mirrored files the chosen folder ``dest`` holds; 0 also when the state cannot be read.
+
+    Until ``migrate_to_root`` ran, the files directly in ``dest`` count too.
+    """
     try:
         state = State.load(state_file, backup=False)
-        return len(synced_files(state, dest))
+        return len(synced_files(state, sync_root(dest))) + (
+            len(synced_files(state, dest)) if migration_pending(state, dest) else 0)
     except OSError as exc:
         log.warning("Could not look for synced files in %s: %s", dest, exc)
         return 0
 
 
+def migration_pending(state: State, dest: Path) -> bool:
+    """Whether ``migrate_to_root`` still has files to move from the chosen folder ``dest``."""
+    root = sync_root(dest)
+    return (not state.in_university_folder and not state.recovery
+            and not _same_folder(dest, root) and bool(synced_files(state, dest)))
+
+
+def root_migration_pending(state_file: Path, dest: Path) -> bool:
+    """``migration_pending`` for the saved state; False when it cannot be read."""
+    try:
+        return migration_pending(State.load(state_file, backup=False), dest)
+    except OSError as exc:
+        log.warning("Could not look for files to move into %s: %s", sync_root(dest), exc)
+        return False
+
+
+def migrate_to_root(state: State, dest: Path, windows: bool | None = None) -> MoveResult | None:
+    """Once: move the files recorded directly in the chosen folder ``dest`` into its University folder.
+
+    Call it while holding the run lock, before anything is downloaded. Files
+    that cannot be moved stay where they are (``kept``) and the term and course
+    folders it emptied are removed. The state records that it ran, so it never
+    runs again; None when it already ran or the state could not be read (the
+    sync sets that file aside first and starts over).
+    """
+    if state.in_university_folder or state.recovery:
+        return None
+    result = move_files(state, dest, sync_root(dest), windows, remove_emptied=True)
+    state.in_university_folder = True
+    state.dirty = True
+    return result
+
+
+def migrate_destination(state_file: Path, dest: Path) -> MoveResult | None:
+    """``migrate_to_root`` on the saved state: a sync's first step, under its run lock."""
+    state = State.load(state_file, backup=False)
+    result = migrate_to_root(state, dest)
+    state.save()
+    return result
+
+
 def move_destination(state_file: Path, lock_file: Path, old: Path, new: Path) -> MoveResult:
-    """Move the mirrored files from ``old`` to ``new`` while holding the run lock.
+    """Move the mirrored files from the chosen folder ``old`` to ``new`` while holding the run lock.
+
+    The files go from ``old``'s University folder to ``new``'s. A pending
+    ``migrate_to_root`` of ``old`` runs first, so files still directly in it
+    come along; with ``old`` equal to ``new`` only that migration runs.
 
     The lock keeps a sync started from the terminal from writing into either
     folder meanwhile; ``status`` is "locked" when one is running.
@@ -95,8 +150,14 @@ def move_destination(state_file: Path, lock_file: Path, old: Path, new: Path) ->
     try:
         with run_lock(lock_file):
             state = State.load(state_file, backup=False)
-            result = move_files(state, old, new)
-            state.save()  # only writes when Windows paths were renamed
+            migrated = migrate_to_root(state, old)
+            old_root, new_root = sync_root(old), sync_root(new)
+            result = move_files(state, old_root, new_root)
+            if migrated is not None:
+                if _same_folder(old_root, new_root):
+                    result.moved = migrated.moved
+                result.kept = migrated.kept + result.kept
+            state.save()  # only writes when Windows paths were renamed or the migration ran
             return result
     except AlreadyRunning:
         return MoveResult(status="locked")
@@ -105,7 +166,13 @@ def move_destination(state_file: Path, lock_file: Path, old: Path, new: Path) ->
         return MoveResult(status="error", message=exc.strerror or str(exc))
 
 
-def move_files(state: State, old: Path, new: Path, windows: bool | None = None) -> MoveResult:
+def move_files(state: State, old: Path, new: Path, windows: bool | None = None,
+               remove_emptied: bool = False) -> MoveResult:
+    """Move the recorded files from ``old`` to ``new`` (both the folders the term folders are in).
+
+    The old folders are only cleaned up when every file moved, unless
+    ``remove_emptied`` asks to remove the ones that are empty anyway.
+    """
     result = MoveResult()
     if _same_folder(old, new):
         return result
@@ -129,7 +196,7 @@ def move_files(state: State, old: Path, new: Path, windows: bool | None = None) 
             result.kept.append((rel, FAILED))
             continue
         result.moved += 1
-    if not result.kept:
+    if not result.kept or remove_emptied:
         result.old_removed = _move_empty_folders(present, old, new, place)
     place.record()
     log.info("Moved %d file(s) from %s to %s; %d kept", result.moved, old, new, len(result.kept))

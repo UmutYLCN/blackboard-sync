@@ -18,6 +18,9 @@ what was written locally:
   there would choose.
 * ``past_terms`` - term ids explicitly downloaded as one-time archives; normal
   sync leaves their content alone. Missing files are restored only on request.
+* ``university_folder`` - true once the files of versions that wrote straight
+  into the chosen folder were moved into its University folder
+  (``relocate.migrate_to_root``), so that happens only once.
 """
 
 from __future__ import annotations
@@ -47,11 +50,14 @@ def _set_aside(path: Path) -> Path:
 class State:
     def __init__(self, path: Path, data: dict | None = None):
         self.path = path
+        # A new state only ever records files in the University folder.
+        in_university_folder = data is None
         data = data or {}
         self.items: dict[str, dict] = data.get("items", {})
         self.outputs: dict[str, dict] = data.get("outputs", {})
         self.folders: dict[str, str] = data.get("folders", {})
         self.past_terms: dict[str, dict] = data.get("past_terms", {})
+        self.in_university_folder: bool = in_university_folder or data.get("university_folder") is True
         self._claimed: dict[str, str] = {o["path"]: key for key, o in self.outputs.items()}
         self.recovery: str | None = None
         self.dirty = False  # True while there are changes not yet written to disk
@@ -98,6 +104,8 @@ class State:
             data["folders"] = self.folders
         if self.past_terms:
             data["past_terms"] = self.past_terms
+        if self.in_university_folder:
+            data["university_folder"] = True
         write_private_json(self.path, data)
         self.dirty = False
 

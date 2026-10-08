@@ -11,7 +11,7 @@ from pathlib import Path
 
 import requests
 
-from blackboard_sync import __version__
+from blackboard_sync import __version__, relocate
 from blackboard_sync.api import BlackboardClient
 from blackboard_sync.config import Config
 from blackboard_sync.errors import (
@@ -138,7 +138,7 @@ def cmd_check(args, config: Config) -> int:
     )
     print(f"Term(s): {', '.join(t.name for t in terms) or 'none found'}")
     for course in courses:
-        print(f"  {config.dest / course.rel_dir}")
+        print(f"  {config.root / course.rel_dir}")
     for warning in warnings:
         print(f"  ! {warning}")
     refresh_saved_cookies(config.session_file, session_data, client.http)
@@ -146,10 +146,15 @@ def cmd_check(args, config: Config) -> int:
 
 
 def cmd_sync(args, config: Config) -> int:
-    report = SyncReport(dry_run=args.dry_run, dest=str(config.dest), past_term=args.term or "")
+    report = SyncReport(dry_run=args.dry_run, dest=str(config.root), past_term=args.term or "")
+    migrated = None
     try:
         config.ensure_data_dir()
         with run_lock(config.lock_file):
+            if not args.dry_run:
+                # Before anything is downloaded, so files an older version put
+                # straight into the chosen folder are not fetched again.
+                migrated = relocate.migrate_destination(config.state_file, config.dest)
             selected = None
             if args.refetch_selection is not None:
                 if not args.refetch_missing:
@@ -186,6 +191,9 @@ def cmd_sync(args, config: Config) -> int:
         report.status, report.message = "error", f"Unexpected error: {type(exc).__name__}: {exc}"
     if not report.finished_at:
         report.finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if migrated is not None:
+        report.moved_into_root = migrated.moved
+        report.left_outside_root = [rel for rel, _reason in migrated.kept]
 
     if not args.dry_run and report.status != "locked" and args.term is None:
         write_private_json(config.last_run_file, report.to_dict())

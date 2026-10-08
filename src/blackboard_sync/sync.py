@@ -198,7 +198,7 @@ class Syncer:
         self.client = client
         self.config = config
         self.state = state
-        self.dest = config.dest
+        self.dest = config.root  # every path below is relative to the University folder
         self.dry_run = dry_run
         self.refetch_missing = refetch_missing
         self.refetch_keys = refetch_keys
@@ -739,15 +739,15 @@ def run_sync(
     """Sync current courses, or download one named past term's missing files."""
     if term_name is not None and (not term_name.strip() or all_terms or refetch_keys is not None):
         raise BlackboardSyncError("İndirilecek tek bir eski dönem adı belirtin.")
-    report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.dest), past_term=term_name or "")
+    report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.root), past_term=term_name or "")
     state = State.load(config.state_file, backup=not dry_run)
     if state.recovery:
         report.warnings.append(state.recovery)
     if not dry_run:
-        remove_stale_partials(config.dest)
+        remove_stale_partials(config.root)
     if refetch_keys is not None:
         from blackboard_sync.deleted import missing_outputs
-        refetch_keys = refetch_keys & {row.key for row in missing_outputs(state, config.dest)}
+        refetch_keys = refetch_keys & {row.key for row in missing_outputs(state, config.root)}
         all_terms = True
         term_name = None
         course_filters = sorted({key.split(":")[1] for key in refetch_keys})
@@ -797,7 +797,7 @@ def run_sync(
             state.save()
         report.finished_at = _now_iso()
     if refetch_keys is not None:
-        remaining = sum(not (config.dest / state.outputs[key]["path"]).exists() for key in refetch_keys)
+        remaining = sum(not (config.root / state.outputs[key]["path"]).exists() for key in refetch_keys)
         report.message = f"{len(refetch_keys) - remaining} dosya indirildi."
         if remaining:
             report.message += f" {remaining} dosya indirilemedi; listede tutuldu."

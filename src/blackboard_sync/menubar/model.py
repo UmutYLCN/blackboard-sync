@@ -23,6 +23,7 @@ from blackboard_sync import __version__
 from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
 from blackboard_sync.inapp import INAPP
 from blackboard_sync.settings import DEFAULT_SYNC_INTERVAL_MINUTES, Settings, normalize_sync_interval
+from blackboard_sync.system import sync_root
 from blackboard_sync.updater import CheckResult, Release, is_newer
 
 # The default interval; the student picks another one in the settings window.
@@ -79,9 +80,9 @@ T_DOWNLOADING_UPDATE = "Güncelleme indiriliyor…"
 T_UPDATE_WAIT = "Güncellemeden önce çalışan işlemin tamamlanmasını bekleyin; sonra tekrar deneyin."
 
 
-def open_folder_title(dest: Path) -> str:
-    """The menu item that opens the destination, named after it: "University klasörünü aç"."""
-    return f"{dest.name or dest} klasörünü aç"
+def open_folder_title(root: Path) -> str:
+    """The menu item that opens the folder the files are in, named after it: "University klasörünü aç"."""
+    return f"{root.name or root} klasörünü aç"
 
 
 # Update actions of the menu row and the settings window. "check_updates"
@@ -96,7 +97,9 @@ UPDATE_ACTIONS = ("check_updates", "update")
 # student deleted locally. Scheduled runs and "Şimdi senkronize et" are plain
 # "sync" runs, so they keep respecting deletions.
 SYNC_JOBS = ("sync", "refetch", "past_term", "past_terms")
-# Moves the downloaded files into a new destination folder (``relocate.py``).
+# Moves the downloaded files into a new destination folder (``relocate.py``); with
+# ``move_from`` equal to ``dest`` it only moves the files of an older version
+# from the chosen folder into its University folder (``relocate.migrate_to_root``).
 MOVE_JOB = "move"
 
 # What happens to the downloaded files when the destination folder changes:
@@ -132,9 +135,9 @@ class Icon(str, Enum):
 @dataclass
 class CourseChange:
     code: str
-    folder: str  # relative to dest
+    folder: str  # relative to the University folder (``AppModel.root``)
     counts: dict[str, int]
-    recent_paths: list[str]  # relative to dest
+    recent_paths: list[str]  # relative to the University folder
     name: str = ""
 
     @property
@@ -153,6 +156,9 @@ class RunOutcome:
     courses: list[CourseChange] = field(default_factory=list)
     past_term: str = ""
     warning_count: int = 0
+    # The sync first moved files of an older version into the University folder.
+    moved_into_root: int = 0
+    left_outside_root: int = 0  # ...and these could not be moved
 
     @property
     def changed(self) -> list[CourseChange]:
@@ -182,6 +188,8 @@ class RunOutcome:
             past_term=data.get("past_term") or "",
             warning_count=len(data.get("warnings") or []) + sum(
                 len(c.get("warnings") or []) for c in data.get("courses") or []),
+            moved_into_root=data.get("moved_into_root") or 0,
+            left_outside_root=len(data.get("left_outside_root") or []),
         )
 
 
@@ -314,6 +322,15 @@ def move_summary(moved: int, kept: int) -> str:
     return text
 
 
+def root_move_summary(moved: int, kept: int, root: Path) -> str:
+    """ "12 dosya University klasörüne taşındı." plus what stayed behind, if anything."""
+    name = root.name or str(root)
+    text = f"{moved} dosya {name} klasörüne taşındı." if moved else "Hiçbir dosya taşınmadı."
+    if kept:
+        text += f" {kept} dosya taşınamadı ve eski yerinde kaldı."
+    return text
+
+
 def login_notification() -> Notification:
     return Notification(
         title="Blackboard oturumu sona erdi",
@@ -440,7 +457,7 @@ class UpdateState:
 
 @dataclass
 class RecentItem:
-    path: str  # relative to dest
+    path: str  # relative to the University folder
     course: str
     at: str  # ISO timestamp
 
@@ -454,7 +471,7 @@ class MenuModel:
     status_lines: list[str]  # the two lines at the top (plus a transient note)
     sync_title: str
     sync_enabled: bool
-    recent: list[tuple[str, str]]  # (label, path relative to dest)
+    recent: list[tuple[str, str]]  # (label, path relative to the University folder)
     entries: list[MenuEntry] = field(default_factory=list)
 
 
@@ -468,13 +485,13 @@ def unique_labels(entries: list[tuple[str, str]]) -> list[tuple[str, str]]:
     return result
 
 
-def open_target(dest: Path, rel_path: str, exists: Callable[[Path], bool] = Path.exists) -> Path | None:
+def open_target(root: Path, rel_path: str, exists: Callable[[Path], bool] = Path.exists) -> Path | None:
     """What "Son indirilenler" opens: the file, else the nearest existing folder."""
-    path = dest / rel_path
+    path = root / rel_path
     while True:
         if exists(path):
             return path
-        if path == dest or dest not in path.parents:
+        if path == root or root not in path.parents:
             return None
         path = path.parent
 
@@ -505,7 +522,7 @@ class AppModel:
         updates: UpdateState | None = None,
         sync_interval_minutes: int = DEFAULT_SYNC_INTERVAL_MINUTES,
     ):
-        self.dest = dest
+        self.dest = dest  # the folder the student chose; the files are in ``root``
         self.session = session
         self.session_expired = session_expired
         self.auth_failed_at = (last.finished_at or now) if last and last.status == "login_required" else None
@@ -530,6 +547,16 @@ class AppModel:
         self.updates = updates or UpdateState(not_before=now + UPDATE_FIRST_DELAY)
 
     # -- state ----------------------------------------------------------
+    @property
+    def root(self) -> Path:
+        """The University folder in ``dest`` that holds the term folders."""
+        return sync_root(self.dest)
+
+    @property
+    def migrating(self) -> bool:
+        """The queued or running move only brings an older version's files into ``root``."""
+        return self.move_from is not None and self.move_from == self.dest
+
     @property
     def health(self) -> str:
         return self.last.status if self.last else "ok"
@@ -611,6 +638,20 @@ class AppModel:
         return self.busy is None and self.updates.busy != "download" and bool(self.past_terms)
 
     def finish_sync(self, outcome: RunOutcome, now: datetime) -> list[Notification]:
+        notes = self._finish_sync(outcome, now)
+        return [*self.root_move_notifications(outcome.moved_into_root, outcome.left_outside_root), *notes]
+
+    def root_move_notifications(self, moved: int, kept: int) -> list[Notification]:
+        """Files of an older version were moved from the chosen folder into the University folder."""
+        if not moved and not kept:
+            return []
+        summary = root_move_summary(moved, kept, self.root)
+        if kept and not self.note:
+            self.note = shorten(summary, 80)
+        title = f"Dosyalar {self.root.name or self.root} klasörüne taşındı" if not kept else "Bazı dosyalar taşınamadı"
+        return [Notification(title, summary, {"open": str(self.root)})]
+
+    def _finish_sync(self, outcome: RunOutcome, now: datetime) -> list[Notification]:
         job, self.busy = self.busy, None
         self.note = ""
         notes: list[Notification] = []
@@ -625,8 +666,8 @@ class AppModel:
                     self.note += f" {outcome.warning_count} uyarı; eksikler için tekrar deneyin."
                 self.remember(outcome)
                 notes.append(Notification("Blackboard: eski dönem", self.note,
-                                          {"open": str(self.dest / Path(outcome.courses[0].folder).parent)
-                                           if outcome.courses else str(self.dest)}))
+                                          {"open": str(self.root / Path(outcome.courses[0].folder).parent)
+                                           if outcome.courses else str(self.root)}))
             elif outcome.status == "locked":
                 self.note = "Başka bir senkron sürüyor; eski dönemi indirmek için tekrar deneyin."
             elif outcome.status == "login_required":
@@ -655,7 +696,7 @@ class AppModel:
             self.courses = outcome.courses
             self.remember(outcome)
             self.next_run_at = self.schedule(now, self.sync_interval)
-            notification = changes_notification(outcome, self.dest)
+            notification = changes_notification(outcome, self.root)
             if notification:
                 notes.append(notification)
         elif outcome.status == "login_required":
@@ -671,6 +712,7 @@ class AppModel:
     def finish_move(self, status: str, moved: int, kept: int, message: str = "") -> list[Notification]:
         """The files were moved from ``move_from`` to ``dest`` (``relocate.MoveResult``)."""
         self.busy = None
+        migrating = self.migrating
         if status == "locked":
             # A sync from the terminal holds the folders; move once it is done,
             # still before any sync into the new folder.
@@ -681,12 +723,15 @@ class AppModel:
         if status != "ok":
             self.note = shorten(f"Dosyalar taşınamadı: {message}", 80)
             return []
+        if migrating:
+            self.note = ""
+            return self.root_move_notifications(moved, kept)
         summary = move_summary(moved, kept)
         self.note = shorten(summary, 80) if kept else ""
         if not moved and not kept:
             return []
         return [Notification("Dosyalar taşındı" if not kept else "Bazı dosyalar taşınamadı",
-                             summary, {"open": str(self.dest)})]
+                             summary, {"open": str(self.root)})]
 
     def finish_login(self, ok: bool, message: str, now: datetime) -> None:
         self.busy = None
@@ -727,7 +772,7 @@ class AppModel:
             if interval != self.sync_interval:
                 self.sync_interval = interval
                 self.reschedule(now or datetime.now(timezone.utc))
-        if dest != self.dest:
+        if sync_root(dest) != self.root:
             self.pending, self.move_from = None, None
             if dest_choice == DEST_MOVE:
                 self.pending, self.move_from = MOVE_JOB, self.dest
@@ -736,7 +781,7 @@ class AppModel:
                 self.recent = []
                 if dest_choice == DEST_REFETCH:
                     self.pending = "refetch"
-            self.dest = dest
+        self.dest = dest
         if school_changed:
             self.past_terms = []
             self.past_term = ""
@@ -815,6 +860,8 @@ class AppModel:
         if self.busy == "login":
             return login_waiting_line(self.login_method)
         if self.busy == MOVE_JOB:
+            if self.migrating:
+                return f"Dosyalar {self.root.name or self.root} klasörüne taşınıyor…"
             return "Dosyalar yeni klasöre taşınıyor…"
         if not self.configured:
             return f"Kurulumu tamamlamak için “{T_SETTINGS}”ı seçin"
@@ -886,7 +933,7 @@ class AppModel:
             *head,
             MenuEntry("Dersler", children=[MenuEntry(label, "open", value=path) for label, path in unique_labels(course_items)] or [MenuEntry("Henüz ders yok", enabled=False)]),
             MenuEntry(T_RECENT, children=[MenuEntry(label, "open", value=path) for label, path in menu.recent] or [MenuEntry(T_RECENT_EMPTY, enabled=False)]),
-            MenuEntry(open_folder_title(self.dest), "folder"),
+            MenuEntry(open_folder_title(self.root), "folder"),
             MenuEntry(T_PAST_TERM, "past_terms", enabled=self.busy is None and self.configured),
             MenuEntry(),
             *([update] if update else []),

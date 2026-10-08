@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from blackboard_sync.settings import load_settings, settings_path
-from blackboard_sync.system import default_data_dir, default_dest, make_private_dir
+from blackboard_sync.system import default_data_dir, default_dest, make_private_dir, sync_root
 
 DEFAULT_BASE_URL = "https://blackboard.istun.edu.tr"
 # macOS: ~/Documents/University and ~/Library/Application Support/blackboard-sync.
@@ -52,6 +52,15 @@ class Config:
                 "BBSYNC_ANNOUNCEMENTS_FOLDER", DEFAULT_ANNOUNCEMENTS_FOLDER
             ),
         )
+
+    @property
+    def root(self) -> Path:
+        """The folder the term folders go in: ``dest/University`` (``system.sync_root``).
+
+        ``dest`` stays the folder the student chose; every file is read and
+        written relative to this one.
+        """
+        return sync_root(self.dest)
 
     @property
     def session_file(self) -> Path:
