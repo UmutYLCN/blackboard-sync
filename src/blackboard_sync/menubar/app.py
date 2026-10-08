@@ -170,16 +170,10 @@ def build_app(config: Config):
             outcome = jobs.run_sync_guarded(job, settings, refetch_keys=refetch_keys, term_name=term_name)
             AppHelper.callAfter(self._sync_done, outcome)
 
-        def open_past_terms(self, _sender=None) -> None:
-            from blackboard_sync.menubar.past_term_window import PastTermWindow
-
-            if getattr(self, "past_term_window", None) is not None:
-                self.past_term_window.window.makeKeyAndOrderFront_(None)
-                return
+        def start_past_terms(self) -> None:
+            """Look up the past terms for the settings window's list, in the background."""
             if not self.model.begin("past_terms"):
                 return
-            self.past_term_window = PastTermWindow(self.download_past_term, self._past_terms_closed)
-            self.refresh()
             threading.Thread(target=self._past_terms_worker, args=(self.settings,), daemon=True).start()
 
         def _past_terms_worker(self, settings) -> None:
@@ -187,12 +181,11 @@ def build_app(config: Config):
 
         def _past_terms_done(self, names, outcome) -> None:
             self.model.finish_past_terms(names, outcome)
-            if self.past_term_window is not None:
-                self.past_term_window.update(names, self.model.note)
+            self.start_next()  # a move the window saved meanwhile goes first
+            if self._login_after_job and self.model.busy is None:
+                self._login_after_job = False
+                self.start_login()
             self.refresh()
-
-        def _past_terms_closed(self) -> None:
-            self.past_term_window = None
 
         def download_past_term(self, name: str) -> bool:
             if not self.model.select_past_term(name):
@@ -388,8 +381,11 @@ def build_app(config: Config):
                     on_close=self._settings_closed,
                     on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
                     on_deleted_action=self.deleted_action,
+                    on_past_term=self.download_past_term,
                 )
+                self.model.reload_past_terms()
             self._settings_window.show()
+            self.refresh()  # starts looking up the past terms
 
         def deleted_action(self, action, keys):
             if self._uninstalling or self.model.busy is not None or self.model.updates.busy == "download":
@@ -409,6 +405,7 @@ def build_app(config: Config):
             {
                 "logout": self.logout, "refetch": self.start_refetch,
                 "check_updates": self.start_update_check, "update": self.start_update,
+                "uninstall": self.start_uninstall,
             }[action]()
 
         def _settings_closed(self) -> None:
@@ -487,6 +484,8 @@ def build_app(config: Config):
                 self._uninstalling = False
                 self._timer.start()
                 return
+            if self._settings_window is not None:
+                self._settings_window.close()
             try:
                 self.config.dest = self.settings.dest
                 warnings = uninstall.uninstall(
@@ -530,11 +529,11 @@ def build_app(config: Config):
         def refresh(self) -> None:
             jobs.refresh_session(self.config, self.model, self.settings)
             self.model.autostart = launchagent.is_installed()
+            if self._settings_window is not None and not self._uninstalling and self.model.past_terms_due():
+                self.start_past_terms()
             self._draw_icon(self.model.icon())
             if self._settings_window is not None:
                 self._settings_window.update_status(settings_form.window_status(self.model))
-            if getattr(self, "past_term_window", None) is not None:
-                self.past_term_window.set_enabled(self.model.can_download_past_term)
             menu = self.model.menu(jobs.utcnow())
             if menu == self._drawn:
                 return
@@ -547,9 +546,8 @@ def build_app(config: Config):
                 actions = {
                     "sync": self.start_sync, "login": self.start_login,
                     "folder": self.open_school_folder, "settings": self.open_settings,
-                    "quit": self.quit, "uninstall": self.start_uninstall, "open": lambda _s: self.open_recent(entry.value),
+                    "quit": self.quit, "open": lambda _s: self.open_recent(entry.value),
                     "update": self.start_update,
-                    "past_terms": self.open_past_terms,
                 }
                 item = rumps.MenuItem(entry.title, callback=actions.get(entry.action) if entry.enabled else None)
                 item.state = int(entry.checked)

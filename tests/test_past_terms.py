@@ -243,3 +243,52 @@ def test_archive_notification_includes_partial_failure(tmp_path):
     result = RunOutcome.from_report({"status": "ok", "courses": [{"warnings": ["file failed"]}]})
     note = model.finish_sync(result, NOW)[0]
     assert "1 uyarı" in note.message and "tekrar deneyin" in note.message
+
+
+def test_settings_section_looks_terms_up_once_per_window_and_sign_in(tmp_path):
+    from blackboard_sync.menubar.settings_form import window_status
+
+    model = AppModel(tmp_path, NOW)
+    status = window_status(model)
+    assert (status.past_terms, status.past_enabled) == ((), False)
+    assert status.past_message == "Eski dönemleri görmek için giriş yapın."
+    assert not model.past_terms_due()
+    model.session = {"saved_at": NOW.timestamp(), "user": {"displayName": "Ada"}}
+    assert model.past_terms_due()
+    assert window_status(model).past_message == "Eski dönemler yükleniyor…"
+    model.begin("sync")  # waits for the job slot
+    assert not model.past_terms_due()
+    model.finish_sync(RunOutcome("ok", finished_at=NOW), NOW)
+    model.note = "Dosyalar taşınamadı: kilitli"
+    assert model.past_terms_due() and model.begin("past_terms")
+    assert not window_status(model).uninstall_enabled
+    model.finish_past_terms([PAST, "2025-2026 Güz"], RunOutcome("ok"))
+    assert model.note == "Dosyalar taşınamadı: kilitli"  # the automatic lookup keeps it
+    assert not model.past_terms_due()
+    status = window_status(model)
+    assert status.past_terms == (PAST, "2025-2026 Güz") and status.past_enabled and status.past_message == ""
+    assert status.uninstall_enabled
+    assert model.select_past_term(PAST) and model.begin("past_term")
+    status = window_status(model)
+    assert not status.past_enabled and not status.uninstall_enabled and "indiriliyor" in status.past_message
+    model.finish_sync(RunOutcome("ok", past_term=PAST), NOW)
+    assert window_status(model).past_message == f"{PAST} · 0 dosya indirildi (eski dönem)."
+    model.finish_login(True, "", NOW)  # another account: look again
+    assert model.past_terms_due()
+    model.reload_past_terms()
+    assert window_status(model).past_message == "Eski dönemler yükleniyor…"
+
+
+def test_settings_section_shows_lookup_failures_and_empty_list(tmp_path):
+    from blackboard_sync.menubar.settings_form import window_status
+
+    model = AppModel(tmp_path, NOW, session={"saved_at": NOW.timestamp(), "user": {"displayName": "Ada"}})
+    model.begin("past_terms")
+    model.finish_past_terms([], RunOutcome("error", message="Blackboard yanıt vermedi"))
+    status = window_status(model)
+    assert status.past_message == model.note == "Blackboard yanıt vermedi" and not status.past_enabled
+    assert not model.past_terms_due()  # no retry loop; reopening the window looks again
+    model.reload_past_terms()
+    model.begin("past_terms")
+    model.finish_past_terms([], RunOutcome("ok"))
+    assert window_status(model).past_message == "İndirilebilecek eski dönem yok."

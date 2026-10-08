@@ -21,7 +21,7 @@ from blackboard_sync.sync import run_lock
 from blackboard_sync.system import try_lock
 
 TITLE = "Blackboard Sync kaldırılsın mı?"
-MENU_TITLE = "Uygulamayı kaldır…"
+BUTTON_TITLE = "Uygulamayı kaldır…"  # in the settings window, under Güncellemeler
 CHECKBOX = "İndirilmiş ders dosyalarını da sil"
 MESSAGE = (
     "Uygulama, tüm uygulama kayıtları, günlükler, ayarlar ve giriş verileri kaldırılır. "

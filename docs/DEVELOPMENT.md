@@ -179,7 +179,7 @@ To start it **without a terminal**, build the standalone app (see
 
 The first time the app starts, the settings window opens as **Blackboard Sync
 kurulumu**; later **Ayarlar…** in the menu opens the same window. On macOS
-and Windows it has **Genel** and **Silinenler** tabs. **Genel** has four sections:
+and Windows it has **Genel** and **Silinenler** tabs. **Genel** has five sections:
 
 - **Hesap** — **Okulunuzun Blackboard adresi**, prefilled with
   `https://blackboard.istun.edu.tr`; students of another university type their
@@ -194,6 +194,11 @@ and Windows it has **Genel** and **Silinenler** tabs. **Genel** has four section
   the note under the field says so. Files an older version put directly into the
   chosen folder are moved into University once, at the next app start or sync
   (`relocate.migrate_to_root`); a file that cannot be moved stays and is reported.
+- **Eski dönemler** — a list of past terms (newest first, never the current
+  one) and **Eski dönemi indir**, which downloads the chosen term once into
+  the same folder; it is not updated afterwards. The list is looked up in the
+  background each time the window opens while you are signed in; until then it
+  says it is loading, and **İndirilebilecek eski dönem yok.** when there is none.
 - **Genel** — **Bilgisayar açılınca başlat**, ticked by default (see
   [Start at login](#start-at-login)), and **Otomatik senkron**: every 30
   minutes, **every hour** (default), every 3 hours or **Yalnızca elle** (no
@@ -201,7 +206,9 @@ and Windows it has **Genel** and **Silinenler** tabs. **Genel** has four section
   arrive until you choose **Şimdi senkronize et**). There is deliberately no
   shorter choice: an idle sync is a few hundred requests to the school.
 - **Güncellemeler** — **Güncellemeleri otomatik denetle**, ticked by default,
-  **Şimdi denetle** and the version number (see [Updates](#updates)).
+  **Şimdi denetle** and the version number (see [Updates](#updates)), then
+  **Uygulamayı kaldır…**, which asks first and removes the app and its data
+  (downloaded course files are kept unless you tick the box).
 
 **Silinenler** lists downloaded files whose recorded path is missing under the
 saved destination, grouped by term and course, with their name and folder.
@@ -218,9 +225,10 @@ from `state.json`'s `outputs`. Selection jobs only restore those outputs and
 leave unrelated new or changed content for normal sync.
 
 **Kaydet** saves the fields and check boxes; **Giriş yap**, **Hesaptan çıkış
-yap**, **Seçilenleri indir**, **Listeden kaldır** and **Şimdi denetle** act right away. The
-buttons that need the app's single job slot (sign in, sign out, bring back
-deleted files) are greyed out while a sync or sign-in runs. Nothing is synced
+yap**, **Eski dönemi indir**, **Seçilenleri indir**, **Listeden kaldır**, **Şimdi denetle** and
+**Uygulamayı kaldır…** act right away. The buttons that need the app's single job
+slot (sign in, sign out, download a past term, bring back deleted files,
+uninstall) are greyed out while a sync or sign-in runs. Nothing is synced
 on a schedule until the window has been saved once. When you save later:
 
 - A different school address requires signing in again; the sign-in window

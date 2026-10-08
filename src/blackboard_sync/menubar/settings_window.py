@@ -53,13 +53,17 @@ from blackboard_sync.menubar.settings_form import (
     T_DEST_HINT,
     T_DEST_LABEL,
     T_INTERVAL_LABEL,
+    T_PAST_DOWNLOAD,
+    T_PAST_NOTE,
     T_SAVE,
     T_SECTION_ACCOUNT,
     T_SECTION_FOLDER,
     T_SECTION_GENERAL,
+    T_SECTION_PAST_TERMS,
     T_SECTION_UPDATES,
     T_TITLE,
     T_TITLE_FIRST_RUN,
+    T_UNINSTALL,
     T_URL_HINT,
     T_URL_LABEL,
     T_URL_PLACEHOLDER,
@@ -86,7 +90,7 @@ EDIT_KEYS = {"x": "cut:", "c": "copy:", "v": "paste:", "a": "selectAll:", "z": "
 
 # Called with (values, login pressed); returns (error, field) to show, or None to close.
 SubmitHandler = Callable[[FormValues, bool], "tuple[str, str] | None"]
-# Called with "logout", "check_updates" or "update": acts without saving.
+# Called with "logout", "check_updates", "update" or "uninstall": acts without saving.
 ActionHandler = Callable[[str], None]
 
 
@@ -132,6 +136,12 @@ class _Target(NSObject):
     def update_(self, _sender):
         self.owner.on_action(self.owner.status.update_action)
 
+    def pastTerm_(self, _sender):
+        self.owner.download_past_term()
+
+    def uninstall_(self, _sender):
+        self.owner.on_action("uninstall")
+
     def save_(self, _sender):
         self.owner.submit(login=False)
 
@@ -156,8 +166,11 @@ class SettingsWindow:
         on_close: Callable[[], None],
         on_missing=lambda: [],
         on_deleted_action=lambda action, keys: None,
+        on_past_term: Callable[[str], object] = lambda name: None,
     ):
         self.on_submit = on_submit
+        self.on_past_term = on_past_term
+        self._past_terms: tuple[str, ...] | None = None
         self.on_action = on_action
         self.on_close = on_close
         self.on_missing, self.on_deleted_action = on_missing, on_deleted_action
@@ -246,6 +259,21 @@ class SettingsWindow:
         hint, height = wrapping(T_DEST_HINT, small=True)
         place(hint, height, gap=12)
 
+        section(T_SECTION_PAST_TERMS)
+        self.past_button = NSButton.buttonWithTitle_target_action_(T_PAST_DOWNLOAD, self.target, "pastTerm:")
+        past_width = max(self.past_button.fittingSize().width + 12, 140)
+        self.past_button.setFrame_(NSMakeRect(WIDTH - MARGIN - past_width, y - 4, past_width, BUTTON_HEIGHT))
+        view.addSubview_(self.past_button)
+        self.past_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+            NSMakeRect(MARGIN, y, CONTENT - past_width - 8, 25), False
+        )
+        view.addSubview_(self.past_popup)
+        y += 25 + 8
+        note, height = wrapping(T_PAST_NOTE, small=True)
+        place(note, height, gap=4)
+        self.past_label, _ = wrapping("", small=True)
+        place(self.past_label, 30, gap=8)
+
         section(T_SECTION_GENERAL)
         self.autostart = NSButton.checkboxWithTitle_target_action_(T_AUTOSTART, None, None)
         self.autostart.setState_(1 if values.autostart else 0)
@@ -269,6 +297,8 @@ class SettingsWindow:
         self.version_label = label("")
         self.update_button = NSButton.buttonWithTitle_target_action_("", self.target, "update:")
         action_row(self.version_label, self.update_button)
+        self.uninstall_button = NSButton.buttonWithTitle_target_action_(T_UNINSTALL, self.target, "uninstall:")
+        place(self.uninstall_button, BUTTON_HEIGHT, gap=8, x=WIDTH - MARGIN - ACTION_WIDTH, width=ACTION_WIDTH)
 
         self.error_label, _ = wrapping("")
         self.error_label.setTextColor_(NSColor.systemRedColor())
@@ -341,6 +371,18 @@ class SettingsWindow:
         self.version_label.setStringValue_(status.version)
         self.update_button.setTitle_(status.update_title)
         self.update_button.setEnabled_(status.update_enabled)
+        self.uninstall_button.setEnabled_(status.uninstall_enabled)
+        if status.past_terms != self._past_terms:
+            selected = self.past_popup.titleOfSelectedItem()
+            self.past_popup.removeAllItems()
+            self.past_popup.addItemsWithTitles_(list(status.past_terms))
+            if selected in status.past_terms:
+                self.past_popup.selectItemWithTitle_(selected)
+            self._past_terms = status.past_terms
+        self.past_popup.setEnabled_(bool(status.past_terms))
+        self.past_button.setEnabled_(status.past_enabled)
+        self.past_label.setStringValue_(status.past_message)
+        self.past_label.setToolTip_(status.past_message or None)
         self.deleted_result.setStringValue_(status.deleted_message)
         self.refresh_deleted()
 
@@ -439,6 +481,12 @@ class SettingsWindow:
             self.deleted_result.setStringValue_(error)
         elif action == "dismiss":
             self.deleted_result.setStringValue_("Seçilen dosyalar listeden kaldırıldı.")
+
+    def download_past_term(self) -> None:
+        """Start the one-time download of the term picked in Eski dönemler; the window stays open."""
+        name = self.past_popup.titleOfSelectedItem()
+        if name and self.status.past_enabled:
+            self.on_past_term(str(name))
 
     def account_pressed(self) -> None:
         if self.status.account_action == "login":

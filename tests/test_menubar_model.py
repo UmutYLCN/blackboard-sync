@@ -381,11 +381,12 @@ def test_signed_in_menu_structure():
         f"2 yeni dosya, 1 yeni duyuru · sonraki: {format_time(m.next_run_at, NOW)}",
         "",
         "Şimdi senkronize et", "Dersler", "Son indirilenler", "University klasörünü aç",
-        "Eski dönemi indir…",
         "",
-        "Ayarlar…", "Uygulamayı kaldır…", "Çık",
+        "Ayarlar…", "Çık",
     ]
-    assert not any(e.action in ("login", "logout", "refetch", "autostart", "check_updates") for e in entries(menu))
+    # Past terms and uninstalling live in the settings window.
+    assert not any(e.action in ("login", "logout", "refetch", "autostart", "check_updates",
+                                "past_terms", "uninstall") for e in entries(menu))
     assert not menu.entries[0].enabled and not menu.entries[1].enabled
 
 
@@ -403,7 +404,7 @@ def test_update_row_only_when_a_new_version_waits():
     m = model(session=signed_session())
     m.updates.finish_check(CheckResult("available", Release("9.9.9", "", "x.dmg", "")), NOW, manual=False)
     titles = [e.title for e in m.menu(NOW).entries]
-    assert titles[-4:] == ["Güncelleme var: 9.9.9 — Güncelle", "Ayarlar…", "Uygulamayı kaldır…", "Çık"]
+    assert titles[-3:] == ["Güncelleme var: 9.9.9 — Güncelle", "Ayarlar…", "Çık"]
 
 
 def test_expiry_overrides_saved_cookies_and_survives_network_errors():
