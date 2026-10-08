@@ -59,6 +59,7 @@ class SyncReport:
     terms: list[str] = field(default_factory=list)
     courses: list[CourseReport] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    past_term: str = ""
 
     def totals(self) -> dict[str, int]:
         keys = (
@@ -86,6 +87,8 @@ class SyncReport:
             return self.message
         verb = "Would sync" if self.dry_run else "Synced"
         lines = [f"{verb} {len(self.courses)} course(s) for {', '.join(self.terms) or 'no term'} into {self.dest}"]
+        if self.past_term:
+            lines.append("Eski dönem: bir kez indirilir, otomatik güncellenmez.")
         for course in self.courses:
             lines.append(f"  {course.summary_line()}")
             for label, paths in (

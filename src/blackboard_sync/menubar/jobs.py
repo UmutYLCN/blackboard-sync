@@ -60,10 +60,11 @@ def run_sync(
     runner: Runner = subprocess.run,
     now: Callable[[], datetime] = utcnow,
     refetch_keys: list[str] | None = None,
+    term_name: str = "",
 ) -> RunOutcome:
     selection = None
     try:
-        args = sync_arguments(job, settings)
+        args = sync_arguments(job, settings, term_name)
         if refetch_keys is not None:
             if job != "refetch":
                 raise ValueError("Selections require a refetch job")
@@ -109,13 +110,14 @@ def run_login(settings: Settings, runner: Runner = subprocess.run) -> tuple[bool
     return False, lines[-1] if lines else f"exit status {proc.returncode}"
 
 
-def run_sync_guarded(job: str, settings: Settings, refetch_keys: list[str] | None = None) -> RunOutcome:
+def run_sync_guarded(job: str, settings: Settings, refetch_keys: list[str] | None = None,
+                     term_name: str = "") -> RunOutcome:
     """``run_sync`` that turns any unexpected exception into a failed outcome.
 
     Worker threads must always report back, or the model stays busy forever.
     """
     try:
-        return run_sync(job, settings, refetch_keys=refetch_keys)
+        return run_sync(job, settings, refetch_keys=refetch_keys, term_name=term_name)
     except Exception as exc:
         log.exception("Sync job failed")
         return RunOutcome(status="error", message=str(exc), finished_at=utcnow())
@@ -128,6 +130,22 @@ def run_login_guarded(settings: Settings) -> tuple[bool, str]:
     except Exception as exc:
         log.exception("Login job failed")
         return False, str(exc)
+
+
+def run_past_terms(settings: Settings, runner: Runner = subprocess.run) -> tuple[list[str], RunOutcome]:
+    """Discover on a worker, using the same session, executable and lock as sync."""
+    try:
+        proc = runner(cli_command("--base-url", settings.base_url, "past-terms", "--json"),
+                      capture_output=True, text=True, timeout=LOGIN_TIMEOUT, stdin=subprocess.DEVNULL)
+        if proc.returncode:
+            return [], parse_sync_output("", proc.returncode, proc.stderr, utcnow())
+        data = json.loads(proc.stdout)
+        names = data["terms"]
+        if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+            raise ValueError("Eski dönem listesi okunamadı.")
+        return names, RunOutcome(status="ok")
+    except Exception as exc:
+        return [], RunOutcome(status="error", message=f"Eski dönemler yüklenemedi: {exc}")
 
 
 def synced_file_count(config: Config, dest: Path) -> int:

@@ -29,6 +29,17 @@ irm https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.ps1 
 
 İlk açılışta okul adresini ve kayıt klasörünü seç, ardından **Giriş yap**.
 
+## Eski dönem indirme
+
+Menü çubuğunda veya Windows sistem tepsisinde **Eski dönemi indir…** seçeneğini aç,
+bir dönem seç ve **İndir**'e bas. Güncel dönem listede görünmez. Dosyalar mevcut
+kayıt klasöründeki dönem/ders klasörlerine indirilir. Eski dönem bir kez indirilir,
+otomatik güncellenmez; tekrar indirmek yalnızca eksik dosyaları tamamlar. Normal
+senkron güncel dönemi takip etmeye devam eder.
+
+Terminalden: `blackboard-sync sync --term "2025-2026 - Spring"` (Blackboard'daki
+dönem adını kullan). Kullanılabilir adları `blackboard-sync past-terms` ile listele.
+
 ## Kaldırma
 
 Menü çubuğunda veya Windows sistem tepsisinde **Uygulamayı kaldır…** seçeneğini aç.

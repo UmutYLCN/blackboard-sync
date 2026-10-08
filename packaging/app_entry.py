@@ -11,7 +11,7 @@ import sys
 # Hidden self-test used by CI: starts the Playwright driver the browser sign-in
 # needs and loads the web component of the in-app sign-in window.
 CHECK_LOGIN_RUNTIME = "--check-login-runtime"
-CLI_COMMANDS = {"login", "sync", "check", "uninstall", "--version", "-h", "--help"}
+CLI_COMMANDS = {"login", "sync", "check", "past-terms", "uninstall", "--version", "-h", "--help"}
 # CLI options that come before the subcommand; the menu bar app passes the
 # school from its settings window as ``--base-url URL sync ...``.
 CLI_GLOBAL_OPTIONS = {"--base-url", "--data-dir", "-v", "--verbose"}

@@ -59,6 +59,11 @@ T_SYNC_NOW = "Şimdi senkronize et"
 T_SYNCING = "Senkronize ediliyor…"
 T_REFETCH = "Silinenleri tekrar indir"
 T_REFETCHING = "Silinenler indiriliyor…"
+T_PAST_TERM = "Eski dönemi indir…"
+T_PAST_TITLE = "Eski dönem indir"
+T_PAST_NOTE = "Eski dönem bir kez indirilir ve güncellenmez."
+T_PAST_LOADING = "Eski dönemler yükleniyor…"
+T_PAST_EMPTY = "İndirilebilecek eski dönem yok."
 T_LOGIN = "Giriş yap"
 T_LOGGING_IN = "Giriş bekleniyor…"
 T_LOGOUT = "Hesaptan çıkış yap"
@@ -85,10 +90,10 @@ def open_folder_title(dest: Path) -> str:
 UPDATE_ACTIONS = ("check_updates", "update")
 
 
-# Jobs that run `blackboard-sync sync`; "refetch" also brings back files the
+# Sync and discovery jobs; "refetch" also brings back files the
 # student deleted locally. Scheduled runs and "Şimdi senkronize et" are plain
 # "sync" runs, so they keep respecting deletions.
-SYNC_JOBS = ("sync", "refetch")
+SYNC_JOBS = ("sync", "refetch", "past_term", "past_terms")
 # Moves the downloaded files into a new destination folder (``relocate.py``).
 MOVE_JOB = "move"
 
@@ -98,11 +103,15 @@ MOVE_JOB = "move"
 DEST_MOVE, DEST_REFETCH, DEST_KEEP = "move", "refetch", "keep"
 
 
-def sync_arguments(job: str, settings: Settings) -> list[str]:
+def sync_arguments(job: str, settings: Settings, term_name: str = "") -> list[str]:
     """CLI arguments for a sync job with the settings from the settings window."""
     args = ["--base-url", settings.base_url, "sync", "--json", "--dest", str(settings.dest)]
     if job == "refetch":
         args.append("--refetch-missing")
+    if job == "past_term":
+        if not term_name:
+            raise ValueError("Eski dönem seçilmedi.")
+        args.extend(["--term", term_name])
     return args
 
 
@@ -140,6 +149,8 @@ class RunOutcome:
     finished_at: datetime | None = None
     dest: str = ""
     courses: list[CourseChange] = field(default_factory=list)
+    past_term: str = ""
+    warning_count: int = 0
 
     @property
     def changed(self) -> list[CourseChange]:
@@ -166,6 +177,9 @@ class RunOutcome:
             finished_at=parse_iso(data.get("finished_at")),
             dest=data.get("dest") or "",
             courses=courses,
+            past_term=data.get("past_term") or "",
+            warning_count=len(data.get("warnings") or []) + sum(
+                len(c.get("warnings") or []) for c in data.get("courses") or []),
         )
 
 
@@ -477,6 +491,8 @@ class AppModel:
         self.login_prompted = login_prompted
         self.autostart = autostart
         self.busy: str | None = None  # "sync" | "refetch" | "login" | "move"
+        self.past_term = ""  # only for the active one-time job; never saved as a default
+        self.past_terms: list[str] = []
         # A job asked for by a destination change, started as soon as the slot is free:
         # MOVE_JOB (from ``move_from``) or "refetch".
         self.pending: str | None = None
@@ -545,10 +561,53 @@ class AppModel:
             self.pending = None
         return True
 
+    def finish_past_terms(self, names: list[str], outcome: RunOutcome) -> None:
+        self.busy = None
+        self.past_terms = names if outcome.status == "ok" else []
+        if outcome.status == "login_required":
+            self.auth_failed_at = outcome.finished_at or datetime.now(timezone.utc)
+            self.note = "Eski dönemleri görmek için giriş yapın ve tekrar deneyin."
+        elif outcome.status == "locked":
+            self.note = "Başka bir senkron sürüyor; birazdan tekrar deneyin."
+        else:
+            self.note = "" if outcome.status == "ok" else shorten(outcome.message, 100)
+
+    def select_past_term(self, name: str) -> bool:
+        if not self.can_download_past_term or name not in self.past_terms:
+            return False
+        self.past_term = name
+        return True
+
+    @property
+    def can_download_past_term(self) -> bool:
+        return self.busy is None and self.updates.busy != "download" and bool(self.past_terms)
+
     def finish_sync(self, outcome: RunOutcome, now: datetime) -> list[Notification]:
         job, self.busy = self.busy, None
         self.note = ""
         notes: list[Notification] = []
+        if job == "past_term":
+            term = outcome.past_term or self.past_term
+            self.past_term = ""
+            if outcome.status == "ok":
+                count = sum(c.counts.get(key, 0) for c in outcome.courses
+                            for key in ("new_files", "new_notes", "new_announcements"))
+                self.note = f"{term} · {count} dosya indirildi (eski dönem)."
+                if outcome.warning_count:
+                    self.note += f" {outcome.warning_count} uyarı; eksikler için tekrar deneyin."
+                self.remember(outcome)
+                notes.append(Notification("Blackboard: eski dönem", self.note,
+                                          {"open": str(self.dest / Path(outcome.courses[0].folder).parent)
+                                           if outcome.courses else str(self.dest)}))
+            elif outcome.status == "locked":
+                self.note = "Başka bir senkron sürüyor; eski dönemi indirmek için tekrar deneyin."
+            elif outcome.status == "login_required":
+                self.auth_failed_at = outcome.finished_at or now
+                self.note = "Eski dönemi indirmek için giriş yapın ve tekrar deneyin."
+                notes.append(login_notification())
+            else:
+                self.note = shorten(f"Eski dönem indirilemedi: {outcome.message}", 100)
+            return notes
         if outcome.status == "locked":
             # Another sync (e.g. from the terminal) is running; keep what we
             # knew and look again soon. A retry is a normal sync, so a
@@ -651,6 +710,8 @@ class AppModel:
                     self.pending = "refetch"
             self.dest = dest
         if school_changed:
+            self.past_terms = []
+            self.past_term = ""
             self.session = None
             self.auth_failed_at = None
             self.courses = []
@@ -719,6 +780,10 @@ class AppModel:
             return "Yeni içerik kontrol ediliyor…"
         if self.busy == "refetch":
             return "Silinen dosyalar tekrar indiriliyor…"
+        if self.busy == "past_terms":
+            return T_PAST_LOADING
+        if self.busy == "past_term":
+            return f"{self.past_term} indiriliyor (eski dönem)…"
         if self.busy == "login":
             return login_waiting_line(self.login_method)
         if self.busy == MOVE_JOB:
@@ -794,6 +859,7 @@ class AppModel:
             MenuEntry("Dersler", children=[MenuEntry(label, "open", value=path) for label, path in unique_labels(course_items)] or [MenuEntry("Henüz ders yok", enabled=False)]),
             MenuEntry(T_RECENT, children=[MenuEntry(label, "open", value=path) for label, path in menu.recent] or [MenuEntry(T_RECENT_EMPTY, enabled=False)]),
             MenuEntry(open_folder_title(self.dest), "folder"),
+            MenuEntry(T_PAST_TERM, "past_terms", enabled=self.busy is None and self.configured),
             MenuEntry(),
             *([update] if update else []),
             MenuEntry(T_SETTINGS, "settings"),

@@ -134,6 +134,53 @@ def make_app(tmp_path):
     return app
 
 
+def test_past_term_dialog_loads_and_dispatches_one_time_job(tmp_path, monkeypatch):
+    from blackboard_sync.menubar import jobs
+    from blackboard_sync.windows import app as tray, past_term_window
+
+    app = make_app(tmp_path)
+    app.root = object()
+    app.post = lambda callback, *args: callback(*args)
+    app.start_next = lambda: None
+    app.notify = lambda note: None
+    seen = []
+
+    class Window:
+        def __init__(self, root, on_submit, on_close):
+            self.on_submit, self.on_close = on_submit, on_close
+        def update(self, names, message):
+            seen.append((names, message))
+
+    class Thread:
+        def __init__(self, target, args=(), **kwargs):
+            self.target, self.args = target, args
+        def start(self):
+            self.target(*self.args)
+
+    monkeypatch.setattr(past_term_window, "PastTermWindow", Window)
+    monkeypatch.setattr(tray.threading, "Thread", Thread)
+    monkeypatch.setattr(jobs, "run_past_terms", lambda *args, **kwargs: (["2025-2026 - Spring"], RunOutcome("ok")))
+    calls = []
+    monkeypatch.setattr(jobs, "run_sync", lambda *args, **kwargs: calls.append((args, kwargs)) or RunOutcome("ok"))
+    app.open_past_terms()
+    assert seen == [(["2025-2026 - Spring"], "")]
+    assert app.model.busy is None
+    app.past_term_window.on_submit("2025-2026 - Spring")
+    assert calls[0][0][0] == "past_term"
+    assert calls[0][1]["term_name"] == "2025-2026 - Spring"
+    assert calls[0][1]["runner"] is tray.cli_runner
+    assert app.model.past_term == "" and app.model.busy is None
+
+
+def test_closing_past_term_dialog_while_listing_does_not_wedge_job(tmp_path):
+    app = make_app(tmp_path)
+    assert app.model.begin("past_terms")
+    app.past_terms_closed()
+    app.past_terms_done(["2025-2026 - Fall"], RunOutcome("ok"))
+    assert app.past_term_window is None and app.model.busy is None
+    assert app.model.begin("sync")
+
+
 def test_settings_reject_invalid_url_and_busy_job(tmp_path, monkeypatch):
     app = make_app(tmp_path)
     monkeypatch.setattr(autostart, 'set_enabled', lambda enabled: None)

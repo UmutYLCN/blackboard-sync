@@ -33,7 +33,7 @@ from blackboard_sync.session import (
     write_private_json,
 )
 from blackboard_sync.state import State
-from blackboard_sync.sync import Syncer, run_lock, run_sync
+from blackboard_sync.sync import Syncer, choose_past_terms, run_lock, run_sync
 from blackboard_sync.system import is_windows
 
 STATUS_EXIT = {
@@ -85,6 +85,8 @@ def build_parser() -> argparse.ArgumentParser:
     check = sub.add_parser("check", help="verify the session and list the courses that would sync")
     _add_selection_args(check)
     check.add_argument("--dest", type=Path, help=argparse.SUPPRESS)
+    past = sub.add_parser("past-terms", help="indirilebilen eski dönemleri listele")
+    past.add_argument("--json", action="store_true", help="JSON olarak yazdır")
     uninstall = sub.add_parser("uninstall", help="uygulamayı ve tüm uygulama verilerini kaldır")
     uninstall.add_argument("--delete-course-files", action="store_true",
                            help="kayıtlı ders dosyalarını da Çöp Sepeti’ne taşı (varsayılan: koru)")
@@ -92,8 +94,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _add_selection_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--term", help='sync this term by name instead of the current one, e.g. "2026-2027 Güz"')
-    p.add_argument("--all-terms", action="store_true", help="sync every term, including past ones")
+    selection = p.add_mutually_exclusive_group()
+    selection.add_argument("--term", help='eski dönemi bir kez indir, ör. "2025-2026 - Spring"; otomatik güncellenmez')
+    selection.add_argument("--all-terms", action="store_true", help="sync every term, including past ones")
     p.add_argument(
         "--course",
         action="append",
@@ -143,7 +146,7 @@ def cmd_check(args, config: Config) -> int:
 
 
 def cmd_sync(args, config: Config) -> int:
-    report = SyncReport(dry_run=args.dry_run, dest=str(config.dest))
+    report = SyncReport(dry_run=args.dry_run, dest=str(config.dest), past_term=args.term or "")
     try:
         config.ensure_data_dir()
         with run_lock(config.lock_file):
@@ -184,7 +187,7 @@ def cmd_sync(args, config: Config) -> int:
     if not report.finished_at:
         report.finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-    if not args.dry_run and report.status != "locked":
+    if not args.dry_run and report.status != "locked" and args.term is None:
         write_private_json(config.last_run_file, report.to_dict())
     if args.json:
         print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
@@ -193,6 +196,25 @@ def cmd_sync(args, config: Config) -> int:
     else:
         print(report.message, file=sys.stderr)
     return STATUS_EXIT[report.status]
+
+
+def cmd_past_terms(args, config: Config) -> int:
+    client, session_data = open_client(config)
+    try:
+        with run_lock(config.lock_file):
+            me = client.me()
+            warnings: list[str] = []
+            terms, _courses = Syncer(client, config, State(config.state_file), dry_run=True).discover(
+                me["id"], all_terms=True, warnings=warnings,
+            )
+            names = [term.name for term in choose_past_terms(terms, datetime.now(timezone.utc))]
+    finally:
+        refresh_saved_cookies(config.session_file, session_data, client.http)
+    if args.json:
+        print(json.dumps({"terms": names, "warnings": warnings}, ensure_ascii=False))
+    else:
+        print("\n".join(names) or "İndirilebilecek eski dönem yok.")
+    return EXIT_OK
 
 
 def cmd_uninstall(args, config: Config) -> int:
@@ -226,7 +248,8 @@ def main(argv: list[str] | None = None) -> int:
         # urllib3 logs full URLs at DEBUG only; keep it quiet by default.
         logging.getLogger("urllib3").setLevel(logging.WARNING)
     config = make_config(args)
-    handlers = {"login": cmd_login, "sync": cmd_sync, "check": cmd_check, "uninstall": cmd_uninstall}
+    handlers = {"login": cmd_login, "sync": cmd_sync, "check": cmd_check,
+                "past-terms": cmd_past_terms, "uninstall": cmd_uninstall}
     try:
         return handlers[args.command](args, config)
     except LoginRequired as exc:

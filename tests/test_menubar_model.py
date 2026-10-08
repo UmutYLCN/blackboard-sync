@@ -381,6 +381,7 @@ def test_signed_in_menu_structure():
         f"2 yeni dosya, 1 yeni duyuru · sonraki: {format_time(m.next_run_at, NOW)}",
         "",
         "Şimdi senkronize et", "Dersler", "Son indirilenler", "University klasörünü aç",
+        "Eski dönemi indir…",
         "",
         "Ayarlar…", "Uygulamayı kaldır…", "Çık",
     ]
@@ -389,7 +390,7 @@ def test_signed_in_menu_structure():
 
 
 def test_folder_item_is_named_after_the_destination():
-    assert model().menu(NOW).entries[-5].title == "University klasörünü aç"
+    assert next(e.title for e in model().menu(NOW).entries if e.action == "folder") == "University klasörünü aç"
     m = AppModel(dest=Path("/Users/student/Documents/Okul"), now=NOW)  # an existing user's folder
     folder = next(e for e in m.menu(NOW).entries if e.action == "folder")
     assert folder.title == "Okul klasörünü aç"

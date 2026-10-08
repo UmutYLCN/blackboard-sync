@@ -167,7 +167,7 @@ class TrayApp:
         if job == "login":
             self.model.login_method = jobs.login_method()
         self.refresh()
-        settings, config = self.settings, self.config
+        settings, config, term_name = self.settings, self.config, self.model.past_term
         def worker():
             try:
                 if job == "login":
@@ -175,7 +175,7 @@ class TrayApp:
                 elif job == MOVE_JOB:
                     result = jobs.run_move_guarded(config, old, new)
                 else:
-                    result = jobs.run_sync(job, settings, runner=cli_runner, refetch_keys=refetch_keys)
+                    result = jobs.run_sync(job, settings, runner=cli_runner, refetch_keys=refetch_keys, term_name=term_name)
             except Exception as exc:
                 log.exception("CLI job failed")
                 result = ((False, str(exc)) if job == "login"
@@ -292,6 +292,8 @@ class TrayApp:
             self.drawn_icon = state
         if self.window is not None:
             self.window.update_status(settings_form.window_status(self.model))
+        if getattr(self, "past_term_window", None) is not None:
+            self.past_term_window.set_enabled(self.model.can_download_past_term)
         menu = self.model.menu(jobs.utcnow())
         if menu != self.drawn:
             self.icon.menu = render_menu(menu.entries,
@@ -306,6 +308,8 @@ class TrayApp:
             return
         if action in ("sync", "refetch", "login"):
             self.start_job(action)
+        elif action == "past_terms":
+            self.open_past_terms()
         elif action == "check_updates":
             self.start_update_check()
         elif action == "update":
@@ -348,6 +352,36 @@ class TrayApp:
             self.root.destroy()
             return
         self.refresh()
+
+    def open_past_terms(self):
+        from .past_term_window import PastTermWindow
+
+        if getattr(self, "past_term_window", None) is not None:
+            self.past_term_window.window.lift()
+            return
+        if not self.model.begin("past_terms"):
+            return
+        self.past_term_window = PastTermWindow(self.root, self.download_past_term, self.past_terms_closed)
+        self.refresh()
+        settings = self.settings
+        def worker():
+            self.post(self.past_terms_done, *jobs.run_past_terms(settings, runner=cli_runner))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def past_terms_done(self, names, outcome):
+        self.model.finish_past_terms(names, outcome)
+        if self.past_term_window is not None:
+            self.past_term_window.update(names, self.model.note)
+        self.refresh()
+
+    def past_terms_closed(self):
+        self.past_term_window = None
+
+    def download_past_term(self, name):
+        if not self.model.select_past_term(name):
+            return False
+        self.start_job("past_term")
+        return self.model.busy == "past_term"
 
     def start_uninstall(self):
         from tkinter import messagebox

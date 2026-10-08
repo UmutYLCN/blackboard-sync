@@ -187,7 +187,7 @@ def test_packaged_app_runs_cli_when_the_school_comes_first(monkeypatch):
     called = []
     monkeypatch.setattr("blackboard_sync.cli.main", lambda args: called.append(("cli", args)) or 0)
     monkeypatch.setattr("blackboard_sync.menubar.app.main", lambda args: called.append(("menubar", args)) or 0)
-    for args in (["--base-url", "https://bb.example.edu", "login"], ["--base-url=https://x.edu", "sync"], ["sync"]):
+    for args in (["--base-url", "https://bb.example.edu", "login"], ["--base-url=https://x.edu", "sync"], ["sync"], ["past-terms"]):
         monkeypatch.setattr(sys, "argv", ["Blackboard Sync", *args])
         app_entry.main()
     monkeypatch.setattr("blackboard_sync.windows.startup.run", lambda args: called.append(("tray", args)) or 0)
@@ -196,7 +196,7 @@ def test_packaged_app_runs_cli_when_the_school_comes_first(monkeypatch):
     app_entry.main()
     monkeypatch.setattr(sys, "platform", "win32")
     app_entry.main()
-    assert [kind for kind, _ in called] == ["cli", "cli", "cli", "menubar", "tray"]
+    assert [kind for kind, _ in called] == ["cli", "cli", "cli", "cli", "menubar", "tray"]
 
 
 def test_session_evidence_and_logout_preserve_files(config):

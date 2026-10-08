@@ -16,7 +16,7 @@ import requests
 
 from blackboard_sync.api import PARTIAL_PREFIX, PARTIAL_SUFFIX, BlackboardClient
 from blackboard_sync.config import Config
-from blackboard_sync.errors import AlreadyRunning, ApiError, LoginRequired
+from blackboard_sync.errors import AlreadyRunning, ApiError, BlackboardSyncError, LoginRequired
 from blackboard_sync.htmltext import body_text, find_embedded_files
 from blackboard_sync.notes import (
     announcement_date,
@@ -132,6 +132,20 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def choose_past_terms(terms: list[Term], now: datetime) -> list[Term]:
+    """Terms with accessible courses, excluding every term normal sync selects."""
+    current_ids = {term.id for term in choose_current_terms(terms, now)}
+    floor = datetime.min.replace(tzinfo=timezone.utc)
+    return sorted(
+        (term for term in terms if term.id and term.courses and term.id not in current_ids),
+        key=lambda term: (
+            term.start or max((parse_time(c.created) or floor for c in term.courses), default=floor),
+            term.name,
+        ),
+        reverse=True,
+    )
+
+
 @contextmanager
 def run_lock(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -179,6 +193,7 @@ class Syncer:
         refetch_missing: bool = False,
         windows: bool | None = None,
         refetch_keys: set[str] | None = None,
+        missing_only: bool = False,
     ):
         self.client = client
         self.config = config
@@ -188,6 +203,7 @@ class Syncer:
         self.refetch_missing = refetch_missing
         self.refetch_keys = refetch_keys
         self.windows = is_windows() if windows is None else windows
+        self.missing_only = missing_only
 
     def should_refetch(self, key: str) -> bool:
         previous = self.state.output(key)
@@ -200,6 +216,8 @@ class Syncer:
             return True
         if self.refetch_keys is not None:
             return not self.should_refetch(key) or (self.dest / previous["path"]).exists()
+        if self.missing_only and previous:
+            return (self.dest / previous["path"]).exists()
         return False
 
     # -- course discovery ----------------------------------------------
@@ -253,12 +271,17 @@ class Syncer:
 
         if all_terms:
             selected = list(terms.values())
-        elif term_name:
+        elif term_name is not None:
             wanted = term_name.casefold()
             selected = [t for t in terms.values() if t.name.casefold() == wanted]
             if not selected:
-                known = ", ".join(sorted(t.name for t in terms.values()))
-                warnings.append(f"No term named {term_name!r}. Known terms: {known}")
+                raise BlackboardSyncError(f"{term_name!r} adlı dönem bulunamadı.")
+            past_ids = {t.id for t in choose_past_terms(list(terms.values()), now)}
+            if len(selected) != 1 or selected[0].id not in past_ids:
+                raise BlackboardSyncError(
+                    "Yalnızca tek bir eski dönem indirilebilir; "
+                    "güncel dönemi indirmek için normal senkronu kullanın."
+                )
         else:
             selected = choose_current_terms(list(terms.values()), now)
 
@@ -573,6 +596,8 @@ class Syncer:
             return previous["path"] if previous else desired_rel
         if self.dry_run:
             if previous:
+                if self.missing_only:
+                    report.new_files.append(previous["path"])
                 return previous["path"]
             rel = desired_rel or join_rel(fallback_dir, out_key.rsplit(":", 1)[-1])
             report.new_files.append(rel)
@@ -596,7 +621,7 @@ class Syncer:
         finally:
             if download.path.exists():
                 download.path.unlink()
-        if outcome == "new":
+        if outcome == "new" or (self.missing_only and outcome == "updated"):
             report.new_files.append(rel)
         elif outcome == "updated":
             report.updated_files.append(rel)
@@ -614,8 +639,8 @@ class Syncer:
         sha = hashlib.sha256(data).hexdigest()
         previous = self.state.output(out_key)
         if self.dry_run:
-            if previous is None:
-                new_list.append(desired_rel)
+            if previous is None or self.missing_only:
+                new_list.append(previous["path"] if previous else desired_rel)
             elif previous["sha256"] != sha:
                 updated_list.append(previous["path"])
             return previous["path"] if previous else desired_rel
@@ -631,7 +656,7 @@ class Syncer:
         finally:
             if tmp_path.exists():
                 tmp_path.unlink()
-        if outcome == "new":
+        if outcome == "new" or (self.missing_only and outcome == "updated"):
             new_list.append(rel)
         elif outcome == "updated":
             updated_list.append(rel)
@@ -711,8 +736,10 @@ def run_sync(
     now: datetime | None = None,
     refetch_keys: set[str] | None = None,
 ) -> SyncReport:
-    """One complete sync pass. Raises LoginRequired when the session is gone."""
-    report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.dest))
+    """Sync current courses, or download one named past term's missing files."""
+    if term_name is not None and (not term_name.strip() or all_terms or refetch_keys is not None):
+        raise BlackboardSyncError("İndirilecek tek bir eski dönem adı belirtin.")
+    report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.dest), past_term=term_name or "")
     state = State.load(config.state_file, backup=not dry_run)
     if state.recovery:
         report.warnings.append(state.recovery)
@@ -728,8 +755,9 @@ def run_sync(
             report.message = "Seçilen dosyalar zaten mevcut veya listeden kaldırılmış."
             report.finished_at = _now_iso()
             return report
-    syncer = Syncer(client, config, state, dry_run=dry_run, refetch_missing=refetch_missing,
-                    refetch_keys=refetch_keys)
+    syncer = Syncer(client, config, state, dry_run=dry_run,
+                    refetch_missing=refetch_missing or bool(term_name), refetch_keys=refetch_keys,
+                    missing_only=bool(term_name))
     me = client.me()  # also the cheapest way to prove the session still works
     user_id = me.get("id") or user_id
     if not user_id:
@@ -742,7 +770,16 @@ def run_sync(
         now=now,
         warnings=report.warnings,
     )
+    if not term_name and not all_terms:
+        # An archived term stays frozen even if older memberships later become
+        # the fallback of choose_current_terms (e.g. current courses disappear).
+        courses = [c for c in courses if c.term_id not in state.past_terms]
+        terms = [t for t in terms if t.id not in state.past_terms]
     report.terms = [t.name for t in terms]
+    if term_name:
+        report.past_term = terms[0].name
+        if not dry_run:
+            state.record_past_term(terms[0].id, terms[0].name, [c.id for c in courses])
     for course in courses:
         syncer.migrate_course_folder(course, report.warnings)
     if not dry_run:

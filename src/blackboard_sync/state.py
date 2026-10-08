@@ -16,6 +16,8 @@ what was written locally:
   name was shortened to fit the path limit, keyed by its relative path. Moving
   to another destination folder needs it to give the folders the names a sync
   there would choose.
+* ``past_terms`` - term ids explicitly downloaded as one-time archives; normal
+  sync leaves their content alone. Missing files are restored only on request.
 """
 
 from __future__ import annotations
@@ -49,6 +51,7 @@ class State:
         self.items: dict[str, dict] = data.get("items", {})
         self.outputs: dict[str, dict] = data.get("outputs", {})
         self.folders: dict[str, str] = data.get("folders", {})
+        self.past_terms: dict[str, dict] = data.get("past_terms", {})
         self._claimed: dict[str, str] = {o["path"]: key for key, o in self.outputs.items()}
         self.recovery: str | None = None
         self.dirty = False  # True while there are changes not yet written to disk
@@ -93,8 +96,18 @@ class State:
         data = {"version": STATE_VERSION, "items": self.items, "outputs": self.outputs}
         if self.folders:
             data["folders"] = self.folders
+        if self.past_terms:
+            data["past_terms"] = self.past_terms
         write_private_json(self.path, data)
         self.dirty = False
+
+    def record_past_term(self, term_id: str, name: str, course_ids: list[str]) -> None:
+        """Archive metadata is additive; version-1 items and outputs keep their keys."""
+        self.past_terms[term_id] = {
+            "name": name, "courses": course_ids,
+            "downloaded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        self.dirty = True
 
     # -- items ----------------------------------------------------------
     def item_unchanged(self, key: str, modified: str | None, dest: Path, check_missing: bool, selected_keys: set[str] | None = None) -> bool:
