@@ -13,7 +13,7 @@ import sys
 import threading
 from pathlib import Path
 
-from blackboard_sync import deleted, runtime, updater, uninstall
+from blackboard_sync import deleted, runtime, update_macos, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, launchagent, settings_form
@@ -24,6 +24,7 @@ from blackboard_sync.menubar.model import (
     Icon,
     MenuModel,
     Notification,
+    T_UPDATE_WAIT,
     RunOutcome,
     open_target,
 )
@@ -48,6 +49,7 @@ DESCRIPTIONS = {
     Icon.ERROR: "Blackboard Sync: hata",
 }
 T_UPDATE_READY = "Blackboard Sync {version} indirildi"
+# The manual update, where the app cannot replace itself (``update_macos.ManualUpdate``).
 T_UPDATE_STEPS = (
     "Açılan pencerede “Blackboard Sync” simgesini “Applications” klasörüne sürükleyin "
     "ve eski sürümün yerine koymak için “Değiştir”i seçin. Bunun için önce "
@@ -123,6 +125,9 @@ def build_app(config: Config):
             self._login_after_job = False  # asked for while another job was running
             self._timer = rumps.Timer(self.tick, TICK_SECONDS)
             self._timer.start()
+            # Notifications need the running app: say how the update it quit for went.
+            self._installed_timer = rumps.Timer(self._report_installed, 1)
+            self._installed_timer.start()
             if not self.model.configured:
                 # First launch: show the settings window once the app is running.
                 self._first_run_timer = rumps.Timer(self._first_run, 1)
@@ -279,35 +284,63 @@ def build_app(config: Config):
                 # Run from a checkout: there is no app bundle to replace.
                 open_url(release.page_url)
                 return
+            if self.model.updates.busy is not None:
+                return
+            if self.model.busy is not None:
+                # The app quits to install; a running sync or move would be cut off.
+                self.notify(Notification("Güncelleme şimdi yüklenemiyor", T_UPDATE_WAIT, {}))
+                return
             if not self.model.updates.begin("download"):
                 return
             self.refresh()
-            threading.Thread(target=self._update_download_worker, args=(release,), daemon=True).start()
+            threading.Thread(target=self._update_worker, args=(release,), daemon=True).start()
 
-        def _update_download_worker(self, release: Release) -> None:
+        def _update_worker(self, release: Release) -> None:
+            path, manual, error = None, "", ""
             try:
-                path, error = updater.download(release, updater.download_dir()), ""
+                try:
+                    target = update_macos.find_target(uninstall.app_bundle())
+                except update_macos.ManualUpdate as exc:
+                    manual = str(exc)
+                    log.info("updating by hand: %s", manual)
+                    path = updater.download(release, updater.download_dir())
+                else:
+                    update_macos.install(release, target, self.config.lock_file, jobs.log_file(self.config))
             except UpdateError as exc:
-                path, error = None, str(exc)
+                error = str(exc)
             except OSError as exc:
-                path, error = None, f"Güncelleme kaydedilemedi: {exc.strerror or exc}"
+                error = f"Güncelleme kaydedilemedi: {exc.strerror or exc}"
             except Exception:  # keep the menu usable whatever went wrong
-                log.exception("update download failed")
-                path, error = None, "Güncelleme indirilemedi."
-            AppHelper.callAfter(self._update_downloaded, release, path, error)
+                log.exception("update failed")
+                error = "Güncelleme yüklenemedi."
+            AppHelper.callAfter(self._update_finished, release, path, manual, error)
 
-        def _update_downloaded(self, release: Release, path: Path | None, error: str) -> None:
-            log.info("update download: %s %s", path, error)
+        def _update_finished(self, release: Release, path: Path | None, manual: str, error: str) -> None:
+            log.info("update: %s %s %s", path, manual, error)
             for note in self.model.updates.finish_download(error):
                 self.notify(note)
-            self.refresh()
-            if path is None:
+            if error:
+                self.refresh()
                 return
-            # No silent replacement: an unsigned app cannot reliably swap itself.
+            if path is None:
+                # Staged and verified; the helper swaps the app in once this process exits.
+                self.model.updates.installing = release.version
+                self._save()
+                self.quit()
+                return
+            self.refresh()
             updater.open_disk_image(path)
-            if rumps.alert(T_UPDATE_READY.format(version=release.version), T_UPDATE_STEPS,
+            if rumps.alert(T_UPDATE_READY.format(version=release.version), f"{manual}\n\n{T_UPDATE_STEPS}",
                            ok="Blackboard Sync'ten çık", cancel="Sonra") == 1:
                 self.quit()
+
+        def _report_installed(self, timer) -> None:
+            timer.stop()
+            notes = self.model.updates.finish_install()
+            for note in notes:
+                self.notify(note)
+            if notes:
+                self._save()
 
         def open_school_folder(self, _sender=None) -> None:
             if self.model.dest.is_dir():

@@ -14,9 +14,11 @@ release carries ``SHA256SUMS.txt`` the installer must match its line. Every
 network or server problem (offline, private repository, rate limit) only
 means "no update information": checking never raises.
 
-macOS: an unsigned app cannot reliably replace itself, so the downloaded .dmg
-is opened and the student drags the new app over the old one. Windows: the
-installer runs silently and restarts the app, after the tray app has quit.
+macOS: ``update_macos`` verifies the app on the .dmg and swaps it in place of
+the running one, then restarts it; where it cannot (an unsigned app, a folder
+it cannot write, ...) the .dmg is opened and the student drags the new app
+over the old one. Windows: the installer runs silently and restarts the app,
+after the tray app has quit.
 """
 
 from __future__ import annotations
