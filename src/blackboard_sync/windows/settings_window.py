@@ -1,5 +1,6 @@
 """Resizable native Tk settings form, using the shared validation and status model."""
 
+from blackboard_sync import deleted
 from blackboard_sync.menubar import settings_form as form
 
 INTRO = form.intro_first_run("bu bilgisayara")
@@ -8,7 +9,8 @@ ACTION_WIDTH = 24
 
 
 class SettingsWindow:
-    def __init__(self, root, values, status, first_run, on_submit, on_action, on_close):
+    def __init__(self, root, values, status, first_run, on_submit, on_action, on_close,
+                 on_missing=lambda: [], on_deleted_action=lambda action, keys: None):
         import tkinter as tk
         from tkinter import ttk, filedialog
 
@@ -16,11 +18,18 @@ class SettingsWindow:
         window.title(form.T_TITLE_FIRST_RUN if first_run else form.T_TITLE)
         window.minsize(560, 480)
         window.columnconfigure(0, weight=1)
+        window.rowconfigure(0, weight=1)
         self.on_submit, self.on_action, self.on_close = on_submit, on_action, on_close
         self.status = status
         window.protocol("WM_DELETE_WINDOW", self.close)
-        frame = ttk.Frame(window, padding=20)
-        frame.grid(sticky="nsew")
+        self.on_missing, self.on_deleted_action = on_missing, on_deleted_action
+        self.selection = deleted.DeletedSelection()
+        self.notebook = ttk.Notebook(window)
+        self.notebook.grid(sticky="nsew")
+        frame = ttk.Frame(self.notebook, padding=20)
+        self.notebook.add(frame, text="Genel")
+        self.deleted_frame = ttk.Frame(self.notebook, padding=20)
+        self.notebook.add(self.deleted_frame, text=deleted.T_TAB)
         frame.columnconfigure(0, weight=1)
         self.url = tk.StringVar(value=values.base_url)
         self.dest = tk.StringVar(value=values.dest)
@@ -77,8 +86,6 @@ class SettingsWindow:
         ttk.Button(frame, text=form.T_CHOOSE_FOLDER, command=choose).grid(row=row, column=1, padx=(8, 0))
         row += 1
         place(ttk.Label(frame, text=form.T_DEST_HINT, wraplength=520), pady=(0, 8))
-        self.refetch_button = action_row(ttk.Label(frame, text=form.T_REFETCH_HINT, wraplength=300),
-                                         lambda: self.on_action("refetch"))
 
         section(form.T_SECTION_GENERAL)
         place(ttk.Checkbutton(frame, text=form.T_AUTOSTART, variable=self.autostart), pady=(0, 8))
@@ -101,6 +108,8 @@ class SettingsWindow:
         buttons.grid(row=row, columnspan=2, sticky="e")
         for label, callback in ((form.T_CANCEL, self.close), (form.T_SAVE, lambda: self.submit(False))):
             ttk.Button(buttons, text=label, command=callback).pack(side="left", padx=4)
+        self._build_deleted()
+        self.notebook.bind("<<NotebookTabChanged>>", lambda _e: self.refresh_deleted())
         self.update_status(status)
         self.show()
 
@@ -110,11 +119,103 @@ class SettingsWindow:
                                      foreground="#b00020" if status.account_warning else "")
         for button, title, enabled in (
             (self.account_button, status.account_title, status.account_enabled),
-            (self.refetch_button, status.refetch_title, status.refetch_enabled),
             (self.update_button, status.update_title, status.update_enabled),
         ):
             button.configure(text=title, state="normal" if enabled else "disabled")
         self.version_label.configure(text=status.version)
+        self.deleted_result.configure(text=status.deleted_message)
+        self.refresh_deleted()
+
+    def _build_deleted(self):
+        import tkinter as tk
+        from tkinter import ttk
+
+        frame = self.deleted_frame
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(1, weight=1)
+        ttk.Label(frame, text=deleted.T_HINT, wraplength=520).grid(row=0, column=0, columnspan=2,
+                                                                 sticky="ew", pady=(0, 12))
+        self.canvas = tk.Canvas(frame, highlightthickness=0, height=360)
+        self.canvas.grid(row=1, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self.canvas.yview)
+        scrollbar.grid(row=1, column=1, sticky="ns")
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        self.rows_frame = ttk.Frame(self.canvas)
+        child = self.canvas.create_window((0, 0), window=self.rows_frame, anchor="nw")
+        self.rows_frame.bind("<Configure>", lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(child, width=e.width))
+        self.canvas.bind("<MouseWheel>", lambda e: self.canvas.yview_scroll(-int(e.delta / 120), "units"))
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=2, column=0, columnspan=2, sticky="ew", pady=12)
+        self.select_all_button = ttk.Button(buttons, text=deleted.T_SELECT_ALL, command=self.select_all)
+        self.select_all_button.pack(side="left", padx=(0, 8))
+        self.refetch_button = ttk.Button(buttons, command=lambda: self.deleted_action("refetch"))
+        self.refetch_button.pack(side="left", padx=(0, 8))
+        self.dismiss_button = ttk.Button(buttons, text=deleted.T_DISMISS, command=lambda: self.deleted_action("dismiss"))
+        self.dismiss_button.pack(side="left")
+        self.deleted_result = ttk.Label(frame, wraplength=520)
+        self.deleted_result.grid(row=3, column=0, columnspan=2, sticky="w")
+        self.checks = {}
+        self._drawn_rows = None
+
+    def refresh_deleted(self):
+        from tkinter import ttk, BooleanVar
+
+        rows = self.on_missing()
+        self.selection.refresh(rows)
+        if rows != self._drawn_rows:
+            for widget in self.rows_frame.winfo_children():
+                widget.destroy()
+            self.checks = {}
+            group = None
+            if not rows:
+                ttk.Label(self.rows_frame, text=deleted.T_EMPTY).pack(anchor="w", pady=12)
+            for row in rows:
+                if group != (row.term, row.course):
+                    group = (row.term, row.course)
+                    ttk.Label(self.rows_frame, text=f"{row.term} / {row.course}",
+                              wraplength=490, font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(12, 4))
+                variable = BooleanVar(value=row.key in self.selection.selected)
+                entry = ttk.Frame(self.rows_frame)
+                entry.pack(anchor="w", fill="x")
+                check = ttk.Checkbutton(entry, variable=variable,
+                                        command=lambda k=row.key, v=variable: self.checked(k, v.get()))
+                check.pack(side="left", anchor="n")
+                ttk.Label(entry, text=row.name, wraplength=450).pack(side="left", anchor="w")
+                ttk.Label(self.rows_frame, text=row.folder, wraplength=480).pack(anchor="w", padx=24, pady=(0, 8))
+                self.checks[row.key] = (variable, check)
+            self._drawn_rows = rows
+        self.update_deleted_buttons()
+
+    def checked(self, key, checked):
+        self.selection.select(key, checked)
+        self.update_deleted_buttons()
+
+    def select_all(self):
+        self.selection.select_all()
+        for variable, _ in self.checks.values():
+            variable.set(True)
+        self.update_deleted_buttons()
+
+    def update_deleted_buttons(self):
+        enabled = self.status.refetch_enabled
+        self.select_all_button.configure(state="normal" if enabled and self.selection.rows else "disabled")
+        self.refetch_button.configure(text=self.status.refetch_title,
+                                      state="normal" if enabled and self.selection.keys() else "disabled")
+        self.dismiss_button.configure(state="normal" if enabled and self.selection.keys() else "disabled")
+        for _, check in self.checks.values():
+            check.configure(state="normal" if enabled else "disabled")
+
+    def deleted_action(self, action):
+        keys = self.selection.keys()
+        if not keys or not self.status.refetch_enabled:
+            return
+        error = self.on_deleted_action(action, keys)
+        self.refresh_deleted()
+        if error:
+            self.deleted_result.configure(text=error)
+        elif action == "dismiss":
+            self.deleted_result.configure(text="Seçilen dosyalar listeden kaldırıldı.")
 
     def account_pressed(self):
         if self.status.account_action == "login":
@@ -136,6 +237,7 @@ class SettingsWindow:
             self.close()
 
     def show(self):
+        self.refresh_deleted()
         window = self.window
         window.deiconify()
         window.lift()

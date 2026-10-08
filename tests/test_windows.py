@@ -197,6 +197,20 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
             self.focused = False
             self.destroyed = False
             widgets.append(self)
+        def add(self, child, **kwargs):
+            self.options.setdefault("tabs", []).append(kwargs["text"])
+        def bind(self, *args):
+            pass
+        def rowconfigure(self, *args, **kwargs):
+            pass
+        def yview(self, *args):
+            pass
+        def set(self, *args):
+            pass
+        def create_window(self, *args, **kwargs):
+            return 1
+        def winfo_children(self):
+            return []
         def grid(self, **kwargs):
             self.grid_options = kwargs
         def pack(self, **kwargs):
@@ -234,8 +248,8 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
         def set(self, value):
             self.value = value
 
-    ttk = SimpleNamespace(**{name: Widget for name in ('Frame', 'Label', 'Entry', 'Button', 'Checkbutton', 'Separator', 'Combobox')})
-    fake = SimpleNamespace(Toplevel=Widget, StringVar=Variable, BooleanVar=Variable, ttk=ttk,
+    ttk = SimpleNamespace(**{name: Widget for name in ('Frame', 'Label', 'Entry', 'Button', 'Checkbutton', 'Separator', 'Combobox', 'Notebook', 'Scrollbar')})
+    fake = SimpleNamespace(Toplevel=Widget, Canvas=Widget, StringVar=Variable, BooleanVar=Variable, ttk=ttk,
                            filedialog=SimpleNamespace(askdirectory=lambda **kw: str(tmp_path)))
     monkeypatch.setitem(sys.modules, 'tkinter', fake)
     model = AppModel(tmp_path, datetime.now(timezone.utc), configured=False)
@@ -243,17 +257,28 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
     def submit(values, login):
         submitted.append((values, login))
         return ('Geçerli bir adres yazın.', 'base_url') if len(submitted) == 1 else None
+    from blackboard_sync.deleted import MissingOutput
+    rows = [MissingOutput('key', 'term/course/file.pdf', 'term', 'course', 'file.pdf', 'term/course')]
+    deleted_actions = []
+    def deleted_action(action, keys):
+        deleted_actions.append((action, keys))
+        if action == 'dismiss':
+            rows.clear()
     window = SettingsWindow(None, FormValues('school.edu', str(tmp_path), True), window_status(model), True,
-                            submit, actions.append, lambda: closed.append(True))
+                            submit, actions.append, lambda: closed.append(True),
+                            on_missing=lambda: list(rows), on_deleted_action=deleted_action)
     assert window.window.topmost is True
     window.window.later()
     assert window.window.topmost is False
     labels = [w.options.get('text') for w in widgets]
     assert INTRO in labels
+    assert window.notebook.options["tabs"] == ["Genel", "Silinenler"]
+    assert "Listeden kaldır" in labels and "Tümünü seç" in labels
+    assert "file.pdf" in labels and "term/course" in labels
     sections = [label for label in labels if label in ('Hesap', 'Klasör', 'Genel', 'Güncellemeler')]
     assert sections == ['Hesap', 'Klasör', 'Genel', 'Güncellemeler']
     assert all(label in labels for label in ('Okulunuzun Blackboard adresi', 'Henüz giriş yapılmadı.',
-        'Dosyaların kaydedileceği klasör', 'Silinenleri tekrar indir', 'Bilgisayar açılınca başlat',
+        'Dosyaların kaydedileceği klasör', 'Seçilenleri indir', 'Bilgisayar açılınca başlat',
         'Güncellemeleri otomatik denetle', 'Otomatik senkron:', 'Şimdi denetle', 'Kaydet', 'Giriş yap', 'Vazgeç', 'Seç…'))
     assert any(label and label.startswith('Sürüm ') for label in labels)
     assert window.fields['base_url'].grid_options['sticky'] == 'ew'
@@ -268,12 +293,21 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
     assert window.account_label.options['text'] == 'Giriş yapıldı: Ada Student'
     assert window.account_button.options['text'] == 'Hesaptan çıkış yap'
     window.account_button.options['command']()
+    assert window.refetch_button.options['state'] == 'disabled'
+    window.select_all_button.options['command']()
+    assert window.refetch_button.options['state'] == 'normal'
     window.refetch_button.options['command']()
-    assert actions == ['check_updates', 'logout', 'refetch'] and not submitted
+    assert deleted_actions == [('refetch', ['key'])]
+    assert actions == ['check_updates', 'logout'] and not submitted
     model.begin('sync')
     window.update_status(window_status(model))
     assert window.account_button.options['state'] == window.refetch_button.options['state'] == 'disabled'
     model.busy = None
+    window.update_status(window_status(model))
+    window.dismiss_button.options['command']()
+    assert deleted_actions[-1] == ('dismiss', ['key'])
+    assert window.selection.keys() == []
+    assert any(w.options.get('text') == 'Silinmiş dosya yok.' for w in widgets)
 
     # "Giriş yap" saves the form first and keeps the window open on an error.
     model.session = None

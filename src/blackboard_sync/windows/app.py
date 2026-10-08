@@ -11,7 +11,7 @@ import time
 import webbrowser
 from pathlib import Path
 
-from blackboard_sync import relocate, runtime, updater, uninstall
+from blackboard_sync import deleted, relocate, runtime, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, settings_form
@@ -158,7 +158,7 @@ class TrayApp:
         elif self.model.due(jobs.utcnow()):
             self.start_job("sync")
 
-    def start_job(self, job):
+    def start_job(self, job, refetch_keys=None):
         old, new = self.model.move_from, self.model.dest
         if job == MOVE_JOB and old is None:
             return
@@ -175,7 +175,7 @@ class TrayApp:
                 elif job == MOVE_JOB:
                     result = jobs.run_move_guarded(config, old, new)
                 else:
-                    result = jobs.run_sync(job, settings, runner=cli_runner)
+                    result = jobs.run_sync(job, settings, runner=cli_runner, refetch_keys=refetch_keys)
             except Exception as exc:
                 log.exception("CLI job failed")
                 result = ((False, str(exc)) if job == "login"
@@ -398,8 +398,23 @@ class TrayApp:
             log.info("Opening the settings window (first run %s)", saved is None)
             self.window = SettingsWindow(self.root, values, settings_form.window_status(self.model),
                                          saved is None, self.settings_submitted, self.dispatch,
-                                         self.settings_closed)
+                                         self.settings_closed,
+                                         on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
+                                         on_deleted_action=self.deleted_action)
         self.window.show()
+
+    def deleted_action(self, action, keys):
+        if self.uninstalling or self.model.busy is not None or self.model.updates.busy == "download":
+            return settings_form.T_BUSY
+        try:
+            if action == "dismiss":
+                deleted.dismiss_missing(self.config, self.settings.dest, keys)
+            elif keys:
+                self.start_job("refetch", refetch_keys=keys)
+        except Exception as exc:
+            log.warning("Deleted-file action failed: %s", exc)
+            return "İşlem tamamlanamadı; çalışan senkron varsa bitmesini bekleyin."
+        return None
 
     def settings_closed(self):
         self.window = None
