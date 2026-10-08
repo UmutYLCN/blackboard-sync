@@ -10,7 +10,8 @@ ACTION_WIDTH = 24
 
 class SettingsWindow:
     def __init__(self, root, values, status, first_run, on_submit, on_action, on_close,
-                 on_missing=lambda: [], on_deleted_action=lambda action, keys: None):
+                 on_missing=lambda: [], on_deleted_action=lambda action, keys: None,
+                 on_past_term=lambda name: None):
         import tkinter as tk
         from tkinter import ttk, filedialog
 
@@ -23,6 +24,7 @@ class SettingsWindow:
         self.status = status
         window.protocol("WM_DELETE_WINDOW", self.close)
         self.on_missing, self.on_deleted_action = on_missing, on_deleted_action
+        self.on_past_term = on_past_term
         self.selection = deleted.DeletedSelection()
         self.notebook = ttk.Notebook(window)
         self.notebook.grid(sticky="nsew")
@@ -36,6 +38,7 @@ class SettingsWindow:
         self.autostart = tk.BooleanVar(value=values.autostart)
         self.check_updates = tk.BooleanVar(value=values.check_updates)
         self.interval = tk.StringVar(value=form.interval_title(values.sync_interval_minutes))
+        self.past_term = tk.StringVar(value="")
         row = 0
 
         def place(widget, **options):
@@ -87,6 +90,17 @@ class SettingsWindow:
         row += 1
         place(ttk.Label(frame, text=form.T_DEST_HINT, wraplength=520), pady=(0, 8))
 
+        section(form.T_SECTION_PAST_TERMS)
+        self.past_dropdown = ttk.Combobox(frame, textvariable=self.past_term, state="disabled")
+        self.past_dropdown.grid(row=row, column=0, sticky="ew", pady=4)
+        self.past_button = ttk.Button(frame, text=form.T_PAST_DOWNLOAD, width=ACTION_WIDTH,
+                                      command=self.download_past_term, state="disabled")
+        self.past_button.grid(row=row, column=1, sticky="e", padx=(8, 0))
+        row += 1
+        place(ttk.Label(frame, text=form.T_PAST_NOTE, wraplength=520))
+        self.past_label = ttk.Label(frame, wraplength=520)
+        place(self.past_label, pady=(0, 8))
+
         section(form.T_SECTION_GENERAL)
         place(ttk.Checkbutton(frame, text=form.T_AUTOSTART, variable=self.autostart), pady=(0, 8))
         interval_row = ttk.Frame(frame)
@@ -101,6 +115,10 @@ class SettingsWindow:
         place(ttk.Checkbutton(frame, text=form.T_CHECK_UPDATES, variable=self.check_updates), pady=(0, 8))
         self.version_label = ttk.Label(frame)
         self.update_button = action_row(self.version_label, lambda: self.on_action(self.status.update_action))
+        self.uninstall_button = ttk.Button(frame, text=form.T_UNINSTALL, width=ACTION_WIDTH,
+                                           command=lambda: self.on_action("uninstall"))
+        self.uninstall_button.grid(row=row, column=1, sticky="e", padx=(8, 0))
+        row += 1
 
         self.error = ttk.Label(frame, foreground="#b00020", wraplength=520)
         place(self.error, pady=8)
@@ -123,6 +141,13 @@ class SettingsWindow:
         ):
             button.configure(text=title, state="normal" if enabled else "disabled")
         self.version_label.configure(text=status.version)
+        self.uninstall_button.configure(state="normal" if status.uninstall_enabled else "disabled")
+        terms = list(status.past_terms)
+        self.past_dropdown.configure(values=terms, state="readonly" if terms else "disabled")
+        if self.past_term.get() not in terms:
+            self.past_term.set(terms[0] if terms else "")
+        self.past_button.configure(state="normal" if status.past_enabled else "disabled")
+        self.past_label.configure(text=status.past_message)
         self.deleted_result.configure(text=status.deleted_message)
         self.refresh_deleted()
 
@@ -216,6 +241,12 @@ class SettingsWindow:
             self.deleted_result.configure(text=error)
         elif action == "dismiss":
             self.deleted_result.configure(text="Seçilen dosyalar listeden kaldırıldı.")
+
+    def download_past_term(self):
+        """Start the one-time download of the term picked in Eski dönemler; the window stays open."""
+        name = self.past_term.get()
+        if name and self.status.past_enabled:
+            self.on_past_term(name)
 
     def account_pressed(self):
         if self.status.account_action == "login":

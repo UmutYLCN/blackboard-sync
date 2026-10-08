@@ -62,8 +62,9 @@ Ayarların ve indirdiğin ders dosyaları korunur.
 
 ## Eski dönem indirme
 
-Menü çubuğunda veya Windows sistem tepsisinde **Eski dönemi indir…** seçeneğini aç,
-bir dönem seç ve **İndir**'e bas. Güncel dönem listede görünmez. Dosyalar mevcut
+**Ayarlar…** penceresinin **Genel** sekmesindeki **Eski dönemler** bölümünde listeden
+bir dönem seç ve **Eski dönemi indir**'e bas. Liste giriş yapmışken pencere açılınca
+yüklenir; güncel dönem listede görünmez. Dosyalar mevcut
 kayıt klasöründeki dönem/ders klasörlerine indirilir. Eski dönem bir kez indirilir,
 otomatik güncellenmez; tekrar indirmek yalnızca eksik dosyaları tamamlar. Normal
 senkron güncel dönemi takip etmeye devam eder.
@@ -73,7 +74,7 @@ dönem adını kullan). Kullanılabilir adları `blackboard-sync past-terms` ile
 
 ## Kaldırma
 
-Menü çubuğunda veya Windows sistem tepsisinde **Uygulamayı kaldır…** seçeneğini aç.
+**Ayarlar…** penceresinin **Güncellemeler** bölümündeki **Uygulamayı kaldır…** düğmesine bas.
 Uygulama kayıtları, günlükler, ayarlar, giriş verileri ve açılışta başlatma kaydı silinir.
 İndirilmiş ders dosyaları varsayılan olarak korunur. **İndirilmiş ders dosyalarını da sil**
 seçeneği yalnızca uygulamanın kayıtlı dosyalarını ve boşalan klasörlerini (boşaldıysa

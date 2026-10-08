@@ -60,11 +60,7 @@ T_SYNC_NOW = "Şimdi senkronize et"
 T_SYNCING = "Senkronize ediliyor…"
 T_REFETCH = "Silinenleri tekrar indir"
 T_REFETCHING = "Silinenler indiriliyor…"
-T_PAST_TERM = "Eski dönemi indir…"
-T_PAST_TITLE = "Eski dönem indir"
-T_PAST_NOTE = "Eski dönem bir kez indirilir ve güncellenmez."
 T_PAST_LOADING = "Eski dönemler yükleniyor…"
-T_PAST_EMPTY = "İndirilebilecek eski dönem yok."
 T_LOGIN = "Giriş yap"
 T_LOGGING_IN = "Giriş bekleniyor…"
 T_LOGOUT = "Hesaptan çıkış yap"
@@ -535,6 +531,12 @@ class AppModel:
         self.busy: str | None = None  # "sync" | "refetch" | "login" | "move"
         self.past_term = ""  # only for the active one-time job; never saved as a default
         self.past_terms: list[str] = []
+        # The settings window lists the past terms; they are looked up once per
+        # sign-in and window, and ``past_message`` says how the last lookup or
+        # one-time download went.
+        self.past_terms_loaded = False
+        self.past_message = ""
+        self.past_lookup_stale = False  # the school changed while the lookup ran
         # A job asked for by a destination change, started as soon as the slot is free:
         # MOVE_JOB (from ``move_from``) or "refetch".
         self.pending: str | None = None
@@ -616,8 +618,28 @@ class AppModel:
             self.pending = None
         return True
 
+    def past_terms_due(self) -> bool:
+        """The settings window is open and its past-term list still has to be looked up."""
+        return (
+            not self.past_terms_loaded
+            and self.configured
+            and self.account()[0] is not None
+            and self.busy is None
+            and self.updates.busy != "download"
+        )
+
+    def reload_past_terms(self) -> None:
+        """Look the past terms up again the next time the settings window can."""
+        if self.busy != "past_terms":
+            self.past_terms_loaded = False
+            self.past_message = ""
+
     def finish_past_terms(self, names: list[str], outcome: RunOutcome) -> None:
         self.busy = None
+        if self.past_lookup_stale:  # the old school's terms: look again
+            self.past_lookup_stale = False
+            return
+        self.past_terms_loaded = True
         self.past_terms = names if outcome.status == "ok" else []
         if outcome.status == "login_required":
             self.auth_failed_at = outcome.finished_at or datetime.now(timezone.utc)
@@ -625,7 +647,10 @@ class AppModel:
         elif outcome.status == "locked":
             self.note = "Başka bir senkron sürüyor; birazdan tekrar deneyin."
         else:
-            self.note = "" if outcome.status == "ok" else shorten(outcome.message, 100)
+            # The lookup runs by itself when the settings window opens: it keeps
+            # another job's note.
+            self.note = self.note if outcome.status == "ok" else shorten(outcome.message, 100)
+        self.past_message = "" if outcome.status == "ok" else self.note
 
     def select_past_term(self, name: str) -> bool:
         if not self.can_download_past_term or name not in self.past_terms:
@@ -676,6 +701,7 @@ class AppModel:
                 notes.append(login_notification())
             else:
                 self.note = shorten(f"Eski dönem indirilemedi: {outcome.message}", 100)
+            self.past_message = self.note
             return notes
         if outcome.status == "locked":
             # Another sync (e.g. from the terminal) is running; keep what we
@@ -737,6 +763,7 @@ class AppModel:
         self.busy = None
         self.login_method = ""
         if ok:
+            self.past_terms_loaded = False  # the settings window lists them for this account
             self.auth_failed_at = None
             self.session_expired = False
             self.note = ""
@@ -785,6 +812,9 @@ class AppModel:
         if school_changed:
             self.past_terms = []
             self.past_term = ""
+            self.past_terms_loaded = False
+            self.past_message = ""
+            self.past_lookup_stale = self.busy == "past_terms"
             self.session = None
             self.auth_failed_at = None
             self.courses = []
@@ -934,11 +964,9 @@ class AppModel:
             MenuEntry("Dersler", children=[MenuEntry(label, "open", value=path) for label, path in unique_labels(course_items)] or [MenuEntry("Henüz ders yok", enabled=False)]),
             MenuEntry(T_RECENT, children=[MenuEntry(label, "open", value=path) for label, path in menu.recent] or [MenuEntry(T_RECENT_EMPTY, enabled=False)]),
             MenuEntry(open_folder_title(self.root), "folder"),
-            MenuEntry(T_PAST_TERM, "past_terms", enabled=self.busy is None and self.configured),
             MenuEntry(),
             *([update] if update else []),
             MenuEntry(T_SETTINGS, "settings"),
-            MenuEntry("Uygulamayı kaldır…", "uninstall"),
             MenuEntry(T_QUIT, "quit"),
         ]
         return menu

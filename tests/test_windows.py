@@ -134,22 +134,20 @@ def make_app(tmp_path):
     return app
 
 
-def test_past_term_dialog_loads_and_dispatches_one_time_job(tmp_path, monkeypatch):
+def test_settings_window_lists_past_terms_once_and_dispatches_one_time_job(tmp_path, monkeypatch):
+    import sys
     from blackboard_sync.menubar import jobs
-    from blackboard_sync.windows import app as tray, past_term_window
+    from blackboard_sync.windows import app as tray
 
     app = make_app(tmp_path)
-    app.root = object()
+    del app.refresh  # the real one: it starts the lookup while the window is open
     app.post = lambda callback, *args: callback(*args)
     app.start_next = lambda: None
     app.notify = lambda note: None
-    seen = []
-
-    class Window:
-        def __init__(self, root, on_submit, on_close):
-            self.on_submit, self.on_close = on_submit, on_close
-        def update(self, names, message):
-            seen.append((names, message))
+    app.icon = SimpleNamespace(icon=None, menu=None)
+    app.drawn = app.drawn_icon = None
+    statuses = []
+    app.window = SimpleNamespace(update_status=statuses.append)
 
     class Thread:
         def __init__(self, target, args=(), **kwargs):
@@ -157,28 +155,72 @@ def test_past_term_dialog_loads_and_dispatches_one_time_job(tmp_path, monkeypatc
         def start(self):
             self.target(*self.args)
 
-    monkeypatch.setattr(past_term_window, "PastTermWindow", Window)
+    monkeypatch.setitem(sys.modules, "pystray", SimpleNamespace(Menu=Menu, MenuItem=Item))
+    monkeypatch.setattr(tray, "icon_image", lambda state: state)
+    monkeypatch.setattr(tray.autostart, "is_installed", lambda: False)
     monkeypatch.setattr(tray.threading, "Thread", Thread)
-    monkeypatch.setattr(jobs, "run_past_terms", lambda *args, **kwargs: (["2025-2026 - Spring"], RunOutcome("ok")))
+    monkeypatch.setattr(jobs, "refresh_session", lambda config, model, settings: None)
+    lookups = []
+    monkeypatch.setattr(jobs, "run_past_terms",
+                        lambda *args, **kwargs: lookups.append(kwargs) or (["2025-2026 - Spring"], RunOutcome("ok")))
     calls = []
     monkeypatch.setattr(jobs, "run_sync", lambda *args, **kwargs: calls.append((args, kwargs)) or RunOutcome("ok"))
-    app.open_past_terms()
-    assert seen == [(["2025-2026 - Spring"], "")]
+
+    app.refresh()  # not signed in: nothing to look up
+    assert lookups == [] and statuses[-1].past_message == "Eski dönemleri görmek için giriş yapın."
+    app.model.session = {"saved_at": datetime.now(timezone.utc).timestamp(), "user": {"displayName": "Ada"}}
+    app.refresh()
+    app.refresh()
+    assert len(lookups) == 1 and lookups[0]["runner"] is tray.cli_runner
+    status = statuses[-1]
+    assert status.past_terms == ("2025-2026 - Spring",) and status.past_enabled
     assert app.model.busy is None
-    app.past_term_window.on_submit("2025-2026 - Spring")
+    app.download_past_term("2025-2026 - Spring")
     assert calls[0][0][0] == "past_term"
     assert calls[0][1]["term_name"] == "2025-2026 - Spring"
     assert calls[0][1]["runner"] is tray.cli_runner
     assert app.model.past_term == "" and app.model.busy is None
+    assert statuses[-1].past_message == "2025-2026 - Spring · 0 dosya indirildi (eski dönem)."
+    assert len(lookups) == 1
+    app.window = None  # closed: no lookup without the window
+    app.model.reload_past_terms()
+    app.refresh()
+    assert len(lookups) == 1
 
 
-def test_closing_past_term_dialog_while_listing_does_not_wedge_job(tmp_path):
+def test_closing_settings_while_listing_past_terms_does_not_wedge_job(tmp_path):
     app = make_app(tmp_path)
     assert app.model.begin("past_terms")
-    app.past_terms_closed()
+    app.window = None
     app.past_terms_done(["2025-2026 - Fall"], RunOutcome("ok"))
-    assert app.past_term_window is None and app.model.busy is None
+    assert app.model.busy is None
     assert app.model.begin("sync")
+
+
+def test_uninstall_from_settings_closes_the_window_without_the_tray_hint(tmp_path, monkeypatch):
+    import sys
+    from blackboard_sync.windows import settings_window
+    from blackboard_sync.windows.app import uninstall
+
+    app = make_app(tmp_path)
+    hints, parents, destroyed = [], [], []
+    app.icon = SimpleNamespace(stop=lambda: None, notify=lambda *args: hints.append(args))
+    app.root = SimpleNamespace(destroy=lambda: None)
+    app.window = SimpleNamespace(window=SimpleNamespace(destroy=lambda: destroyed.append(True)))
+    monkeypatch.setitem(sys.modules, "tkinter", SimpleNamespace(messagebox=SimpleNamespace(
+        showinfo=lambda *args, **kw: parents.append(kw["parent"]),
+        showwarning=lambda *args, **kw: parents.append(kw["parent"]),
+        showerror=lambda *args, **kw: parents.append(kw["parent"]))))
+    choices = [None, False]
+    monkeypatch.setattr(settings_window, "ask_uninstall", lambda parent, dest: choices.pop(0))
+    monkeypatch.setattr(uninstall, "uninstall", lambda *args, **kwargs: ["kept a file"])
+    monkeypatch.setattr(uninstall, "remove_app", lambda: [])
+
+    app.dispatch("uninstall")  # "Vazgeç": the window stays
+    assert app.window is not None and not destroyed and not app.uninstalling
+    app.dispatch("uninstall")
+    assert app.window is None and destroyed == [True] and hints == []
+    assert parents == [app.root] and app.closed
 
 
 def test_settings_reject_invalid_url_and_busy_job(tmp_path, monkeypatch):
@@ -203,6 +245,21 @@ def test_settings_school_change_saves_and_starts_login(tmp_path, monkeypatch):
     assert jobs == ['login']
     assert toggles == [True]
     assert (tmp_path / 'settings.json').exists()
+
+
+def test_school_change_saved_during_past_term_lookup_signs_in_afterwards(tmp_path, monkeypatch):
+    app = make_app(tmp_path)
+    monkeypatch.setattr(autostart, 'set_enabled', lambda enabled: None)
+    started = []
+    app.start_job = started.append
+    assert app.model.begin('past_terms')  # the open window looks the terms up
+    values = FormValues('new.school.edu', str(tmp_path / 'old'), False)
+    assert app.settings_submitted(values, False) is None
+    assert app.settings.base_url == 'https://new.school.edu'
+    assert started == [] and app.login_after_job
+    app.past_terms_done(['Old school term'], RunOutcome('ok'))
+    assert started == ['login'] and not app.login_after_job
+    assert app.model.past_terms == [] and not app.model.past_terms_loaded  # looked up again for the new school
 
 
 def test_settings_registry_failure_keeps_window_open(tmp_path, monkeypatch):
@@ -306,14 +363,15 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
         return ('Geçerli bir adres yazın.', 'base_url') if len(submitted) == 1 else None
     from blackboard_sync.deleted import MissingOutput
     rows = [MissingOutput('key', 'term/course/file.pdf', 'term', 'course', 'file.pdf', 'term/course')]
-    deleted_actions = []
+    deleted_actions, past_downloads = [], []
     def deleted_action(action, keys):
         deleted_actions.append((action, keys))
         if action == 'dismiss':
             rows.clear()
     window = SettingsWindow(None, FormValues('school.edu', str(tmp_path), True), window_status(model), True,
                             submit, actions.append, lambda: closed.append(True),
-                            on_missing=lambda: list(rows), on_deleted_action=deleted_action)
+                            on_missing=lambda: list(rows), on_deleted_action=deleted_action,
+                            on_past_term=past_downloads.append)
     assert window.window.topmost is True
     window.window.later()
     assert window.window.topmost is False
@@ -322,16 +380,23 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
     assert window.notebook.options["tabs"] == ["Genel", "Silinenler"]
     assert "Listeden kaldır" in labels and "Tümünü seç" in labels
     assert "file.pdf" in labels and "term/course" in labels
-    sections = [label for label in labels if label in ('Hesap', 'Klasör', 'Genel', 'Güncellemeler')]
-    assert sections == ['Hesap', 'Klasör', 'Genel', 'Güncellemeler']
+    sections = [label for label in labels if label in ('Hesap', 'Klasör', 'Eski dönemler', 'Genel', 'Güncellemeler')]
+    assert sections == ['Hesap', 'Klasör', 'Eski dönemler', 'Genel', 'Güncellemeler']
     assert all(label in labels for label in ('Okulunuzun Blackboard adresi', 'Henüz giriş yapılmadı.',
         'Dosyaların kaydedileceği klasör', 'Seçilenleri indir', 'Bilgisayar açılınca başlat',
-        'Güncellemeleri otomatik denetle', 'Otomatik senkron:', 'Şimdi denetle', 'Kaydet', 'Giriş yap', 'Vazgeç', 'Seç…'))
+        'Güncellemeleri otomatik denetle', 'Otomatik senkron:', 'Şimdi denetle', 'Kaydet', 'Giriş yap', 'Vazgeç', 'Seç…',
+        'Eski dönemi indir', 'Eski dönem bir kez indirilir, güncellenmez.', 'Uygulamayı kaldır…'))
     assert any(label and label.startswith('Sürüm ') for label in labels)
     assert window.fields['base_url'].grid_options['sticky'] == 'ew'
     assert window.refetch_button.options['state'] == 'disabled'  # nothing to bring back yet
+    # Eski dönemler: nothing to pick before signing in.
+    assert window.past_label.options['text'] == 'Eski dönemleri görmek için giriş yapın.'
+    assert window.past_button.options['state'] == window.past_dropdown.options['state'] == 'disabled'
+    window.past_button.options['command']()
+    assert past_downloads == []
     window.update_button.options['command']()
-    assert actions == ['check_updates']
+    window.uninstall_button.options['command']()
+    assert actions == ['check_updates', 'uninstall']
 
     # A signed-in student signs out from the window; it stays open.
     model.configured = True
@@ -340,15 +405,33 @@ def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
     assert window.account_label.options['text'] == 'Giriş yapıldı: Ada Student'
     assert window.account_button.options['text'] == 'Hesaptan çıkış yap'
     window.account_button.options['command']()
+    assert window.past_label.options['text'] == 'Eski dönemler yükleniyor…'
+    assert window.past_button.options['state'] == 'disabled'
+    model.finish_past_terms([], RunOutcome('ok'))
+    window.update_status(window_status(model))
+    assert window.past_label.options['text'] == 'İndirilebilecek eski dönem yok.'
+    assert window.past_button.options['state'] == window.past_dropdown.options['state'] == 'disabled'
+    model.reload_past_terms()
+    model.finish_past_terms(['2025-2026 Bahar', '2025-2026 Güz'], RunOutcome('ok'))
+    window.update_status(window_status(model))
+    assert window.past_dropdown.options['values'] == ['2025-2026 Bahar', '2025-2026 Güz']
+    assert window.past_term.get() == '2025-2026 Bahar'  # newest first
+    assert window.past_button.options['state'] == 'normal' and window.past_label.options['text'] == ''
+    window.past_term.set('2025-2026 Güz')
+    window.update_status(window_status(model))
+    assert window.past_term.get() == '2025-2026 Güz'  # a refresh keeps the choice
+    window.past_button.options['command']()
+    assert past_downloads == ['2025-2026 Güz']
     assert window.refetch_button.options['state'] == 'disabled'
     window.select_all_button.options['command']()
     assert window.refetch_button.options['state'] == 'normal'
     window.refetch_button.options['command']()
     assert deleted_actions == [('refetch', ['key'])]
-    assert actions == ['check_updates', 'logout'] and not submitted
+    assert actions == ['check_updates', 'uninstall', 'logout'] and not submitted
     model.begin('sync')
     window.update_status(window_status(model))
     assert window.account_button.options['state'] == window.refetch_button.options['state'] == 'disabled'
+    assert window.past_button.options['state'] == window.uninstall_button.options['state'] == 'disabled'
     model.busy = None
     window.update_status(window_status(model))
     window.dismiss_button.options['command']()

@@ -1,9 +1,10 @@
 """What the settings window shows and what saving it means, without any GUI code.
 
-The Genel tab has four sections: Hesap (school address, who is signed in, sign
-in or out), Klasör (destination), Genel (start at
-login, sync interval) and Güncellemeler (automatic checks, check now, version). Silinenler lists
-missing outputs for selective recovery or permanent dismissal. The GUI
+The Genel tab has five sections: Hesap (school address, who is signed in, sign
+in or out), Klasör (destination), Eski dönemler (download a past term once),
+Genel (start at login, sync interval) and Güncellemeler (automatic checks, check
+now, version, uninstall). Silinenler lists missing outputs for selective
+recovery or permanent dismissal. The GUI
 layers (``settings_window.py`` on macOS, ``windows/settings_window.py``) only
 draw ``FormValues`` and ``WindowStatus`` and report which button was pressed.
 The first launch (no ``settings.json`` yet) and the "Ayarlar…" menu item open
@@ -17,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from blackboard_sync import __version__
+from blackboard_sync import __version__, uninstall
 from blackboard_sync.deleted import T_DOWNLOAD
 from blackboard_sync.menubar.model import (
     DEST_KEEP,
@@ -27,6 +28,7 @@ from blackboard_sync.menubar.model import (
     T_LOGGING_IN,
     T_LOGIN,
     T_LOGOUT,
+    T_PAST_LOADING,
     T_REFETCHING,
     T_SYNC_NOW,
     AppModel,
@@ -81,6 +83,7 @@ def intro_first_run(device: str, sync_interval_minutes: int = 60) -> str:
 T_INTRO_FIRST_RUN = intro_first_run("bu Mac'e")
 T_SECTION_ACCOUNT = "Hesap"
 T_SECTION_FOLDER = "Klasör"
+T_SECTION_PAST_TERMS = "Eski dönemler"
 T_SECTION_GENERAL = "Genel"
 T_SECTION_UPDATES = "Güncellemeler"
 T_URL_LABEL = "Okulunuzun Blackboard adresi"
@@ -94,6 +97,11 @@ T_DEST_HINT = (
     "Klasörü değiştirirseniz indirilmiş dosyaları yeni klasöre taşımayı ya da "
     "yeniden indirmeyi seçebilirsiniz."
 )
+T_PAST_DOWNLOAD = "Eski dönemi indir"
+T_PAST_NOTE = "Eski dönem bir kez indirilir, güncellenmez."
+T_PAST_EMPTY = "İndirilebilecek eski dönem yok."
+T_PAST_SIGN_IN = "Eski dönemleri görmek için giriş yapın."
+T_UNINSTALL = uninstall.BUTTON_TITLE
 T_AUTOSTART = "Bilgisayar açılınca başlat"
 T_CHECK_UPDATES = "Güncellemeleri otomatik denetle"
 T_CHOOSE_FOLDER = "Seç…"
@@ -161,7 +169,8 @@ class WindowStatus:
     """The live part of the window: who is signed in and which buttons work now.
 
     Buttons that need the app's single job slot (sign in, sign out, bring back
-    deleted files) are disabled while a sync or a sign-in runs.
+    deleted files, download a past term, uninstall) are disabled while a sync or
+    a sign-in runs.
     """
 
     account: str
@@ -176,6 +185,26 @@ class WindowStatus:
     update_action: str  # "check_updates" | "update"
     update_enabled: bool
     deleted_message: str = ""
+    # Eski dönemler: the terms in the list (newest first, never the current one),
+    # the line under it (loading, empty, progress or result) and the button.
+    past_terms: tuple[str, ...] = ()
+    past_message: str = ""
+    past_enabled: bool = False
+    uninstall_enabled: bool = False
+
+
+def past_term_status(model: AppModel) -> tuple[tuple[str, ...], str, bool]:
+    """(terms, message, download enabled) for the Eski dönemler section."""
+    if not model.configured or model.account()[0] is None:
+        return (), T_PAST_SIGN_IN, False
+    if model.busy == "past_terms" or not model.past_terms_loaded:
+        return (), T_PAST_LOADING, False
+    terms = tuple(model.past_terms)
+    if model.busy == "past_term":
+        message = model.activity()
+    else:
+        message = model.past_message or ("" if terms else T_PAST_EMPTY)
+    return terms, message, model.can_download_past_term
 
 
 def window_status(model: AppModel) -> WindowStatus:
@@ -198,6 +227,7 @@ def window_status(model: AppModel) -> WindowStatus:
         update_title, update_action = f"{updates.available.version} sürümüne güncelle", "update"
     else:
         update_title, update_action = T_CHECK_NOW, "check_updates"
+    past_terms, past_message, past_enabled = past_term_status(model)
     return WindowStatus(
         account=account,
         account_warning=expired and model.busy != "login",
@@ -217,6 +247,10 @@ def window_status(model: AppModel) -> WindowStatus:
             else "Başka bir senkron çalışıyor; bitmesini bekleyin." if model.last and model.last.status == "locked"
             else "İşlem tamamlanamadı. Ayrıntılar uygulama menüsünde." if model.last else ""
         ),
+        past_terms=past_terms,
+        past_message=past_message,
+        past_enabled=past_enabled,
+        uninstall_enabled=idle and updates.busy is None,
     )
 
 

@@ -283,6 +283,8 @@ class TrayApp:
             self.model.autostart = autostart.is_installed()
         except OSError:
             log.exception("Could not read login item")
+        if self.window is not None and not self.uninstalling and self.model.past_terms_due():
+            self.start_past_terms()
         state = self.model.icon()
         # Session expiry can be detected before the first scheduled sync.
         if self.model.session_expired:
@@ -293,8 +295,6 @@ class TrayApp:
             self.drawn_icon = state
         if self.window is not None:
             self.window.update_status(settings_form.window_status(self.model))
-        if getattr(self, "past_term_window", None) is not None:
-            self.past_term_window.set_enabled(self.model.can_download_past_term)
         menu = self.model.menu(jobs.utcnow())
         if menu != self.drawn:
             self.icon.menu = render_menu(menu.entries,
@@ -309,8 +309,6 @@ class TrayApp:
             return
         if action in ("sync", "refetch", "login"):
             self.start_job(action)
-        elif action == "past_terms":
-            self.open_past_terms()
         elif action == "check_updates":
             self.start_update_check()
         elif action == "update":
@@ -354,16 +352,10 @@ class TrayApp:
             return
         self.refresh()
 
-    def open_past_terms(self):
-        from .past_term_window import PastTermWindow
-
-        if getattr(self, "past_term_window", None) is not None:
-            self.past_term_window.window.lift()
-            return
+    def start_past_terms(self):
+        """Look up the past terms for the settings window's list, in the background."""
         if not self.model.begin("past_terms"):
             return
-        self.past_term_window = PastTermWindow(self.root, self.download_past_term, self.past_terms_closed)
-        self.refresh()
         settings = self.settings
         def worker():
             self.post(self.past_terms_done, *jobs.run_past_terms(settings, runner=cli_runner))
@@ -371,12 +363,11 @@ class TrayApp:
 
     def past_terms_done(self, names, outcome):
         self.model.finish_past_terms(names, outcome)
-        if self.past_term_window is not None:
-            self.past_term_window.update(names, self.model.note)
+        self.start_next()  # a move the window saved meanwhile goes first
+        if self.login_after_job and self.model.busy is None:
+            self.login_after_job = False
+            self.start_job("login")
         self.refresh()
-
-    def past_terms_closed(self):
-        self.past_term_window = None
 
     def download_past_term(self, name):
         if not self.model.select_past_term(name):
@@ -397,6 +388,11 @@ class TrayApp:
         if choice is None:
             self.uninstalling = False
             return
+        if self.window is not None:
+            # Closed without settings_closed: no "runs in the background" hint now.
+            window, self.window = self.window, None
+            window.window.destroy()
+            parent = self.root
         try:
             self.config.dest = self.settings.dest
             warnings = uninstall.uninstall(
@@ -435,8 +431,11 @@ class TrayApp:
                                          saved is None, self.settings_submitted, self.dispatch,
                                          self.settings_closed,
                                          on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
-                                         on_deleted_action=self.deleted_action)
+                                         on_deleted_action=self.deleted_action,
+                                         on_past_term=self.download_past_term)
+            self.model.reload_past_terms()
         self.window.show()
+        self.refresh()  # starts looking up the past terms
 
     def deleted_action(self, action, keys):
         if self.uninstalling or self.model.busy is not None or self.model.updates.busy == "download":
@@ -467,8 +466,9 @@ class TrayApp:
             log.exception("Could not show the tray hint")
 
     def settings_submitted(self, values, login):
-        # Do not apply a new destination/school to the result of an in-flight job.
-        if self.model.busy or self.model.updates.busy == "download":
+        # Do not apply a new destination/school to the result of an in-flight job;
+        # the past-term lookup the open window starts changes no files.
+        if self.model.busy not in (None, "past_terms") or self.model.updates.busy == "download":
             return settings_form.T_BUSY, "base_url"
         try:
             submission = settings_form.submit(values, self.settings)
