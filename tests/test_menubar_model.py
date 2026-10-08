@@ -382,14 +382,14 @@ def test_signed_in_menu_structure():
         "",
         "Şimdi senkronize et", "Dersler", "Son indirilenler", "University klasörünü aç",
         "",
-        "Ayarlar…", "Çık",
+        "Ayarlar…", "Uygulamayı kaldır…", "Çık",
     ]
     assert not any(e.action in ("login", "logout", "refetch", "autostart", "check_updates") for e in entries(menu))
     assert not menu.entries[0].enabled and not menu.entries[1].enabled
 
 
 def test_folder_item_is_named_after_the_destination():
-    assert model().menu(NOW).entries[-4].title == "University klasörünü aç"
+    assert model().menu(NOW).entries[-5].title == "University klasörünü aç"
     m = AppModel(dest=Path("/Users/student/Documents/Okul"), now=NOW)  # an existing user's folder
     folder = next(e for e in m.menu(NOW).entries if e.action == "folder")
     assert folder.title == "Okul klasörünü aç"
@@ -402,7 +402,7 @@ def test_update_row_only_when_a_new_version_waits():
     m = model(session=signed_session())
     m.updates.finish_check(CheckResult("available", Release("9.9.9", "", "x.dmg", "")), NOW, manual=False)
     titles = [e.title for e in m.menu(NOW).entries]
-    assert titles[-3:] == ["Güncelleme var: 9.9.9 — Güncelle", "Ayarlar…", "Çık"]
+    assert titles[-4:] == ["Güncelleme var: 9.9.9 — Güncelle", "Ayarlar…", "Uygulamayı kaldır…", "Çık"]
 
 
 def test_expiry_overrides_saved_cookies_and_survives_network_errors():

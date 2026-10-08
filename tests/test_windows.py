@@ -126,6 +126,7 @@ def make_app(tmp_path):
     app.config = Config(data_dir=tmp_path, dest=tmp_path / 'old')
     app.settings = Settings('https://old.school.edu', tmp_path / 'old')
     app.login_after_job = False
+    app.uninstalling = False
     app.model = AppModel(app.settings.dest, datetime.now(timezone.utc))
     app.save = lambda: None
     app.refresh = lambda: None
@@ -299,6 +300,7 @@ def update_app(tmp_path, monkeypatch):
     app = make_app(tmp_path)
     app.events = queue.Queue()
     app.closed = False
+    app.uninstalling = False
     app.root = SimpleNamespace(after=lambda *args: None, event_generate=lambda *args, **kw: None)
     app.poll_errors = LogThrottle()
     app.notices = []

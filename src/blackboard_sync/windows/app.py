@@ -11,8 +11,9 @@ import time
 import webbrowser
 from pathlib import Path
 
-from blackboard_sync import relocate, runtime, updater
+from blackboard_sync import relocate, runtime, updater, uninstall
 from blackboard_sync.config import Config
+from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, settings_form
 from blackboard_sync.menubar.model import DEST_KEEP, MOVE_JOB, open_target, RunOutcome, UPDATE_ACTIONS
 from blackboard_sync.settings import SettingsError, save_settings
@@ -83,6 +84,7 @@ class TrayApp:
         self.window = None
         self.login_after_job = False  # a new school's sign-in waits for the file move
         self.closed = False
+        self.uninstalling = False
         self.drawn = None
         self.drawn_icon = None
         self.icon = pystray.Icon("Blackboard Sync", icon_image(self.model.icon()), "Blackboard Sync")
@@ -119,6 +121,9 @@ class TrayApp:
             pass
 
     def poll(self):
+        if self.uninstalling:
+            self.root.after(REQUEST_CHECK_MS, self.poll)
+            return
         self.drain()
         if not self.closed:
             try:
@@ -135,6 +140,9 @@ class TrayApp:
             self.root.after(REQUEST_CHECK_MS, self.poll)
 
     def tick(self):
+        if self.uninstalling:
+            self.root.after(30000, self.tick)
+            return
         self.start_next()
         if self.model.update_due(jobs.utcnow()):
             self.start_update_check(manual=False)
@@ -294,12 +302,17 @@ class TrayApp:
     def dispatch(self, action, value=""):
         from tkinter import messagebox
 
+        if self.uninstalling:
+            return
         if action in ("sync", "refetch", "login"):
             self.start_job(action)
         elif action == "check_updates":
             self.start_update_check()
         elif action == "update":
             self.start_update()
+        elif action == "uninstall":
+            self.start_uninstall()
+            return
         elif action == "settings":
             self.open_settings()
         elif action in ("folder", "open"):
@@ -335,6 +348,46 @@ class TrayApp:
             self.root.destroy()
             return
         self.refresh()
+
+    def start_uninstall(self):
+        from tkinter import messagebox
+        from .settings_window import ask_uninstall
+
+        parent = self.window.window if self.window is not None else self.root
+        if self.model.busy or self.model.updates.busy:
+            messagebox.showinfo("Blackboard Sync", uninstall.BUSY, parent=parent)
+            return
+        self.uninstalling = True
+        choice = ask_uninstall(parent, self.settings.dest)
+        if choice is None:
+            self.uninstalling = False
+            return
+        try:
+            self.config.dest = self.settings.dest
+            warnings = uninstall.uninstall(
+                self.config, choice, before_cleanup=self.prepare_uninstall,
+                owns_app_lock=True, app_cleanup=lambda: [],
+            )
+        except (BlackboardSyncError, OSError) as exc:
+            messagebox.showerror("Blackboard Sync", str(exc), parent=parent)
+            self.uninstalling = False
+            return
+        if warnings:
+            messagebox.showwarning("Blackboard Sync", "\n\n".join(warnings), parent=parent)
+        warnings = uninstall.remove_app()
+        if warnings:
+            messagebox.showwarning("Blackboard Sync", "\n\n".join(warnings), parent=parent)
+        self.closed = True
+        self.icon.stop()
+        self.root.destroy()
+
+    def prepare_uninstall(self):
+        from .startup import close_logging
+
+        lock = getattr(self, "lifetime_lock", None)
+        if lock is not None:
+            lock.close()
+        close_logging()
 
     def open_settings(self):
         from .settings_window import SettingsWindow
@@ -448,7 +501,9 @@ def main(argv=None):
         root = tk.Tk()
         root.withdraw()
         root.report_callback_exception = lambda *exc: log.error("Tk callback failed", exc_info=exc)
-        TrayApp(config, root, show_settings).run()
+        app = TrayApp(config, root, show_settings)
+        app.lifetime_lock = lock
+        app.run()
     finally:
         lock.close()
     return 0

@@ -28,3 +28,5 @@ proxy_tools==0.1.0; sys_platform == 'win32'
 pycparser==3.0; sys_platform == 'win32'
 pythonnet==3.1.0; sys_platform == 'win32'
 pywebview==6.2.1; sys_platform == 'win32'
+Send2Trash==2.1.0
+pywin32==312; sys_platform == 'win32'

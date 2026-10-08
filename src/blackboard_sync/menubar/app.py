@@ -13,8 +13,9 @@ import sys
 import threading
 from pathlib import Path
 
-from blackboard_sync import runtime, updater
+from blackboard_sync import runtime, updater, uninstall
 from blackboard_sync.config import Config
+from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, launchagent, settings_form
 from blackboard_sync.menubar.model import (
     DEST_KEEP,
@@ -118,6 +119,7 @@ def build_app(config: Config):
             self._menu_delegate.owner = self
             self.menu._menu.setDelegate_(self._menu_delegate)
             self._settings_window = None
+            self._uninstalling = False
             self._login_after_job = False  # asked for while another job was running
             self._timer = rumps.Timer(self.tick, TICK_SECONDS)
             self._timer.start()
@@ -130,6 +132,8 @@ def build_app(config: Config):
 
         # -- events ------------------------------------------------------
         def tick(self, _sender=None) -> None:
+            if self._uninstalling:
+                return
             self.start_next()
             if self.model.update_due(jobs.utcnow()):
                 self.start_update_check(manual=False)
@@ -380,6 +384,8 @@ def build_app(config: Config):
             return ask_dest_choice(old, new, files)
 
         def notification_clicked(self, notification) -> None:
+            if self._uninstalling:
+                return
             data = notification.data if isinstance(notification.data, dict) else {}
             if data.get("action") == "login":
                 self.start_login()
@@ -388,6 +394,43 @@ def build_app(config: Config):
             elif data.get("open"):
                 path = Path(data["open"])
                 open_path(path if path.exists() else self.model.dest)
+
+        def start_uninstall(self, _sender=None) -> None:
+            from blackboard_sync.menubar.settings_window import ask_uninstall
+
+            if self.model.busy or self.model.updates.busy:
+                rumps.alert("Blackboard Sync", uninstall.BUSY)
+                return
+            self._uninstalling = True  # modal dialogs also run timers/wake events
+            self._timer.stop()
+            choice = ask_uninstall(self.settings.dest)
+            if choice is None:
+                self._uninstalling = False
+                self._timer.start()
+                return
+            try:
+                self.config.dest = self.settings.dest
+                warnings = uninstall.uninstall(
+                    self.config, choice, before_cleanup=self._prepare_uninstall,
+                    owns_app_lock=True, app_cleanup=lambda: [],
+                )
+            except (BlackboardSyncError, OSError) as exc:
+                rumps.alert("Blackboard Sync", str(exc))
+                self._uninstalling = False
+                self._timer.start()
+                return
+            if warnings:
+                rumps.alert("Blackboard Sync", "\n\n".join(warnings))
+            warnings = uninstall.remove_app()
+            if warnings:
+                rumps.alert("Blackboard Sync", "\n\n".join(warnings))
+            self.quit()
+
+        def _prepare_uninstall(self) -> None:
+            lock = getattr(self, "_lifetime_lock", None)
+            if lock is not None:
+                lock.close()
+            uninstall.close_file_logs()
 
         def quit(self, _sender=None) -> None:
             rumps.quit_application()
@@ -423,7 +466,7 @@ def build_app(config: Config):
                 actions = {
                     "sync": self.start_sync, "login": self.start_login,
                     "folder": self.open_school_folder, "settings": self.open_settings,
-                    "quit": self.quit, "open": lambda _s: self.open_recent(entry.value),
+                    "quit": self.quit, "uninstall": self.start_uninstall, "open": lambda _s: self.open_recent(entry.value),
                     "update": self.start_update,
                 }
                 item = rumps.MenuItem(entry.title, callback=actions.get(entry.action) if entry.enabled else None)
@@ -511,6 +554,7 @@ def main(argv: list[str] | None = None) -> int:
     # A menu bar app: no Dock icon, no app menu.
     NSApplication.sharedApplication().setActivationPolicy_(NSApplicationActivationPolicyAccessory)
     app = build_app(config)
+    app._lifetime_lock = lock
     log.info("menu bar app started (dest %s)", app.settings.dest)
     app.run()
     lock.close()

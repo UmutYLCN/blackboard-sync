@@ -23,6 +23,9 @@ a = Analysis(
         "webview.platforms.winforms",
         "webview.platforms.edgechromium",
         "clr",
+        "send2trash.win.IFileOperationProgressSink",
+        "win32com.shell.shell",
+        "win32com.server.policy",
     ],
     excludes=["pytest", "unittest", "pydoc_data"],
 )

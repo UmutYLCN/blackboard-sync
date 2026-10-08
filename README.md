@@ -29,6 +29,29 @@ irm https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.ps1 
 
 İlk açılışta okul adresini ve kayıt klasörünü seç, ardından **Giriş yap**.
 
+## Kaldırma
+
+Menü çubuğunda veya Windows sistem tepsisinde **Uygulamayı kaldır…** seçeneğini aç.
+Uygulama kayıtları, günlükler, ayarlar, giriş verileri ve açılışta başlatma kaydı silinir.
+İndirilmiş ders dosyaları varsayılan olarak korunur. **İndirilmiş ders dosyalarını da sil**
+seçeneği yalnızca uygulamanın kayıtlı dosyalarını ve boşalan klasörlerini Çöp Sepeti’ne /
+Geri Dönüşüm Kutusu’na taşır; diğer dosyalar ve ana indirme klasörü korunur.
+Senkronizasyon veya klasör taşıma sürerken kaldırma yapılamaz.
+
+Terminalden (önce menüden uygulamadan çık):
+
+```sh
+blackboard-sync uninstall
+# Kayıtlı ders dosyalarını da Çöp Sepeti’ne taşımak için:
+blackboard-sync uninstall --delete-course-files
+```
+
+Paketli Windows kurulumunda terminal komutu uygulama klasöründeki
+`blackboard-sync-cli.exe uninstall` şeklindedir. macOS paketinde
+`"/Applications/Blackboard Sync.app/Contents/MacOS/Blackboard Sync" uninstall` kullanılır.
+Kaynak koddan kurulumda bu komut verileri temizler; kaynak klasörünü ve sanal ortamı elle kaldır.
+Uygulamayı yalnızca Finder’da Çöp Sepeti’ne sürüklemek uygulama verilerini temizlemez.
+
 ## Gizlilik
 
 Şifreni yalnızca okulunun kendi giriş sayfasına yazarsın; uygulama şifreni görmez ve hiçbir yere kaydetmez. Saatlik senkron için gereken giriş oturumu yalnızca kendi bilgisayarında tutulur ve hiçbir sunucuya gönderilmez.

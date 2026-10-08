@@ -305,7 +305,7 @@ def model(**kwargs):
 def update_row(m):
     """The menu row above "Ayarlar…" that only exists while an update is waiting."""
     entries = m.menu(NOW).entries
-    row = entries[-3]
+    row = entries[-4]
     return row if row.title else None
 
 
