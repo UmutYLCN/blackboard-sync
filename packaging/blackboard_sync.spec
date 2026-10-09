@@ -10,6 +10,10 @@ VERSION = re.search(
 a = Analysis(
     [str(ROOT / "packaging" / "app_entry.py")],
     pathex=[str(ROOT / "src")],
+    datas=[
+        (str(ROOT / "assets" / "menubar" / "idle.png"), "assets/menubar"),
+        (str(ROOT / "assets" / "menubar" / "idle@2x.png"), "assets/menubar"),
+    ],
     # The sync child run and the menu bar app are imported lazily by app_entry,
     # the in-app sign-in window (WKWebView) lazily by login.
     hiddenimports=[
