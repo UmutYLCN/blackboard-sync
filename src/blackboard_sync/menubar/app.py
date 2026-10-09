@@ -35,7 +35,8 @@ from blackboard_sync.updater import CheckResult, Release, UpdateError
 log = logging.getLogger("blackboard_sync.menubar")
 
 TICK_SECONDS = 30
-# SF Symbols per state; expired and error are tinted so they stand out.
+# SF Symbols per state; idle uses the logo below, with this symbol as a fallback.
+# Expired and error are tinted so they stand out.
 SYMBOLS = {
     Icon.IDLE: ("graduationcap", None),
     Icon.SYNCING: ("arrow.triangle.2.circlepath", None),
@@ -78,6 +79,22 @@ def forget_menu_items(menu) -> None:
 
 def symbol_image(icon: Icon):
     from AppKit import NSColor, NSImage, NSImageSymbolConfiguration
+
+    if icon == Icon.IDLE:
+        # PyInstaller places bundled data under _MEIPASS; source runs use the repo.
+        root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3]))
+        assets = root / "assets" / "menubar"
+        image = NSImage.alloc().initWithContentsOfFile_(str(assets / "idle.png"))
+        if image is not None and image.isValid():
+            retina = NSImage.alloc().initWithContentsOfFile_(str(assets / "idle@2x.png"))
+            if retina is not None and retina.isValid():
+                for representation in retina.representations():
+                    representation.setSize_((18, 18))
+                    image.addRepresentation_(representation)
+            image.setSize_((18, 18))
+            image.setAccessibilityDescription_(DESCRIPTIONS[icon])
+            image.setTemplate_(True)  # follows the light/dark menu bar
+            return image
 
     name, color = SYMBOLS[icon]
     image = NSImage.imageWithSystemSymbolName_accessibilityDescription_(name, DESCRIPTIONS[icon])

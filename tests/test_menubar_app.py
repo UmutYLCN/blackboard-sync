@@ -8,6 +8,145 @@ from rumps.rumps import NSApp
 from blackboard_sync.menubar.app import forget_menu_items
 
 
+@pytest.mark.parametrize("frozen", [False, True])
+def test_idle_uses_the_logo_as_an_18_point_template(frozen, tmp_path, monkeypatch):
+    import shutil
+    from pathlib import Path
+    import AppKit
+    from blackboard_sync.menubar import app
+    from blackboard_sync.menubar.model import Icon
+
+    source = Path(app.__file__).resolve().parents[3] / "assets" / "menubar"
+    if frozen:
+        target = tmp_path / "assets" / "menubar"
+        shutil.copytree(source, target)
+        monkeypatch.setattr(app.sys, "_MEIPASS", str(tmp_path), raising=False)
+    else:
+        monkeypatch.delattr(app.sys, "_MEIPASS", raising=False)
+
+    # A valid logo must not ask for any SF Symbol.
+    image_class = AppKit.NSImage
+    class Images:
+        alloc = image_class.alloc
+
+        @staticmethod
+        def imageWithSystemSymbolName_accessibilityDescription_(*args):
+            pytest.fail("idle should use the bundled logo")
+
+    monkeypatch.setattr(AppKit, "NSImage", Images)
+    image = app.symbol_image(Icon.IDLE)
+    assert image.isValid() and image.isTemplate()
+    assert (image.size().width, image.size().height) == (18, 18)
+    assert image.accessibilityDescription() == "Blackboard Sync"
+    assert {(rep.pixelsWide(), rep.pixelsHigh()) for rep in image.representations()} == {(18, 18), (36, 36)}
+    assert all((rep.size().width, rep.size().height) == (18, 18) for rep in image.representations())
+
+
+@pytest.mark.parametrize("corrupt", [False, True])
+def test_unloadable_logo_falls_back_to_graduationcap(corrupt, tmp_path, monkeypatch):
+    import AppKit
+    from blackboard_sync.menubar import app
+    from blackboard_sync.menubar.model import Icon
+
+    if corrupt:
+        target = tmp_path / "assets" / "menubar" / "idle.png"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"not a PNG")
+    monkeypatch.setattr(app.sys, "_MEIPASS", str(tmp_path), raising=False)
+    image_class = AppKit.NSImage
+    calls = []
+    class Images:
+        alloc = image_class.alloc
+
+        @staticmethod
+        def imageWithSystemSymbolName_accessibilityDescription_(name, description):
+            calls.append((name, description))
+            return image_class.imageWithSystemSymbolName_accessibilityDescription_(name, description)
+
+    monkeypatch.setattr(AppKit, "NSImage", Images)
+    image = app.symbol_image(Icon.IDLE)
+    assert calls == [("graduationcap", "Blackboard Sync")]
+    assert image.isValid() and image.isTemplate()
+
+
+@pytest.mark.parametrize("corrupt", [False, True])
+def test_idle_still_uses_the_logo_if_the_retina_asset_cannot_load(corrupt, tmp_path, monkeypatch):
+    import shutil
+    from pathlib import Path
+    from blackboard_sync.menubar import app
+    from blackboard_sync.menubar.model import Icon
+
+    assets = tmp_path / "assets" / "menubar"
+    assets.mkdir(parents=True)
+    source = Path(app.__file__).resolve().parents[3] / "assets" / "menubar" / "idle.png"
+    shutil.copyfile(source, assets / "idle.png")
+    if corrupt:
+        (assets / "idle@2x.png").write_bytes(b"not a PNG")
+    monkeypatch.setattr(app.sys, "_MEIPASS", str(tmp_path), raising=False)
+    image = app.symbol_image(Icon.IDLE)
+    assert image.isValid() and image.isTemplate()
+    assert [(rep.pixelsWide(), rep.pixelsHigh()) for rep in image.representations()] == [(18, 18)]
+
+
+@pytest.mark.parametrize("icon, name, template", [
+    ("SYNCING", "arrow.triangle.2.circlepath", True),
+    ("EXPIRED", "person.crop.circle.badge.exclamationmark", False),
+    ("ERROR", "exclamationmark.triangle", False),
+])
+def test_other_states_keep_their_sf_symbols(icon, name, template, monkeypatch):
+    import AppKit
+    from blackboard_sync.menubar import app
+    from blackboard_sync.menubar.model import Icon
+
+    image_class = AppKit.NSImage
+    calls = []
+    class Images:
+        @staticmethod
+        def alloc():
+            pytest.fail("only idle should load an asset")
+
+        @staticmethod
+        def imageWithSystemSymbolName_accessibilityDescription_(name, description):
+            calls.append((name, description))
+            return image_class.imageWithSystemSymbolName_accessibilityDescription_(name, description)
+
+    monkeypatch.setattr(AppKit, "NSImage", Images)
+    state = getattr(Icon, icon)
+    image = app.symbol_image(state)
+    assert calls == [(name, app.DESCRIPTIONS[state])]
+    assert image.isValid() and image.isTemplate() == template
+
+
+def test_idle_uses_text_when_neither_logo_nor_symbol_can_load(config, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import AppKit
+    from blackboard_sync.menubar import app
+    from blackboard_sync.menubar.model import Icon
+
+    AppKit.NSApplication.sharedApplication()
+    monkeypatch.setattr(rumps.Timer, "start", lambda self: None)
+    monkeypatch.setattr(rumps.events.on_notification, "register", lambda callback: None)
+    monkeypatch.setattr(rumps.events.on_wake, "register", lambda callback: None)
+    monkeypatch.setattr(app.sys, "_MEIPASS", str(tmp_path), raising=False)
+    image_class = AppKit.NSImage
+    class Images:
+        alloc = image_class.alloc
+
+        @staticmethod
+        def imageWithSystemSymbolName_accessibilityDescription_(*args):
+            return None
+
+    monkeypatch.setattr(AppKit, "NSImage", Images)
+    menu_app = app.build_app(config)
+    images, titles = [], []
+    menu_app._nsapp = SimpleNamespace(nsstatusitem=SimpleNamespace(
+        setImage_=images.append, setTitle_=titles.append,
+    ))
+    menu_app._draw_icon(Icon.IDLE)
+    assert images == [None]
+    assert titles == ["BB"]
+
+
 def build(menu, n_courses=8):
     courses = rumps.MenuItem("Dersler")
     for i in range(n_courses):
