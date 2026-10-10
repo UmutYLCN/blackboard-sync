@@ -6,11 +6,16 @@ Applications, Launchpad or the Start menu, also while the app already runs; the
 
 - Başlangıç, until the student first signs in: three steps and the sign-in form
   (school address, folder, start at login, "Giriş yap").
-- Genel bakış afterwards: the account with the last sync, "Şimdi senkronize
-  et", "Klasörü aç" and the recently downloaded files.
+- Genel bakış afterwards: "Şimdi senkronize et", "Klasörü aç" and the
+  recently downloaded files. While a sync runs an illustration (``sync_scene``)
+  shows that files are on their way: on the first sync it fills the empty list,
+  later it sits above the list.
 - Genel: the settings form (``settings_form``). Its Vazgeç/Kaydet bar appears
   only once something was changed, and saving keeps the window open.
 - Silinenler: deleted files to bring back (``deleted``).
+
+The account (initials, name, the last sync, a status badge or "Giriş yap")
+sits at the bottom of the sidebar, under the sections, once Başlangıç is done.
 
 Closing the window never stops the app: the menu bar / tray icon, the timers
 and a running job go on, and the Dock icon (macOS) or taskbar button (Windows)
@@ -71,17 +76,23 @@ def reopen_hint(where: str) -> str:
 
 # Genel bakış
 T_OPEN_FOLDER = "Klasörü aç"
-T_CONNECTED = "Bağlı"
 T_SYNC_RUNNING = "Senkron sürüyor"
 T_EXPIRED = "Oturum sona erdi"
 T_SIGNED_OUT = "Giriş yapılmadı"
 T_WAITING = "Giriş bekleniyor"
 T_NEVER_SYNCED = "Henüz senkronize edilmedi"
+# The one line under the illustration on the very first sync.
+T_FIRST_SYNC = "Dosyalarınız ilk kez indiriliyor…"
+# The sidebar's account card; Tk cuts long names itself (AppKit truncates).
+SIDEBAR_NAME_LIMIT = 20
 # Genel: the bar with Vazgeç / Kaydet, only while something is not saved.
 T_UNSAVED = "Kaydedilmemiş değişiklikler"
 
 # Jobs that change files: the account card says a sync is running.
 SYNC_RUNNING_JOBS = ("sync", "refetch", "past_term", MOVE_JOB)
+# How the illustration shows while one of them runs.
+SCENE_FIRST = "first"  # nothing downloaded yet: large, in place of the empty list
+SCENE_COMPACT = "compact"  # small, above the list
 
 
 def day_time(when: datetime, now: datetime) -> str:
@@ -109,14 +120,17 @@ def initials(name: str) -> str:
 
 @dataclass(frozen=True)
 class AccountCard:
-    """Who is signed in and how syncing goes, at the top of Genel bakış."""
+    """Who is signed in and how syncing goes, at the bottom of the sidebar.
+
+    ``message`` shows on Genel bakış, above the list: the sidebar is too narrow for it.
+    """
 
     initials: str
     title: str
     detail: str  # the last sync (also while a new one runs), or where to sign in
     badge: str = ""
     warning: bool = False
-    message: str = ""  # a note or the last error, under the detail
+    message: str = ""  # a note or the last error
     action_title: str = ""  # "Giriş yap" when nobody is signed in
     action_enabled: bool = False
 
@@ -142,10 +156,18 @@ class MainStatus:
     start_login: bool = True  # False: only save (signed in already, e.g. from the terminal)
     start_enabled: bool = True
     start_message: str = ""
+    # Genel bakış while files change: SCENE_FIRST / SCENE_COMPACT ("" otherwise) and its one line.
+    scene: str = ""
+    scene_line: str = ""
 
     @property
     def overview_title(self) -> str:
         return T_NAV_START if self.first_run else T_NAV_OVERVIEW
+
+    @property
+    def shows_account(self) -> bool:
+        """The sidebar's account card waits for the first sign-in: Başlangıç has its own form for it."""
+        return not self.first_run
 
 
 def is_first_run(model: AppModel) -> bool:
@@ -166,14 +188,22 @@ def account_card(model: AppModel, now: datetime) -> AccountCard:
     if name is None:
         return AccountCard("!", T_EXPIRED if expired else T_SIGNED_OUT, last_sync_text(model, now),
                            warning=True, message=message, action_title=T_LOGIN, action_enabled=idle)
-    if model.busy in SYNC_RUNNING_JOBS:
-        badge = T_SYNC_RUNNING
-    elif warning:
-        badge = ""
-    else:
-        badge = T_CONNECTED
+    # Only a running sync gets a badge; signed in and idle needs no word of its own.
+    badge = T_SYNC_RUNNING if model.busy in SYNC_RUNNING_JOBS else ""
     return AccountCard(initials(name), name, last_sync_text(model, now), badge=badge, warning=warning,
                        message=message)
+
+
+def sync_scene(model: AppModel) -> tuple[str, str]:
+    """(how the illustration shows, its line) while a job changes files; ("", "") otherwise."""
+    if model.busy not in SYNC_RUNNING_JOBS:
+        return "", ""
+    line = T_FIRST_SYNC if model.busy == "sync" and model.last is None else model.activity()
+    return (SCENE_COMPACT if model.recent else SCENE_FIRST), line
+
+
+def sidebar_name(card: AccountCard) -> str:
+    return shorten(card.title, SIDEBAR_NAME_LIMIT)
 
 
 def recent_rows(model: AppModel, now: datetime) -> tuple[RecentRow, ...]:
@@ -193,6 +223,7 @@ def main_status(model: AppModel, now: datetime) -> MainStatus:
         start_message = login_waiting_line(model.login_method)
     else:
         start_message = model.note
+    scene, scene_line = sync_scene(model)
     return MainStatus(
         first_run=is_first_run(model),
         account=account_card(model, now),
@@ -204,6 +235,8 @@ def main_status(model: AppModel, now: datetime) -> MainStatus:
         start_login=name is None,
         start_enabled=idle,
         start_message=start_message,
+        scene=scene,
+        scene_line=scene_line,
     )
 
 

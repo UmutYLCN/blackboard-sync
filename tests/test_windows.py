@@ -447,6 +447,7 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
         assert text in labels()
     assert 'Dosyalarınız University klasörüne kaydedilir.' not in labels()
     assert window.button_bar.removed  # nothing changed yet
+    assert window.account_card.removed  # Başlangıç signs in with its own form
 
     # Başlangıç signs in with the form; a bad address stays, with the reason.
     window.url.set('school.edu')
@@ -482,16 +483,31 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     window.nav[OVERVIEW].options['command']()
     assert visible() == [OVERVIEW] and window.nav[OVERVIEW].options['text'] == 'Genel bakış'
     assert window.account_title.options['text'] == 'Ada Student'
+    assert window.account_title.parent is window.account_card and not window.account_card.removed
     assert window.account_detail.options['text'].startswith('Son senkron: bugün ')
     assert window.badge.options['text'] == 'Senkron sürüyor' and window.login_button.removed
+    # Files listed already: the small illustration above them, animating while the window is open.
+    assert not window.scene_frame.removed and window.first_frame.removed and not window.recent_body.removed
+    assert window.scene_line.options['text'] == 'Yeni içerik kontrol ediliyor…'
+    assert window.scene.running and not window.first_scene.running
     assert window.sync_button.options['state'] == 'disabled'
     file_button = next(w for w in widgets if w.options.get('text') == 'Homework1.docx' and not w.destroyed)
     file_button.options['command']()
     assert opened == ['term/SWE305/Homework1.docx']
     model.busy = None
     window.update_status(main_status(model, now))
+    assert window.scene_frame.removed and not window.scene.running  # gone with the sync
     window.sync_button.options['command']()
     assert actions == ['sync']
+    # The first sync, nothing listed yet: the large illustration in place of the empty list.
+    model.recent = []
+    model.begin('sync')
+    window.update_status(main_status(model, now))
+    assert not window.first_frame.removed and window.recent_body.removed and window.scene_frame.removed
+    assert window.first_scene.running and window.first_scene.canvas.later == window.first_scene.tick
+    model.busy = None
+    window.update_status(main_status(model, now))
+    assert window.first_frame.removed and not window.recent_body.removed and not window.first_scene.running
 
     # Silinenler: one sentence, select, bring back, dismiss.
     window.nav[DELETED].options['command']()
@@ -927,3 +943,27 @@ def test_tray_log_rotates_and_faults_have_their_own_file(tmp_path, monkeypatch):
     names = sorted(p.name for p in path.parent.iterdir())
     assert 'windows-tray.log.1' in names and 'windows-tray-faults.log' in names
     assert max(p.stat().st_size for p in path.parent.iterdir()) < 3000
+
+
+def test_windows_sync_scene_animates_on_a_timer_and_stands_still_without_animations(monkeypatch, tmp_path):
+    from blackboard_sync.windows import sync_scene_view
+    from blackboard_sync.windows.sync_scene_view import SyncScene, rounded
+
+    fake_tk(monkeypatch, tmp_path)
+    drawn = []
+    view = SyncScene(None, 120, 70, background='#f0f0f0')
+    view.canvas.create_polygon = lambda *args, **kwargs: drawn.append(('polygon', kwargs.get('fill')))
+    view.canvas.create_oval = lambda *args, **kwargs: drawn.append(('oval', kwargs.get('fill')))
+    view.canvas.create_line = lambda *args, **kwargs: drawn.append(('line', kwargs.get('fill')))
+    assert not sync_scene_view.reduce_motion()  # only Windows has the setting
+    view.start()
+    assert view.running and not view.still and view.canvas.later == view.tick
+    assert ('polygon', '#0b1425') in drawn  # the folder's front, in the app's navy
+    view.stop()
+    assert not view.running
+    view.tick()  # a tick that was already queued does nothing after stop()
+    monkeypatch.setattr(sync_scene_view, 'reduce_motion', lambda: True)
+    drawn.clear()
+    view.start()
+    assert view.still and not view.running and drawn  # the still picture, no timer
+    assert len(rounded(0, 0, 10, 10, 2)) == 24

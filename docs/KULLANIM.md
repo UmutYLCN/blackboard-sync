@@ -6,9 +6,10 @@ Kurulum için [README](../README.md)'ye bak. Bu sayfa uygulamanın ayrıntılı 
 
 Blackboard Sync'i **Applications** veya **Launchpad**'den (Windows'ta **Başlat** menüsünden)
 açınca ana pencere açılır; uygulama zaten çalışıyorsa aynı pencere öne gelir. Soldaki
-bölümler: ilk girişe kadar **Başlangıç**, sonra **Genel bakış** (hesap, son senkron,
-**Şimdi senkronize et**, **Klasörü aç**, son indirilenler), **Genel** (ayarlar) ve
-**Silinenler**. Menüdeki **Ayarlar…** aynı pencereyi **Genel** bölümünde açar.
+bölümler: ilk girişe kadar **Başlangıç**, sonra **Genel bakış** (**Şimdi senkronize et**,
+**Klasörü aç**, son indirilenler; senkron sürerken küçük bir animasyon), **Genel** (ayarlar) ve
+**Silinenler**. Hesabın ve son senkronun zamanı sol altta durur; oturum sona erince orada
+**Giriş yap** çıkar. Menüdeki **Ayarlar…** aynı pencereyi **Genel** bölümünde açar.
 
 Pencereyi kapatınca uygulama kapanmaz: menü çubuğundaki (Windows'ta saatin yanındaki)
 simgeyle çalışmaya ve senkronize etmeye devam eder. Bilgisayar açılınca kendiliğinden

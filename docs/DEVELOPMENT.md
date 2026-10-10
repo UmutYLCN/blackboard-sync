@@ -195,13 +195,21 @@ A sidebar switches between three sections:
 - **Başlangıç** until you first sign in: three steps and a short form (school
   address, folder, **Bilgisayar açılınca başlat**) with **Giriş yap**, which
   saves the form and opens the sign-in. Afterwards this section is **Genel
-  bakış**: who is signed in and when the last sync finished (also while the next
-  one runs), **Şimdi senkronize et**, **Klasörü aç** and **Son indirilenler**,
+  bakış**: **Şimdi senkronize et**, **Klasörü aç** and **Son indirilenler**,
   the last 10 files, notes and announcements; a click opens one in its own
-  application. An expired session or a signed-out account shows **Giriş yap**
-  there instead.
+  application. While a sync (or another job that changes files) runs, a small
+  animation of papers flying from a cloud into a folder shows above the list;
+  on the first sync, with nothing listed yet, a large one fills the list. It is
+  drawn natively (AppKit / Tk canvas) and stands still with reduce motion
+  (macOS) or animations turned off (Windows).
 - **Genel**: the [settings](#settings).
 - **Silinenler**: deleted files to bring back (see [Settings](#settings)).
+
+Under the sections, at the bottom of the sidebar, the account card shows who
+is signed in and when the last sync finished (also while the next one runs),
+with **Senkron sürüyor** during a sync. An expired session or a signed-out
+account shows **Giriş yap** there instead. A note or the last error appears on
+Genel bakış, above the list.
 
 The window keeps its width; its height follows the screen, and a section that
 does not fit scrolls.
