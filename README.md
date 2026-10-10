@@ -2,6 +2,8 @@
 
 Blackboard’daki ders içeriklerini otomatik olarak bilgisayarına indirir.
 
+https://github.com/user-attachments/assets/0f6b4ad6-cb14-4a2b-b679-a48d03bbf106
+
 ## Özellikler
 
 - **Otomatik indirme:** Arka planda her saat kontrol eder, yeni bir şey geldiğinde bildirim gösterir.

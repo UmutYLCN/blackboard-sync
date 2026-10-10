@@ -17,6 +17,6 @@ Cloudflare Pages settings:
 - Build command: leave empty
 - Build output directory: `.`
 
-`_headers` applies security headers and a one-day asset cache; HTML/CSS/JS revalidate because their filenames are not versioned. The original 45-second MP4 is copied without re-encoding. Native video controls allow pausing and sound; reduced-motion preferences disable automatic playback when JavaScript is enabled.
+`_headers` applies security headers and a one-day asset cache; HTML/CSS/JS revalidate because their filenames are not versioned. The 45-second MP4 is hosted as a GitHub user attachment and loaded by the page. Native video controls allow pausing and sound; reduced-motion preferences disable automatic playback when JavaScript is enabled.
 
-The social card references the existing public repository banner by absolute URL, so sharing works before a custom site domain is chosen. Visible page assets are local. Header and footer logos use 128 px PNGs with 256 px retina variants; the favicon is a separate 32 px PNG. Review screenshots are linked from an earlier commit in the pull request and are not included in the deployed folder.
+The social card references the existing public repository banner by absolute URL, so sharing works before a custom site domain is chosen. Page assets are local except for the hosted video. Header and footer logos use 128 px PNGs with 256 px retina variants; the favicon is a separate 32 px PNG. Review screenshots are linked from an earlier commit in the pull request and are not included in the deployed folder.
