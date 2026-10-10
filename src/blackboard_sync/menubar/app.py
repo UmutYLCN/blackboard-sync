@@ -646,6 +646,12 @@ def main(argv: list[str] | None = None) -> int:
     if lock is None:
         print("The Blackboard Sync menu bar app is already running.", file=sys.stderr)
         return 0
+    # Refresh older login items without enabling autostart or restarting launchd.
+    if launchagent.is_installed():
+        try:
+            launchagent.install(jobs.log_file(config))
+        except OSError as exc:
+            log.warning("could not refresh the login item: %s", exc)
     from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
 
     # A menu bar app: no Dock icon, no app menu.

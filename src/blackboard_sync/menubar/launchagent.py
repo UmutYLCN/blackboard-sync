@@ -27,6 +27,8 @@ def build_plist(program: list[str], log_file: Path, env: dict[str, str] | None =
     env = os.environ if env is None else env
     plist = {
         "Label": LABEL,
+        # Lets macOS attribute the background item to the app's name and icon.
+        "AssociatedBundleIdentifiers": ["io.github.umutylcn.blackboard-sync"],
         "ProgramArguments": program,
         "RunAtLoad": True,
         # Restart after a crash, but not after the student chose "Çıkış".
@@ -51,6 +53,11 @@ def install(log_file: Path, agents_dir: Path = DEFAULT_AGENTS_DIR, python: str |
     path = plist_path(agents_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = plistlib.dumps(build_plist(runtime.menubar_command(python), log_file))
+    try:
+        if path.read_bytes() == data:
+            return path
+    except FileNotFoundError:
+        pass
     tmp = path.with_suffix(".plist.tmp")
     tmp.write_bytes(data)
     os.replace(tmp, path)
