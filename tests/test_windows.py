@@ -147,7 +147,8 @@ def test_settings_window_lists_past_terms_once_and_dispatches_one_time_job(tmp_p
     app.icon = SimpleNamespace(icon=None, menu=None)
     app.drawn = app.drawn_icon = None
     statuses = []
-    app.window = SimpleNamespace(update_status=lambda status: statuses.append(status.form), state=SimpleNamespace(open=True))
+    app.window = SimpleNamespace(update_status=lambda status: statuses.append(status.form),
+                                 state=SimpleNamespace(open=True, section="overview"))
 
     class Thread:
         def __init__(self, target, args=(), **kwargs):
@@ -169,6 +170,9 @@ def test_settings_window_lists_past_terms_once_and_dispatches_one_time_job(tmp_p
     app.refresh()  # not signed in: nothing to look up
     assert lookups == [] and statuses[-1].past_message == "Eski dönemleri görmek için giriş yapın."
     app.model.session = {"saved_at": datetime.now(timezone.utc).timestamp(), "user": {"displayName": "Ada"}}
+    app.refresh()
+    assert lookups == []  # the overview does not ask the school; Genel does
+    app.window.state.section = "general"
     app.refresh()
     app.refresh()
     assert len(lookups) == 1 and lookups[0]["runner"] is tray.cli_runner
@@ -746,7 +750,7 @@ def test_explicit_start_shows_the_window_and_login_start_stays_in_the_tray(tmp_p
     def run(show_window, configured):
         app = make_app(tmp_path)
         app.model.configured = configured
-        app.show_at_start = show_window
+        app.background = not show_window
         app.icon = SimpleNamespace(run_detached=lambda: None)
         scheduled = []
         app.root = SimpleNamespace(bind=lambda *a: None, mainloop=lambda: None,

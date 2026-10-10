@@ -67,11 +67,13 @@ def wheel_steps(delta):
 class MainWindow:
     def __init__(self, root, values, status, on_submit, on_action, on_close, on_values=None,
                  on_open=lambda path: None, on_missing=lambda: [],
-                 on_deleted_action=lambda action, keys: None, on_past_term=lambda name: None):
+                 on_deleted_action=lambda action, keys: None, on_past_term=lambda name: None,
+                 on_section=lambda section: None):
         import tkinter as tk
         from tkinter import ttk
 
         self.on_submit, self.on_action, self.on_close = on_submit, on_action, on_close
+        self.on_section = on_section
         self.on_values = on_values or (lambda: self.saved)
         self.on_open, self.on_missing = on_open, on_missing
         self.on_deleted_action, self.on_past_term = on_deleted_action, on_past_term
@@ -397,6 +399,7 @@ class MainWindow:
     def select(self, section):
         self.state.select(section)
         self._show_section()
+        self.on_section(section)
 
     def visible_page(self):
         section = self.state.section

@@ -78,7 +78,7 @@ class TrayApp:
         import pystray
 
         self.config, self.root = config, root
-        self.show_at_start = show_window
+        self.background = not show_window  # started at login or by a silent update
         self.settings = jobs.effective_settings(config)
         self.model = jobs.load_model(config, jobs.utcnow(), autostart.is_installed())
         self.events = queue.Queue()
@@ -98,7 +98,7 @@ class TrayApp:
         self.root.bind(WAKE_EVENT, self.drain)
         self.root.after(REQUEST_CHECK_MS, self.poll)
         self.root.after(1000, self.tick)
-        if shows_window_at_launch(not self.show_at_start, self.model.configured):
+        if shows_window_at_launch(self.background, self.model.configured):
             self.root.after(200, self.show_window)
         self.root.mainloop()
 
@@ -284,7 +284,7 @@ class TrayApp:
             self.model.autostart = autostart.is_installed()
         except OSError:
             log.exception("Could not read login item")
-        if self.window_open and not self.uninstalling and self.model.past_terms_due():
+        if self.past_terms_wanted():
             self.start_past_terms()
         state = self.model.icon()
         # Session expiry can be detected before the first scheduled sync.
@@ -354,7 +354,7 @@ class TrayApp:
         self.refresh()
 
     def start_past_terms(self):
-        """Look up the past terms for the settings window's list, in the background."""
+        """Look up the past terms for the list in Genel, in the background."""
         if not self.model.begin("past_terms"):
             return
         settings = self.settings
@@ -434,6 +434,11 @@ class TrayApp:
     def window_open(self):
         return self.window is not None and self.window.state.open
 
+    def past_terms_wanted(self):
+        """Genel is in view and its past-term list still has to be looked up."""
+        return (self.window_open and self.window.state.section == GENERAL and not self.uninstalling
+                and self.model.past_terms_due())
+
     def show_window(self, section=None):
         """Open the main window (or bring it forward); its taskbar button comes with it."""
         from .main_window import MainWindow
@@ -448,11 +453,12 @@ class TrayApp:
                                      on_open=lambda path: self.dispatch("open", path),
                                      on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
                                      on_deleted_action=self.deleted_action,
-                                     on_past_term=self.download_past_term)
+                                     on_past_term=self.download_past_term,
+                                     on_section=lambda _section: self.refresh())
         if not self.window_open:
             self.model.reload_past_terms()
         self.window.show(section)
-        self.refresh()  # starts looking up the past terms
+        self.refresh()  # on Genel, starts looking up the past terms
 
     def deleted_action(self, action, keys):
         if self.uninstalling or self.model.busy is not None or self.model.updates.busy == "download":

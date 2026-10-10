@@ -505,6 +505,10 @@ def menu_app(config, monkeypatch):
             self.state, self.handlers, self.shown, self.statuses = WindowState(), handlers, [], []
             Window.built.append(self)
 
+        @property
+        def section(self):
+            return self.state.section
+
         def show(self, section=None):
             self.shown.append(section)
             self.state.show(section)
@@ -545,6 +549,12 @@ def test_ayarlar_opens_genel_and_closing_keeps_the_app_running(menu_app):
     assert window.shown == [GENERAL] and menu_app.docks == [True]
     menu_app.refresh()
     assert window.statuses  # the open window follows the app
+    assert menu_app.past_terms_wanted() is False  # not signed in: nothing to look up
+    menu_app.model.configured = True
+    menu_app.model.session = {'saved_at': NOW.timestamp(), 'user': {'displayName': 'Ada'}}
+    assert menu_app.past_terms_wanted()  # Genel lists them
+    window.state.select('overview')
+    assert not menu_app.past_terms_wanted()  # opening the app does not ask the school
     window.close()
     assert menu_app.docks == [True, False]  # the Dock icon leaves with the window
     count = len(window.statuses)

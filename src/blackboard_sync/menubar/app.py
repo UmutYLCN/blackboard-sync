@@ -322,7 +322,7 @@ def build_app(config: Config, show_window: bool = False):
             AppHelper.callAfter(self._sync_done, outcome)
 
         def start_past_terms(self) -> None:
-            """Look up the past terms for the settings window's list, in the background."""
+            """Look up the past terms for the list in Genel, in the background."""
             if not self.model.begin("past_terms"):
                 return
             threading.Thread(target=self._past_terms_worker, args=(self.settings,), daemon=True).start()
@@ -530,6 +530,11 @@ def build_app(config: Config, show_window: bool = False):
         def window_open(self) -> bool:
             return self._window is not None and self._window.state.open
 
+        def past_terms_wanted(self) -> bool:
+            """Genel is in view and its past-term list still has to be looked up."""
+            return (self.window_open and self._window.section == GENERAL and not self._uninstalling
+                    and self.model.past_terms_due())
+
         def show_window(self, section: str | None = None) -> None:
             """Open the main window (or bring it forward); the Dock icon comes with it."""
             if self._uninstalling:
@@ -548,13 +553,14 @@ def build_app(config: Config, show_window: bool = False):
                     on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
                     on_deleted_action=self.deleted_action,
                     on_past_term=self.download_past_term,
+                    on_section=lambda _section: self.refresh(),
                 )
             if not self.window_open:
                 self.model.reload_past_terms()
             log.info("showing the main window")
             set_dock_icon(True)
             self._window.show(section)
-            self.refresh()  # starts looking up the past terms
+            self.refresh()  # on Genel, starts looking up the past terms
 
         def deleted_action(self, action, keys):
             if self._uninstalling or self.model.busy is not None or self.model.updates.busy == "download":
@@ -701,7 +707,7 @@ def build_app(config: Config, show_window: bool = False):
         def refresh(self) -> None:
             jobs.refresh_session(self.config, self.model, self.settings)
             self.model.autostart = launchagent.is_installed()
-            if self.window_open and not self._uninstalling and self.model.past_terms_due():
+            if self.past_terms_wanted():
                 self.start_past_terms()
             self._draw_icon(self.model.icon())
             if self.window_open:

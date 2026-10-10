@@ -531,9 +531,9 @@ class AppModel:
         self.busy: str | None = None  # "sync" | "refetch" | "login" | "move"
         self.past_term = ""  # only for the active one-time job; never saved as a default
         self.past_terms: list[str] = []
-        # The settings window lists the past terms; they are looked up once per
-        # sign-in and window, and ``past_message`` says how the last lookup or
-        # one-time download went.
+        # Genel in the main window lists the past terms; they are looked up once
+        # per sign-in and opening of the window, and ``past_message`` says how
+        # the last lookup or one-time download went.
         self.past_terms_loaded = False
         self.past_message = ""
         self.past_lookup_stale = False  # the school changed while the lookup ran
@@ -619,7 +619,7 @@ class AppModel:
         return True
 
     def past_terms_due(self) -> bool:
-        """The settings window is open and its past-term list still has to be looked up."""
+        """The past-term list still has to be looked up (once Genel is in view)."""
         return (
             not self.past_terms_loaded
             and self.configured
@@ -629,7 +629,7 @@ class AppModel:
         )
 
     def reload_past_terms(self) -> None:
-        """Look the past terms up again the next time the settings window can."""
+        """Look the past terms up again the next time Genel is shown."""
         if self.busy != "past_terms":
             self.past_terms_loaded = False
             self.past_message = ""
@@ -647,7 +647,7 @@ class AppModel:
         elif outcome.status == "locked":
             self.note = "Başka bir senkron sürüyor; birazdan tekrar deneyin."
         else:
-            # The lookup runs by itself when the settings window opens: it keeps
+            # The lookup runs by itself when Genel is shown: it keeps
             # another job's note.
             self.note = self.note if outcome.status == "ok" else shorten(outcome.message, 100)
         self.past_message = "" if outcome.status == "ok" else self.note

@@ -325,9 +325,11 @@ class MainWindow:
         on_missing=lambda: [],
         on_deleted_action=lambda action, keys: None,
         on_past_term: Callable[[str], object] = lambda name: None,
+        on_section: Callable[[str], None] = lambda section: None,
         reopen_where: str = "Applications veya Launchpad'den",
     ):
         self.on_submit, self.on_action, self.on_close = on_submit, on_action, on_close
+        self.on_section = on_section
         self.on_values = on_values or (lambda: self.saved)
         self.on_open, self.on_past_term = on_open, on_past_term
         self.on_missing, self.on_deleted_action = on_missing, on_deleted_action
@@ -845,6 +847,7 @@ class MainWindow:
     def select(self, section: str) -> None:
         self.state.select(section)
         self._show_section()
+        self.on_section(section)
 
     @property
     def section(self) -> str:
