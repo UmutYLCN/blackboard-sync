@@ -295,10 +295,12 @@ def test_overview_buttons_and_recent_files(tmp_path):
         window.window.close()
 
 
-def test_a_running_sync_shows_the_illustration_and_it_stops_with_the_sync(tmp_path):
+def test_a_running_sync_shows_the_illustration_and_it_stops_with_the_sync(tmp_path, monkeypatch):
+    from blackboard_sync.menubar import sync_scene_view
     from blackboard_sync.menubar.main_window_model import main_status
     from blackboard_sync.menubar.model import RecentItem, RunOutcome
 
+    monkeypatch.setattr(sync_scene_view, 'reduce_motion', lambda: False)  # CI machines may have it on
     window, model, _ = make_window(tmp_path)
     try:
         model.session = {'saved_at': NOW.timestamp(), 'user': {'displayName': 'Ada Student'}}

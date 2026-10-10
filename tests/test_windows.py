@@ -2,6 +2,7 @@
 
 import base64
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
@@ -396,8 +397,11 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     from blackboard_sync.windows import main_window as module
     from blackboard_sync.windows.main_window import CHROME, MainWindow
 
+    from blackboard_sync.windows import sync_scene_view
+
     widgets = fake_tk(monkeypatch, tmp_path)
     monkeypatch.setattr(module, 'work_area', lambda window: (0, 0, 1366, 600))  # a short screen
+    monkeypatch.setattr(sync_scene_view, 'reduce_motion', lambda: False)  # CI machines may have animations off
     now = datetime.now(timezone.utc)
     model = AppModel(tmp_path, now, configured=False)
     saved = [FormValues('https://school.edu', str(tmp_path), True)]
@@ -955,7 +959,9 @@ def test_windows_sync_scene_animates_on_a_timer_and_stands_still_without_animati
     view.canvas.create_polygon = lambda *args, **kwargs: drawn.append(('polygon', kwargs.get('fill')))
     view.canvas.create_oval = lambda *args, **kwargs: drawn.append(('oval', kwargs.get('fill')))
     view.canvas.create_line = lambda *args, **kwargs: drawn.append(('line', kwargs.get('fill')))
-    assert not sync_scene_view.reduce_motion()  # only Windows has the setting
+    if sys.platform != 'win32':
+        assert not sync_scene_view.reduce_motion()  # only Windows has the setting
+    monkeypatch.setattr(sync_scene_view, 'reduce_motion', lambda: False)
     view.start()
     assert view.running and not view.still and view.canvas.later == view.tick
     assert ('polygon', '#0b1425') in drawn  # the folder's front, in the app's navy
