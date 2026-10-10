@@ -367,6 +367,41 @@ class Syncer:
             self.state.remember_folder(used, name)
         return used
 
+    def migrate_item_outputs(self, previous_item: dict, old_dir: str, new_dir: str) -> None:
+        """Move this item's recorded flat files into its instruction folder.
+
+        Keep the recorded hashes and validators, including for locally edited or
+        deleted files. Conflicting destination files use the usual numbered names;
+        successful moves update state immediately so retries need no downloads.
+        """
+        if self.dry_run:
+            return
+        # Imported here because relocation also uses the sync lock and file hash.
+        from blackboard_sync.relocate import _move_file
+
+        for out_key in previous_item.get("outputs", []):
+            previous = self.state.output(out_key)
+            if not previous or str(PurePosixPath(previous["path"]).parent) != old_dir:
+                continue
+            old_rel = previous["path"]
+            desired = join_rel(new_dir, PurePosixPath(old_rel).name)
+            if self.windows:
+                desired = fit_windows_path(self.dest, desired)
+            source = self.dest / old_rel
+            if source.is_file():
+                desired, adopt = self.free_path(out_key, desired, sha256_file(source))
+                if adopt:
+                    source.unlink()  # an identical copy is already at the destination
+                else:
+                    _move_file(source, self.dest / desired)
+            elif source.exists():
+                raise OSError(f"Could not move recorded file {old_rel!r}: it is no longer a file.")
+            else:
+                # A missing source stays missing; an interrupted move can adopt its
+                # identical destination without touching any unrelated file there.
+                desired, _ = self.free_path(out_key, desired, previous["sha256"])
+            self.state.move_file(old_rel, desired)
+
     @staticmethod
     def _same_entry(a: Path, b: Path) -> bool:
         # A name that differs only in case is the same folder on macOS and Windows.
@@ -451,17 +486,26 @@ class Syncer:
         # content listing, not in body or the attachment collection. Read only that
         # explicit field; assessment attempts, feedback and submissions are unrelated.
         instructions = body_text((item.get("contentHandler") or {}).get("instructions"))
+        instruction_files = find_embedded_files(instructions)
         embedded_files = find_embedded_files(body_text(item.get("body")) + "\n" + instructions)
         embedded_keys = [self.embedded_key(course, item, e) for e in embedded_files]
         previous_item = self.state.items.get(key) or {}
+        ultra_body = self.is_ultra_body(item)
+        # The hidden Ultra child stands for its parent document.
+        title = (parent_title if ultra_body and parent_title else item.get("title")) or "Untitled"
+        if instruction_files:
+            # Keep all of the item's files and its note together. Empty assessments
+            # keep their note in the containing folder and create no extra folder.
+            item_dir = self.folder_path(rel_dir, title, report.warnings)
+            self.migrate_item_outputs(previous_item, rel_dir, item_dir)
+            rel_dir = item_dir
         # A replaced file shows up as a new id even when "modified" stays put.
         if set(embedded_keys) <= set(previous_item.get("outputs", [])) and self.state.item_unchanged(
             key, modified, self.dest, self.refetch_missing, self.refetch_keys
         ):
             return
-        ultra_body = self.is_ultra_body(item)
-        # The hidden Ultra child stands for its parent document.
-        title = (parent_title if ultra_body and parent_title else item.get("title")) or "Untitled"
+        if instruction_files and not self.dry_run:
+            (self.dest / rel_dir).mkdir(parents=True, exist_ok=True)
         hid = handler_id(item)
         outputs: list[str] = []
         saved: list[str] = []
