@@ -1,0 +1,15 @@
+{
+  "name": "blackboard-sync",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    // Only the short download links run the Worker; every other path is static.
+    "run_worker_first": ["/mac", "/mac/", "/windows", "/windows/"]
+  },
+  "vars": {
+    "RELEASE_API": "https://api.github.com/repos/UmutYLCN/blackboard-sync/releases/latest",
+    "RELEASES_PAGE": "https://github.com/UmutYLCN/blackboard-sync/releases/latest"
+  }
+}

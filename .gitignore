@@ -18,3 +18,6 @@ last-run.json
 *.partial
 Okul/
 University/
+
+# Wrangler local state
+.wrangler/
