@@ -5,10 +5,11 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 from blackboard_sync import runtime
 from blackboard_sync.config import Config
-from blackboard_sync.menubar import jobs, launchagent
+from blackboard_sync.menubar import app, jobs, launchagent
 from blackboard_sync.menubar.model import Icon
 from blackboard_sync.settings import Settings, save_settings
 
@@ -139,6 +140,7 @@ def test_launch_agent_install_and_remove(tmp_path):
     assert launchagent.is_installed(agents)
     plist = plistlib.loads(path.read_bytes())
     assert plist["Label"] == launchagent.LABEL
+    assert plist["AssociatedBundleIdentifiers"] == ["io.github.umutylcn.blackboard-sync"]
     assert plist["ProgramArguments"] == ["/repo/.venv/bin/python", "-m", "blackboard_sync.menubar"]
     assert plist["RunAtLoad"] is True
     assert plist["KeepAlive"] == {"SuccessfulExit": False}
@@ -163,6 +165,65 @@ def test_frozen_app_reinvokes_its_own_executable(monkeypatch):
     assert runtime.menubar_command() == [exe]
     plist = launchagent.build_plist(runtime.menubar_command(), Path("/log"), env={})
     assert plist["ProgramArguments"] == [exe]
+    assert plist["AssociatedBundleIdentifiers"] == ["io.github.umutylcn.blackboard-sync"]
+
+
+def start_menubar(monkeypatch, config, agents):
+    """Run the real startup path without AppKit or a GUI event loop."""
+    monkeypatch.setattr(app.Config, "from_env", lambda: config)
+    monkeypatch.setattr(app.jobs, "single_instance", lambda config: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(app.launchagent, "is_installed", lambda: launchagent.plist_path(agents).is_file())
+    install = launchagent.install
+    monkeypatch.setattr(app.launchagent, "install", lambda log_file: install(log_file, agents_dir=agents))
+    monkeypatch.setitem(sys.modules, "AppKit", SimpleNamespace(
+        NSApplication=SimpleNamespace(sharedApplication=lambda: SimpleNamespace(
+            setActivationPolicy_=lambda policy: None)),
+        NSApplicationActivationPolicyAccessory=1,
+    ))
+    monkeypatch.setattr(app, "build_app", lambda config: SimpleNamespace(
+        settings=SETTINGS, run=lambda: None))
+    assert app.main([]) == 0
+
+
+def test_launch_agent_startup_upgrades_old_plist(tmp_path, monkeypatch):
+    config = Config(data_dir=tmp_path / "data")
+    agents = tmp_path / "LaunchAgents"
+    path = launchagent.install(jobs.log_file(config), agents_dir=agents)
+    old = plistlib.loads(path.read_bytes())
+    del old["AssociatedBundleIdentifiers"]
+    path.write_bytes(plistlib.dumps(old))
+
+    start_menubar(monkeypatch, config, agents)
+
+    expected = launchagent.build_plist(runtime.menubar_command(), jobs.log_file(config))
+    assert plistlib.loads(path.read_bytes()) == expected
+    assert path.is_file()
+    assert not path.with_suffix(".plist.tmp").exists()
+
+
+def test_launch_agent_startup_leaves_identical_plist_alone(tmp_path, monkeypatch):
+    config = Config(data_dir=tmp_path / "data")
+    agents = tmp_path / "LaunchAgents"
+    path = launchagent.install(jobs.log_file(config), agents_dir=agents)
+    before = path.stat()
+
+    def unexpected_replace(*args):
+        raise AssertionError("An identical plist must not be replaced")
+
+    monkeypatch.setattr(launchagent.os, "replace", unexpected_replace)
+    start_menubar(monkeypatch, config, agents)
+
+    assert path.stat().st_mtime_ns == before.st_mtime_ns
+
+
+def test_launch_agent_startup_keeps_autostart_off(tmp_path, monkeypatch):
+    config = Config(data_dir=tmp_path / "data")
+    agents = tmp_path / "LaunchAgents"
+
+    start_menubar(monkeypatch, config, agents)
+
+    assert not launchagent.plist_path(agents).exists()
+    assert not agents.exists()
 
 
 def test_saved_settings_decide_what_the_app_syncs(tmp_path):
