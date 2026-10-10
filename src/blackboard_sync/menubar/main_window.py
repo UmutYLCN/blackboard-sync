@@ -509,7 +509,6 @@ class MainWindow:
         self.start_dest.setDelegate_(self.target)
         self.start_dest.setFrame_(NSMakeRect(20, y, inner - choose_width - 8, FIELD_HEIGHT))
         content.addSubview_(self.start_dest)
-        self.start_choose = choose
         y += FIELD_HEIGHT + 6
         note, height = _wrapping(T_DEST_ROOT_NOTE, inner, _small(), secondary=True)
         note.setFrame_(NSMakeRect(20, y, inner, height))
