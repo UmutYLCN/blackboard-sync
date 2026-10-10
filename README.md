@@ -2,8 +2,6 @@
 
 Blackboard’daki ders içeriklerini otomatik olarak bilgisayarına indirir.
 
-🌐 **Web sitesi:** [blackboard-sync.umutyalcin.workers.dev](https://blackboard-sync.umutyalcin.workers.dev)
-
 ## Özellikler
 
 - **Otomatik indirme:** Arka planda her saat kontrol eder, yeni bir şey geldiğinde bildirim gösterir.
@@ -37,6 +35,10 @@ irm https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.ps1 
 ## Gizlilik
 
 Şifreni yalnızca okulunun kendi giriş sayfasına yazarsın; uygulama şifreni görmez ve hiçbir yere kaydetmez. Giriş oturumu yalnızca kendi bilgisayarında tutulur ve hiçbir sunucuya gönderilmez.
+
+🌐 **Web sitesi:** [blackboard-sync.umutyalcin.workers.dev](https://blackboard-sync.umutyalcin.workers.dev)
+
+![Ziyaretçi](https://visitor-badge.laobi.icu/badge?page_id=UmutYLCN.blackboard-sync&left_text=ziyaret%C3%A7i)
 
 ---
 
