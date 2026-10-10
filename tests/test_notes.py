@@ -46,6 +46,22 @@ def test_find_embedded_files_reads_bbfile_metadata():
     assert [(f.xid, f.name) for f in files] == [("12_1", "slides.pdf"), ("13_1", "diagram.png")]
 
 
+def test_embedded_file_prefers_permanent_link_over_session_resource():
+    import html
+    import json
+
+    resource = "https://bb.example.edu/sessions/AA/SESSION/abcdef0123456789abcdef0123456789/guide.pdf?token=FIRST"
+    permanent = "https://bb.example.edu/bbcswebdav/pid-700-dt-asiobject-rid-14_1/xid-14_1?token=SECOND"
+    meta = html.escape(json.dumps({"resourceUrl": resource, "displayName": "guide.pdf"}), quote=True)
+    files = find_embedded_files(f'<a data-bbfile="{meta}" href="{permanent}">Guide</a>')
+    assert [(f.xid, f.name, f.url) for f in files] == [("14_1", "guide.pdf", permanent)]
+
+
+def test_session_links_without_file_metadata_are_not_downloads():
+    url = "/sessions/AA/SESSION/abcdef0123456789abcdef0123456789/guide.pdf"
+    assert find_embedded_files(f'<a href="{url}">Ordinary link</a>') == []
+
+
 def test_link_note():
     item = {
         "title": "Course Website: Visualizations",
