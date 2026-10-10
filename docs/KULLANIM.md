@@ -2,6 +2,18 @@
 
 Kurulum için [README](../README.md)'ye bak. Bu sayfa uygulamanın ayrıntılı kullanımını anlatır.
 
+## Ana pencere
+
+Blackboard Sync'i **Applications** veya **Launchpad**'den (Windows'ta **Başlat** menüsünden)
+açınca ana pencere açılır; uygulama zaten çalışıyorsa aynı pencere öne gelir. Soldaki
+bölümler: ilk girişe kadar **Başlangıç**, sonra **Genel bakış** (hesap, son senkron,
+**Şimdi senkronize et**, **Klasörü aç**, son indirilenler), **Genel** (ayarlar) ve
+**Silinenler**. Menüdeki **Ayarlar…** aynı pencereyi **Genel** bölümünde açar.
+
+Pencereyi kapatınca uygulama kapanmaz: menü çubuğundaki (Windows'ta saatin yanındaki)
+simgeyle çalışmaya ve senkronize etmeye devam eder. Bilgisayar açılınca kendiliğinden
+başlayan uygulama pencere açmaz. Tamamen kapatmak için simgenin menüsünden **Çık**'ı seç.
+
 ## Kayıt klasörü
 
 Dosyalar seçtiğin klasörün içindeki **University** klasörüne, dönem ve ders klasörleri
@@ -21,7 +33,7 @@ seçenekleri eski ve yeni klasörlerin University klasörleri arasında çalış
 
 ## Silinenler
 
-**Ayarlar…** penceresinin **Silinenler** sekmesi, kayıt klasöründen silinmiş indirilmiş
+Ana pencerenin **Silinenler** bölümü, kayıt klasöründen silinmiş indirilmiş
 dosyaları listeler. Geri istediklerini seçip **Seçilenleri indir**'e bas; **Listeden kaldır**
 ile kaldırdığın dosyalar bir daha önerilmez.
 
@@ -41,8 +53,8 @@ Ayarların ve indirdiğin ders dosyaları korunur.
 
 ## Eski dönem indirme
 
-**Ayarlar…** penceresinin **Genel** sekmesindeki **Eski dönemler** bölümünde listeden
-bir dönem seç ve **Eski dönemi indir**'e bas. Liste giriş yapmışken pencere açılınca
+Ana pencerenin **Genel** bölümündeki **Eski dönemler** kısmında listeden
+bir dönem seç ve **Eski dönemi indir**'e bas. Liste giriş yapmışken **Genel** bölümü açılınca
 yüklenir; güncel dönem listede görünmez. Dosyalar mevcut
 kayıt klasöründeki dönem/ders klasörlerine indirilir. Eski dönem bir kez indirilir,
 otomatik güncellenmez; tekrar indirmek yalnızca eksik dosyaları tamamlar. Normal
@@ -53,7 +65,7 @@ dönem adını kullan). Kullanılabilir adları `blackboard-sync past-terms` ile
 
 ## Kaldırma
 
-**Ayarlar…** penceresinin **Güncellemeler** bölümündeki **Uygulamayı kaldır…** düğmesine bas.
+Ana pencerenin **Genel** bölümündeki **Güncellemeler** kısmında **Uygulamayı kaldır…** düğmesine bas.
 Uygulama kayıtları, günlükler, ayarlar, giriş verileri ve açılışta başlatma kaydı silinir.
 İndirilmiş ders dosyaları varsayılan olarak korunur. **İndirilmiş ders dosyalarını da sil**
 seçeneği yalnızca uygulamanın kayıtlı dosyalarını ve boşalan klasörlerini (boşaldıysa

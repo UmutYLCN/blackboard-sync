@@ -19,7 +19,6 @@ from blackboard_sync.menubar.settings_form import (
     INTERVAL_OPTIONS,
     FormValues,
     initial_values,
-    intro_first_run,
     submit,
 )
 from blackboard_sync.settings import (
@@ -97,15 +96,6 @@ def test_form_without_the_field_keeps_the_default_and_bad_values_are_normalised(
     assert submit(FormValues(SCHOOL, str(tmp_path), False), current).settings.sync_interval_minutes == 60
     values = FormValues(SCHOOL, str(tmp_path), False, sync_interval_minutes=7)
     assert submit(values, current).settings.sync_interval_minutes == 60
-
-
-@pytest.mark.parametrize(
-    "minutes, expected",
-    [(60, "her saat"), (30, "her 30 dakikada bir"), (180, "her 3 saatte bir"), (0, "Şimdi senkronize et")],
-)
-def test_first_run_intro_follows_the_interval(minutes, expected):
-    assert expected in intro_first_run("bu Mac'e", minutes)
-    assert "bu Mac'e" in intro_first_run("bu Mac'e", minutes)
 
 
 def test_load_model_uses_the_saved_interval(tmp_path):

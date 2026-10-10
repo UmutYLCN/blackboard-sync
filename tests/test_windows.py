@@ -147,7 +147,8 @@ def test_settings_window_lists_past_terms_once_and_dispatches_one_time_job(tmp_p
     app.icon = SimpleNamespace(icon=None, menu=None)
     app.drawn = app.drawn_icon = None
     statuses = []
-    app.window = SimpleNamespace(update_status=statuses.append)
+    app.window = SimpleNamespace(update_status=lambda status: statuses.append(status.form),
+                                 state=SimpleNamespace(open=True, section="overview"))
 
     class Thread:
         def __init__(self, target, args=(), **kwargs):
@@ -170,6 +171,9 @@ def test_settings_window_lists_past_terms_once_and_dispatches_one_time_job(tmp_p
     assert lookups == [] and statuses[-1].past_message == "Eski dönemleri görmek için giriş yapın."
     app.model.session = {"saved_at": datetime.now(timezone.utc).timestamp(), "user": {"displayName": "Ada"}}
     app.refresh()
+    assert lookups == []  # the overview does not ask the school; Genel does
+    app.window.state.section = "general"
+    app.refresh()
     app.refresh()
     assert len(lookups) == 1 and lookups[0]["runner"] is tray.cli_runner
     status = statuses[-1]
@@ -182,7 +186,7 @@ def test_settings_window_lists_past_terms_once_and_dispatches_one_time_job(tmp_p
     assert app.model.past_term == "" and app.model.busy is None
     assert statuses[-1].past_message == "2025-2026 - Spring · 0 dosya indirildi (eski dönem)."
     assert len(lookups) == 1
-    app.window = None  # closed: no lookup without the window
+    app.window.state.open = False  # closed: no lookup without the window
     app.model.reload_past_terms()
     app.refresh()
     assert len(lookups) == 1
@@ -199,20 +203,21 @@ def test_closing_settings_while_listing_past_terms_does_not_wedge_job(tmp_path):
 
 def test_uninstall_from_settings_closes_the_window_without_the_tray_hint(tmp_path, monkeypatch):
     import sys
-    from blackboard_sync.windows import settings_window
+    from blackboard_sync.windows import main_window
     from blackboard_sync.windows.app import uninstall
 
     app = make_app(tmp_path)
     hints, parents, destroyed = [], [], []
     app.icon = SimpleNamespace(stop=lambda: None, notify=lambda *args: hints.append(args))
     app.root = SimpleNamespace(destroy=lambda: None)
-    app.window = SimpleNamespace(window=SimpleNamespace(destroy=lambda: destroyed.append(True)))
+    app.window = SimpleNamespace(window='main', state=SimpleNamespace(open=True),
+                                 destroy=lambda: destroyed.append(True))
     monkeypatch.setitem(sys.modules, "tkinter", SimpleNamespace(messagebox=SimpleNamespace(
         showinfo=lambda *args, **kw: parents.append(kw["parent"]),
         showwarning=lambda *args, **kw: parents.append(kw["parent"]),
         showerror=lambda *args, **kw: parents.append(kw["parent"]))))
     choices = [None, False]
-    monkeypatch.setattr(settings_window, "ask_uninstall", lambda parent, dest: choices.pop(0))
+    monkeypatch.setattr(main_window, "ask_uninstall", lambda parent, dest: choices.pop(0))
     monkeypatch.setattr(uninstall, "uninstall", lambda *args, **kwargs: ["kept a file"])
     monkeypatch.setattr(uninstall, "remove_app", lambda: [])
 
@@ -272,12 +277,11 @@ def test_settings_registry_failure_keeps_window_open(tmp_path, monkeypatch):
     assert not (tmp_path / 'settings.json').exists()
 
 
-def test_windows_intro_and_fields():
-    from blackboard_sync.windows.settings_window import INTRO
-    from blackboard_sync.menubar import settings_form
-    assert "Mac" not in INTRO
-    assert 'Giriş yap' in INTRO
-    assert settings_form.T_URL_LABEL and settings_form.T_DEST_LABEL
+def test_windows_reopen_hint_names_the_start_menu():
+    from blackboard_sync.menubar.main_window_model import reopen_hint
+    from blackboard_sync.windows.main_window import REOPEN_WHERE
+    assert "Başlat menüsünden" in reopen_hint(REOPEN_WHERE)
+    assert "Mac" not in reopen_hint(REOPEN_WHERE) and "Launchpad" not in reopen_hint(REOPEN_WHERE)
 
 
 def test_pythonw_parent_runs_hidden_console_child(monkeypatch):
@@ -289,230 +293,243 @@ def test_pythonw_parent_runs_hidden_console_child(monkeypatch):
     assert calls == [[r'C:\App\.venv\Scripts\python.exe', '-m', 'blackboard_sync']]
 
 
-def test_windows_settings_window_layout_and_validation(monkeypatch, tmp_path):
+def fake_tk(monkeypatch, tmp_path):
+    """Just enough of tkinter for the main window, recording what it was told."""
     import sys
-    from blackboard_sync.menubar.settings_form import window_status
-    from blackboard_sync.menubar.settings_form import SCREEN_MARGIN
-    from blackboard_sync.windows import settings_window as module
-    from blackboard_sync.windows.settings_window import CHROME, SettingsWindow, INTRO
+
     widgets = []
 
     class Widget:
         def __init__(self, *args, **kwargs):
             self.parent = args[0] if args else None
-            self.options = kwargs
-            self.focused = False
-            self.destroyed = False
-            self.bindings = {}
+            self.options = dict(kwargs)
+            self.children, self.bindings, self.scrolled = [], {}, []
+            self.removed = self.destroyed = self.focused = False
             self.view = (0.0, 1.0)
-            self.scrolled = []
+            if isinstance(self.parent, Widget):
+                self.parent.children.append(self)
             widgets.append(self)
-        def add(self, child, **kwargs):
-            self.options.setdefault("tabs", []).append(kwargs["text"])
-            self.options.setdefault("pages", []).append(child)
-        def index(self, which):
-            return self.current
-        def bind(self, event, callback):
-            self.bindings[event] = callback
-        def rowconfigure(self, *args, **kwargs):
-            pass
-        def yview(self, *args):
-            return self.view
-        def yview_scroll(self, *args):
-            self.scrolled.append(args)
-        def withdraw(self):
-            pass
-        def update_idletasks(self):
-            pass
-        def winfo_reqwidth(self):
-            return 600
-        def winfo_reqheight(self):
-            return 900
-        def geometry(self, spec):
-            self.size = spec
-        def set(self, *args):
-            pass
-        def create_window(self, *args, **kwargs):
-            return 1
-        def winfo_children(self):
-            return []
+
+        def __getattr__(self, name):  # columnconfigure, protocol, lift, ... do nothing
+            return lambda *args, **kwargs: None
+
         def grid(self, **kwargs):
-            self.grid_options = kwargs
-        def pack(self, **kwargs):
-            pass
-        def columnconfigure(self, *args, **kwargs):
-            pass
-        def title(self, text):
-            self.caption = text
-        def minsize(self, *args):
-            self.minimum = args
-        def protocol(self, *args):
-            pass
+            self.grid_options = kwargs or getattr(self, "grid_options", {})
+            self.removed = False
+
+        def grid_remove(self):
+            self.removed = True
+
         def configure(self, **kwargs):
             self.options.update(kwargs)
-        def focus_set(self):
-            self.focused = True
-        def deiconify(self):
-            pass
-        def lift(self):
-            pass
-        def focus_force(self):
-            pass
-        def attributes(self, *args):
-            self.topmost = args[1]
-        def after(self, delay, callback):
-            self.later = callback
+
+        def bind(self, event, callback):
+            self.bindings[event] = callback
+
+        def winfo_children(self):
+            return list(self.children)
+
         def destroy(self):
             self.destroyed = True
+            if isinstance(self.parent, Widget) and self in self.parent.children:
+                self.parent.children.remove(self)
+
+        def focus_set(self):
+            self.focused = True
+
+        def title(self, text):
+            self.caption = text
+
+        def geometry(self, spec):
+            self.size = spec
+
+        def minsize(self, *args):
+            self.minimum = args
+
+        def attributes(self, *args):
+            self.topmost = args[1]
+
+        def after(self, delay, callback):
+            self.later = callback
+
+        def withdraw(self):
+            self.shown = False
+
+        def deiconify(self):
+            self.shown = True
+
+        def yview(self, *args):
+            return self.view
+
+        def yview_scroll(self, *args):
+            self.scrolled.append(args)
 
     class Variable:
-        def __init__(self, value):
-            self.value = value
+        def __init__(self, master=None, value=None):
+            self.value, self.traces = value, []
+
         def get(self):
             return self.value
+
         def set(self, value):
             self.value = value
+            for callback in self.traces:
+                callback()
 
-    ttk = SimpleNamespace(**{name: Widget for name in ('Frame', 'Label', 'Entry', 'Button', 'Checkbutton', 'Separator', 'Combobox', 'Notebook', 'Scrollbar')})
+        def trace_add(self, mode, callback):
+            self.traces.append(callback)
+
+    names = ('Frame', 'Label', 'Entry', 'Button', 'Checkbutton', 'Radiobutton', 'Separator', 'Combobox',
+             'LabelFrame', 'Scrollbar')
+    ttk = SimpleNamespace(**{name: Widget for name in names})
     fake = SimpleNamespace(Toplevel=Widget, Canvas=Widget, StringVar=Variable, BooleanVar=Variable, ttk=ttk,
-                           filedialog=SimpleNamespace(askdirectory=lambda **kw: str(tmp_path)))
+                           filedialog=SimpleNamespace(askdirectory=lambda **kw: str(tmp_path / 'picked')))
     monkeypatch.setitem(sys.modules, 'tkinter', fake)
-    monkeypatch.setattr(module, 'work_area', lambda window: (0, 0, 1366, 728))  # 768 px, taskbar 40
-    Widget.current = 0
-    model = AppModel(tmp_path, datetime.now(timezone.utc), configured=False)
-    submitted, closed, actions = [], [], []
+    return widgets
+
+
+def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_path):
+    from blackboard_sync.deleted import MissingOutput
+    from blackboard_sync.menubar.main_window_model import DELETED, GENERAL, OVERVIEW, main_status
+    from blackboard_sync.menubar.model import RecentItem
+    from blackboard_sync.menubar.settings_form import SCREEN_MARGIN
+    from blackboard_sync.windows import main_window as module
+    from blackboard_sync.windows.main_window import CHROME, MainWindow
+
+    widgets = fake_tk(monkeypatch, tmp_path)
+    monkeypatch.setattr(module, 'work_area', lambda window: (0, 0, 1366, 600))  # a short screen
+    now = datetime.now(timezone.utc)
+    model = AppModel(tmp_path, now, configured=False)
+    saved = [FormValues('https://school.edu', str(tmp_path), True)]
+    submitted, closed, actions, opened = [], [], [], []
+
     def submit(values, login):
         submitted.append((values, login))
-        return ('Geçerli bir adres yazın.', 'base_url') if len(submitted) == 1 else None
-    from blackboard_sync.deleted import MissingOutput
+        if values.base_url == 'school.edu':
+            return 'Geçerli bir adres yazın.', 'base_url'
+        saved.append(values)
+        return None
+
     rows = [MissingOutput('key', 'term/course/file.pdf', 'term', 'course', 'file.pdf', 'term/course')]
-    deleted_actions, past_downloads = [], []
+    deleted_actions = []
+
     def deleted_action(action, keys):
         deleted_actions.append((action, keys))
         if action == 'dismiss':
             rows.clear()
-    window = SettingsWindow(None, FormValues('school.edu', str(tmp_path), True), window_status(model), True,
-                            submit, actions.append, lambda: closed.append(True),
-                            on_missing=lambda: list(rows), on_deleted_action=deleted_action,
-                            on_past_term=past_downloads.append)
-    # A 768 px screen: the window fits above the taskbar, centred; the form scrolls.
-    total = 728 - SCREEN_MARGIN
-    assert window.window.size == f"600x{total - CHROME}+383+{SCREEN_MARGIN // 2}"
-    assert window.window.minimum[0] == 560 and window.window.minimum[1] < total - CHROME
-    assert window.form_canvas.options['height'] == 900  # all of it when there is room
-    general = window.notebook.options["pages"][0]
-    assert window.form_canvas.parent is general and window.button_bar.parent is general
-    form_frame = window.fields['base_url'].parent
-    assert form_frame.parent is window.form_canvas
-    assert window.uninstall_button.parent is form_frame
-    monkeypatch.setattr(module, 'work_area', lambda window: (0, 0, 2560, 1400))
-    window.fit(form_frame)
-    assert window.window.size == "600x900+980+230"  # a big screen shows everything
-    # Vazgeç and Kaydet (and the error line) stay below the scrolling form.
-    bottom = [w for w in widgets if w.options.get('text') in ('Vazgeç', 'Kaydet')]
-    assert len(bottom) == 2 and all(w.parent.parent is window.button_bar for w in bottom)
-    assert window.error.parent is window.button_bar
-    # The wheel scrolls the open tab, also over a drop-down list, and not a tab that fits.
-    window.form_canvas.view = (0.0, 0.7)
-    window.window.bindings['<MouseWheel>'](SimpleNamespace(delta=-120))
-    assert window.interval_dropdown.bindings['<MouseWheel>'](SimpleNamespace(delta=120)) == 'break'
-    assert window.form_canvas.scrolled == [(1, 'units'), (-1, 'units')]
-    Widget.current = 1
-    window.window.bindings['<MouseWheel>'](SimpleNamespace(delta=-30))
-    assert window.canvas.scrolled == []
-    window.canvas.view = (0.2, 0.9)
-    window.past_dropdown.bindings['<MouseWheel>'](SimpleNamespace(delta=-30))
-    assert window.canvas.scrolled == [(1, 'units')]
-    Widget.current = 0
 
-    assert window.window.topmost is True
+    window = MainWindow(None, saved[0], main_status(model, now), submit, actions.append,
+                        lambda: closed.append(True), on_values=lambda: saved[-1], on_open=opened.append,
+                        on_missing=lambda: list(rows), on_deleted_action=deleted_action)
+
+    def visible():
+        return [name for name, page in window.pages.items() if not page.removed]
+
+    def labels():
+        return [w.options.get('text') for w in widgets if not w.destroyed]
+
+    assert window.window.caption == 'Blackboard Sync'
+    assert window.window.shown is False  # built hidden, shown by show()
+    window.show()
+    # A short screen: the window fits above the taskbar, centred; sections scroll.
+    total = 600 - SCREEN_MARGIN
+    assert window.window.size == f"940x{total - CHROME}+213+{SCREEN_MARGIN // 2}"
+    assert window.window.minimum[0] == 760 and window.window.minimum[1] < total - CHROME
+    assert window.window.shown and window.window.topmost is True
     window.window.later()
     assert window.window.topmost is False
-    labels = [w.options.get('text') for w in widgets]
-    assert INTRO in labels
-    assert window.notebook.options["tabs"] == ["Genel", "Silinenler"]
-    assert "Listeden kaldır" in labels and "Tümünü seç" in labels
-    assert "file.pdf" in labels and "term/course" in labels
-    sections = [label for label in labels if label in ('Hesap', 'Klasör', 'Eski dönemler', 'Genel', 'Güncellemeler')]
-    assert sections == ['Hesap', 'Klasör', 'Eski dönemler', 'Genel', 'Güncellemeler']
-    assert all(label in labels for label in ('Okulunuzun Blackboard adresi', 'Henüz giriş yapılmadı.',
-        'Dosyaların kaydedileceği klasör', 'Seçilenleri indir', 'Bilgisayar açılınca başlat',
-        'Güncellemeleri otomatik denetle', 'Otomatik senkron:', 'Şimdi denetle', 'Kaydet', 'Giriş yap', 'Vazgeç', 'Seç…',
-        'Eski dönemi indir', 'Eski dönem bir kez indirilir, güncellenmez.', 'Uygulamayı kaldır…'))
-    assert any(label and label.startswith('Sürüm ') for label in labels)
-    assert window.fields['base_url'].grid_options['sticky'] == 'ew'
-    assert window.refetch_button.options['state'] == 'disabled'  # nothing to bring back yet
-    # Eski dönemler: nothing to pick before signing in.
-    assert window.past_label.options['text'] == 'Eski dönemleri görmek için giriş yapın.'
-    assert window.past_button.options['state'] == window.past_dropdown.options['state'] == 'disabled'
-    window.past_button.options['command']()
-    assert past_downloads == []
-    window.update_button.options['command']()
-    window.uninstall_button.options['command']()
-    assert actions == ['check_updates', 'uninstall']
+    assert visible() == ['start'] and window.state.open
+    assert [window.nav[s].options['text'] for s in (OVERVIEW, GENERAL, DELETED)] == [
+        'Başlangıç', 'Genel', 'Silinenler (1)']
+    assert window.start_button.options['text'] == 'Giriş yap'
+    for text in ('Ders dosyalarınız burada başlayacak.', 'Okulunuzu ve klasörünüzü seçin',
+                 'Bu pencereyi kapatabilirsiniz. Tekrar görmek için Başlat menüsünden Blackboard Sync\'i açmanız yeterli.'):
+        assert text in labels()
+    assert 'Dosyalarınız University klasörüne kaydedilir.' not in labels()
+    assert window.button_bar.removed  # nothing changed yet
 
-    # A signed-in student signs out from the window; it stays open.
+    # Başlangıç signs in with the form; a bad address stays, with the reason.
+    window.url.set('school.edu')
+    window.start_button.options['command']()
+    assert submitted[-1][1] is True and submitted[-1][0].base_url == 'school.edu'
+    assert window.start_message.options['text'] == 'Geçerli bir adres yazın.'
+    assert window.start_fields['base_url'].focused
+    window.url.set('https://school.edu')
+    window.start_button.options['command']()
+    assert submitted[-1][1] is True and window.start_message.options['text'] == ''
+
+    # Genel: the bar appears with a change and leaves with Vazgeç or Kaydet; the window stays.
+    window.nav[GENERAL].options['command']()
+    assert visible() == [GENERAL] and window.button_bar.removed
+    window.interval.set('Yalnızca elle')
+    assert not window.button_bar.removed
+    assert window.error_label.options['text'] == 'Kaydedilmemiş değişiklikler'
+    window.window.bindings['<Escape>'](None)  # Vazgeç
+    assert window.button_bar.removed and window.interval.get() == 'Her saat'
+    window.check_updates.set(False)
+    save = next(w for w in widgets if w.options.get('text') == 'Kaydet')
+    save.options['command']()
+    assert submitted[-1] == (window.values(), False) and submitted[-1][0].check_updates is False
+    assert window.button_bar.removed and window.state.open and closed == []
+
+    # Signed in: Genel bakış with the account, the last sync and the recent files.
     model.configured = True
-    model.session = {'saved_at': 0, 'user': {'displayName': 'Ada Student'}}
-    window.update_status(window_status(model))
-    assert window.account_label.options['text'] == 'Giriş yapıldı: Ada Student'
-    assert window.account_button.options['text'] == 'Hesaptan çıkış yap'
-    window.account_button.options['command']()
-    assert window.past_label.options['text'] == 'Eski dönemler yükleniyor…'
-    assert window.past_button.options['state'] == 'disabled'
-    model.finish_past_terms([], RunOutcome('ok'))
-    window.update_status(window_status(model))
-    assert window.past_label.options['text'] == 'İndirilebilecek eski dönem yok.'
-    assert window.past_button.options['state'] == window.past_dropdown.options['state'] == 'disabled'
-    model.reload_past_terms()
-    model.finish_past_terms(['2025-2026 Bahar', '2025-2026 Güz'], RunOutcome('ok'))
-    window.update_status(window_status(model))
-    assert window.past_dropdown.options['values'] == ['2025-2026 Bahar', '2025-2026 Güz']
-    assert window.past_term.get() == '2025-2026 Bahar'  # newest first
-    assert window.past_button.options['state'] == 'normal' and window.past_label.options['text'] == ''
-    window.past_term.set('2025-2026 Güz')
-    window.update_status(window_status(model))
-    assert window.past_term.get() == '2025-2026 Güz'  # a refresh keeps the choice
-    window.past_button.options['command']()
-    assert past_downloads == ['2025-2026 Güz']
+    model.session = {'saved_at': now.timestamp(), 'user': {'displayName': 'Ada Student'}}
+    model.last = RunOutcome('ok', finished_at=now)
+    model.recent = [RecentItem('term/SWE305/Homework1.docx', 'SWE305', now.isoformat())]
+    model.begin('sync')
+    window.update_status(main_status(model, now))
+    window.nav[OVERVIEW].options['command']()
+    assert visible() == [OVERVIEW] and window.nav[OVERVIEW].options['text'] == 'Genel bakış'
+    assert window.account_title.options['text'] == 'Ada Student'
+    assert window.account_detail.options['text'].startswith('Son senkron: bugün ')
+    assert window.badge.options['text'] == 'Senkron sürüyor' and window.login_button.removed
+    assert window.sync_button.options['state'] == 'disabled'
+    file_button = next(w for w in widgets if w.options.get('text') == 'Homework1.docx' and not w.destroyed)
+    file_button.options['command']()
+    assert opened == ['term/SWE305/Homework1.docx']
+    model.busy = None
+    window.update_status(main_status(model, now))
+    window.sync_button.options['command']()
+    assert actions == ['sync']
+
+    # Silinenler: one sentence, select, bring back, dismiss.
+    window.nav[DELETED].options['command']()
+    assert visible() == [DELETED]
+    assert ('Daha önce indirilip klasörden silinen dosyaları seçip geri indirebilirsiniz; '
+            'listeden kaldırılanlar tekrar önerilmez.') in labels()
+    assert 'term · course' in labels()
     assert window.refetch_button.options['state'] == 'disabled'
     window.select_all_button.options['command']()
-    assert window.refetch_button.options['state'] == 'normal'
     window.refetch_button.options['command']()
     assert deleted_actions == [('refetch', ['key'])]
-    assert actions == ['check_updates', 'uninstall', 'logout'] and not submitted
-    model.begin('sync')
-    window.update_status(window_status(model))
-    assert window.account_button.options['state'] == window.refetch_button.options['state'] == 'disabled'
-    assert window.past_button.options['state'] == window.uninstall_button.options['state'] == 'disabled'
-    model.busy = None
-    window.update_status(window_status(model))
     window.dismiss_button.options['command']()
-    assert deleted_actions[-1] == ('dismiss', ['key'])
-    assert window.selection.keys() == []
-    assert any(w.options.get('text') == 'Silinmiş dosya yok.' for w in widgets)
+    assert deleted_actions[-1] == ('dismiss', ['key']) and 'Silinmiş dosya yok.' in labels()
+    assert window.nav[DELETED].options['text'] == 'Silinenler'
 
-    # "Giriş yap" saves the form first and keeps the window open on an error.
-    model.session = None
-    window.update_status(window_status(model))
-    login = window.account_button
-    login.options['command']()
-    assert window.fields['base_url'].focused
-    assert not window.window.destroyed
-    assert window.error.options['text'] == 'Geçerli bir adres yazın.'
-    window.check_updates.set(False)
-    window.interval.set('Yalnızca elle')
-    login.options['command']()
-    assert submitted[-1][0].check_updates is False
-    assert submitted[-1][0].sync_interval_minutes == 0
-    assert submitted[-1][1] is True
-    assert closed == [True]
-    assert window.window.destroyed
+    # The wheel scrolls the section in view, not one that fits.
+    window.canvas.view = (0.0, 0.7)
+    window.window.bindings['<MouseWheel>'](SimpleNamespace(delta=-120))
+    assert window.canvas.scrolled == [(1, 'units')]
+    assert window.interval_dropdown.bindings['<MouseWheel>'](SimpleNamespace(delta=120)) == 'break'
+
+    # Closing hides the window and drops unsaved edits; nothing else stops.
+    window.nav[GENERAL].options['command']()
+    window.url.set('https://other.edu')
+    window.close()
+    assert closed == [True] and window.window.shown is False and not window.window.destroyed
+    assert not window.state.open and window.url.get() == 'https://school.edu'
+    monkeypatch.setattr(module, 'work_area', lambda window: (0, 0, 2560, 1400))
+    window.show()  # started again: the overview, at the full size on a big screen
+    assert visible() == [OVERVIEW] and window.state.open
+    assert window.window.size == "940x640+810+360"
+    window.show(GENERAL)  # "Ayarlar…"
+    assert visible() == [GENERAL]
 
 
 def test_work_area_is_the_screen_above_the_taskbar():
     import sys
-    from blackboard_sync.windows.settings_window import work_area
+    from blackboard_sync.windows.main_window import work_area
 
     window = SimpleNamespace(winfo_screenwidth=lambda: 1366, winfo_screenheight=lambda: 768)
     left, top, width, height = work_area(window)
@@ -704,30 +721,58 @@ def test_activation_command_quotes_interpreter_and_uri(monkeypatch):
     assert activation.protocol_command() == '"C:\\My App\\python.exe" --notification "%1"'
 
 
-def test_second_start_asks_running_copy_to_show_settings(tmp_path, monkeypatch):
+def test_second_start_asks_running_copy_to_show_its_main_window(tmp_path, monkeypatch):
     from blackboard_sync.windows import activation
     app, workers = update_app(tmp_path, monkeypatch)
     opened = []
-    app.open_settings = lambda: opened.append(True)
+    app.show_window = lambda section=None: opened.append(section)
     app.poll()
     assert opened == []
-    activation.request_settings(app.config)
+    activation.request_window(app.config)
     app.poll()
-    assert opened == [True]
+    assert opened == [None]  # the overview, or the section already in view
     app.poll()
-    assert opened == [True]
+    assert opened == [None]
 
 
-def test_tray_hint_shown_once_after_settings_close(tmp_path):
+def test_tray_settings_item_opens_the_main_window_on_genel(tmp_path, monkeypatch):
+    import sys
+    from blackboard_sync.menubar.main_window_model import GENERAL
+    app, workers = update_app(tmp_path, monkeypatch)
+    monkeypatch.setitem(sys.modules, 'tkinter', SimpleNamespace(messagebox=SimpleNamespace()))
+    opened = []
+    app.show_window = lambda section=None: opened.append(section)
+    app.dispatch('settings')
+    assert opened == [GENERAL]
+
+
+def test_explicit_start_shows_the_window_and_login_start_stays_in_the_tray(tmp_path):
+    def run(show_window, configured):
+        app = make_app(tmp_path)
+        app.model.configured = configured
+        app.background = not show_window
+        app.icon = SimpleNamespace(run_detached=lambda: None)
+        scheduled = []
+        app.root = SimpleNamespace(bind=lambda *a: None, mainloop=lambda: None,
+                                   after=lambda ms, callback: scheduled.append(callback))
+        app.run()
+        return app.show_window in scheduled
+
+    assert run(show_window=True, configured=True)  # Start menu, installer's last page
+    assert not run(show_window=False, configured=True)  # login item, silent update
+    assert run(show_window=False, configured=False)  # nothing set up yet
+
+
+def test_closing_the_window_keeps_the_tray_and_hints_once(tmp_path):
     from blackboard_sync.windows.app import TRAY_HINT
     app = make_app(tmp_path)
     shown = []
     app.icon = SimpleNamespace(notify=lambda message, title: shown.append(message))
-    app.window = object()
-    app.settings_closed()
-    assert app.window is None
+    window = app.window = SimpleNamespace(state=SimpleNamespace(open=False))
+    app.window_closed()
+    assert app.window is window  # kept hidden for the next start
     assert '^' in TRAY_HINT and 'saatin yanındaki' in TRAY_HINT
-    app.settings_closed()
+    app.window_closed()
     assert shown == [TRAY_HINT]
 
 
@@ -765,7 +810,7 @@ def test_startup_logs_before_tray_import_and_reports_errors(tmp_path, monkeypatc
     assert 'OSError: denied' in startup.error_text(None, OSError('denied'))
 
 
-def test_sign_out_from_settings_window_asks_in_front_of_it(tmp_path, monkeypatch):
+def test_sign_out_from_main_window_asks_in_front_of_it(tmp_path, monkeypatch):
     import sys
     from blackboard_sync.windows.app import jobs
     app = make_app(tmp_path)
@@ -775,9 +820,9 @@ def test_sign_out_from_settings_window_asks_in_front_of_it(tmp_path, monkeypatch
         askyesno=lambda title, message, parent: asked.append(parent) or True)))
     monkeypatch.setattr(jobs, 'logout', removed.append)
     app.dispatch('logout')
-    app.window = SimpleNamespace(window='settings')
+    app.window = SimpleNamespace(window='main', state=SimpleNamespace(open=True))
     app.dispatch('logout')
-    assert asked == ['root', 'settings'] and len(removed) == 2
+    assert asked == ['root', 'main'] and len(removed) == 2
     app.model.begin('sync')
     app.dispatch('logout')
     assert len(asked) == 2  # never while a job runs
@@ -791,7 +836,7 @@ def test_take_requests_consumes_each_request_once(tmp_path):
     assert activation.take_requests(config) == (True, False)
     assert activation.take_requests(config) == (False, False)
     activation.request_update(config)
-    (tmp_path / activation.SETTINGS_REQUEST).touch()
+    (tmp_path / activation.WINDOW_REQUEST).touch()
     assert activation.take_requests(config) == (True, True)
     assert list(tmp_path.iterdir()) == []
 
@@ -836,7 +881,7 @@ def test_persistent_poll_error_is_logged_once_a_minute(tmp_path, monkeypatch, ca
     now = [100.0]
     app.poll_errors = LogThrottle(clock=lambda: now[0])
     def denied(config):
-        raise PermissionError(13, 'denied', 'settings-request')
+        raise PermissionError(13, 'denied', 'window-request')
     monkeypatch.setattr(module.activation, 'take_requests', denied)
     with caplog.at_level(logging.ERROR, logger=module.log.name):
         for _ in range(30):

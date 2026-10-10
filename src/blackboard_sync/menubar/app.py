@@ -1,12 +1,14 @@
 """The menu bar GUI: a thin rumps layer that draws ``AppModel`` and forwards events.
 
-Decisions (when to sync, what the menu says, which notification to post) live
-in ``model.py``; this module only owns threads, AppKit objects and ``open``.
+Decisions (when to sync, what the menu and the main window say, which
+notification to post) live in ``model.py`` and ``main_window_model.py``; this
+module only owns threads, AppKit objects and ``open``.
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
 import logging
 import subprocess
 import sys
@@ -17,6 +19,7 @@ from blackboard_sync import deleted, runtime, update_macos, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, launchagent, settings_form
+from blackboard_sync.menubar.main_window_model import GENERAL, main_status, shows_window_at_launch
 from blackboard_sync.menubar.model import (
     DEST_KEEP,
     MOVE_JOB,
@@ -109,6 +112,109 @@ def symbol_image(icon: Icon):
     return image
 
 
+# A second start of the app (from a terminal, or another copy of it) asks the
+# running copy with the same data folder to show its main window.
+SHOW_WINDOW = "io.github.umutylcn.blackboard-sync.show-window"
+
+
+def request_window(config: Config) -> None:
+    from Foundation import NSDistributedNotificationCenter
+
+    NSDistributedNotificationCenter.defaultCenter().postNotificationName_object_userInfo_deliverImmediately_(
+        SHOW_WINDOW, str(config.data_dir), None, True
+    )
+
+
+def set_dock_icon(visible: bool) -> None:
+    """Regular (Dock icon, app menu) while the main window is open; a menu bar accessory otherwise."""
+    from AppKit import (
+        NSApplication,
+        NSApplicationActivationPolicyAccessory,
+        NSApplicationActivationPolicyRegular,
+    )
+
+    policy = NSApplicationActivationPolicyRegular if visible else NSApplicationActivationPolicyAccessory
+    application = NSApplication.sharedApplication()
+    if application.activationPolicy() != policy and not application.setActivationPolicy_(policy):
+        log.warning("could not switch the Dock icon %s", "on" if visible else "off")
+
+
+def app_icon_image():
+    """The app's icon for the Dock and the window; a source run would show Python's."""
+    from AppKit import NSImage
+
+    if runtime.is_frozen():
+        return None  # the bundle's own icon
+    path = Path(__file__).resolve().parents[3] / "assets" / "icon" / "app.icns"
+    image = NSImage.alloc().initWithContentsOfFile_(str(path))
+    return image if image is not None and image.isValid() else None
+
+
+def install_reopen_handler(callback) -> None:
+    """Call ``callback`` when the running app is opened again (Finder, Launchpad, the Dock).
+
+    rumps owns the application delegate; the reopen method is added to its class
+    so the status item, notification and wake handling stay rumps' own.
+    """
+    import objc
+    from rumps.rumps import NSApp as Delegate
+
+    def reopen(self, _app, _visible):
+        callback()
+        return False  # handled: AppKit must not do its own reopen
+
+    objc.classAddMethods(Delegate, [objc.selector(
+        reopen, selector=b"applicationShouldHandleReopen:hasVisibleWindows:", signature=b"Z@:@Z",
+    )])
+
+
+def build_main_menu():
+    """The app menu, Düzen and Pencere: the menu bar while the main window is open.
+
+    The menu bar icon's own menu is separate and unchanged.
+    """
+    from AppKit import NSEventModifierFlagCommand, NSEventModifierFlagOption, NSEventModifierFlagShift, NSMenu, NSMenuItem
+
+    def menu(title, items):
+        submenu = NSMenu.alloc().initWithTitle_(title)
+        for entry in items:
+            if entry is None:
+                submenu.addItem_(NSMenuItem.separatorItem())
+                continue
+            text, action, key, *flags = entry
+            item = submenu.addItemWithTitle_action_keyEquivalent_(text, action, key)
+            if flags:
+                item.setKeyEquivalentModifierMask_(flags[0])
+        holder = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, None, "")
+        holder.setSubmenu_(submenu)
+        return holder, submenu
+
+    main = NSMenu.alloc().initWithTitle_("")
+    app_item, _ = menu("Blackboard Sync", [
+        ("Blackboard Sync'i gizle", "hide:", "h"),
+        ("Diğerlerini gizle", "hideOtherApplications:", "h", NSEventModifierFlagCommand | NSEventModifierFlagOption),
+        ("Tümünü göster", "unhideAllApplications:", ""),
+        None,
+        ("Blackboard Sync'ten çık", "terminate:", "q"),
+    ])
+    edit_item, _ = menu("Düzen", [
+        ("Geri al", "undo:", "z"),
+        ("Yinele", "redo:", "z", NSEventModifierFlagCommand | NSEventModifierFlagShift),
+        None,
+        ("Kes", "cut:", "x"),
+        ("Kopyala", "copy:", "c"),
+        ("Yapıştır", "paste:", "v"),
+        ("Tümünü seç", "selectAll:", "a"),
+    ])
+    window_item, window_menu = menu("Pencere", [
+        ("Küçült", "performMiniaturize:", "m"),
+        ("Kapat", "performClose:", "w"),
+    ])
+    for item in (app_item, edit_item, window_item):
+        main.addItem_(item)
+    return main, window_menu
+
+
 def open_path(path: Path) -> None:
     subprocess.Popen(["open", str(path)], stdin=subprocess.DEVNULL)
 
@@ -117,13 +223,28 @@ def open_url(url: str) -> None:
     subprocess.Popen(["open", url], stdin=subprocess.DEVNULL)
 
 
-def build_app(config: Config):
-    import rumps
-    from AppKit import NSObject, NSColor, NSAttributedString, NSForegroundColorAttributeName
+@functools.cache
+def _receivers():
+    """The Objective-C classes that forward to the app (defined once per process)."""
+    from AppKit import NSObject
 
     class MenuDelegate(NSObject):
         def menuNeedsUpdate_(self, menu):
             self.owner.refresh()
+
+    class WindowRequests(NSObject):
+        def showWindow_(self, _notification):
+            self.owner.show_window()
+
+    return MenuDelegate, WindowRequests
+
+
+def build_app(config: Config, show_window: bool = False):
+    import rumps
+    from AppKit import NSApplication, NSColor, NSAttributedString, NSForegroundColorAttributeName
+    from Foundation import NSDistributedNotificationCenter
+
+    MenuDelegate, WindowRequests = _receivers()
 
     from PyObjCTools import AppHelper
 
@@ -138,7 +259,7 @@ def build_app(config: Config):
             self._menu_delegate = MenuDelegate.alloc().init()
             self._menu_delegate.owner = self
             self.menu._menu.setDelegate_(self._menu_delegate)
-            self._settings_window = None
+            self._window = None  # the main window, built when first shown
             self._uninstalling = False
             self._login_after_job = False  # asked for while another job was running
             self._timer = rumps.Timer(self.tick, TICK_SECONDS)
@@ -146,12 +267,25 @@ def build_app(config: Config):
             # Notifications need the running app: say how the update it quit for went.
             self._installed_timer = rumps.Timer(self._report_installed, 1)
             self._installed_timer.start()
-            if not self.model.configured:
-                # First launch: show the settings window once the app is running.
+            if show_window:
+                # Opened by the student (or set up for the first time): show the
+                # main window once the app is running.
                 self._first_run_timer = rumps.Timer(self._first_run, 1)
                 self._first_run_timer.start()
             rumps.events.on_notification.register(self.notification_clicked)
             rumps.events.on_wake.register(self.tick)
+            install_reopen_handler(self.show_window)
+            self._requests = WindowRequests.alloc().init()
+            self._requests.owner = self
+            NSDistributedNotificationCenter.defaultCenter().addObserver_selector_name_object_(
+                self._requests, "showWindow:", SHOW_WINDOW, str(config.data_dir))
+            application = NSApplication.sharedApplication()
+            main_menu, window_menu = build_main_menu()
+            application.setMainMenu_(main_menu)
+            application.setWindowsMenu_(window_menu)
+            icon = app_icon_image()
+            if icon is not None:
+                application.setApplicationIconImage_(icon)
 
         # -- events ------------------------------------------------------
         def tick(self, _sender=None) -> None:
@@ -188,7 +322,7 @@ def build_app(config: Config):
             AppHelper.callAfter(self._sync_done, outcome)
 
         def start_past_terms(self) -> None:
-            """Look up the past terms for the settings window's list, in the background."""
+            """Look up the past terms for the list in Genel, in the background."""
             if not self.model.begin("past_terms"):
                 return
             threading.Thread(target=self._past_terms_worker, args=(self.settings,), daemon=True).start()
@@ -381,28 +515,52 @@ def build_app(config: Config):
 
         def _first_run(self, timer) -> None:
             timer.stop()
-            self.open_settings()
+            self.show_window()
 
         def open_settings(self, _sender=None) -> None:
-            if self._settings_window is None:
-                from blackboard_sync.menubar.settings_window import SettingsWindow
+            """"Ayarlar…" in the menu: the main window on Genel."""
+            self.show_window(GENERAL)
 
-                saved = jobs.saved_settings(self.config)
-                values = settings_form.initial_values(saved, self.settings, launchagent.is_installed())
-                self._settings_window = SettingsWindow(
-                    values,
-                    settings_form.window_status(self.model),
-                    first_run=saved is None,
+        def form_values(self) -> settings_form.FormValues:
+            """What the Genel form shows when nothing is edited: the saved settings."""
+            saved = jobs.saved_settings(self.config)
+            return settings_form.initial_values(saved, self.settings, launchagent.is_installed())
+
+        @property
+        def window_open(self) -> bool:
+            return self._window is not None and self._window.state.open
+
+        def past_terms_wanted(self) -> bool:
+            """Genel is in view and its past-term list still has to be looked up."""
+            return (self.window_open and self._window.section == GENERAL and not self._uninstalling
+                    and self.model.past_terms_due())
+
+        def show_window(self, section: str | None = None) -> None:
+            """Open the main window (or bring it forward); the Dock icon comes with it."""
+            if self._uninstalling:
+                return
+            if self._window is None:
+                from blackboard_sync.menubar.main_window import MainWindow
+
+                self._window = MainWindow(
+                    self.form_values(),
+                    main_status(self.model, jobs.utcnow()),
                     on_submit=self.settings_submitted,
-                    on_action=self.settings_action,
-                    on_close=self._settings_closed,
+                    on_action=self.window_action,
+                    on_close=self._window_closed,
+                    on_values=self.form_values,
+                    on_open=self.open_recent,
                     on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
                     on_deleted_action=self.deleted_action,
                     on_past_term=self.download_past_term,
+                    on_section=lambda _section: self.refresh(),
                 )
+            if not self.window_open:
                 self.model.reload_past_terms()
-            self._settings_window.show()
-            self.refresh()  # starts looking up the past terms
+            log.info("showing the main window")
+            set_dock_icon(True)
+            self._window.show(section)
+            self.refresh()  # on Genel, starts looking up the past terms
 
         def deleted_action(self, action, keys):
             if self._uninstalling or self.model.busy is not None or self.model.updates.busy == "download":
@@ -417,19 +575,22 @@ def build_app(config: Config):
                 return "İşlem tamamlanamadı; çalışan senkron varsa bitmesini bekleyin."
             return None
 
-        def settings_action(self, action: str) -> None:
-            """A button in the settings window that acts right away instead of saving."""
+        def window_action(self, action: str) -> None:
+            """A button in the main window that acts right away instead of saving."""
             {
+                "sync": self.start_sync, "folder": self.open_school_folder, "login": self.start_login,
                 "logout": self.logout, "refetch": self.start_refetch,
                 "check_updates": self.start_update_check, "update": self.start_update,
                 "uninstall": self.start_uninstall,
             }[action]()
 
-        def _settings_closed(self) -> None:
-            self._settings_window = None
+        def _window_closed(self) -> None:
+            """Only the window went: the menu bar icon, timers and jobs go on; the Dock icon leaves."""
+            log.info("main window closed; the app keeps running in the menu bar")
+            set_dock_icon(False)
 
         def settings_submitted(self, values: settings_form.FormValues, login: bool) -> tuple[str, str] | None:
-            """Save the window; returns (error, field) to show instead of closing."""
+            """Save the Genel form; returns (error, field) to show, None once saved."""
             try:
                 submission = settings_form.submit(values, self.settings)
             except SettingsError as exc:
@@ -472,7 +633,7 @@ def build_app(config: Config):
             return None
 
         def ask_dest_choice(self, old: Path, new: Path, files: int) -> str | None:
-            from blackboard_sync.menubar.settings_window import ask_dest_choice
+            from blackboard_sync.menubar.main_window import ask_dest_choice
 
             return ask_dest_choice(old, new, files)
 
@@ -489,7 +650,7 @@ def build_app(config: Config):
                 open_path(path if path.exists() else self.model.root)
 
         def start_uninstall(self, _sender=None) -> None:
-            from blackboard_sync.menubar.settings_window import ask_uninstall
+            from blackboard_sync.menubar.main_window import ask_uninstall
 
             if self.model.busy or self.model.updates.busy:
                 rumps.alert("Blackboard Sync", uninstall.BUSY)
@@ -501,8 +662,8 @@ def build_app(config: Config):
                 self._uninstalling = False
                 self._timer.start()
                 return
-            if self._settings_window is not None:
-                self._settings_window.close()
+            if self.window_open:
+                self._window.close()
             try:
                 self.config.dest = self.settings.dest
                 warnings = uninstall.uninstall(
@@ -546,11 +707,11 @@ def build_app(config: Config):
         def refresh(self) -> None:
             jobs.refresh_session(self.config, self.model, self.settings)
             self.model.autostart = launchagent.is_installed()
-            if self._settings_window is not None and not self._uninstalling and self.model.past_terms_due():
+            if self.past_terms_wanted():
                 self.start_past_terms()
             self._draw_icon(self.model.icon())
-            if self._settings_window is not None:
-                self._settings_window.update_status(settings_form.window_status(self.model))
+            if self.window_open:
+                self._window.update_status(main_status(self.model, jobs.utcnow()))
             menu = self.model.menu(jobs.utcnow())
             if menu == self._drawn:
                 return
@@ -626,6 +787,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--detach", action="store_true", help="start in the background and return")
+    # The login item starts the app quietly: menu bar icon only, no window.
+    group.add_argument("--background", action="store_true", help="start without opening the main window")
     group.add_argument("--enable-autostart", action="store_true", help="start the app at every login")
     group.add_argument("--disable-autostart", action="store_true", help="stop starting the app at login")
     args = parser.parse_args(argv)
@@ -645,8 +808,12 @@ def main(argv: list[str] | None = None) -> int:
     lock = jobs.single_instance(config)
     if lock is None:
         print("The Blackboard Sync menu bar app is already running.", file=sys.stderr)
+        if not args.background:
+            log.info("already running; asking it to show its window")
+            request_window(config)
         return 0
-    # Refresh older login items without enabling autostart or restarting launchd.
+    # Refresh older login items (now started with --background) without enabling
+    # autostart or restarting launchd.
     if launchagent.is_installed():
         try:
             launchagent.install(jobs.log_file(config))
@@ -654,11 +821,12 @@ def main(argv: list[str] | None = None) -> int:
             log.warning("could not refresh the login item: %s", exc)
     from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
 
-    # A menu bar app: no Dock icon, no app menu.
+    # A menu bar app: no Dock icon, no app menu until the main window opens.
     NSApplication.sharedApplication().setActivationPolicy_(NSApplicationActivationPolicyAccessory)
-    app = build_app(config)
+    show_window = shows_window_at_launch(args.background, jobs.saved_settings(config) is not None)
+    app = build_app(config, show_window=show_window)
     app._lifetime_lock = lock
-    log.info("menu bar app started (dest %s)", app.settings.dest)
+    log.info("menu bar app started (dest %s, window %s)", app.settings.dest, show_window)
     app.run()
     lock.close()
     return 0

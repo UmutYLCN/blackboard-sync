@@ -33,7 +33,7 @@ def register() -> None:
 
 
 UPDATE_REQUEST = "update-request"
-SETTINGS_REQUEST = "settings-request"
+WINDOW_REQUEST = "window-request"
 ASFW_ANY = -1
 
 
@@ -47,8 +47,8 @@ def take_update_request(config) -> bool:
     return _take(config, UPDATE_REQUEST)
 
 
-def request_settings(config) -> None:
-    """Ask the running copy to show its window (the app was started again)."""
+def request_window(config) -> None:
+    """Ask the running copy to show its main window (the app was started again)."""
     try:
         import ctypes
 
@@ -57,11 +57,11 @@ def request_settings(config) -> None:
         ctypes.windll.user32.AllowSetForegroundWindow(ASFW_ANY)
     except (ImportError, AttributeError, OSError):
         pass
-    (config.data_dir / SETTINGS_REQUEST).touch()
+    (config.data_dir / WINDOW_REQUEST).touch()
 
 
-def take_settings_request(config) -> bool:
-    return _take(config, SETTINGS_REQUEST)
+def take_window_request(config) -> bool:
+    return _take(config, WINDOW_REQUEST)
 
 
 def _take(config, name) -> bool:
@@ -73,9 +73,9 @@ def _take(config, name) -> bool:
 
 
 def take_requests(config) -> tuple[bool, bool]:
-    """(update, settings) requests found, consumed. One directory scan when idle."""
-    names = {UPDATE_REQUEST, SETTINGS_REQUEST}
+    """(update, window) requests found, consumed. One directory scan when idle."""
+    names = {UPDATE_REQUEST, WINDOW_REQUEST}
     with os.scandir(config.data_dir) as entries:
         found = {entry.name for entry in entries} & names
     return (UPDATE_REQUEST in found and _take(config, UPDATE_REQUEST),
-            SETTINGS_REQUEST in found and _take(config, SETTINGS_REQUEST))
+            WINDOW_REQUEST in found and _take(config, WINDOW_REQUEST))

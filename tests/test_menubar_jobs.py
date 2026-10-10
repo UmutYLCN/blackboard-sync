@@ -141,7 +141,8 @@ def test_launch_agent_install_and_remove(tmp_path):
     plist = plistlib.loads(path.read_bytes())
     assert plist["Label"] == launchagent.LABEL
     assert plist["AssociatedBundleIdentifiers"] == ["io.github.umutylcn.blackboard-sync"]
-    assert plist["ProgramArguments"] == ["/repo/.venv/bin/python", "-m", "blackboard_sync.menubar"]
+    # Started at login the app stays in the menu bar: no window.
+    assert plist["ProgramArguments"] == ["/repo/.venv/bin/python", "-m", "blackboard_sync.menubar", "--background"]
     assert plist["RunAtLoad"] is True
     assert plist["KeepAlive"] == {"SuccessfulExit": False}
     assert launchagent.remove(agents) is True
@@ -168,10 +169,22 @@ def test_frozen_app_reinvokes_its_own_executable(monkeypatch):
     assert plist["AssociatedBundleIdentifiers"] == ["io.github.umutylcn.blackboard-sync"]
 
 
-def start_menubar(monkeypatch, config, agents):
-    """Run the real startup path without AppKit or a GUI event loop."""
+def test_frozen_login_item_starts_the_app_in_the_background(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", "/Applications/Blackboard Sync.app/Contents/MacOS/Blackboard Sync")
+    path = launchagent.install(tmp_path / "menubar.log", agents_dir=tmp_path / "LaunchAgents")
+    assert plistlib.loads(path.read_bytes())["ProgramArguments"] == [sys.executable, "--background"]
+
+
+def start_menubar(monkeypatch, config, agents, argv=(), running=False):
+    """Run the real startup path without AppKit or a GUI event loop.
+
+    Returns whether the app was told to open its main window (None: it did not
+    start, another copy runs) and the window requests sent to that copy.
+    """
     monkeypatch.setattr(app.Config, "from_env", lambda: config)
-    monkeypatch.setattr(app.jobs, "single_instance", lambda config: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(app.jobs, "single_instance",
+                        lambda config: None if running else SimpleNamespace(close=lambda: None))
     monkeypatch.setattr(app.launchagent, "is_installed", lambda: launchagent.plist_path(agents).is_file())
     install = launchagent.install
     monkeypatch.setattr(app.launchagent, "install", lambda log_file: install(log_file, agents_dir=agents))
@@ -180,9 +193,12 @@ def start_menubar(monkeypatch, config, agents):
             setActivationPolicy_=lambda policy: None)),
         NSApplicationActivationPolicyAccessory=1,
     ))
-    monkeypatch.setattr(app, "build_app", lambda config: SimpleNamespace(
-        settings=SETTINGS, run=lambda: None))
-    assert app.main([]) == 0
+    shown, requests = [], []
+    monkeypatch.setattr(app, "build_app", lambda config, show_window=False: shown.append(show_window) or
+                        SimpleNamespace(settings=SETTINGS, run=lambda: None))
+    monkeypatch.setattr(app, "request_window", requests.append)
+    assert app.main(list(argv)) == 0
+    return (shown[0] if shown else None), requests
 
 
 def test_launch_agent_startup_upgrades_old_plist(tmp_path, monkeypatch):
@@ -190,13 +206,17 @@ def test_launch_agent_startup_upgrades_old_plist(tmp_path, monkeypatch):
     agents = tmp_path / "LaunchAgents"
     path = launchagent.install(jobs.log_file(config), agents_dir=agents)
     old = plistlib.loads(path.read_bytes())
+    # Written by an older version: no bundle association and no --background,
+    # so the next login would open the main window.
     del old["AssociatedBundleIdentifiers"]
+    old["ProgramArguments"] = old["ProgramArguments"][:-1]
     path.write_bytes(plistlib.dumps(old))
 
     start_menubar(monkeypatch, config, agents)
 
-    expected = launchagent.build_plist(runtime.menubar_command(), jobs.log_file(config))
+    expected = launchagent.build_plist([*runtime.menubar_command(), "--background"], jobs.log_file(config))
     assert plistlib.loads(path.read_bytes()) == expected
+    assert expected["ProgramArguments"][-1] == "--background"
     assert path.is_file()
     assert not path.with_suffix(".plist.tmp").exists()
 
@@ -224,6 +244,26 @@ def test_launch_agent_startup_keeps_autostart_off(tmp_path, monkeypatch):
 
     assert not launchagent.plist_path(agents).exists()
     assert not agents.exists()
+
+
+def test_opening_the_app_shows_the_main_window_but_login_start_stays_quiet(tmp_path, monkeypatch):
+    config = Config(data_dir=tmp_path / "data")
+    agents = tmp_path / "LaunchAgents"
+    # The very first launch always shows it, even from a login item.
+    assert start_menubar(monkeypatch, config, agents, ["--background"]) == (True, [])
+    save_settings(config.data_dir, SETTINGS)
+    # Applications, Launchpad, Finder or a terminal: the window.
+    assert start_menubar(monkeypatch, config, agents) == (True, [])
+    # At login: the menu bar icon only.
+    assert start_menubar(monkeypatch, config, agents, ["--background"]) == (False, [])
+
+
+def test_a_second_start_asks_the_running_copy_to_show_its_window(tmp_path, monkeypatch):
+    config = Config(data_dir=tmp_path / "data")
+    agents = tmp_path / "LaunchAgents"
+    assert start_menubar(monkeypatch, config, agents, running=True) == (None, [config])
+    # A second start at login (say, a stale login item) stays quiet.
+    assert start_menubar(monkeypatch, config, agents, ["--background"], running=True) == (None, [])
 
 
 def test_saved_settings_decide_what_the_app_syncs(tmp_path):

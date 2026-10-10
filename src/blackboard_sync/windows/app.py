@@ -15,6 +15,7 @@ from blackboard_sync import deleted, relocate, runtime, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, settings_form
+from blackboard_sync.menubar.main_window_model import GENERAL, main_status, shows_window_at_launch
 from blackboard_sync.menubar.model import DEST_KEEP, MOVE_JOB, open_target, RunOutcome, UPDATE_ACTIONS
 from blackboard_sync.settings import SettingsError, save_settings
 from blackboard_sync.system import sync_root
@@ -26,7 +27,7 @@ log = logging.getLogger(__name__)
 # The two executables of the installed app (packaging/blackboard_sync_windows.spec).
 GUI_EXE = "Blackboard Sync.exe"
 CLI_EXE = "blackboard-sync-cli.exe"
-# Shown once, when the first settings window closes: where the app went.
+# Shown once, when the main window first closes: where the app went.
 TRAY_HINT_TITLE = "Blackboard Sync arka planda çalışıyor"
 TRAY_HINT = ("Menü için saatin yanındaki Blackboard Sync simgesine sağ tıklayın. "
              "Simge görünmüyorsa gizli simgeleri gösteren ^ okuna tıklayın.")
@@ -73,16 +74,16 @@ def cli_runner(command, **kwargs):
 
 
 class TrayApp:
-    def __init__(self, config, root, show_settings=False):
+    def __init__(self, config, root, show_window=False):
         import pystray
 
         self.config, self.root = config, root
-        self.show_settings = show_settings
+        self.background = not show_window  # started at login or by a silent update
         self.settings = jobs.effective_settings(config)
         self.model = jobs.load_model(config, jobs.utcnow(), autostart.is_installed())
         self.events = queue.Queue()
         self.poll_errors = LogThrottle()
-        self.window = None
+        self.window = None  # the main window, built when first shown
         self.login_after_job = False  # a new school's sign-in waits for the file move
         self.closed = False
         self.uninstalling = False
@@ -97,8 +98,8 @@ class TrayApp:
         self.root.bind(WAKE_EVENT, self.drain)
         self.root.after(REQUEST_CHECK_MS, self.poll)
         self.root.after(1000, self.tick)
-        if self.show_settings or not self.model.configured:
-            self.root.after(200, self.open_settings)
+        if shows_window_at_launch(self.background, self.model.configured):
+            self.root.after(200, self.show_window)
         self.root.mainloop()
 
     def post(self, callback, *args):
@@ -128,12 +129,12 @@ class TrayApp:
         self.drain()
         if not self.closed:
             try:
-                update, settings = activation.take_requests(self.config)
+                update, window = activation.take_requests(self.config)
                 if update:
                     self.notification_clicked({"action": "update"})
-                if settings:
-                    log.info("Started again; showing the settings window")
-                    self.open_settings()
+                if window:
+                    log.info("Started again; showing the main window")
+                    self.show_window()
             except OSError as exc:
                 # A persistent failure (say a denied folder) must not flood the log.
                 if self.poll_errors.allow((type(exc), exc.errno, exc.filename)):
@@ -283,7 +284,7 @@ class TrayApp:
             self.model.autostart = autostart.is_installed()
         except OSError:
             log.exception("Could not read login item")
-        if self.window is not None and not self.uninstalling and self.model.past_terms_due():
+        if self.past_terms_wanted():
             self.start_past_terms()
         state = self.model.icon()
         # Session expiry can be detected before the first scheduled sync.
@@ -293,8 +294,8 @@ class TrayApp:
         if state != self.drawn_icon:
             self.icon.icon = icon_image(state)
             self.drawn_icon = state
-        if self.window is not None:
-            self.window.update_status(settings_form.window_status(self.model))
+        if self.window_open:
+            self.window.update_status(main_status(self.model, jobs.utcnow()))
         menu = self.model.menu(jobs.utcnow())
         if menu != self.drawn:
             self.icon.menu = render_menu(menu.entries,
@@ -317,7 +318,7 @@ class TrayApp:
             self.start_uninstall()
             return
         elif action == "settings":
-            self.open_settings()
+            self.show_window(GENERAL)
         elif action in ("folder", "open"):
             target = self.model.root if action == "folder" else open_target(self.model.root, value)
             if target and target.exists():
@@ -328,8 +329,8 @@ class TrayApp:
             else:
                 self.model.note = "Dosya veya klasör henüz yok; önce senkronize edin."
         elif action == "logout" and self.model.busy is None:
-            # Asked from the settings window, so the question belongs in front of it.
-            parent = self.window.window if self.window is not None else self.root
+            # Asked from the main window, so the question belongs in front of it.
+            parent = self.window.window if self.window_open else self.root
             if messagebox.askyesno(
                 "Hesaptan çıkış yapılsın mı?",
                 "Tüm giriş verileri silinir; yeniden giriş yaparken okul bilgilerinizi "
@@ -353,7 +354,7 @@ class TrayApp:
         self.refresh()
 
     def start_past_terms(self):
-        """Look up the past terms for the settings window's list, in the background."""
+        """Look up the past terms for the list in Genel, in the background."""
         if not self.model.begin("past_terms"):
             return
         settings = self.settings
@@ -377,9 +378,9 @@ class TrayApp:
 
     def start_uninstall(self):
         from tkinter import messagebox
-        from .settings_window import ask_uninstall
+        from .main_window import ask_uninstall
 
-        parent = self.window.window if self.window is not None else self.root
+        parent = self.window.window if self.window_open else self.root
         if self.model.busy or self.model.updates.busy:
             messagebox.showinfo("Blackboard Sync", uninstall.BUSY, parent=parent)
             return
@@ -389,9 +390,9 @@ class TrayApp:
             self.uninstalling = False
             return
         if self.window is not None:
-            # Closed without settings_closed: no "runs in the background" hint now.
+            # Closed without window_closed: no "runs in the background" hint now.
             window, self.window = self.window, None
-            window.window.destroy()
+            window.destroy()
             parent = self.root
         try:
             self.config.dest = self.settings.dest
@@ -421,21 +422,43 @@ class TrayApp:
         close_logging()
 
     def open_settings(self):
-        from .settings_window import SettingsWindow
+        """"Ayarlar…" in the tray menu: the main window on Genel."""
+        self.show_window(GENERAL)
 
+    def form_values(self):
+        """What the Genel form shows when nothing is edited: the saved settings."""
+        saved = jobs.saved_settings(self.config)
+        return settings_form.initial_values(saved, self.settings, self.model.autostart)
+
+    @property
+    def window_open(self):
+        return self.window is not None and self.window.state.open
+
+    def past_terms_wanted(self):
+        """Genel is in view and its past-term list still has to be looked up."""
+        return (self.window_open and self.window.state.section == GENERAL and not self.uninstalling
+                and self.model.past_terms_due())
+
+    def show_window(self, section=None):
+        """Open the main window (or bring it forward); its taskbar button comes with it."""
+        from .main_window import MainWindow
+
+        if self.uninstalling:
+            return
         if self.window is None:
-            saved = jobs.saved_settings(self.config)
-            values = settings_form.initial_values(saved, self.settings, self.model.autostart)
-            log.info("Opening the settings window (first run %s)", saved is None)
-            self.window = SettingsWindow(self.root, values, settings_form.window_status(self.model),
-                                         saved is None, self.settings_submitted, self.dispatch,
-                                         self.settings_closed,
-                                         on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
-                                         on_deleted_action=self.deleted_action,
-                                         on_past_term=self.download_past_term)
+            log.info("Opening the main window (first run %s)", not self.model.configured)
+            self.window = MainWindow(self.root, self.form_values(), main_status(self.model, jobs.utcnow()),
+                                     self.settings_submitted, self.dispatch, self.window_closed,
+                                     on_values=self.form_values,
+                                     on_open=lambda path: self.dispatch("open", path),
+                                     on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
+                                     on_deleted_action=self.deleted_action,
+                                     on_past_term=self.download_past_term,
+                                     on_section=lambda _section: self.refresh())
+        if not self.window_open:
             self.model.reload_past_terms()
-        self.window.show()
-        self.refresh()  # starts looking up the past terms
+        self.window.show(section)
+        self.refresh()  # on Genel, starts looking up the past terms
 
     def deleted_action(self, action, keys):
         if self.uninstalling or self.model.busy is not None or self.model.updates.busy == "download":
@@ -450,8 +473,9 @@ class TrayApp:
             return "İşlem tamamlanamadı; çalışan senkron varsa bitmesini bekleyin."
         return None
 
-    def settings_closed(self):
-        self.window = None
+    def window_closed(self):
+        """Only the window went: the tray icon, timers and jobs go on."""
+        log.info("Main window closed; the app keeps running in the tray")
         self.show_tray_hint()
 
     def show_tray_hint(self):
@@ -505,9 +529,9 @@ class TrayApp:
         return None
 
     def ask_dest_choice(self, old, new, files):
-        from .settings_window import ask_dest_choice
+        from .main_window import ask_dest_choice
 
-        parent = self.window.window if self.window is not None else self.root
+        parent = self.window.window if self.window_open else self.root
         return ask_dest_choice(parent, old, new, files)
 
     def save(self):
@@ -526,7 +550,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Blackboard Sync Windows tray")
     parser.add_argument("--notification", choices=[activation.UPDATE_URI])
     # The login item and the updater's silent reinstall start the app in the
-    # tray only; any other start (installer, Start Menu) shows its window.
+    # tray only; any other start (installer, Start Menu) shows its main window.
     parser.add_argument(autostart.BACKGROUND, action="store_true")
     args = parser.parse_args(argv)
     # Logging is set up by .startup, before this module is imported.
@@ -534,15 +558,15 @@ def main(argv=None):
     config.ensure_data_dir()
     if args.notification:
         activation.request_update(config)
-    show_settings = not (args.background or args.notification)
+    show_window = not (args.background or args.notification)
     lock = jobs.single_instance(config)
     if lock is None:
-        log.info("Another copy is already running%s", "; asking it to show its window" if show_settings else "")
-        if show_settings:
-            activation.request_settings(config)
+        log.info("Another copy is already running%s", "; asking it to show its window" if show_window else "")
+        if show_window:
+            activation.request_window(config)
         return 0
     try:
-        activation.take_settings_request(config)  # left over from an earlier run
+        activation.take_window_request(config)  # left over from an earlier run
         try:
             activation.register()
             autostart.upgrade_legacy()
@@ -551,7 +575,7 @@ def main(argv=None):
         root = tk.Tk()
         root.withdraw()
         root.report_callback_exception = lambda *exc: log.error("Tk callback failed", exc_info=exc)
-        app = TrayApp(config, root, show_settings)
+        app = TrayApp(config, root, show_window)
         app.lifetime_lock = lock
         app.run()
     finally:

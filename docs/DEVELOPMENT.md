@@ -168,18 +168,48 @@ never have to type commands after the first setup.
 The app starts in the background and the command returns right away; you can
 close the terminal. (`.venv/bin/blackboard-sync-menubar` runs it in the
 foreground instead, with its log in the terminal.) Only one copy runs at a
-time; starting it again does nothing.
+time; starting it again shows the running copy's [main window](#the-main-window)
+and exits.
 
 To start it **without a terminal**, build the standalone app (see
 [Building the app](#building-the-app-and-releases)) and open
 `dist/Blackboard Sync.app`. It bundles its own Python and needs no checkout or
 `.venv`. Notifications appear under the name "Blackboard Sync".
 
+### The main window
+
+Opening Blackboard Sync (from Applications, Launchpad or Finder, the Windows
+Start Menu, the installer's last page or a terminal) shows its main window,
+also when the app already runs: opening it again brings the same window back,
+even when the menu bar icon is hidden (a crowded menu bar, the notch). While
+the window is open, or minimized, the app has a Dock icon and an app menu on
+macOS (a taskbar button on Windows). Closing the window does not quit: the
+menu bar / tray icon, the schedule and a running sync go on, and the Dock icon
+leaves with the window. **Çık** in the menu bar icon's menu (or ⌘Q while the
+window is in front) quits. The start at login (`--background`) stays quiet: no
+window. The menu bar icon's menu is the same as before; **Ayarlar…** in it
+opens the main window on **Genel**.
+
+A sidebar switches between three sections:
+
+- **Başlangıç** until you first sign in: three steps and a short form (school
+  address, folder, **Bilgisayar açılınca başlat**) with **Giriş yap**, which
+  saves the form and opens the sign-in. Afterwards this section is **Genel
+  bakış**: who is signed in and when the last sync finished (also while the next
+  one runs), **Şimdi senkronize et**, **Klasörü aç** and **Son indirilenler**,
+  the last 10 files, notes and announcements; a click opens one in its own
+  application. An expired session or a signed-out account shows **Giriş yap**
+  there instead.
+- **Genel**: the [settings](#settings).
+- **Silinenler**: deleted files to bring back (see [Settings](#settings)).
+
+The window keeps its width; its height follows the screen, and a section that
+does not fit scrolls.
+
 ### Settings
 
-The first time the app starts, the settings window opens as **Blackboard Sync
-kurulumu**; later **Ayarlar…** in the menu opens the same window. On macOS
-and Windows it has **Genel** and **Silinenler** tabs. **Genel** has five sections:
+The settings are the **Genel** and **Silinenler** sections of the
+[main window](#the-main-window). **Genel** has five parts:
 
 - **Hesap** — **Okulunuzun Blackboard adresi**, prefilled with
   `https://blackboard.istun.edu.tr`; students of another university type their
@@ -197,7 +227,8 @@ and Windows it has **Genel** and **Silinenler** tabs. **Genel** has five section
 - **Eski dönemler** — a list of past terms (newest first, never the current
   one) and **Eski dönemi indir**, which downloads the chosen term once into
   the same folder; it is not updated afterwards. The list is looked up in the
-  background each time the window opens while you are signed in; until then it
+  background the first time **Genel** is shown after the window opens, while you
+  are signed in; until then it
   says it is loading, and **İndirilebilecek eski dönem yok.** when there is none.
 - **Genel** — **Bilgisayar açılınca başlat**, ticked by default (see
   [Start at login](#start-at-login)), and **Otomatik senkron**: every 30
@@ -211,7 +242,7 @@ and Windows it has **Genel** and **Silinenler** tabs. **Genel** has five section
   (downloaded course files are kept unless you tick the box).
 
 **Silinenler** lists downloaded files whose recorded path is missing under the
-saved destination, grouped by term and course, with their name and folder.
+saved destination, each with its name and its term, course and folder.
 Check the files to recover, then **Seçilenleri indir**; **Tümünü seç** checks
 all listed files. **Listeden kaldır** permanently dismisses checked entries
 from the list and future refetches. Unchecked deletions stay respected during
@@ -224,12 +255,16 @@ outputs. To recover selected outputs only (including past terms), add
 from `state.json`'s `outputs`. Selection jobs only restore those outputs and
 leave unrelated new or changed content for normal sync.
 
-**Kaydet** saves the fields and check boxes; **Giriş yap**, **Hesaptan çıkış
+A bar with **Vazgeç** and **Kaydet** appears under **Genel** once a field or
+check box was changed (**Kaydedilmemiş değişiklikler**). **Kaydet** saves them
+and the window stays open; **Vazgeç** (or Escape) puts back what is saved, and
+closing the window drops unsaved changes. **Giriş yap**, **Hesaptan çıkış
 yap**, **Eski dönemi indir**, **Seçilenleri indir**, **Listeden kaldır**, **Şimdi denetle** and
 **Uygulamayı kaldır…** act right away. The buttons that need the app's single job
 slot (sign in, sign out, download a past term, bring back deleted files,
 uninstall) are greyed out while a sync or sign-in runs. Nothing is synced
-on a schedule until the window has been saved once. When you save later:
+on a schedule until the settings have been saved once (on **Başlangıç** with
+**Giriş yap**, or with **Kaydet**). When you save later:
 
 - A different school address requires signing in again; the sign-in window
   opens as soon as you save.
@@ -261,7 +296,7 @@ Once a day the app asks GitHub whether a newer release exists (only while
 **Güncellemeleri otomatik denetle** is ticked) and posts one notification per
 new version, "Blackboard Sync 1.1.0 hazır — Güncelle". The menu then shows
 **Güncelleme var: 1.1.0 — Güncelle** above **Ayarlar…** (the row is absent
-while there is no update). **Şimdi denetle** in the settings window checks
+while there is no update). **Şimdi denetle** in **Genel** checks
 right away and answers with a notification; with an update waiting it reads
 **1.1.0 sürümüne güncelle** instead.
 
@@ -292,11 +327,13 @@ no update. No account data is sent; the request is an anonymous call to
 
 ### Start at login
 
-Tick **Bilgisayar açılınca başlat** in the settings window (or run
+Tick **Bilgisayar açılınca başlat** in **Genel** (or run
 `.venv/bin/blackboard-sync-menubar --enable-autostart`). This writes a per-user
 LaunchAgent, `~/Library/LaunchAgents/io.github.umutylcn.blackboard-sync.menubar.plist`,
-that starts the app every time you log in; macOS may show a "Background item
-added" notice for Python. Untick it (or `--disable-autostart`) to remove the
+that starts the app with `--background` every time you log in: the menu bar
+icon only, no window. A login item written by an older version (without
+`--background`) is rewritten the next time the app starts. macOS may show a
+"Background item added" notice for Python. Untick it (or `--disable-autostart`) to remove the
 file; the change takes effect when you press **Kaydet**. No administrator rights are needed and nothing is installed outside your
 user account.
 
@@ -311,7 +348,7 @@ user account.
 | **Son indirilenler** | The last 10 files, notes and announcements that came in. Click one to open it (or its folder, if you moved the file). |
 | **University klasörünü aç** | Opens the University folder inside the folder chosen in **Ayarlar…** in Finder; the item carries that folder's name. |
 | **Güncelleme var: X — Güncelle** | Only when a new version is available: download and install it (see [Updates](#updates)). |
-| **Ayarlar…** | Opens the [settings window](#settings): account, folder, start at login, updates. |
+| **Ayarlar…** | Opens the [main window](#the-main-window) on **Genel**: account, folder, start at login, updates. |
 | **Çık** | Quit the app. |
 
 The icon tells you the state at a glance:
@@ -344,7 +381,7 @@ The icon tells you the state at a glance:
 
 Under the hood every run is exactly
 `blackboard-sync --base-url <school> sync --json --dest <folder>` with the
-values from the settings window (see
+values from the settings (see
 [the single-run contract](#for-the-scheduler-single-run-contract)), so the app
 downloads the same files into the same folders as the command does.
 
@@ -561,7 +598,8 @@ pages load for you. If you ended on an error page, open
 says the app is already running, an earlier copy is still alive: find it with
 `pgrep -fl blackboard_sync.menubar` and quit it (or `kill` the number shown).
 On a crowded menu bar (especially with a notch), macOS hides icons that do not
-fit; quit a few other menu bar apps to check.
+fit; quit a few other menu bar apps to check. Opening Blackboard Sync from
+Applications or Launchpad shows its main window either way.
 
 **No notifications.** Allow notifications for "Python" in System Settings →
 Notifications. If your Python cannot use the notification center at all (some
@@ -664,7 +702,7 @@ mirrored tree, name sanitizing, incremental state, session-expiry detection
 and note rendering. The menu bar app's decisions (scheduling, session-expiry
 handling, notification and menu text, the login item) live in plain modules
 under `src/blackboard_sync/menubar/` and are tested without a GUI session;
-only `menubar/app.py` touches AppKit.
+only `menubar/app.py` and `menubar/main_window.py` touch AppKit.
 
 ## Building the app and releases
 
@@ -721,8 +759,8 @@ entry, never the downloaded files or `%APPDATA%` data. The installer is
 unsigned: Windows SmartScreen shows "Ek bilgi > Yine de çalıştır" once.
 `scripts/smoke-test-windows.ps1` (run by the workflow) installs, checks the
 installed app and `--version`, checks the GUI (within 45 s `windows-tray.log`
-exists, the app runs and its first-run window "Blackboard Sync kurulumu" is
-visible; closed and started again, the running copy shows it), upgrades, and
+exists, the app runs and its main window "Blackboard Sync" is visible; closed,
+the app keeps running, and started again, the running copy shows it), upgrades, and
 uninstalls. On a failure it prints `scripts/windows-gui-snapshot.ps1`: the
 app's windows, its data folder and the logs (the periodic thread stacks are in
 `windows-tray-faults.log`).
@@ -736,7 +774,7 @@ The first public release, `v1.0.0`, must ship both installers together. Check
 `.github/workflows/release.yml` for the build jobs before publishing. The
 Windows updater launches the installer with
 `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`; the installer must restart the app
-(with `--background`, so an update does not open the settings window).
+(with `--background`, so an update does not open the main window).
 
 ### One-line installers
 
@@ -767,7 +805,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m blackboard_sync.windows
 ```
 
-The first launch opens settings: enter your school's Blackboard URL, choose a
+The first launch opens the main window on **Başlangıç**: enter your school's Blackboard URL, choose a
 folder (default: `Documents\University`), and select **Giriş yap**. Complete sign-in in
 the window that opens. Right-click the tray icon next to the clock (possibly inside the
 hidden-icons arrow) for the shared menu. Later, launch without a console with:
@@ -779,9 +817,9 @@ hidden-icons arrow) for the shared menu. Later, launch without a console with:
 **Bilgisayar açılınca başlat** toggles only the current user's
 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\BlackboardSync` value,
 which starts the app with `--background` (tray only). Any other start (the
-installer's last page, the Start Menu) opens the settings window in front; when
-the app is already running, the new start asks the running copy to do that and
-exits. After the first settings window closes, a one-time tray notification
+installer's last page, the Start Menu) opens the [main window](#the-main-window)
+in front; when the app is already running, the new start asks the running copy
+to do that and exits. After the main window first closes, a one-time tray notification
 says the app keeps running from the icon next to the clock (maybe under the
 **^** hidden-icons arrow).
 Keep this checkout and its virtual environment in place while it is enabled;
