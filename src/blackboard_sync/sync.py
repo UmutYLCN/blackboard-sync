@@ -447,7 +447,11 @@ class Syncer:
             return
         # Bodies come fresh with every listing, so the signed file URLs in them are
         # still valid for the downloads below.
-        embedded_files = find_embedded_files(body_text(item.get("body")))
+        # Ultra assignments and tests expose instructor instructions in the public
+        # content listing, not in body or the attachment collection. Read only that
+        # explicit field; assessment attempts, feedback and submissions are unrelated.
+        instructions = body_text((item.get("contentHandler") or {}).get("instructions"))
+        embedded_files = find_embedded_files(body_text(item.get("body")) + "\n" + instructions)
         embedded_keys = [self.embedded_key(course, item, e) for e in embedded_files]
         previous_item = self.state.items.get(key) or {}
         # A replaced file shows up as a new id even when "modified" stays put.
@@ -464,19 +468,21 @@ class Syncer:
         # After a partial failure the files that did arrive are not downloaded again
         # while the item is unchanged.
         kept = self.kept_attachments(previous_item, modified)
+        failure: Exception | None = None
 
         if hid not in NO_ATTACHMENT_HANDLERS and not ultra_body:
             try:
                 attachments = self.client.attachments(course.id, item["id"])
             except ApiError as exc:
                 # Assignments, tests and tool links often have no attachment collection.
-                no_attachments = exc.status in (403, 404) or (
-                    exc.status == 400 and NO_ATTACHMENTS_MESSAGE in str(exc)
-                )
-                if hid == "resource/x-bb-file" or not no_attachments:
+                no_attachments = exc.status in (400, 403, 404) and NO_ATTACHMENTS_MESSAGE in str(exc).lower()
+                if hid == "resource/x-bb-file":
                     raise
+                if not no_attachments:
+                    # Independent instruction links can still be fetched, but a
+                    # failed collection must warn and remain eligible for retry.
+                    failure = exc
                 attachments = []
-            failure: Exception | None = None
             for att in attachments:
                 out_key = f"attachment:{course.id}:{att['id']}"
                 if out_key in kept:
@@ -494,24 +500,33 @@ class Syncer:
                     continue
                 outputs.append(out_key)
                 saved.append(PurePosixPath(rel).name)
-            if failure is not None:
-                if not self.dry_run and self.refetch_keys is None:
-                    self.state.record_item(key, modified, outputs, title, partial=True)
-                raise failure
 
         stale = [k for k in previous_item.get("outputs", []) if k.startswith("xid:") and k not in embedded_keys]
         for embedded, out_key in zip(embedded_files, embedded_keys):
+            if out_key in kept:
+                outputs.append(out_key)
+                saved.append(PurePosixPath(self.state.outputs[out_key]["path"]).name)
+                continue
             name = sanitize_name(embedded.name, windows=self.windows) if embedded.name else ""
             desired = join_rel(rel_dir, name) if name else ""
             replaces = next(
                 (k for k in stale if desired and (self.state.output(k) or {}).get("path") == desired),
                 None,
             )
-            rel = self.fetch_file(
-                out_key, desired, self.embedded_url(embedded), report, rel_dir, replaces=replaces
-            )
+            try:
+                rel = self.fetch_file(
+                    out_key, desired, self.embedded_url(embedded), report, rel_dir, replaces=replaces
+                )
+            except (ApiError, *ITEM_ERRORS) as exc:
+                failure = failure or exc
+                continue
             outputs.append(out_key)
             saved.append(PurePosixPath(rel).name)
+
+        if failure is not None:
+            if not self.dry_run and self.refetch_keys is None:
+                self.state.record_item(key, modified, outputs, title, partial=True)
+            raise failure
 
         if needs_note(item):
             note_item = {**item, "title": title} if title != item.get("title") else item
@@ -531,7 +546,7 @@ class Syncer:
         kept = set()
         for out_key in previous_item.get("outputs", []):
             out = self.state.output(out_key)
-            if out_key.startswith("attachment:") and out and (self.dest / out["path"]).exists():
+            if out_key.startswith(("attachment:", "xid:")) and out and (self.dest / out["path"]).exists():
                 kept.add(out_key)
         return kept
 
@@ -542,8 +557,9 @@ class Syncer:
     @staticmethod
     def embedded_url(embedded) -> str:
         # Older bodies hold placeholders instead of a real host; rebuild the plain URL
-        # unless the link carries Ultra's own path and signed query.
-        if "?" in embedded.url and "/pid-" in embedded.url:
+        # unless the link carries Ultra's own path and signed query, or refers
+        # to a session upload that has no content-collection URL.
+        if embedded.xid.startswith("upload-") or ("?" in embedded.url and "/pid-" in embedded.url):
             return embedded.url
         return f"/bbcswebdav/xid-{embedded.xid}"
 

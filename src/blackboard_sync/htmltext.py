@@ -17,13 +17,17 @@ _HEADINGS = {f"h{i}": i for i in range(1, 7)}
 # Files live at /bbcswebdav/xid-<id> or, in Ultra, /bbcswebdav/pid-..-rid-<id>/xid-<id>?<signed query>.
 _XID = re.compile(r"bbcswebdav/(?:[^?#\s\"']*/)?xid-(\d+_\d+)")
 _RID = re.compile(r"bbcswebdav/[^?#\s\"']*rid-(\d+_\d+)")
+# Some older instruction files are temporary uploads rather than content-collection
+# files. The upload id follows the session-specific prefix; neither that prefix
+# nor the signed query belongs in incremental state.
+_UPLOAD = re.compile(r"/sessions/[^/]+/[^/]+/([0-9a-f]{32})/", re.IGNORECASE)
 
 
 @dataclass
 class EmbeddedFile:
     """A file embedded in an item body (Ultra documents link files this way)."""
 
-    xid: str  # stable file id; a replaced file gets a new one
+    xid: str  # stable content-collection or upload id; replacements get a new one
     name: str
     url: str  # as found in the body; Ultra URLs carry a short-lived signed query
 
@@ -200,13 +204,14 @@ class _EmbedFinder(HTMLParser):
         self.found: list[EmbeddedFile] = []
         self._open: list[dict] = []
 
-    def _add(self, url: str, name: str) -> None:
+    def _add(self, url: str, name: str, file_id: str = "") -> None:
         match = _XID.search(url or "") or _RID.search(url or "")
-        if not match:
+        file_id = file_id or (match.group(1) if match else "")
+        if not file_id:
             return
-        if any(f.xid == match.group(1) for f in self.found):
+        if any(f.xid == file_id for f in self.found):
             return
-        self.found.append(EmbeddedFile(xid=match.group(1), name=name.strip(), url=url))
+        self.found.append(EmbeddedFile(xid=file_id, name=name.strip(), url=url))
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
@@ -220,10 +225,18 @@ class _EmbedFinder(HTMLParser):
             meta = {}
         url = meta.get("resourceUrl") or attrs.get("href") or attrs.get("src") or ""
         name = meta.get("displayName") or meta.get("linkName") or meta.get("fileName") or ""
+        # Prefer a content-collection link when resourceUrl points to a temporary
+        # session upload. Ultra often puts the permanent xid in href/viewerUrl.
+        candidates = (url, attrs.get("href") or "", meta.get("viewerUrl") or "")
+        url = next((u for u in candidates if _XID.search(u) or _RID.search(u)), url)
+        upload = _UPLOAD.search(url) if meta else None
+        file_id = f"upload-{upload.group(1)}" if upload else ""
         if tag == "a":
-            self._open.append({"url": url, "name": name, "text": []})
+            self._open.append({"url": url, "name": name, "text": [], "file_id": file_id})
         elif _XID.search(url) or _RID.search(url):
             self._add(url, name or attrs.get("alt") or "")
+        elif file_id:
+            self._add(url, name or attrs.get("alt") or "", file_id)
 
     def handle_data(self, data):
         if self._open:
@@ -232,16 +245,16 @@ class _EmbedFinder(HTMLParser):
     def handle_endtag(self, tag):
         if tag == "a" and self._open:
             link = self._open.pop()
-            self._add(link["url"], link["name"] or "".join(link["text"]))
+            self._add(link["url"], link["name"] or "".join(link["text"]), link["file_id"])
 
 
 def find_embedded_files(html: str) -> list[EmbeddedFile]:
-    """Files stored in Blackboard's content collection and linked from a body."""
-    if not html or "bbcswebdav" not in html:
+    """Content-collection files and explicit uploads linked from instructor HTML."""
+    if not html or ("bbcswebdav" not in html and "/sessions/" not in html):
         return []
     finder = _EmbedFinder()
     finder.feed(html)
     finder.close()
     for link in finder._open:  # unclosed anchors
-        finder._add(link["url"], link["name"] or "".join(link["text"]))
+        finder._add(link["url"], link["name"] or "".join(link["text"]), link["file_id"])
     return finder.found
