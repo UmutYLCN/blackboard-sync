@@ -2,7 +2,7 @@
 
 Blackboard’daki ders içeriklerini otomatik olarak bilgisayarına indirir.
 
-https://github.com/user-attachments/assets/0f6b4ad6-cb14-4a2b-b679-a48d03bbf106
+🌐 **Web sitesi:** [blackboard-sync.umutyalcin.workers.dev](https://blackboard-sync.umutyalcin.workers.dev)
 
 ## Özellikler
 
