@@ -10,8 +10,10 @@ from blackboard_sync.menubar.main_window_model import (
     DELETED,
     GENERAL,
     OVERVIEW,
-    T_CONNECTED,
+    SCENE_COMPACT,
+    SCENE_FIRST,
     T_EXPIRED,
+    T_FIRST_SYNC,
     T_NAV_OVERVIEW,
     T_NAV_START,
     T_NEVER_SYNCED,
@@ -28,6 +30,8 @@ from blackboard_sync.menubar.main_window_model import (
     recent_count,
     reopen_hint,
     shows_window_at_launch,
+    sidebar_name,
+    sync_scene,
 )
 from blackboard_sync.menubar.model import AppModel, RecentItem, RunOutcome
 from blackboard_sync.menubar.settings_form import FormValues
@@ -42,8 +46,8 @@ def signed_in(model, name="UMUT YALÇIN"):
     return model
 
 
-def synced(**kwargs):
-    return signed_in(AppModel(DEST, NOW, last=RunOutcome("ok", finished_at=FINISHED), **kwargs))
+def synced(name="UMUT YALÇIN", **kwargs):
+    return signed_in(AppModel(DEST, NOW, last=RunOutcome("ok", finished_at=FINISHED), **kwargs), name)
 
 
 def test_day_time_names_today_and_yesterday_in_local_time():
@@ -92,7 +96,7 @@ def test_baslangic_says_where_to_sign_in_while_waiting():
 def test_signed_in_card_shows_the_last_sync_once():
     status = main_status(synced(), NOW)
     card = status.account
-    assert (card.initials, card.title, card.badge) == ("UY", "UMUT YALÇIN", T_CONNECTED)
+    assert (card.initials, card.title, card.badge) == ("UY", "UMUT YALÇIN", "")  # no "Bağlı" badge
     assert card.detail == last_sync_text(synced(), NOW) == f"Son senkron: {day_time(FINISHED, NOW)}"
     assert not card.warning and not card.action_title
     assert status.sync_title == "Şimdi senkronize et" and status.sync_enabled
@@ -109,6 +113,52 @@ def test_while_syncing_the_card_keeps_the_last_sync_time(job):
     status = main_status(model, NOW)
     assert not status.sync_enabled
     assert status.sync_title == ("Senkronize ediliyor…" if job == "sync" else "Şimdi senkronize et")
+
+
+def test_the_first_sync_fills_the_empty_list_with_the_illustration():
+    model = signed_in(AppModel(DEST, NOW))
+    assert sync_scene(model) == ("", "")
+    model.begin("sync")
+    status = main_status(model, NOW)
+    assert (status.scene, status.scene_line) == (SCENE_FIRST, T_FIRST_SYNC) == (SCENE_FIRST, "Dosyalarınız ilk kez indiriliyor…")
+    model.finish_sync(RunOutcome("ok", finished_at=FINISHED), NOW)
+    assert main_status(model, NOW).scene == ""  # it stops with the sync
+
+
+def test_later_syncs_show_it_small_above_the_list():
+    model = synced(recent=[RecentItem("T/SWE305/Homework1.docx", "SWE305", NOW.isoformat())])
+    model.begin("sync")
+    assert sync_scene(model) == (SCENE_COMPACT, "Yeni içerik kontrol ediliyor…")
+    # Synced before but nothing downloaded yet (or it was all cleared): still the large one.
+    model = synced()
+    model.begin("sync")
+    assert sync_scene(model) == (SCENE_FIRST, "Yeni içerik kontrol ediliyor…")
+
+
+@pytest.mark.parametrize("job, line", [
+    ("refetch", "Silinen dosyalar tekrar indiriliyor…"),
+    ("move", "Dosyalar yeni klasöre taşınıyor…"),
+])
+def test_other_jobs_that_change_files_show_it_with_their_own_line(job, line):
+    model = synced(recent=[RecentItem("T/C/a.pdf", "C", NOW.isoformat())])
+    model.begin(job)
+    assert sync_scene(model) == (SCENE_COMPACT, line)
+
+
+@pytest.mark.parametrize("job", ["login", "past_terms"])
+def test_jobs_that_do_not_download_show_no_illustration(job):
+    model = synced()
+    model.begin(job)
+    assert sync_scene(model) == ("", "")
+
+
+def test_the_sidebar_account_waits_for_the_first_sign_in_and_cuts_long_names():
+    assert not main_status(AppModel(DEST, NOW, configured=False), NOW).shows_account
+    status = main_status(synced(), NOW)
+    assert status.shows_account and sidebar_name(status.account) == "UMUT YALÇIN"
+    card = main_status(synced(name="ÜMMÜGÜLSÜM NUR KARAMANOĞLU YILDIRIM"), NOW).account
+    assert sidebar_name(card) == "ÜMMÜGÜLSÜM NUR KARA…" and len(sidebar_name(card)) == 20
+    assert card.title == "ÜMMÜGÜLSÜM NUR KARAMANOĞLU YILDIRIM"  # AppKit truncates the full name itself
 
 
 def test_never_synced_and_failed_runs_are_named_honestly():

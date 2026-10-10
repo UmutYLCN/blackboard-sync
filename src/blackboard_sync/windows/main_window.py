@@ -2,7 +2,8 @@
 
 What the window shows and means lives in ``menubar/main_window_model.py`` and
 ``menubar/settings_form.py``, shared with macOS; this module only lays out Tk
-widgets and reports clicks. Closing only hides the window: the tray icon, the
+widgets and reports clicks; ``sync_scene_view.py`` draws the sync illustration.
+Closing only hides the window: the tray icon, the
 timers and a running job go on, and the taskbar button leaves with the window.
 """
 
@@ -14,6 +15,7 @@ from blackboard_sync import __version__, deleted, runtime
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
 from blackboard_sync.menubar.model import T_RECENT, T_RECENT_EMPTY
+from blackboard_sync.windows.sync_scene_view import SyncScene, background_of
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +33,11 @@ HEADING_FONT = ("Segoe UI", 11, "bold")
 BOLD_FONT = ("Segoe UI", 10, "bold")
 WARNING = "#b00020"
 MUTED = "#5f6b7a"
+RUNNING = "#1f6fb2"
+AVATAR = 34  # the sidebar's account card
+AVATAR_FILL, AVATAR_WARNING_FILL, AVATAR_TEXT = "#dce7f5", "#fbe3cf", "#1b2a44"
+COMPACT_SCENE = (120, 70)  # above Son indirilenler while a sync runs
+FIRST_SCENE = (320, 187)  # in place of the empty list on the first sync
 
 
 def work_area(window):
@@ -142,8 +149,24 @@ class MainWindow:
                                      width=22, command=lambda s=section: self.select(s))
             button.grid(row=row, column=0, sticky="ew", pady=2)
             self.nav[section] = button
-        self.sidebar_account = ttk.Label(bar, font=BOLD_FONT, wraplength=SIDEBAR - 28)
-        self.sidebar_account.grid(row=6, column=0, sticky="sw")
+        # The account at the bottom: who is signed in, the last sync and a badge or "Giriş yap".
+        import tkinter as tk
+
+        card = ttk.LabelFrame(bar, padding=(10, 8))
+        card.grid(row=6, column=0, sticky="sew")
+        card.columnconfigure(1, weight=1)
+        self.account_card = card
+        self.avatar = tk.Canvas(card, width=AVATAR, height=AVATAR, highlightthickness=0, borderwidth=0,
+                                background=background_of(window))
+        self.avatar.grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 8))
+        self.account_title = ttk.Label(card, font=BOLD_FONT)
+        self.account_title.grid(row=0, column=1, sticky="sw")
+        self.badge = ttk.Label(card, font=("Segoe UI", 8, "bold"))
+        self.badge.grid(row=1, column=1, sticky="nw")
+        self.account_detail = ttk.Label(card, foreground=MUTED, font=("Segoe UI", 9))
+        self.account_detail.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.login_button = ttk.Button(card, command=lambda: self.on_action("login"))
+        self.login_button.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
     def _header(self, page, title, row=0):
         from tkinter import ttk
@@ -211,7 +234,7 @@ class MainWindow:
         from tkinter import ttk
 
         page.columnconfigure(0, weight=1)
-        page.rowconfigure(2, weight=1)
+        page.rowconfigure(3, weight=1)
         header = ttk.Frame(page)
         header.grid(row=0, column=0, columnspan=2, sticky="ew")
         header.columnconfigure(0, weight=1)
@@ -221,29 +244,39 @@ class MainWindow:
         self.sync_button = ttk.Button(header, width=ACTION_WIDTH, command=lambda: self.on_action("sync"))
         self.sync_button.grid(row=0, column=2, padx=(8, 0), pady=(0, 12))
 
-        account = ttk.LabelFrame(page, padding=(14, 10))
-        account.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 14))
-        account.columnconfigure(1, weight=1)
-        self.avatar = ttk.Label(account, font=HEADING_FONT, width=3, anchor="center")
-        self.avatar.grid(row=0, column=0, rowspan=3, sticky="w", padx=(0, 12))
-        self.account_title = ttk.Label(account, font=HEADING_FONT)
-        self.account_title.grid(row=0, column=1, sticky="w")
-        self.account_detail = ttk.Label(account, foreground=MUTED)
-        self.account_detail.grid(row=1, column=1, sticky="w")
-        self.account_message = ttk.Label(account, wraplength=WRAP - 160)
-        self.account_message.grid(row=2, column=1, sticky="w")
-        self.badge = ttk.Label(account, foreground="#236b45", font=BOLD_FONT)
-        self.badge.grid(row=0, column=2, rowspan=3, sticky="e")
-        self.login_button = ttk.Button(account, command=lambda: self.on_action("login"))
-        self.login_button.grid(row=0, column=3, rowspan=3, sticky="e", padx=(12, 0))
+        # A note or the last error, the one thing the sidebar's account card has no room for.
+        self.account_message = ttk.Label(page, wraplength=WRAP)
+        self.account_message.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        background = background_of(page)
+
+        # While a sync runs and files are listed already: a small illustration above them.
+        self.scene_frame = ttk.LabelFrame(page, padding=(10, 6))
+        self.scene_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 14))
+        self.scene_frame.columnconfigure(1, weight=1)
+        self.scene = SyncScene(self.scene_frame, *COMPACT_SCENE, background=background)
+        self.scene.canvas.grid(row=0, column=0, padx=(0, 14))
+        self.scene_line = ttk.Label(self.scene_frame, font=("Segoe UI", 10))
+        self.scene_line.grid(row=0, column=1, sticky="w")
 
         recent = ttk.LabelFrame(page, text=T_RECENT, padding=(14, 8))
-        recent.grid(row=2, column=0, columnspan=2, sticky="nsew")
+        recent.grid(row=3, column=0, columnspan=2, sticky="nsew")
         recent.columnconfigure(0, weight=1)
         recent.rowconfigure(1, weight=1)
         self.recent_count = ttk.Label(recent, foreground=MUTED)
         self.recent_count.grid(row=0, column=0, sticky="e")
-        self.recent_canvas, self.recent_frame = self._scroll_area(recent, 1)
+        self.recent_body = ttk.Frame(recent)
+        self.recent_body.grid(row=1, column=0, sticky="nsew")
+        self.recent_canvas, self.recent_frame = self._scroll_area(self.recent_body, 0)
+        # The first sync, before anything is listed: a large illustration in place of the empty list.
+        self.first_frame = ttk.Frame(recent)
+        self.first_frame.grid(row=1, column=0, sticky="nsew")
+        self.first_frame.columnconfigure(0, weight=1)
+        self.first_frame.rowconfigure(0, weight=1)
+        self.first_frame.rowconfigure(3, weight=1)
+        self.first_scene = SyncScene(self.first_frame, *FIRST_SCENE, background=background)
+        self.first_scene.canvas.grid(row=1, column=0)
+        self.first_line = ttk.Label(self.first_frame, foreground=MUTED, font=("Segoe UI", 10))
+        self.first_line.grid(row=2, column=0, pady=(10, 0))
 
     def _build_general(self, page):
         from tkinter import ttk
@@ -379,6 +412,7 @@ class MainWindow:
         self.state.show(section)
         self._show_section()
         self.refresh_deleted()
+        self._animate()
         window = self.window
         if opening:
             self.fit()
@@ -470,7 +504,6 @@ class MainWindow:
         self.status = status
         self.nav[main.OVERVIEW].configure(text=status.overview_title)
         self.nav[main.GENERAL].configure(text=main.T_NAV_GENERAL)
-        self.sidebar_account.configure(text=status.account.title)
         if first_run_changed:
             self._show_section()
         # Başlangıç
@@ -480,17 +513,35 @@ class MainWindow:
         card = status.account
         self.overview_title.configure(text=status.overview_title)
         self.sync_button.configure(text=status.sync_title, state="normal" if status.sync_enabled else "disabled")
-        self.avatar.configure(text=card.initials, foreground=WARNING if card.warning else "")
-        self.account_title.configure(text=card.title)
-        self.account_detail.configure(text=card.detail)
         self.account_message.configure(text=card.message, foreground=WARNING if card.warning else MUTED)
-        self.badge.configure(text=card.badge)
+        if card.message:
+            self.account_message.grid()
+        else:
+            self.account_message.grid_remove()
+        self._draw_scene()
+        self._draw_recent()
+        # The account, at the bottom of the sidebar.
+        if status.shows_account:
+            self.account_card.grid()
+        else:
+            self.account_card.grid_remove()
+        self.avatar.delete("all")
+        self.avatar.create_oval(1, 1, AVATAR - 1, AVATAR - 1, outline="",
+                                fill=AVATAR_WARNING_FILL if card.warning else AVATAR_FILL)
+        self.avatar.create_text(AVATAR / 2, AVATAR / 2, text=card.initials, font=BOLD_FONT,
+                                fill=WARNING if card.warning else AVATAR_TEXT)
+        self.account_title.configure(text=main.sidebar_name(card))
+        self.account_detail.configure(text=card.detail)
+        self.badge.configure(text=card.badge, foreground=RUNNING)
+        if card.badge:
+            self.badge.grid()
+        else:
+            self.badge.grid_remove()
         if card.action_title:
             self.login_button.configure(text=card.action_title, state="normal" if card.action_enabled else "disabled")
             self.login_button.grid()
         else:
             self.login_button.grid_remove()
-        self._draw_recent()
         # Genel
         form_status = status.form
         self.account_label.configure(text=form_status.account,
@@ -511,6 +562,31 @@ class MainWindow:
         # Silinenler
         self.deleted_result.configure(text=form_status.deleted_message)
         self.refresh_deleted()
+
+    def _draw_scene(self):
+        """The illustration while files change: small above the list, or large in place of an empty one."""
+        scene = self.status.scene
+        self.scene_line.configure(text=self.status.scene_line)
+        self.first_line.configure(text=self.status.scene_line)
+        if scene == main.SCENE_COMPACT:
+            self.scene_frame.grid()
+        else:
+            self.scene_frame.grid_remove()
+        if scene == main.SCENE_FIRST:
+            self.recent_body.grid_remove()
+            self.first_frame.grid()
+        else:
+            self.first_frame.grid_remove()
+            self.recent_body.grid()
+        self._animate()
+
+    def _animate(self):
+        """Run the illustration in view while the window is open; stop the other one."""
+        for view, scene in ((self.scene, main.SCENE_COMPACT), (self.first_scene, main.SCENE_FIRST)):
+            if self.status.scene == scene and self.state.open:
+                view.start()
+            else:
+                view.stop()
 
     def _draw_recent(self):
         from tkinter import ttk
@@ -629,11 +705,13 @@ class MainWindow:
         """Hide the window: unsaved edits are dropped, the app keeps running in the tray."""
         self.window.withdraw()
         self.state.closed()
+        self._animate()
         self.set_values(self.on_values())
         self.on_close()
 
     def destroy(self):
         self.state.closed()
+        self._animate()
         self.window.destroy()
 
 

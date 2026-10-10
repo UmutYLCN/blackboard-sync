@@ -230,7 +230,7 @@ def test_sidebar_switches_sections_and_baslangic_becomes_genel_bakis(tmp_path):
         assert visible_page(window) == 'start' and window.section == OVERVIEW
         assert str(window.start_button.title()) == 'Giriş yap'
         assert str(window.start_button.keyEquivalent()) == '\r'  # Return signs in
-        assert str(window.sidebar_account.stringValue()) == 'Giriş yapılmadı'
+        assert window.account_card.isHidden()  # Başlangıç signs in with its own form
         window.target.nav_(window.nav_items[GENERAL][4])
         assert visible_page(window) == GENERAL and window.section == GENERAL
         assert str(window.start_button.keyEquivalent()) == ''  # not from a hidden section
@@ -244,9 +244,15 @@ def test_sidebar_switches_sections_and_baslangic_becomes_genel_bakis(tmp_path):
         window.select(OVERVIEW)
         assert visible_page(window) == OVERVIEW
         assert str(window.nav_items[OVERVIEW][2].stringValue()) == 'Genel bakış'
+        # The account sits at the bottom of the sidebar, not on the page.
+        assert not window.account_card.isHidden()
+        assert window.account_card.superview() is window.sidebar_view
+        frame, sidebar = window.account_card.frame(), window.sidebar_view.frame()
+        assert frame.origin.y + frame.size.height == sidebar.size.height - 12
+        assert str(window.avatar_text.stringValue()) == 'AS'
         assert str(window.account_title.stringValue()) == 'Ada Student'
         assert str(window.account_detail.stringValue()).startswith('Son senkron: bugün ')
-        assert str(window.badge_text.stringValue()) == 'Bağlı' and window.login_button.isHidden()
+        assert window.badge.isHidden() and window.login_button.isHidden()  # no "Bağlı" badge
         # A sync keeps showing when the last one finished.
         model.begin('sync')
         window.update_status(main_status(model, NOW))
@@ -285,6 +291,95 @@ def test_overview_buttons_and_recent_files(tmp_path):
         assert window.badge.isHidden() and not window.sync_button.isEnabled()
         window.target.login_(None)
         assert actions[-1] == 'login'
+    finally:
+        window.window.close()
+
+
+def test_a_running_sync_shows_the_illustration_and_it_stops_with_the_sync(tmp_path, monkeypatch):
+    from blackboard_sync.menubar import sync_scene_view
+    from blackboard_sync.menubar.main_window_model import main_status
+    from blackboard_sync.menubar.model import RecentItem, RunOutcome
+
+    monkeypatch.setattr(sync_scene_view, 'reduce_motion', lambda: False)  # CI machines may have it on
+    window, model, _ = make_window(tmp_path)
+    try:
+        model.session = {'saved_at': NOW.timestamp(), 'user': {'displayName': 'Ada Student'}}
+        window.state.open = True  # as if shown; nothing is put on screen
+        window.update_status(main_status(model, NOW))
+        assert window.first_scene.isHidden() and window.scene_card.isHidden()
+        assert not window.first_scene.animating and not window.recent_scroll.isHidden()
+
+        # The first sync: the large illustration in place of the empty list.
+        model.begin('sync')
+        window.update_status(main_status(model, NOW))
+        assert not window.first_scene.isHidden() and window.recent_scroll.isHidden()
+        assert str(window.first_line.stringValue()) == 'Dosyalarınız ilk kez indiriliyor…'
+        assert window.first_scene.animating and not window.scene_view.animating
+        assert window.scene_card.isHidden()
+        # It keeps one timer across refreshes.
+        timer = window.first_scene.timer
+        window.update_status(main_status(model, NOW))
+        assert window.first_scene.timer is timer
+
+        model.finish_sync(RunOutcome('ok', finished_at=NOW), NOW)
+        model.recent = [RecentItem('T/SWE305/Homework1.docx', 'SWE305', NOW.isoformat())]
+        window.update_status(main_status(model, NOW))
+        assert window.first_scene.isHidden() and not window.first_scene.animating
+        assert window.scene_card.isHidden() and not window.recent_scroll.isHidden()
+        top = window.recent_card.frame().origin.y
+
+        # A later sync: small, above the list, which stays in view and moves down.
+        model.begin('sync')
+        window.update_status(main_status(model, NOW))
+        assert not window.scene_card.isHidden() and window.scene_view.animating
+        assert str(window.scene_line.stringValue()) == 'Yeni içerik kontrol ediliyor…'
+        assert window.first_scene.isHidden() and not window.recent_scroll.isHidden()
+        assert window.recent_card.frame().origin.y > top
+        # Closing the window stops the motion; the sync goes on.
+        window.closed()
+        assert not window.scene_view.animating and model.busy == 'sync'
+    finally:
+        window.window.close()
+
+
+def test_reduce_motion_shows_the_still_illustration(tmp_path, monkeypatch):
+    from blackboard_sync.menubar import sync_scene_view
+    from blackboard_sync.menubar.main_window_model import main_status
+
+    monkeypatch.setattr(sync_scene_view, 'reduce_motion', lambda: True)
+    window, model, _ = make_window(tmp_path)
+    try:
+        model.session = {'saved_at': NOW.timestamp(), 'user': {'displayName': 'Ada Student'}}
+        model.begin('sync')
+        window.state.open = True
+        window.update_status(main_status(model, NOW))
+        assert not window.first_scene.isHidden()
+        assert window.first_scene.still and not window.first_scene.animating
+    finally:
+        window.window.close()
+
+
+def test_a_note_shows_above_the_list_and_the_sidebar_card_offers_sign_in(tmp_path):
+    from blackboard_sync.menubar.main_window_model import main_status
+    from blackboard_sync.menubar.model import RunOutcome
+
+    window, model, _ = make_window(tmp_path)
+    try:
+        signed_in(model)
+        window.update_status(main_status(model, NOW))
+        assert window.account_message.isHidden()
+        height = window.account_card.frame().size.height
+        model.last = RunOutcome('error', message='Blackboard\'a ulaşılamadı', finished_at=NOW)
+        window.update_status(main_status(model, NOW))
+        assert not window.account_message.isHidden()
+        assert str(window.account_message.stringValue()) == 'Senkron tamamlanamadı: Blackboard\'a ulaşılamadı'
+        assert window.badge.isHidden()
+        model.session, model.session_expired = None, True
+        window.update_status(main_status(model, NOW))
+        assert not window.login_button.isHidden() and window.login_button.superview() is window.account_card.contentView()
+        assert window.account_card.frame().size.height > height  # it grows upwards for the button
+        frame = window.account_card.frame()
+        assert frame.origin.y + frame.size.height == window.sidebar_view.frame().size.height - 12
     finally:
         window.window.close()
 
