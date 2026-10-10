@@ -1,8 +1,9 @@
 """The per-user LaunchAgent behind "Bilgisayar açılınca başlat".
 
 Installing only writes a plist to ``~/Library/LaunchAgents``; macOS starts the
-app from it at the next login. Nothing is loaded into launchd right away (the
-app is already running), and no root rights are needed.
+app from it at the next login, with ``--background`` so it stays in the menu bar
+without opening its window. Nothing is loaded into launchd right away (the app
+is already running), and no root rights are needed.
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ LABEL = "io.github.umutylcn.blackboard-sync.menubar"
 DEFAULT_AGENTS_DIR = Path.home() / "Library" / "LaunchAgents"
 # Settings the app should keep when started by launchd instead of a shell.
 PASSED_ENV = ("BBSYNC_BASE_URL", "BBSYNC_DEST", "BBSYNC_DATA_DIR", "BBSYNC_ANNOUNCEMENTS_FOLDER")
+# The start at login is quiet: the menu bar icon only, no main window.
+BACKGROUND = "--background"
 
 
 def plist_path(agents_dir: Path = DEFAULT_AGENTS_DIR) -> Path:
@@ -52,7 +55,7 @@ def is_installed(agents_dir: Path = DEFAULT_AGENTS_DIR) -> bool:
 def install(log_file: Path, agents_dir: Path = DEFAULT_AGENTS_DIR, python: str | None = None) -> Path:
     path = plist_path(agents_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = plistlib.dumps(build_plist(runtime.menubar_command(python), log_file))
+    data = plistlib.dumps(build_plist([*runtime.menubar_command(python), BACKGROUND], log_file))
     try:
         if path.read_bytes() == data:
             return path

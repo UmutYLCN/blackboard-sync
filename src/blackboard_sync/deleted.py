@@ -1,4 +1,4 @@
-"""Missing downloaded outputs and checkbox selection, shared by both settings UIs."""
+"""Missing downloaded outputs and checkbox selection, shared by both main windows."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -12,8 +12,8 @@ from blackboard_sync.system import sync_root
 
 T_TAB = "Silinenler"
 T_EMPTY = "Silinmiş dosya yok."
-T_HINT = ("Kaydedilmiş klasörden silinen dosyaları seçerek geri getirebilirsiniz. "
-          "Listeden kaldırılan dosyalar tekrar önerilmez.")
+T_HINT = ("Daha önce indirilip klasörden silinen dosyaları seçip geri indirebilirsiniz; "
+          "listeden kaldırılanlar tekrar önerilmez.")
 T_SELECT_ALL = "Tümünü seç"
 T_DOWNLOAD = "Seçilenleri indir"
 T_DISMISS = "Listeden kaldır"

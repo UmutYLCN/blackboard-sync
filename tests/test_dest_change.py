@@ -480,7 +480,7 @@ def test_windows_runs_the_move_job_on_a_worker(tmp_path, monkeypatch):
 
 
 def test_windows_dialog_defaults_to_move_and_escape_cancels(monkeypatch):
-    from blackboard_sync.windows.settings_window import ask_dest_choice
+    from blackboard_sync.windows.main_window import ask_dest_choice
 
     pressed = []
 
@@ -522,7 +522,7 @@ def test_windows_dialog_defaults_to_move_and_escape_cancels(monkeypatch):
 
 def test_macos_alert_buttons_map_to_choices(monkeypatch):
     pytest.importorskip("AppKit")
-    from blackboard_sync.menubar import settings_window
+    from blackboard_sync.menubar import main_window
 
     class Button:
         def setKeyEquivalent_(self, key):
@@ -551,12 +551,12 @@ def test_macos_alert_buttons_map_to_choices(monkeypatch):
             return Button()
 
         def runModal(self):
-            return settings_window.NSAlertFirstButtonReturn + Alert.response
+            return main_window.NSAlertFirstButtonReturn + Alert.response
 
-    monkeypatch.setattr(settings_window, "NSAlert", Alert)
-    monkeypatch.setattr(settings_window, "NSApp", SimpleNamespace(activateIgnoringOtherApps_=lambda flag: None))
+    monkeypatch.setattr(main_window, "NSAlert", Alert)
+    monkeypatch.setattr(main_window, "NSApp", SimpleNamespace(activateIgnoringOtherApps_=lambda flag: None))
     expected = [DEST_MOVE, DEST_REFETCH, DEST_KEEP, None]
     for response, choice in enumerate(expected):
         Alert.response = response
-        assert settings_window.ask_dest_choice(Path("/a"), Path("/b"), 2) == choice
+        assert main_window.ask_dest_choice(Path("/a"), Path("/b"), 2) == choice
     assert Alert.buttons == ["Taşı", "Yeniden indir", "Sadece yeni dosyalar", "Vazgeç"]

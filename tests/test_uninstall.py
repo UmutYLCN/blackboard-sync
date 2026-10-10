@@ -282,14 +282,14 @@ def test_webkit_cleanup_waits_for_completion_before_uninstall_can_quit(monkeypat
 
 def test_windows_cancel_leaves_everything_untouched(config, monkeypatch):
     from types import SimpleNamespace
-    from blackboard_sync.windows import app as module, settings_window
+    from blackboard_sync.windows import app as module, main_window
 
     app = module.TrayApp.__new__(module.TrayApp)
     app.config, app.settings = config, SimpleNamespace(dest=config.dest)
     app.model = SimpleNamespace(busy=None, updates=SimpleNamespace(busy=None))
     app.root, app.window = object(), None
     app.uninstalling = False
-    monkeypatch.setattr(settings_window, "ask_uninstall", lambda *args: None)
+    monkeypatch.setattr(main_window, "ask_uninstall", lambda *args: None)
     monkeypatch.setattr(uninstall, "uninstall", lambda *args, **kw: pytest.fail("cancel must not clean up"))
     app.start_uninstall()
     assert not app.uninstalling
@@ -299,14 +299,14 @@ def test_windows_cancel_leaves_everything_untouched(config, monkeypatch):
 def test_windows_busy_refuses_before_confirmation(config, monkeypatch, busy):
     from types import SimpleNamespace
     from tkinter import messagebox
-    from blackboard_sync.windows import app as module, settings_window
+    from blackboard_sync.windows import app as module, main_window
 
     app = module.TrayApp.__new__(module.TrayApp)
     app.config, app.settings = config, SimpleNamespace(dest=config.dest)
     app.model = SimpleNamespace(busy=busy, updates=SimpleNamespace(busy=None))
     app.root, app.window = object(), None
     shown = []
-    monkeypatch.setattr(settings_window, "ask_uninstall", lambda *args: pytest.fail("must refuse before asking"))
+    monkeypatch.setattr(main_window, "ask_uninstall", lambda *args: pytest.fail("must refuse before asking"))
     monkeypatch.setattr(messagebox, "showinfo", lambda title, text, **kw: shown.append(text))
     app.start_uninstall()
     assert shown == [uninstall.BUSY]
@@ -316,7 +316,7 @@ def test_windows_busy_refuses_before_confirmation(config, monkeypatch, busy):
 def test_mac_confirmation_defaults_to_keep_and_reveals_path(config, monkeypatch, choice):
     pytest.importorskip("AppKit")
     from types import SimpleNamespace
-    from blackboard_sync.menubar import settings_window as window
+    from blackboard_sync.menubar import main_window as window
 
     class Alert:
         def init(self):
@@ -353,7 +353,7 @@ def test_mac_confirmation_defaults_to_keep_and_reveals_path(config, monkeypatch,
 def test_windows_confirmation_cleans_then_removes_app_and_quits(config, monkeypatch, delete_files):
     from types import SimpleNamespace
     from tkinter import messagebox
-    from blackboard_sync.windows import app as module, settings_window
+    from blackboard_sync.windows import app as module, main_window
 
     calls = []
     app = module.TrayApp.__new__(module.TrayApp)
@@ -364,7 +364,7 @@ def test_windows_confirmation_cleans_then_removes_app_and_quits(config, monkeypa
     app.window = None
     app.uninstalling, app.closed = False, False
     app.prepare_uninstall = lambda: calls.append("prepare")
-    monkeypatch.setattr(settings_window, "ask_uninstall", lambda *args: delete_files)
+    monkeypatch.setattr(main_window, "ask_uninstall", lambda *args: delete_files)
 
     def cleanup(config, flag, **kwargs):
         assert flag is delete_files and kwargs["owns_app_lock"]

@@ -181,28 +181,207 @@ def test_without_the_helper_the_registry_leaks():
     menu.clear()
 
 
-def test_settings_tabs_selection_dismissal_and_empty_state(tmp_path):
-    from datetime import datetime, timezone
+NOW = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+
+
+def make_window(tmp_path, model=None, rows=(), **handlers):
+    """A main window on fabricated state; nothing is put on screen."""
     from AppKit import NSApplication
-    from blackboard_sync.deleted import MissingOutput
+    from blackboard_sync.menubar.main_window import MainWindow
+    from blackboard_sync.menubar.main_window_model import main_status
     from blackboard_sync.menubar.model import AppModel
-    from blackboard_sync.menubar.settings_form import FormValues, window_status
-    from blackboard_sync.menubar.settings_window import SettingsWindow
+    from blackboard_sync.menubar.settings_form import FormValues
 
     NSApplication.sharedApplication()
-    model = AppModel(tmp_path, datetime.now(timezone.utc), configured=True)
+    model = model or AppModel(tmp_path, NOW, configured=True)
+    values = FormValues('https://bb.example.edu', str(tmp_path), True)
+    handlers.setdefault('on_submit', lambda v, l: None)
+    handlers.setdefault('on_action', lambda a: None)
+    handlers.setdefault('on_close', lambda: None)
+    handlers.setdefault('on_values', lambda: values)
+    rows = list(rows)
+    window = MainWindow(values, main_status(model, NOW), on_missing=lambda: list(rows), **handlers)
+    return window, model, rows
+
+
+def signed_in(model):
+    from blackboard_sync.menubar.model import RunOutcome
+
+    model.session = {'saved_at': NOW.timestamp(), 'user': {'displayName': 'Ada Student'}}
+    model.last = RunOutcome('ok', finished_at=NOW)
+    return model
+
+
+def visible_page(window):
+    return next(name for name, page in window.pages.items() if not page.isHidden())
+
+
+def test_sidebar_switches_sections_and_baslangic_becomes_genel_bakis(tmp_path):
+    from blackboard_sync.deleted import MissingOutput
+    from blackboard_sync.menubar.main_window_model import DELETED, GENERAL, OVERVIEW, main_status
+    from blackboard_sync.menubar.model import AppModel
+
+    row = MissingOutput('one', 'T/C/one.pdf', 'T', 'C', 'one.pdf', 'T/C')
+    window, model, _ = make_window(tmp_path, AppModel(tmp_path, NOW, configured=False), rows=[row])
+    try:
+        titles = [str(window.nav_items[s][2].stringValue()) for s in (OVERVIEW, GENERAL, DELETED)]
+        assert titles == ['Başlangıç', 'Genel', 'Silinenler']
+        assert str(window.nav_items[DELETED][3].stringValue()) == '1'
+        assert visible_page(window) == 'start' and window.section == OVERVIEW
+        assert str(window.start_button.title()) == 'Giriş yap'
+        assert str(window.start_button.keyEquivalent()) == '\r'  # Return signs in
+        assert str(window.sidebar_account.stringValue()) == 'Giriş yapılmadı'
+        window.target.nav_(window.nav_items[GENERAL][4])
+        assert visible_page(window) == GENERAL and window.section == GENERAL
+        assert str(window.start_button.keyEquivalent()) == ''  # not from a hidden section
+        window.target.nav_(window.nav_items[DELETED][4])
+        assert visible_page(window) == DELETED
+
+        # Signed in: the first section becomes Genel bakış, on its own page.
+        model.configured = True
+        signed_in(model)
+        window.update_status(main_status(model, NOW))
+        window.select(OVERVIEW)
+        assert visible_page(window) == OVERVIEW
+        assert str(window.nav_items[OVERVIEW][2].stringValue()) == 'Genel bakış'
+        assert str(window.account_title.stringValue()) == 'Ada Student'
+        assert str(window.account_detail.stringValue()).startswith('Son senkron: bugün ')
+        assert str(window.badge_text.stringValue()) == 'Bağlı' and window.login_button.isHidden()
+        # A sync keeps showing when the last one finished.
+        model.begin('sync')
+        window.update_status(main_status(model, NOW))
+        assert str(window.badge_text.stringValue()) == 'Senkron sürüyor'
+        assert str(window.account_detail.stringValue()).startswith('Son senkron: bugün ')
+        assert str(window.sync_button.title()) == 'Senkronize ediliyor…' and not window.sync_button.isEnabled()
+    finally:
+        window.window.close()
+
+
+def test_overview_buttons_and_recent_files(tmp_path):
+    from blackboard_sync.menubar.main_window_model import main_status
+    from blackboard_sync.menubar.model import RecentItem
+
+    actions, opened = [], []
+    window, model, _ = make_window(tmp_path, on_action=actions.append, on_open=opened.append)
+    try:
+        signed_in(model).recent = [RecentItem('T/SWE305/Homework1.docx', 'SWE305', NOW.isoformat()),
+                                   RecentItem('T/CSE301/week1.pdf', 'CSE301', NOW.isoformat())]
+        window.update_status(main_status(model, NOW))
+        assert str(window.recent_count.stringValue()) == '2 dosya'
+        buttons = [v for v in window.recent_scroll.documentView().subviews()
+                   if hasattr(v, 'action') and v.action() == 'openRecent:']
+        assert [b.toolTip() for b in buttons] == ['Homework1.docx', 'week1.pdf']
+        window.target.openRecent_(buttons[1])
+        assert opened == ['T/CSE301/week1.pdf']
+        window.target.sync_(None)
+        window.target.folder_(None)
+        assert actions == ['sync', 'folder']
+        # Expired: the card offers signing in instead of the badge.
+        model.session = None
+        model.session_expired = True
+        window.update_status(main_status(model, NOW))
+        assert str(window.account_title.stringValue()) == 'Oturum sona erdi'
+        assert not window.login_button.isHidden() and str(window.login_button.title()) == 'Giriş yap'
+        assert window.badge.isHidden() and not window.sync_button.isEnabled()
+        window.target.login_(None)
+        assert actions[-1] == 'login'
+    finally:
+        window.window.close()
+
+
+def test_genel_bar_appears_only_after_a_change_and_saving_keeps_the_window_open(tmp_path):
+    from blackboard_sync.menubar.settings_form import FormValues
+
+    submitted, closed = [], []
+    saved = [FormValues('https://bb.example.edu', str(tmp_path), True)]
+
+    def submit(values, login):
+        submitted.append((values, login))
+        if values.base_url == 'http://bad':
+            return 'Geçerli bir adres yazın.', 'base_url'
+        saved.append(values)
+        return None
+
+    window, model, _ = make_window(tmp_path, on_submit=submit, on_close=lambda: closed.append(True),
+                                   on_values=lambda: saved[-1])
+    try:
+        assert window.button_bar.isHidden()
+        assert str(window.cancel_button.keyEquivalent()) == ''
+        window.interval_popup.selectItemWithTitle_('Her 3 saatte')
+        window.target.changed_(window.interval_popup)
+        assert not window.button_bar.isHidden()
+        assert str(window.error_label.stringValue()) == 'Kaydedilmemiş değişiklikler'
+        assert [str(b.title()) for b in (window.cancel_button, window.save_button)] == ['Vazgeç', 'Kaydet']
+        assert str(window.cancel_button.keyEquivalent()) == '\x1b'
+        window.target.cancel_(None)  # Vazgeç: back to what is saved
+        assert window.button_bar.isHidden() and window.values().sync_interval_minutes == 60
+
+        # Başlangıç and Genel edit the same school address.
+        window.start_url.setStringValue_('https://new.example.edu')
+        window.changed(window.start_url)
+        assert str(window.url_field.stringValue()) == 'https://new.example.edu'
+        assert not window.button_bar.isHidden()
+        window.target.save_(None)
+        assert submitted[-1] == (window.values(), False)
+        assert window.button_bar.isHidden() and window.saved.base_url == 'https://new.example.edu'
+        assert closed == [] and window.window.delegate() is window.target
+
+        # A failed save keeps the edit and says why.
+        window.url_field.setStringValue_('http://bad')
+        window.changed(window.url_field)
+        window.target.save_(None)
+        assert not window.button_bar.isHidden()
+        assert str(window.error_label.stringValue()) == 'Geçerli bir adres yazın.'
+        assert str(window.url_field.stringValue()) == 'http://bad'
+
+        # Closing drops the unsaved edit; the app is told, nothing else stops.
+        window.state.show()
+        window.closed()
+        assert closed == [True] and not window.state.open
+        assert str(window.url_field.stringValue()) == 'https://new.example.edu'
+        assert window.button_bar.isHidden()
+    finally:
+        window.window.close()
+
+
+def test_baslangic_signs_in_with_the_form(tmp_path):
+    from blackboard_sync.menubar.model import AppModel
+
+    submitted = []
+    window, _, _ = make_window(tmp_path, AppModel(tmp_path, NOW, configured=False),
+                               on_submit=lambda v, l: submitted.append((v, l)))
+    try:
+        window.start_dest.setStringValue_('~/Belgeler')
+        window.changed(window.start_dest)
+        window.start_autostart.setState_(0)
+        window.target.changed_(window.start_autostart)
+        assert str(window.dest_field.stringValue()) == '~/Belgeler' and not window.autostart.state()
+        window.target.start_(None)
+        values, login = submitted[-1]
+        assert login is True and values.dest == '~/Belgeler' and values.autostart is False
+    finally:
+        window.window.close()
+
+
+def test_silinenler_selection_dismissal_and_empty_state(tmp_path):
+    from blackboard_sync.deleted import MissingOutput
+    from blackboard_sync.menubar.main_window_model import DELETED, main_status
+
     rows = [MissingOutput('one', 'term/course/one.pdf', 'term', 'course', 'one.pdf', 'term/course')]
     actions = []
+
     def action(name, keys):
         actions.append((name, keys))
         if name == 'dismiss':
             rows.clear()
-    window = SettingsWindow(FormValues('https://bb.example.edu', str(tmp_path), True),
-                            window_status(model), False, lambda v,l: None, lambda a: None,
-                            lambda: None, on_missing=lambda: list(rows), on_deleted_action=action)
+
+    window, model, _ = make_window(tmp_path, on_deleted_action=action)
+    window.on_missing = lambda: list(rows)
     try:
-        assert [str(tab.label()) for tab in window.tabs.tabViewItems()] == ['Genel', 'Silinenler']
-        window.tabs.selectTabViewItemAtIndex_(1)
+        window.select(DELETED)
+        labels = [str(v.stringValue()) for v in window.pages[DELETED].subviews() if hasattr(v, 'stringValue')]
+        assert ('Daha önce indirilip klasörden silinen dosyaları seçip geri indirebilirsiniz; '
+                'listeden kaldırılanlar tekrar önerilmez.') in labels
         assert not window.refetch_button.isEnabled()
         button = window.checks['one']
         button.setState_(1)
@@ -211,126 +390,203 @@ def test_settings_tabs_selection_dismissal_and_empty_state(tmp_path):
         window.target.refetch_(None)
         assert actions == [('refetch', ['one'])]
         model.begin('sync')
-        window.update_status(window_status(model))
-        assert not window.refetch_button.isEnabled()
-        assert not window.dismiss_button.isEnabled()
+        window.update_status(main_status(model, NOW))
+        assert not window.refetch_button.isEnabled() and not window.dismiss_button.isEnabled()
         model.busy = None
-        window.update_status(window_status(model))
+        window.update_status(main_status(model, NOW))
         window.target.dismiss_(None)
         assert actions[-1] == ('dismiss', ['one'])
-        assert window.selection.rows == []
+        assert window.selection.rows == [] and str(window.nav_items[DELETED][3].stringValue()) == ''
         assert 'Silinmiş dosya yok.' in [str(control.stringValue())
                                       for control in window.deleted_scroll.documentView().subviews()]
     finally:
         window.window.close()
 
 
-def test_settings_past_terms_section_and_uninstall_button(tmp_path):
-    from datetime import datetime, timezone
-    from AppKit import NSApplication
-    from blackboard_sync.menubar.model import AppModel, RunOutcome
-    from blackboard_sync.menubar.settings_form import FormValues, window_status
-    from blackboard_sync.menubar.settings_window import SettingsWindow
+def test_genel_past_terms_section_and_uninstall_button(tmp_path):
+    from blackboard_sync.menubar.main_window_model import main_status
+    from blackboard_sync.menubar.model import RunOutcome
 
-    NSApplication.sharedApplication()
-    model = AppModel(tmp_path, datetime.now(timezone.utc), configured=True)
     actions, downloads = [], []
-    window = SettingsWindow(FormValues('https://bb.example.edu', str(tmp_path), True),
-                            window_status(model), False, lambda v, l: None, actions.append,
-                            lambda: None, on_past_term=downloads.append)
+    window, model, _ = make_window(tmp_path, on_action=actions.append, on_past_term=downloads.append)
     try:
-        labels = [str(view.stringValue()) for view in window.form_scroll.documentView().subviews()
-                  if hasattr(view, 'stringValue')]
+        labels = [str(view.stringValue()) for box in window.form_scroll.documentView().subviews()
+                  for view in box.contentView().subviews() if hasattr(view, 'stringValue')]
         sections = [label for label in labels if label in ('Hesap', 'Klasör', 'Eski dönemler', 'Genel', 'Güncellemeler')]
-        assert sections == ['Hesap', 'Klasör', 'Eski dönemler', 'Genel', 'Güncellemeler']
+        assert sections == ['Hesap', 'Klasör', 'Genel', 'Eski dönemler', 'Güncellemeler']
         assert 'Eski dönem bir kez indirilir, güncellenmez.' in labels
         assert str(window.past_button.title()) == 'Eski dönemi indir'
         assert str(window.past_label.stringValue()) == 'Eski dönemleri görmek için giriş yapın.'
         assert not window.past_button.isEnabled() and not window.past_popup.isEnabled()
-        # Below the version row, in the Güncellemeler section.
         assert str(window.uninstall_button.title()) == 'Uygulamayı kaldır…'
-        assert window.uninstall_button.frame().origin.y > window.update_button.frame().origin.y
         window.target.uninstall_(None)
         assert actions == ['uninstall']
 
-        model.session = {'saved_at': datetime.now(timezone.utc).timestamp(), 'user': {'displayName': 'Ada'}}
-        window.update_status(window_status(model))
+        model.session = {'saved_at': NOW.timestamp(), 'user': {'displayName': 'Ada'}}
+        window.update_status(main_status(model, NOW))
         assert str(window.past_label.stringValue()) == 'Eski dönemler yükleniyor…'
         model.finish_past_terms(['2025-2026 Bahar', '2025-2026 Güz'], RunOutcome('ok'))
-        window.update_status(window_status(model))
+        window.update_status(main_status(model, NOW))
         assert [str(t) for t in window.past_popup.itemTitles()] == ['2025-2026 Bahar', '2025-2026 Güz']
-        assert window.past_button.isEnabled() and window.past_popup.isEnabled()
         window.past_popup.selectItemWithTitle_('2025-2026 Güz')
-        window.update_status(window_status(model))
+        window.update_status(main_status(model, NOW))
         assert str(window.past_popup.titleOfSelectedItem()) == '2025-2026 Güz'
         window.target.pastTerm_(None)
         assert downloads == ['2025-2026 Güz']
         model.begin('sync')
-        window.update_status(window_status(model))
+        window.update_status(main_status(model, NOW))
         assert not window.past_button.isEnabled() and not window.uninstall_button.isEnabled()
         window.target.pastTerm_(None)
         assert downloads == ['2025-2026 Güz']
+        window.target.account_(None)  # signed in: "Hesaptan çıkış yap"
+        assert actions[-1] == 'logout'
     finally:
         window.window.close()
 
 
-def test_settings_window_scrolls_on_a_short_screen_with_the_buttons_in_view(tmp_path):
-    from datetime import datetime, timezone
+def test_main_window_fits_a_short_screen_and_scrolls_with_the_bar_in_view(tmp_path):
     from types import SimpleNamespace
-    from AppKit import NSApplication, NSScrollView, NSWindowStyleMaskResizable
+    from AppKit import NSScrollView, NSWindowStyleMaskMiniaturizable, NSWindowStyleMaskResizable
     from Foundation import NSMakeRect
-    from blackboard_sync.menubar.model import AppModel
-    from blackboard_sync.menubar.settings_form import FormValues, SCREEN_MARGIN, window_status
-    from blackboard_sync.menubar.settings_window import SettingsWindow
+    from blackboard_sync.menubar.main_window import HEIGHT, WIDTH
+    from blackboard_sync.menubar.main_window_model import GENERAL
+    from blackboard_sync.menubar.settings_form import SCREEN_MARGIN
 
-    NSApplication.sharedApplication()
-    model = AppModel(tmp_path, datetime.now(timezone.utc), configured=True)
-    window = SettingsWindow(FormValues('https://bb.example.edu', str(tmp_path), True),
-                            window_status(model), True, lambda v, l: None, lambda a: None, lambda: None)
+    window, _, _ = make_window(tmp_path)
 
     def screen(height):  # visibleFrame: the screen without the menu bar and Dock
         return SimpleNamespace(visibleFrame=lambda: NSMakeRect(0, 0, 1440, height))
 
     try:
-        assert window.window.styleMask() & NSWindowStyleMaskResizable
+        mask = window.window.styleMask()
+        assert mask & NSWindowStyleMaskResizable and mask & NSWindowStyleMaskMiniaturizable
+        assert str(window.window.title()) == 'Blackboard Sync'
         assert isinstance(window.form_scroll, NSScrollView)
-        assert window.form_scroll.hasVerticalScroller() and window.form_scroll.autohidesScrollers()
-        form = window.form_scroll.documentView()
-        assert window.url_field.superview() is form and window.uninstall_button.superview() is form
-        # Vazgeç, Kaydet and the error line sit below the scrolling form, not in it.
-        assert [str(b.title()) for b in (window.cancel_button, window.save_button)] == ['Vazgeç', 'Kaydet']
-        for control in (window.cancel_button, window.save_button, window.error_label):
-            assert control.superview() is window.button_bar
-        general = window.tabs.tabViewItems()[0].view()
-        assert window.form_scroll.superview() is general and window.button_bar.superview() is general
-
-        # A 13-inch MacBook (1440x900, about 800 points free): the window fits and the form scrolls.
-        window.fit_to_screen(screen(800))
-        assert window.window.frame().size.height == 800 - SCREEN_MARGIN
-        clip = window.form_scroll.contentView().frame().size.height
-        assert clip < form.frame().size.height
+        window.select(GENERAL)
+        window.interval_popup.selectItemWithTitle_('Yalnızca elle')
+        window.changed(window.interval_popup)
+        # A 13-inch MacBook (about 640 points free): the window fits and Genel scrolls.
+        window.fit_to_screen(screen(640))
+        assert window.window.frame().size.height == 640 - SCREEN_MARGIN
+        page = window.pages[GENERAL].frame().size.height
+        form = window.form_scroll.documentView().frame().size.height
+        assert window.form_scroll.contentView().frame().size.height < form
         bar = window.button_bar.frame()
-        assert bar.origin.y + bar.size.height == general.frame().size.height  # at the bottom
-        assert window.form_scroll.frame().size.height == bar.origin.y
+        assert bar.origin.y + bar.size.height == page  # at the bottom, in view
+        assert window.form_scroll.frame().origin.y + window.form_scroll.frame().size.height == bar.origin.y
         minimum = window.window.contentMinSize()
-        assert minimum.width == window.window.contentMaxSize().width == window.window.contentView().frame().size.width
-        assert minimum.height < window.window.contentView().frame().size.height
-
-        # Taller by hand: the form gets the room, the bar follows the bottom edge.
-        frame = window.window.frame()
-        window.window.setFrame_display_(NSMakeRect(frame.origin.x, frame.origin.y, frame.size.width,
-                                                   frame.size.height + 50), False)
-        assert window.form_scroll.contentView().frame().size.height == clip + 50
-        assert window.button_bar.frame().origin.y == bar.origin.y + 50
-        window.tabs.selectTabViewItemAtIndex_(1)  # the Silinenler list keeps scrolling on its own
-        deleted_list = window.deleted_scroll.frame()
-        assert window.refetch_button.frame().origin.y > deleted_list.origin.y + deleted_list.size.height
-        window.tabs.selectTabViewItemAtIndex_(0)
-
-        # A big screen shows the whole form, nothing to scroll.
+        assert minimum.width == window.window.contentMaxSize().width == WIDTH
+        # A big screen opens at the full size.
         window.fit_to_screen(screen(1400))
-        assert window.window.frame().size.height < 1400 - SCREEN_MARGIN
-        assert window.window.contentView().frame().size.height == window.content_height
-        assert window.form_scroll.contentView().frame().size.height == form.frame().size.height
+        assert window.window.contentView().frame().size.height == HEIGHT
     finally:
         window.window.close()
+
+
+@pytest.fixture
+def menu_app(config, monkeypatch):
+    """The real menu bar app object, without its run loop, timers or a real main window."""
+    import AppKit
+    from blackboard_sync.menubar import app, main_window
+
+    AppKit.NSApplication.sharedApplication()
+    monkeypatch.setattr(rumps.Timer, "start", lambda self: None)
+    monkeypatch.setattr(rumps.events.on_notification, "register", lambda callback: None)
+    monkeypatch.setattr(rumps.events.on_wake, "register", lambda callback: None)
+    docks = []
+    monkeypatch.setattr(app, "set_dock_icon", docks.append)
+
+    class Window:
+        built = []
+
+        def __init__(self, values, status, **handlers):
+            from blackboard_sync.menubar.main_window_model import WindowState
+
+            self.state, self.handlers, self.shown, self.statuses = WindowState(), handlers, [], []
+            Window.built.append(self)
+
+        def show(self, section=None):
+            self.shown.append(section)
+            self.state.show(section)
+
+        def update_status(self, status):
+            self.statuses.append(status)
+
+        def close(self):
+            self.state.closed()
+            self.handlers["on_close"]()
+
+    monkeypatch.setattr(main_window, "MainWindow", Window)
+    menu_app = app.build_app(config)
+    menu_app.docks = docks
+    menu_app.windows = Window.built
+    return menu_app
+
+
+def test_reopening_the_app_shows_one_main_window_with_the_dock_icon(menu_app):
+    from rumps.rumps import NSApp as Delegate
+
+    delegate = Delegate.alloc().init()
+    # Finder, Launchpad or the Dock opened the running app: handled, not AppKit's default.
+    assert delegate.applicationShouldHandleReopen_hasVisibleWindows_(None, False) is False
+    assert len(menu_app.windows) == 1 and menu_app.windows[0].shown == [None]
+    assert menu_app.docks == [True]
+    menu_app._requests.showWindow_(None)  # a second start, from the other process
+    assert len(menu_app.windows) == 1 and menu_app.windows[0].shown == [None, None]
+
+
+def test_ayarlar_opens_genel_and_closing_keeps_the_app_running(menu_app):
+    from blackboard_sync.menubar.main_window_model import GENERAL
+
+    menu_app.refresh()
+    assert menu_app.windows == []  # nothing drawn before the window exists
+    menu_app.open_settings()
+    window = menu_app.windows[0]
+    assert window.shown == [GENERAL] and menu_app.docks == [True]
+    menu_app.refresh()
+    assert window.statuses  # the open window follows the app
+    window.close()
+    assert menu_app.docks == [True, False]  # the Dock icon leaves with the window
+    count = len(window.statuses)
+    menu_app.refresh()
+    assert len(window.statuses) == count  # a closed window is not redrawn
+    assert menu_app._timer is not None and not menu_app._uninstalling
+
+
+def test_window_buttons_reach_the_app_actions(menu_app, monkeypatch):
+    calls = []
+    for name in ("start_sync", "open_school_folder", "start_login", "logout", "start_update_check"):
+        monkeypatch.setattr(menu_app, name, lambda *args, name=name: calls.append(name))
+    for action in ("sync", "folder", "login", "logout", "check_updates"):
+        menu_app.window_action(action)
+    assert calls == ["start_sync", "open_school_folder", "start_login", "logout", "start_update_check"]
+
+
+def test_dock_icon_switches_only_when_needed(monkeypatch):
+    import AppKit
+    from types import SimpleNamespace
+    from blackboard_sync.menubar import app
+
+    calls = []
+    application = SimpleNamespace(activationPolicy=lambda: AppKit.NSApplicationActivationPolicyAccessory,
+                                  setActivationPolicy_=lambda policy: calls.append(policy) or True)
+    monkeypatch.setattr(AppKit, "NSApplication", SimpleNamespace(sharedApplication=lambda: application))
+    app.set_dock_icon(False)
+    assert calls == []
+    app.set_dock_icon(True)
+    assert calls == [AppKit.NSApplicationActivationPolicyRegular]
+
+
+def test_main_menu_quits_edits_and_closes_the_window():
+    from blackboard_sync.menubar import app
+
+    main, window_menu = app.build_main_menu()
+    menus = {str(item.title()): item.submenu() for item in main.itemArray()}
+    assert list(menus) == ["Blackboard Sync", "Düzen", "Pencere"]
+    actions = {str(item.title()): (item.action(), str(item.keyEquivalent()))
+               for menu in menus.values() for item in menu.itemArray() if not item.isSeparatorItem()}
+    assert actions["Blackboard Sync'ten çık"] == ("terminate:", "q")
+    assert actions["Yapıştır"] == ("paste:", "v")
+    assert actions["Kapat"] == ("performClose:", "w")
+    assert actions["Küçült"] == ("performMiniaturize:", "m")
+    assert window_menu is menus["Pencere"]

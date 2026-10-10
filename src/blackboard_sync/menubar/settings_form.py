@@ -1,14 +1,13 @@
-"""What the settings window shows and what saving it means, without any GUI code.
+"""What the settings show and what saving them means, without any GUI code.
 
-The Genel tab has five sections: Hesap (school address, who is signed in, sign
-in or out), Klasör (destination), Eski dönemler (download a past term once),
-Genel (start at login, sync interval) and Güncellemeler (automatic checks, check
-now, version, uninstall). Silinenler lists missing outputs for selective
-recovery or permanent dismissal. The GUI
-layers (``settings_window.py`` on macOS, ``windows/settings_window.py``) only
-draw ``FormValues`` and ``WindowStatus`` and report which button was pressed.
-The first launch (no ``settings.json`` yet) and the "Ayarlar…" menu item open
-the same window.
+The settings live in the main window (``main_window_model``). Its Genel section
+has five parts: Hesap (school address, who is signed in, sign in or out),
+Klasör (destination), Eski dönemler (download a past term once), Genel (start
+at login, sync interval) and Güncellemeler (automatic checks, check now,
+version, uninstall). Silinenler lists missing outputs for selective recovery or
+permanent dismissal. The GUI layers (``main_window.py`` on macOS,
+``windows/main_window.py``) only draw ``FormValues`` and ``WindowStatus`` and
+report which button was pressed.
 
 User-facing strings are Turkish on purpose: the window is read by the student.
 """
@@ -30,7 +29,6 @@ from blackboard_sync.menubar.model import (
     T_LOGOUT,
     T_PAST_LOADING,
     T_REFETCHING,
-    T_SYNC_NOW,
     AppModel,
     login_waiting_line,
 )
@@ -44,8 +42,6 @@ from blackboard_sync.settings import (
 )
 from blackboard_sync.system import sync_root
 
-T_TITLE_FIRST_RUN = "Blackboard Sync kurulumu"
-T_TITLE = "Blackboard Sync ayarları"
 T_INTERVAL_LABEL = "Otomatik senkron"
 # (minutes, menu text); 0 means only by hand. Order is the order in the window.
 INTERVAL_OPTIONS = (
@@ -55,32 +51,12 @@ INTERVAL_OPTIONS = (
     (0, "Yalnızca elle"),
 )
 assert tuple(minutes for minutes, _ in INTERVAL_OPTIONS) == SYNC_INTERVAL_CHOICES
-_INTRO_WHEN = {
-    30: "her 30 dakikada bir",
-    60: "her saat",
-    180: "her 3 saatte bir",
-}
 
 
 def interval_title(minutes: int) -> str:
     return dict(INTERVAL_OPTIONS)[normalize_sync_interval(minutes)]
 
 
-def intro_first_run(device: str, sync_interval_minutes: int = 60) -> str:
-    """The first-run intro; ``device`` is "bu Mac'e" or "bu bilgisayara"."""
-    when = _INTRO_WHEN.get(normalize_sync_interval(sync_interval_minutes))
-    start = (
-        f"Ders dosyalarınız {when} {device} indirilir."
-        if when
-        else f"Ders dosyalarınız “{T_SYNC_NOW}” dediğinizde {device} indirilir."
-    )
-    return (
-        f"{start} Okulunuzun Blackboard adresini ve dosyaların kaydedileceği klasörü "
-        "kontrol edin, sonra “Giriş yap” ile Blackboard'a girin."
-    )
-
-
-T_INTRO_FIRST_RUN = intro_first_run("bu Mac'e")
 T_SECTION_ACCOUNT = "Hesap"
 T_SECTION_FOLDER = "Klasör"
 T_SECTION_PAST_TERMS = "Eski dönemler"
@@ -122,15 +98,15 @@ DEST_CHOICES = ((DEST_MOVE, T_MOVE), (DEST_REFETCH, T_REDOWNLOAD), (DEST_KEEP, T
 
 
 # The window never grows past the screen: what does not fit scrolls inside it,
-# under the fixed Vazgeç/Kaydet row. Heights include the title bar.
+# above the Vazgeç/Kaydet bar. Heights include the title bar.
 SCREEN_MARGIN = 40  # kept free between the window and the Dock, menu bar or taskbar
 MIN_WINDOW_HEIGHT = 400  # the smallest height the student can resize the window to
 
 
 def window_height(content: float, chrome: float, available: float) -> int:
-    """The settings window's opening height: everything when it fits on the screen.
+    """The main window's opening height: everything when it fits on the screen.
 
-    ``content`` is what the tabs and buttons need, ``chrome`` what the window
+    ``content`` is what the window's views need, ``chrome`` what the window
     adds around them (title bar, borders) and ``available`` the screen height
     left by the menu bar and Dock (the work area above the taskbar on Windows).
     """
