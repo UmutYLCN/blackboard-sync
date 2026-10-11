@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1425">
+  <title>Privacy Policy — Blackboard Sync</title>
+  <meta name="description" content="What Blackboard Sync stores on your computer, what it sends over the internet, and how to delete your data, for the macOS app, the Windows Setup build and the Microsoft Store build.">
+  <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+  <header class="site-header wrap">
+    <a class="brand" href="/" aria-label="Blackboard Sync home"><img src="assets/logo-128.png" srcset="assets/logo-256.png 2x" alt="" width="40" height="40">Blackboard Sync</a>
+    <nav aria-label="Main menu">
+      <a class="nav-link" href="/">Home</a>
+      <a class="nav-link nav-github" href="https://github.com/UmutYLCN/blackboard-sync"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.11.79-.25.79-.56v-1.97c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.74.4-1.25.73-1.54-2.56-.29-5.25-1.28-5.25-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.27 5.69.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>GitHub</a>
+    </nav>
+  </header>
+
+  <main id="content" class="legal wrap">
+    <p class="eyebrow">Privacy</p>
+    <h1>Privacy Policy</h1>
+    <p class="legal-updated">Last updated: <time datetime="2026-10-11">11 October 2026</time></p>
+
+    <p class="legal-lead">Blackboard Sync is a free, open-source app for macOS and Windows that downloads your course content from Blackboard Learn to your own computer. This page explains what the app stores on your computer, what it sends over the internet, and how you can delete it. The app’s source code is public on <a href="https://github.com/UmutYLCN/blackboard-sync">GitHub</a>, and every statement here is based on that code.</p>
+
+    <section aria-labelledby="builds">
+      <h2 id="builds">Which version you have</h2>
+      <p>Blackboard Sync comes in three builds. Most of this page applies to all of them; where a statement applies to only some, it says so.</p>
+      <ul>
+        <li><strong>macOS</strong>: the app downloaded as a <code>.dmg</code> from GitHub or this website.</li>
+        <li><strong>Windows Setup</strong>: the app installed with <code>Blackboard-Sync-…-Setup.exe</code> from GitHub or this website.</li>
+        <li><strong>Microsoft Store</strong>: the Windows app installed from the Microsoft Store (an MSIX package). See <a href="#store">Microsoft Store build</a> for how it differs.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="summary">
+      <h2 id="summary">In short</h2>
+      <ul>
+        <li>The app never sees or stores your password.</li>
+        <li>Your sign-in session, settings and download records stay on your computer.</li>
+        <li>It connects only to your school’s Blackboard address (and the sign-in and file addresses it redirects to). The macOS and Windows Setup builds also contact GitHub to check for updates; the Microsoft Store build does not.</li>
+        <li>No analytics, ads or usage tracking (telemetry), and no account to create.</li>
+        <li>Your data is not shared with or sold to anyone.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="sign-in">
+      <h2 id="sign-in">Your password and sign-in</h2>
+      <p>You sign in on your school’s own Blackboard sign-in page: either in a Chromium-based browser installed on your computer (Chrome, Edge, Brave and similar), using a separate browser profile reserved for the app, or, if there is no such browser, in the app’s own sign-in window (WKWebView on macOS, Microsoft Edge WebView2 on Windows). You type your password and any two-step verification code into that page; the app does not see, read or store them.</p>
+      <p>Once you are signed in, the app takes and saves only the session cookies that belong to the Blackboard address. Cookies of your school’s single sign-on (SSO) provider are not saved.</p>
+    </section>
+
+    <section aria-labelledby="stored">
+      <h2 id="stored">What is stored on your computer</h2>
+      <p>The app keeps its data in a folder that only your user account can access:</p>
+      <ul class="legal-paths">
+        <li><span>macOS</span><code>~/Library/Application Support/blackboard-sync</code></li>
+        <li><span>Windows Setup</span><code>%APPDATA%\blackboard-sync</code></li>
+        <li><span>Microsoft Store</span><code>%LOCALAPPDATA%\Packages\&lt;package family name&gt;\LocalCache\Roaming\blackboard-sync</code></li>
+      </ul>
+      <p>That folder contains:</p>
+      <ul>
+        <li><strong>Session</strong> (<code>session.json</code>): the Blackboard address, the Blackboard session cookies, and the user ID, user name and display name Blackboard reports. It contains no password. The file is updated when Blackboard renews the cookies.</li>
+        <li><strong>Sign-in data</strong>: the separate browser profile used for sign-in (<code>browser-profile</code>) and, on Windows, the web data of the sign-in window (<code>inapp-profile</code>). On macOS, the sign-in window’s web data is kept by macOS in the app’s WebKit storage.</li>
+        <li><strong>Settings</strong> (<code>settings.json</code>): your school’s Blackboard address, the download folder, the sync interval, and whether automatic update checks are on.</li>
+        <li><strong>Download records</strong> (<code>state.json</code>, <code>last-run.json</code>, <code>menubar.json</code>): which course items were downloaded, their local paths, file digests (SHA-256) and sizes, and the result of the last sync. They are used so the same file is not downloaded twice and so files you deleted can be listed under “Silinenler” (Deleted).</li>
+        <li><strong>Logs</strong> (<code>menubar.log</code> on macOS; <code>windows-tray.log</code> and <code>windows-tray-faults.log</code> on Windows): the app’s activity log, for troubleshooting. Logs never leave your computer.</li>
+      </ul>
+      <p><strong>Downloaded course files</strong>, and the Markdown notes created for announcements and links, are saved in a <strong>University</strong> folder inside the download folder you choose. The default is <code>~/Documents/University</code> on macOS and the <code>University</code> folder in your Documents folder on Windows (all builds). If your Documents folder is synced by a service such as iCloud Drive or OneDrive, those files are synced under that service’s own terms; Blackboard Sync itself sends nothing to such services.</p>
+      <p>If “start when the computer starts” is on: on macOS a launch file is added to <code>~/Library/LaunchAgents</code>; with Windows Setup, a value is added under your user’s startup registry key (<code>HKCU\…\Run</code>); the Microsoft Store build uses a Windows startup task instead (see below). An update the macOS app downloads is saved to a temporary folder or your Downloads folder; one the Windows Setup build downloads is saved to a temporary folder.</p>
+    </section>
+
+    <section aria-labelledby="store">
+      <h2 id="store">Microsoft Store build</h2>
+      <p>The Microsoft Store build is the same Windows app with a few differences in where it keeps data and what it connects to:</p>
+      <ul>
+        <li><strong>Private data folder.</strong> Its data (the session, sign-in data, settings, download records and logs listed above) is kept in the package’s own folder, <code>%LOCALAPPDATA%\Packages\&lt;package family name&gt;\LocalCache\Roaming\blackboard-sync</code>, not in <code>%APPDATA%\blackboard-sync</code>.</li>
+        <li><strong>Separate from the Setup build.</strong> If you also installed the Setup build, the two keep separate data. The Store build starts with fresh settings and a fresh session, and does not use, move or delete the Setup build’s <code>%APPDATA%\blackboard-sync</code> folder. Downloaded course files are not moved or deleted either.</li>
+        <li><strong>Start at login.</strong> It uses a Windows startup task declared in the package, not the <code>HKCU\…\Run</code> registry value. You turn it on or off in the app’s settings, and also in Task Manager → Startup apps or Windows Settings → Apps → Startup.</li>
+        <li><strong>No GitHub contact, no self-update.</strong> It never contacts GitHub: it does not check for, download or install updates itself. Updates are delivered by the Microsoft Store.</li>
+        <li><strong>Removal through Windows.</strong> There is no in-app uninstall. You remove the app in Windows Settings → Apps; Windows then removes the package’s private data folder. Your course files stay where they are.</li>
+      </ul>
+      <p>Installing and updating the app through the Microsoft Store is handled by Windows and the Microsoft Store under Microsoft’s own privacy statement. Blackboard Sync itself sends no data to Microsoft.</p>
+    </section>
+
+    <section aria-labelledby="network">
+      <h2 id="network">What is sent over the internet</h2>
+      <p>The app connects only to:</p>
+      <ul>
+        <li><strong>Your school’s Blackboard address</strong> (the address you enter in the settings), in all builds. The course list, course content, announcements and files are requested from this address with your saved session cookies. If Blackboard redirects a file download to its own file storage address, the file is downloaded from there. During sign-in, your school’s sign-in page may redirect to your school’s single sign-on provider.</li>
+        <li><strong>GitHub</strong> (<code>api.github.com</code> and <code>github.com</code>), <strong>macOS and Windows Setup builds only</strong>: to learn whether a new version exists and to download it. The automatic check runs once a day and can be turned off with <strong>Güncellemeleri otomatik denetle</strong> (Check for updates automatically) in the settings. The request includes the app’s version number; like any web request, GitHub sees your IP address. Updates are downloaded from GitHub’s file servers, and their size and the SHA-256 digest published with the release are checked before installing. The Microsoft Store build never makes these requests.</li>
+      </ul>
+      <p>The network activity of the browser or sign-in window used for sign-in is up to the maker of that browser or component. The app talks to the sign-in browser only inside your computer (<code>127.0.0.1</code>).</p>
+    </section>
+
+    <section aria-labelledby="analytics">
+      <h2 id="analytics">No analytics or tracking</h2>
+      <p>The app has no analytics, ads, usage statistics, crash reporting or other telemetry. It sends no data to any server run by its developer, and the developer receives no data about you. This website has no analytics or tracking tools either.</p>
+    </section>
+
+    <section aria-labelledby="sharing">
+      <h2 id="sharing">Sharing with third parties</h2>
+      <p>Your data is not shared with, sold or rented to any third party. The only outside services the app connects to are your school’s Blackboard server and, for the macOS and Windows Setup builds, GitHub, as listed above; those services have their own privacy policies.</p>
+    </section>
+
+    <section aria-labelledby="delete">
+      <h2 id="delete">Deleting your data</h2>
+      <ul>
+        <li><strong>Hesaptan çıkış yap</strong> (Sign out), in all builds: deletes the session file and all sign-in data (the sign-in browser profile and the sign-in window’s web data). Settings, download records and course files are kept.</li>
+        <li><strong>Uygulamayı kaldır…</strong> (Uninstall the app…, in the settings, under Updates), <strong>macOS and Windows Setup builds</strong>: removes the app, its data folder (session, sign-in data, settings, download records, logs) and the start-at-login entry. If you tick <strong>İndirilmiş ders dosyalarını da sil</strong> (Also delete downloaded course files), the files the app downloaded are moved to the Trash / Recycle Bin too.</li>
+        <li><strong>Microsoft Store build</strong>: remove the app in Windows Settings → Apps. Windows removes the package’s data folder with it. Delete the <strong>University</strong> folder yourself if you no longer want the course files.</li>
+        <li><strong>By hand</strong>, macOS and Windows Setup builds: remove the app (on macOS move it to the Trash; on Windows use Settings → Apps), then delete the data folder listed above and, if you like, the <strong>University</strong> folder. On macOS you can also delete <code>~/Library/LaunchAgents/io.github.umutylcn.blackboard-sync.menubar.plist</code>.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="children">
+      <h2 id="children">Children</h2>
+      <p>The app is meant for students using their school’s Blackboard account and is not directed at children. It does not ask anyone for their age or any other personal information.</p>
+    </section>
+
+    <section aria-labelledby="changes">
+      <h2 id="changes">Changes to this policy</h2>
+      <p>If the app’s use of data changes, this page is updated and the date above is changed. Earlier versions can be seen in the repository history on GitHub.</p>
+    </section>
+
+    <section aria-labelledby="contact">
+      <h2 id="contact">Contact</h2>
+      <p>Send questions or requests through <a href="https://github.com/UmutYLCN/blackboard-sync/issues">GitHub Issues</a>.</p>
+    </section>
+
+    <p class="legal-note">Blackboard Sync is an independent project and is not affiliated with, endorsed by, or sponsored by Anthology Inc. or Blackboard. “Blackboard” is a trademark of its owner.</p>
+  </main>
+
+  <footer class="site-footer wrap">
+    <div class="footer-top"><a class="brand" href="/"><img src="assets/logo-128.png" srcset="assets/logo-256.png 2x" alt="" width="28" height="28">Blackboard Sync</a><div><a href="privacy" aria-current="page">Privacy</a><a href="https://github.com/UmutYLCN/blackboard-sync/blob/main/LICENSE">MIT License</a><a href="https://github.com/UmutYLCN/blackboard-sync">GitHub <span aria-hidden="true">↗</span></a></div></div>
+    <p>Blackboard Sync is an independent project and is not affiliated with, endorsed by, or sponsored by Anthology Inc. or Blackboard. “Blackboard” is a trademark of its owner.</p>
+  </footer>
+</body>
+</html>

@@ -137,7 +137,7 @@ senkronizasyon
 Limit 200. 131 characters.
 
 ```text
-© 2026 Umut Yalcin. MIT Lisansı. Anthology Inc. veya Blackboard ile bağlantılı değildir. “Blackboard”, sahibinin ticari markasıdır.
+© 2026 Umut Yalçın. MIT Lisansı. Anthology Inc. veya Blackboard ile bağlantılı değildir. “Blackboard”, sahibinin ticari markasıdır.
 ```
 
 ## Additional license terms
@@ -150,5 +150,5 @@ Optional. Leave empty: the app is MIT-licensed and the Store's standard license 
 Optional, 255 characters.
 
 ```text
-Umut Yalcin
+Umut Yalçın
 ```
