@@ -1,0 +1,13 @@
+# Package identity of the Microsoft Store (MSIX) build: the only values that
+# change when the app is reserved in Partner Center. Replace every PLACEHOLDER
+# with the value Partner Center shows under Product management > Product
+# identity (docs/MSIX.md). A local or CI test build works with the placeholders.
+
+# Package/Identity/Name ("Package/Identity/Name" in Partner Center).
+name = "PLACEHOLDER.BlackboardSync"
+# Package/Identity/Publisher ("Package/Identity/Publisher", a CN=... string).
+publisher = "CN=PLACEHOLDER-PUBLISHER"
+# Package/Properties/PublisherDisplayName ("Package/Properties/PublisherDisplayName").
+publisher_display_name = "PLACEHOLDER Publisher"
+# Package/Properties/DisplayName: must be a name reserved for the app in Partner Center.
+display_name = "Blackboard Sync"

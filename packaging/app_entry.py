@@ -11,6 +11,9 @@ import sys
 # Hidden self-test used by CI: starts the Playwright driver the browser sign-in
 # needs and loads the web component of the in-app sign-in window.
 CHECK_LOGIN_RUNTIME = "--check-login-runtime"
+# Hidden self-test used by CI on the installed MSIX package: package identity and
+# the start-at-login startup task (see docs/MSIX.md).
+CHECK_PACKAGE = "--check-package"
 CLI_COMMANDS = {"login", "sync", "check", "past-terms", "uninstall", "--version", "-h", "--help"}
 # CLI options that come before the subcommand; the menu bar app passes the
 # school from its settings window as ``--base-url URL sync ...``.
@@ -24,6 +27,11 @@ def main() -> int:
 
         web_view = check_runtime()
         print(f"login runtime ok (Playwright, {web_view})")
+        return 0
+    if args == [CHECK_PACKAGE] and sys.platform == "win32":
+        from blackboard_sync.windows.autostart import check_package
+
+        print(check_package())
         return 0
     if args and (args[0] in CLI_COMMANDS or args[0].split("=", 1)[0] in CLI_GLOBAL_OPTIONS):
         from blackboard_sync.cli import main as cli_main

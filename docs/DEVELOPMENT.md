@@ -773,7 +773,8 @@ uninstalls. On a failure it prints `scripts/windows-gui-snapshot.ps1`: the
 app's windows, its data folder and the logs (the periodic thread stacks are in
 `windows-tray-faults.log`).
 
-The `CI` workflow runs the tests on macOS and Windows for pull requests and pushes to `main`.
+The `CI` workflow runs the tests on macOS and Windows and builds the unsigned
+Microsoft Store package ([MSIX.md](MSIX.md)) for pull requests and pushes to `main`.
 
 The release asset contract is `Blackboard-Sync-<version>.dmg` for macOS and
 `Blackboard-Sync-<version>-Setup.exe` for Windows. Both must be listed in the
