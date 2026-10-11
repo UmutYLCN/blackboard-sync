@@ -3,7 +3,8 @@
 What the window shows and means lives in ``main_window_model.py`` (sections,
 the overview, the unsaved-changes bar) and ``settings_form.py`` (the Genel
 form, validation, what a changed school or folder implies); this module only
-lays out controls, runs the folder picker and reports clicks.
+lays out controls, runs the folder picker and reports clicks. The sync
+illustration is drawn by ``sync_scene_view.py``.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from AppKit import (
     NSTextField,
     NSView,
     NSViewHeightSizable,
+    NSViewMaxYMargin,
     NSViewMinYMargin,
     NSViewWidthSizable,
     NSVisualEffectBlendingModeBehindWindow,
@@ -61,6 +63,8 @@ from blackboard_sync.menubar.main_window_model import (
     DELETED,
     GENERAL,
     OVERVIEW,
+    SCENE_COMPACT,
+    SCENE_FIRST,
     START_STEPS,
     T_NAV_GENERAL,
     T_NAV_DELETED,
@@ -110,6 +114,7 @@ from blackboard_sync.menubar.settings_form import (
     interval_title,
     window_height,
 )
+from blackboard_sync.menubar.sync_scene_view import SyncSceneView
 from blackboard_sync.settings import display_path
 
 # The window keeps its width; only the height follows the screen and the student.
@@ -126,6 +131,9 @@ COLUMN = (INNER - GAP) // 2
 FIELD_HEIGHT = 24
 BUTTON_HEIGHT = 32
 ROW_HEIGHT = 52
+AVATAR = 34  # the sidebar's account card
+SCENE_HEIGHT = 84  # the small illustration above Son indirilenler while a sync runs
+FIRST_SCENE = (320, 187)  # the large one in the empty list on the first sync
 # Buttons whose title changes with the app's state ("Giriş yap" / "Hesaptan
 # çıkış yap") keep one width so the row does not jump.
 ACTION_WIDTH = 160
@@ -430,10 +438,29 @@ class MainWindow:
         self.nav_items[GENERAL][2].setStringValue_(T_NAV_GENERAL)
         self.nav_items[DELETED][2].setStringValue_(T_NAV_DELETED)
 
-        self.sidebar_account = _label("", _small(), bold=True)
-        self.sidebar_account.setFrame_(NSMakeRect(16, HEIGHT - 36, SIDEBAR - 32, 16))
-        self.sidebar_account.setAutoresizingMask_(NSViewMinYMargin)
-        view.addSubview_(self.sidebar_account)
+        # The account at the bottom: who is signed in, the last sync and a badge or "Giriş yap".
+        self.sidebar_view = view
+        width = SIDEBAR - 20
+        self.account_card = _card(NSMakeRect(10, HEIGHT - 92, width, 80))
+        self.account_card.setAutoresizingMask_(NSViewMinYMargin)
+        content = self.account_card.contentView()
+        self.avatar = _pill(NSMakeRect(12, 12, AVATAR, AVATAR),
+                            NSColor.controlAccentColor().colorWithAlphaComponent_(0.18))
+        content.addSubview_(self.avatar)
+        self.avatar_text = _centered("", NSMakeRect(0, 0, AVATAR, AVATAR), 12, bold=True)
+        self.avatar.contentView().addSubview_(self.avatar_text)
+        self.account_title = _label("", 12, bold=True)
+        content.addSubview_(self.account_title)
+        self.badge = _pill(NSMakeRect(0, 0, 10, 18), NSColor.controlAccentColor().colorWithAlphaComponent_(0.18))
+        self.badge_text = _label("", 10)
+        self.badge.contentView().addSubview_(self.badge_text)
+        content.addSubview_(self.badge)
+        self.account_detail = _label("", _small() - 0.5, secondary=True)
+        content.addSubview_(self.account_detail)
+        self.login_button = NSButton.buttonWithTitle_target_action_("", self.target, "login:")
+        _primary(self.login_button)
+        content.addSubview_(self.login_button)
+        view.addSubview_(self.account_card)
 
     def _header(self, page, title: str):
         label = _label(title, 22, bold=True)
@@ -545,27 +572,19 @@ class MainWindow:
             x -= 8
         self.folder_button = folder
 
-        # The account and the last sync.
-        self.account_card = _card(NSMakeRect(PAD, HEADER, INNER, 72))
-        content = self.account_card.contentView()
-        self.avatar = _pill(NSMakeRect(16, 16, 40, 40), NSColor.controlAccentColor().colorWithAlphaComponent_(0.18))
-        content.addSubview_(self.avatar)
-        self.avatar_text = _centered("", NSMakeRect(0, 0, 40, 40), 13, bold=True)
-        self.avatar.contentView().addSubview_(self.avatar_text)
-        self.account_title = _label("", 14, bold=True)
-        content.addSubview_(self.account_title)
-        self.account_detail = _label("", secondary=True)
-        content.addSubview_(self.account_detail)
+        # A note or the last error, the one thing the sidebar's account card has no room for.
         self.account_message = _label("", _small())
-        content.addSubview_(self.account_message)
-        self.badge = _pill(NSMakeRect(0, 0, 10, 20), NSColor.systemGreenColor().colorWithAlphaComponent_(0.18))
-        self.badge_text = _label("", _small())
-        self.badge.contentView().addSubview_(self.badge_text)
-        content.addSubview_(self.badge)
-        self.login_button = NSButton.buttonWithTitle_target_action_("", self.target, "login:")
-        _primary(self.login_button)
-        content.addSubview_(self.login_button)
-        page.addSubview_(self.account_card)
+        page.addSubview_(self.account_message)
+
+        # While a sync runs and files are listed already: a small illustration above them.
+        self.scene_card = _card(NSMakeRect(PAD, HEADER, INNER, SCENE_HEIGHT))
+        content = self.scene_card.contentView()
+        self.scene_view = SyncSceneView.alloc().initWithFrame_(NSMakeRect(14, 6, 124, SCENE_HEIGHT - 12))
+        content.addSubview_(self.scene_view)
+        self.scene_line = _label("", 13)
+        self.scene_line.setFrame_(NSMakeRect(152, (SCENE_HEIGHT - 18) / 2, INNER - 172, 18))
+        content.addSubview_(self.scene_line)
+        page.addSubview_(self.scene_card)
 
         # Son indirilenler: a click opens the file in its own application.
         self.recent_card = _card(NSMakeRect(PAD, HEADER + 88, INNER, HEIGHT - HEADER - 88 - PAD))
@@ -582,42 +601,80 @@ class MainWindow:
         height = self.recent_card.frame().size.height
         self.recent_scroll, _ = _scroll(NSMakeRect(0, 46, INNER, height - 52), 1)
         content.addSubview_(self.recent_scroll)
+        # The first sync, before anything is listed: a large illustration in place of the empty list.
+        self.first_scene = SyncSceneView.alloc().initWithFrame_(NSMakeRect(0, 0, *FIRST_SCENE))
+        self.first_line = _label("", 13, secondary=True)
+        self.first_line.setAlignment_(NSTextAlignmentCenter)
+        for view in (self.first_scene, self.first_line):
+            view.setAutoresizingMask_(NSViewMinYMargin | NSViewMaxYMargin)  # stays centred as the card grows
+            content.addSubview_(view)
         page.addSubview_(self.recent_card)
 
     def _layout_account(self) -> None:
+        """The sidebar's account card, kept at the bottom of the sidebar."""
         card = self.status.account
-        width = INNER
-        right = width - 16
-        if card.action_title:
-            self.login_button.setTitle_(card.action_title)
-            button_width = max(self.login_button.fittingSize().width + 24, 110)
-            self.login_button.setFrame_(NSMakeRect(right - button_width, 0, button_width, BUTTON_HEIGHT))
-            right -= button_width + 12
-        self.login_button.setHidden_(not card.action_title)
-        self.login_button.setEnabled_(card.action_enabled)
+        width = SIDEBAR - 20
+        text_x = 12 + AVATAR + 10
         self.badge.setHidden_(not card.badge)
         if card.badge:
             self.badge_text.setStringValue_(card.badge)
             text = self.badge_text.fittingSize()
-            badge_width = text.width + 20
-            self.badge.setFrame_(NSMakeRect(right - badge_width, 0, badge_width, 22))
-            self.badge_text.setFrame_(NSMakeRect(10, (22 - text.height) / 2, text.width, text.height))
-            right -= badge_width + 12
-        lines = 3 if card.message else 2
-        height = 72 if lines == 2 else 90
-        top = (height - 40) / 2
-        self.avatar.setFrameOrigin_((16, top))
-        text_width = right - 68
-        for field, y, h in ((self.account_title, 0, 18), (self.account_detail, 20, 17), (self.account_message, 39, 16)):
-            field.setFrame_(NSMakeRect(68, (height - lines * 19) / 2 + y, text_width, h))
-        for control in (self.login_button, self.badge):
-            frame = control.frame()
-            control.setFrameOrigin_((frame.origin.x, (height - frame.size.height) / 2))
+            badge_width = min(text.width + 16, width - text_x - 10)
+            self.badge.setFrame_(NSMakeRect(text_x + 1, 12 + AVATAR - 18 + 1, badge_width, 18))
+            self.badge_text.setFrame_(NSMakeRect(8, (18 - text.height) / 2, badge_width - 16, text.height))
+            self.account_title.setFrame_(NSMakeRect(text_x, 11, width - text_x - 10, 16))
+        else:
+            self.account_title.setFrame_(NSMakeRect(text_x, 12 + (AVATAR - 16) / 2, width - text_x - 10, 16))
+        self.avatar.setFrameOrigin_((12, 12))
+        y = 12 + AVATAR + 8
+        self.account_detail.setFrame_(NSMakeRect(12, y, width - 24, 15))
+        y += 15 + 10
+        if card.action_title:
+            self.login_button.setTitle_(card.action_title)
+            self.login_button.setFrame_(NSMakeRect(8, y - 4, width - 16, BUTTON_HEIGHT))
+            y += BUTTON_HEIGHT - 4 + 8
+        self.login_button.setHidden_(not card.action_title)
+        self.login_button.setEnabled_(card.action_enabled)
+        sidebar_height = self.sidebar_view.frame().size.height
+        self.account_card.setFrame_(NSMakeRect(10, sidebar_height - y - 12, width, y))
+        self.account_card.contentView().setFrame_(NSMakeRect(0, 0, width, y))
+
+    def _layout_overview(self) -> None:
+        """The note, the small illustration while a sync runs, then Son indirilenler below."""
+        status = self.status
         page_height = self.pages[OVERVIEW].frame().size.height
-        self.account_card.setFrame_(NSMakeRect(PAD, HEADER, INNER, height))
-        self.account_card.contentView().setFrame_(NSMakeRect(0, 0, INNER, height))
-        top = HEADER + height + GAP
-        self.recent_card.setFrame_(NSMakeRect(PAD, top, INNER, max(page_height - top - PAD, 120)))
+        top = HEADER
+        self.account_message.setHidden_(not status.account.message)
+        if status.account.message:
+            self.account_message.setFrame_(NSMakeRect(PAD, top - 8, INNER, 16))
+            top += 16
+        compact = status.scene == SCENE_COMPACT
+        self.scene_card.setHidden_(not compact)
+        if compact:
+            self.scene_card.setFrame_(NSMakeRect(PAD, top, INNER, SCENE_HEIGHT))
+            top += SCENE_HEIGHT + GAP
+        height = max(page_height - top - PAD, 120)
+        self.recent_card.setFrame_(NSMakeRect(PAD, top, INNER, height))
+        first = status.scene == SCENE_FIRST
+        self.recent_scroll.setHidden_(first)
+        self.first_scene.setHidden_(not first)
+        self.first_line.setHidden_(not first)
+        if first:
+            width, scene_height = FIRST_SCENE
+            # Smaller on a short window, so the line under it still shows.
+            scene_height = max(60, min(scene_height, height - 46 - 40 - 16))
+            width = scene_height * FIRST_SCENE[0] / FIRST_SCENE[1]
+            y = 46 + max(0, (height - 46 - scene_height - 30) / 2 - 8)
+            self.first_scene.setFrame_(NSMakeRect((INNER - width) / 2, y, width, scene_height))
+            self.first_line.setFrame_(NSMakeRect(20, y + scene_height + 10, INNER - 40, 18))
+
+    def _animate(self) -> None:
+        """Run the illustration in view while the window is open; stop the other one."""
+        for view, scene in ((self.scene_view, SCENE_COMPACT), (self.first_scene, SCENE_FIRST)):
+            if self.status.scene == scene and self.state.open:
+                view.start()
+            else:
+                view.stop()
 
     def _build_general(self, page) -> None:
         self._header(page, T_NAV_GENERAL)
@@ -828,6 +885,7 @@ class MainWindow:
         top = visible.origin.y + visible.size.height - height
         self.window.setFrameOrigin_((origin.x, max(visible.origin.y, min(origin.y, top))))
         self._layout_account()
+        self._layout_overview()
         self._layout_bar()
 
     # -- behaviour ------------------------------------------------------------
@@ -836,6 +894,7 @@ class MainWindow:
         self.state.show(section)
         self._show_section()
         self.refresh_deleted()
+        self._animate()
         if not self.window.isVisible():
             self.fit_to_screen()
         if self.window.isMiniaturized():
@@ -936,7 +995,6 @@ class MainWindow:
         self.status = status
         self.nav_items[OVERVIEW][2].setStringValue_(status.overview_title)
         self.nav_items[OVERVIEW][4].setAccessibilityLabel_(status.overview_title)
-        self.sidebar_account.setStringValue_(status.account.title)
         if first_run_changed:
             self._show_section()
         # Başlangıç
@@ -947,18 +1005,27 @@ class MainWindow:
         self.overview_title.setStringValue_(status.overview_title)
         self.sync_button.setTitle_(status.sync_title)
         self.sync_button.setEnabled_(status.sync_enabled)
+        self.account_message.setStringValue_(status.account.message)
+        self.account_message.setToolTip_(status.account.message or None)
+        self.account_message.setTextColor_(NSColor.systemOrangeColor() if status.account.warning
+                                           else NSColor.secondaryLabelColor())
+        self.scene_line.setStringValue_(status.scene_line)
+        self.first_line.setStringValue_(status.scene_line)
+        self._layout_overview()
+        self._animate()
+        self._draw_recent()
+        # The account, at the bottom of the sidebar.
+        self.account_card.setHidden_(not status.shows_account)
         card = status.account
         _tone(self.account_card, card.warning)
         self.avatar_text.setStringValue_(card.initials)
         self.avatar.setFillColor_((NSColor.systemOrangeColor() if card.warning else NSColor.controlAccentColor())
                                   .colorWithAlphaComponent_(0.18))
         self.account_title.setStringValue_(card.title)
+        self.account_title.setToolTip_(card.title)
         self.account_detail.setStringValue_(card.detail)
-        self.account_message.setStringValue_(card.message)
-        self.account_message.setToolTip_(card.message or None)
-        self.account_message.setTextColor_(NSColor.systemOrangeColor() if card.warning else NSColor.secondaryLabelColor())
+        self.account_detail.setToolTip_(card.detail)
         self._layout_account()
-        self._draw_recent()
         # Genel
         form = status.form
         self.account_label.setStringValue_(form.account)
@@ -1143,6 +1210,7 @@ class MainWindow:
     def closed(self) -> None:
         """The window went away: unsaved edits are dropped, the app keeps running."""
         self.state.closed()
+        self._animate()
         self.set_values(self.on_values())
         self.on_close()
 
