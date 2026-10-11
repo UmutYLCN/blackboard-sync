@@ -19,9 +19,9 @@ still shows **Blackboard Sync**.
 | --- | --- |
 | `listing-tr.md` | Turkish Store listing (primary market), ready to paste |
 | `listing-en.md` | English Store listing (additional language), ready to paste |
-| `screenshots/draft-*.png` | Draft screenshots, 1920x1080. **Do not upload:** they show the macOS app (see [Screenshots](#screenshots)) |
+| `screenshots/01-genel-bakis.png`, `02-baslangic.png`, `03-ilk-senkron.png` | Final Windows screenshots, 1920x1080, in upload order (see [Screenshots](#screenshots)) |
 | `screenshots/render.sh` | Renders the screenshots from `screenshots/src/` |
-| `screenshots/src/` | `template.html`, `shots.js` (titles, captions, what to capture), `draft-input/` (macOS captures), `windows/` (where the Windows captures go) |
+| `screenshots/src/` | `template.html`, `shots.js` (titles, captions, what to capture), `windows/` (the three Windows captures as PNG) |
 | `trailer/make-trailer.sh` | Builds the 1920x1080 trailer and its thumbnail into `out/` |
 | `trailer/draft-trailer-thumbnail.png` | The thumbnail it makes, for review |
 | `images/hero-art.png` | 16:9 Super hero art, 1920x1080 (no text, no UI) |
@@ -40,8 +40,8 @@ Chrome) and, for the trailer, `ffmpeg`.
 1. Download the package from CI (see [4. Packages](#4-packages)).
 2. Do the manual test in `docs/MSIX.md` ("Manual Windows verification still required")
    with that exact `.msix`, signed with the test certificate as described there.
-3. During the test, take the Windows screenshots listed in [Screenshots](#screenshots)
-   and render the final images.
+3. Use the three final Windows images in [Screenshots](#screenshots). Capture additional
+   screens during future manual tests to improve the listing.
 
 ## Partner Center checklist
 
@@ -147,9 +147,9 @@ copy.
   description, product features, keywords, copyright and trademark info, developed by.
   Leave "What's new in this version" empty for the first submission. The non-affiliation
   sentence is the second paragraph of the description and part of the copyright line.
-- [ ] **Screenshots:** upload `01-genel-bakis.png` … `05-klasorler.png` in that order, with
-  the captions from the listing file. Only the final (Windows) images; never `draft-*.png`.
-  Images are uploaded separately for each language.
+- [ ] **Screenshots:** upload `01-genel-bakis.png`, `02-baslangic.png`, then
+  `03-ilk-senkron.png`, with the captions from the listing file. These are the final
+  Windows images. Upload the same Turkish-titled images separately for each language.
 - [ ] **Store logos:** poster art (1440x2160): `images/poster-art.png`; 1:1 box art
   (2160x2160): `images/box-art.png`; 1:1 app tile icons: `images/store-logo-300.png`
   (300x300), `images/store-logo-150.png` (150x150), `images/store-logo-71.png` (71x71).
@@ -196,40 +196,51 @@ up to 10 per language, with an optional caption of 200 characters each
 They must show the Windows app as it is. The images here are 1920x1080 with one large
 Turkish title at the top (Microsoft asks for key visuals and text in the top two-thirds).
 
-The drafts use the only captures available, which are of the **macOS** app: the Windows app
-is a different (Tk) window. Every draft carries an orange "TASLAK · Store'a yüklemeyin" label;
-`draft-05-klasorler.png` is an empty placeholder.
+The first submission uses the three **light-mode Windows** captures taken by the
+maintainer. These final PNGs have no TASLAK label; the old macOS drafts and their inputs
+have been removed. Use the same Turkish-titled images for both listing languages.
 
-![Draft 1](screenshots/draft-01-genel-bakis.png)
+| Final image / input filename | Windows capture | Original size |
+| --- | --- | --- |
+| [01-genel-bakis.png](screenshots/01-genel-bakis.png) | **Genel bakış**, after a sync: **Son indirilenler**, 10 files | 942x726 |
+| [02-baslangic.png](screenshots/02-baslangic.png) | **Başlangıç**: school Blackboard address, save folder, **Bilgisayar açılınca başlat**, **Giriş yap** | 942x672 |
+| [03-ilk-senkron.png](screenshots/03-ilk-senkron.png) | **Genel bakış**, first sync: **Yeni içerik kontrol ediliyor…**, **Senkron sürüyor** | 942x672 |
 
-### Windows captures to take during the manual test
+![Genel bakış](screenshots/01-genel-bakis.png)
 
-Use the Store package (signed with the test certificate), signed in with a real account,
-after at least one sync. Set Windows display scaling to 150% or 200% (Settings > System >
-Display) so the window is captured large; the app opens at 940x640 (logical) and the
-template scales any capture to fit. Capture only the window, as PNG (Snipping Tool >
-Window mode, or Alt+Print Screen and paste into Paint). Keep the window free of anything
-that should not be public (the sidebar shows the account's name).
+### Sources and rendering
 
-| File (`screenshots/src/windows/`) | Window and state |
-| --- | --- |
-| `01-genel-bakis.png` | Main window, **Genel bakış**, after a sync: the **Son indirilenler** list filled |
-| `02-ayarlar.png` | Main window, **Genel**, scrolled to the top: **Hesap**, **Klasör** and **Genel** sections (automatic sync, start at sign-in) |
-| `03-silinenler.png` | Main window, **Silinenler**, with a few deleted files listed (delete 2-4 downloaded files from the University folder first) |
-| `04-eski-donemler.png` | Main window, **Genel**, scrolled to **Eski dönemler** with a term selected in the list |
-| `05-klasorler.png` | File Explorer on `Belgeler\University`, with a term folder and a course folder open in the navigation pane |
+Inputs are in `screenshots/src/windows/`. They were converted to PNG from
+`genel-bakis-liste.jpeg`, `baslangic.jpeg` and `senkron-suruyor.jpeg`, respectively,
+received via WhatsApp. The conversion preserves the decoded pixels and original
+sizes; it cannot recover detail lost to JPEG compression. No sharpening or artificial
+upscaling was applied. The existing template fits each capture within its image area.
 
-Then render, from the repository root:
+Render from the repository root:
 
 ```sh
 ./store/microsoft/screenshots/render.sh
 ```
 
-Each shot with a Windows capture is written as `screenshots/<id>.png` (no label) and its
-draft is removed; shots still without one stay drafts. `--lang en` renders English titles
-into `screenshots/en/`. Titles, captions and the list of shots are in
-`screenshots/src/shots.js`. A screenshot of a toast notification after a sync would be a
-good sixth image; add an entry to `shots.js` for it.
+The three final 1920x1080 PNGs are written directly to `screenshots/`. Upload them in the
+table's order, with the captions in `listing-tr.md` or `listing-en.md` (also stored in
+`screenshots/src/shots.js`). The maintainer's upload copies are in
+`~/Downloads/blackboard-sync-store/screenshots-final/`.
+
+### To add later
+
+These three captures are enough for the first submission. The following have no Windows
+captures yet and are deliberately absent from `shots.js` and the final image set:
+
+- **Silinenler**: a few deleted files available to download again.
+- **Eski dönemler**: a past term selected in the settings.
+- **Klasörler**: File Explorer showing the University term/course folder structure.
+- **Genel settings**: automatic sync options and other settings.
+
+**Dark-mode captures** could not be taken and are also a later improvement. Higher-quality
+PNG originals, transferred without WhatsApp compression, can replace the current inputs
+later. Capture only the Windows app window, keep private information out of view, and add
+new entries to `shots.js` only when the corresponding Windows captures are available.
 
 ## Trailer
 
@@ -283,16 +294,17 @@ risks failing certification. A trailer can be added later, rebuilt from Windows 
 1. **Notes for certification / test account:** how certification testers can sign in
    (school test account or explanation only). The biggest certification risk.
 2. **Markets:** all markets or Turkey only.
-3. **English listing:** add it or not; if yes, Turkish-titled screenshots or `--lang en` ones.
+3. **English listing:** add it or not (the screenshots keep their Turkish titles).
 4. **Category:** Education > Study aids is proposed; secondary category Productivity or none.
 5. **Support contact:** GitHub Issues URL or an email address.
 6. **OneDrive backup declaration:** keep the default (checked) or uncheck.
 7. **Publishing hold:** publish on certification or hold until "Publish now".
-8. **Screenshot style:** Microsoft's guidelines say "Don't add additional logos, icons, or
-   marketing messages to your screenshots"; the images here carry a title (no logo). Keep
-   the titles (common in the Store) or render the plain captures.
 
 ## Settled decisions
+
+- **Screenshots:** use the three available light-mode Windows captures with Turkish titles
+  for the first submission, including the English listing if added. More views and dark
+  mode can follow later.
 
 - **Privacy policy page:** the page is now English, lives at `/privacy` (the old `/gizlilik`
   redirects there) and covers the Store package (data folder, startup task, no GitHub

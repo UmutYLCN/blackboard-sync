@@ -97,17 +97,14 @@ Free and open source
 
 ## Screenshot captions
 
-200 characters each, same order as the Turkish listing. The images carry Turkish titles;
-`./screenshots/render.sh --lang en` renders English-titled versions into `screenshots/en/`
-if the maintainer prefers those for this listing.
+200 characters each, one per screenshot, in this order. The same text lives in
+`screenshots/src/shots.js`. Use the same Turkish-titled images for both listings.
 
 | Image | Caption |
 | --- | --- |
 | `01-genel-bakis.png` | Overview: new course files on Blackboard download in the background; the latest downloads are listed in one place. |
-| `02-ayarlar.png` | General: school address, download folder, automatic sync (every 30 minutes, hourly, every 3 hours or manual only) and start at sign-in. |
-| `03-silinenler.png` | Deleted: pick downloaded files you removed from the folder and download them again, or dismiss them from the list. |
-| `04-eski-donemler.png` | Past terms: download the files of an earlier term in one go. A past term is downloaded once and not kept up to date. |
-| `05-klasorler.png` | Files are saved in the University folder inside the folder you choose, by term and course as on Blackboard. |
+| `02-baslangic.png` | Getting started: enter your school's Blackboard address, choose a save folder and whether to start with your computer, then sign in. |
+| `03-ilk-senkron.png` | The first sync starts after sign-in. Overview shows that syncing is in progress while the app checks for new content. |
 
 ## Trailer title
 
