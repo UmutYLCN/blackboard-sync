@@ -31,7 +31,7 @@
   <Applications>
     <Application Id="BlackboardSync" Executable="Blackboard Sync.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="${display_name}"
+        DisplayName="${visual_display_name}"
         Description="Blackboard ders içeriklerini bilgisayarınızdaki klasörlere eşitler."
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
@@ -43,13 +43,13 @@
              or the Setup copy's blackboard-sync://update association. -->
         <uap3:Extension Category="windows.protocol" Executable="Blackboard Sync.exe" EntryPoint="Windows.FullTrustApplication">
           <uap3:Protocol Name="blackboard-sync-store" Parameters="--store-notification">
-            <uap:DisplayName>${display_name}</uap:DisplayName>
+            <uap:DisplayName>${visual_display_name}</uap:DisplayName>
           </uap3:Protocol>
         </uap3:Extension>
         <!-- Start at login. Off until the app turns it on (its settings), as the
              installer build's HKCU Run value; TaskId is autostart.TASK_ID. -->
         <uap5:Extension Category="windows.startupTask" Executable="Blackboard Sync.exe" EntryPoint="Windows.FullTrustApplication">
-          <uap5:StartupTask TaskId="BlackboardSyncStartup" Enabled="false" DisplayName="${display_name}" />
+          <uap5:StartupTask TaskId="BlackboardSyncStartup" Enabled="false" DisplayName="${visual_display_name}" />
         </uap5:Extension>
       </Extensions>
     </Application>

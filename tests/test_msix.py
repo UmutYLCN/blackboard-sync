@@ -29,10 +29,11 @@ def load_make_layout():
 
 make_layout = load_make_layout()
 IDENTITY = {
-    "name": "Example.BlackboardSync",
-    "publisher": "CN=00000000-0000-0000-0000-000000000000",
-    "publisher_display_name": "Ada & Co",
-    "display_name": "Blackboard Sync",
+    "name": "UmutYLCN.blackboard-sync",
+    "publisher": "CN=32397A73-9242-4378-90EB-34A15F7502AE",
+    "publisher_display_name": "UmutYLCN",
+    "display_name": "blackboard-sync",
+    "visual_display_name": "Blackboard Sync",
 }
 
 
@@ -174,12 +175,13 @@ def test_manifest_is_a_full_trust_app_with_a_startup_task():
     root = ET.fromstring(make_layout.manifest(IDENTITY, "1.5.1.0"))
     identity = root.find("m:Identity", NS)
     assert identity.attrib == {
-        "Name": "Example.BlackboardSync",
-        "Publisher": "CN=00000000-0000-0000-0000-000000000000",
+        "Name": "UmutYLCN.blackboard-sync",
+        "Publisher": "CN=32397A73-9242-4378-90EB-34A15F7502AE",
         "Version": "1.5.1.0",
         "ProcessorArchitecture": "x64",
     }
-    assert root.findtext("m:Properties/m:PublisherDisplayName", namespaces=NS) == "Ada & Co"
+    assert root.findtext("m:Properties/m:DisplayName", namespaces=NS) == "blackboard-sync"
+    assert root.findtext("m:Properties/m:PublisherDisplayName", namespaces=NS) == "UmutYLCN"
     application = root.find("m:Applications/m:Application", NS)
     # The PyInstaller spec's windowed exe.
     assert application.get("Executable") == "Blackboard Sync.exe"
@@ -192,16 +194,19 @@ def test_manifest_is_a_full_trust_app_with_a_startup_task():
     protocol = protocol_extension.find("uap3:Protocol", NS)
     assert protocol.get("Name") == activation.STORE_PROTOCOL
     assert protocol.get("Parameters") == "--store-notification"
+    assert protocol.findtext("uap:DisplayName", namespaces=NS) == "Blackboard Sync"
     extension = application.find("m:Extensions/uap5:Extension", NS)
     assert extension.get("Category") == "windows.startupTask"
     assert extension.get("Executable") == "Blackboard Sync.exe"
     task = extension.find("uap5:StartupTask", NS)
     # Off until the user's settings turn it on, as the installer build's Run value.
     assert task.get("TaskId") == autostart.TASK_ID and task.get("Enabled") == "false"
+    assert task.get("DisplayName") == "Blackboard Sync"
     capabilities = root.find("m:Capabilities", NS)
     assert capabilities.find("m:Capability", NS).get("Name") == "internetClient"
     assert capabilities.find("rescap:Capability", NS).get("Name") == "runFullTrust"
     visuals = application.find("uap:VisualElements", NS)
+    assert visuals.get("DisplayName") == "Blackboard Sync"
     logos = {visuals.get("Square150x150Logo"), visuals.get("Square44x44Logo"),
              visuals.find("uap:DefaultTile", NS).get("Wide310x150Logo"),
              root.findtext("m:Properties/m:Logo", namespaces=NS)}
@@ -216,7 +221,8 @@ def test_spec_builds_the_exe_the_manifest_names():
 def test_identity_placeholders_are_marked_in_one_file():
     identity = make_layout.load_identity()
     assert set(identity) == set(make_layout.IDENTITY_KEYS)
-    assert make_layout.placeholders(identity) == ["name", "publisher", "publisher_display_name"]
+    assert make_layout.placeholders(identity) == []
+    assert make_layout.placeholders({"name": "PLACEHOLDER.name"}) == ["name"]
     assert make_layout.placeholders(IDENTITY) == []
 
 
