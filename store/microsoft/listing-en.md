@@ -20,12 +20,12 @@ Downloads the course files, announcements and notes from your school's Blackboar
 
 ## Description
 
-Limit 10,000, plain text, no URLs. 2,452 characters.
+Limit 10,000, plain text, no URLs. 2,441 characters.
 
 ```text
 Downloads your Blackboard course content to your computer automatically, so you no longer have to open the site and download files one by one.
 
-blackboard-sync is an independent project, not affiliated with, endorsed by, or sponsored by Anthology Inc. or Blackboard. Blackboard is a trademark of its owner.
+blackboard-sync is an independent project, not affiliated with Anthology Inc. or Blackboard. “Blackboard” is a trademark of its owner, not of this app.
 
 HOW IT WORKS
 1. Enter your school's Blackboard address and choose the folder for your files.
@@ -131,10 +131,10 @@ student
 
 ## Copyright and trademark info
 
-Limit 200. 122 characters.
+Limit 200. 184 characters.
 
 ```text
-© 2026 Umut Yalçın. MIT License. Not affiliated with Anthology Inc. or Blackboard. Blackboard is a trademark of its owner.
+© 2026 Umut Yalçın. MIT License. blackboard-sync is an independent project, not affiliated with Anthology Inc. or Blackboard. “Blackboard” is a trademark of its owner, not of this app.
 ```
 
 ## Additional license terms
