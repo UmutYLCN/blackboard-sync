@@ -474,6 +474,97 @@ p {
   margin: 22px 0 0;
 }
 
+.legal {
+  max-width: 760px;
+  padding-block: 48px 64px;
+}
+
+.legal h1 {
+  font-size: clamp(36px,4.4vw,52px);
+  letter-spacing: -2px;
+  margin-bottom: 12px;
+}
+
+.legal h2 {
+  font-size: 23px;
+  letter-spacing: -.5px;
+  margin: 44px 0 12px;
+}
+
+.legal p,.legal li {
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.legal li {
+  line-height: 1.65;
+  margin-bottom: 8px;
+}
+
+.legal ul {
+  padding-left: 20px;
+  margin: 0;
+}
+
+.legal strong {
+  color: var(--text);
+  font-weight: 550;
+}
+
+.legal a {
+  color: var(--cyan);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.legal code {
+  font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size: .9em;
+  color: #cbd7e8;
+  overflow-wrap: anywhere;
+}
+
+.legal .legal-updated {
+  font-size: 13px;
+  margin: 0 0 28px;
+}
+
+.legal .legal-lead {
+  font-size: 17px;
+  color: #cbd7e8;
+}
+
+.legal .legal-paths {
+  list-style: none;
+  padding: 18px 22px;
+  background: #111e32;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.legal-paths li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.legal-paths li:last-child {
+  margin-bottom: 0;
+}
+
+.legal-paths span {
+  min-width: 72px;
+  color: var(--text);
+  font-weight: 550;
+}
+
+.legal .legal-note {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+
 @media(min-width:1400px) {
   .hero {
     padding-top: 80px;
@@ -648,6 +739,19 @@ p {
   }
   .site-footer>p {
     font-size: 11px;
+  }
+  .legal {
+    padding-block: 32px 44px;
+  }
+  .legal h2 {
+    font-size: 21px;
+    margin-top: 36px;
+  }
+  .legal p,.legal li {
+    font-size: 14px;
+  }
+  .legal .legal-lead {
+    font-size: 16px;
   }
 }
 

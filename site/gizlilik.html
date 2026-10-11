@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1425">
+  <title>Gizlilik Politikası — Blackboard Sync</title>
+  <meta name="description" content="Blackboard Sync’in bilgisayarında neleri sakladığı, internete neleri gönderdiği ve verilerini nasıl silebileceğin.">
+  <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#icerik">İçeriğe geç</a>
+  <header class="site-header wrap">
+    <a class="brand" href="/" aria-label="Blackboard Sync ana sayfa"><img src="assets/logo-128.png" srcset="assets/logo-256.png 2x" alt="" width="40" height="40">Blackboard Sync</a>
+    <nav aria-label="Ana menü">
+      <a class="nav-link" href="/">Ana sayfa</a>
+      <a class="nav-link nav-github" href="https://github.com/UmutYLCN/blackboard-sync"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.11.79-.25.79-.56v-1.97c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.74.4-1.25.73-1.54-2.56-.29-5.25-1.28-5.25-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.27 5.69.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>GitHub</a>
+    </nav>
+  </header>
+
+  <main id="icerik" class="legal wrap">
+    <p class="eyebrow">Gizlilik</p>
+    <h1>Gizlilik Politikası</h1>
+    <p class="legal-updated">Son güncelleme: <time datetime="2026-10-11">11 Ekim 2026</time></p>
+
+    <p class="legal-lead">Blackboard Sync, Blackboard Learn’deki ders içeriklerini kendi bilgisayarına indiren, macOS ve Windows için ücretsiz ve açık kaynaklı bir uygulamadır. Bu sayfa uygulamanın bilgisayarında neleri sakladığını, internete neleri gönderdiğini ve bunları nasıl silebileceğini anlatır. Uygulamanın kaynak kodu <a href="https://github.com/UmutYLCN/blackboard-sync">GitHub’da</a> herkese açıktır; buradaki her ifade o koda dayanır.</p>
+
+    <section aria-labelledby="kisaca">
+      <h2 id="kisaca">Kısaca</h2>
+      <ul>
+        <li>Şifreni görmez ve kaydetmez.</li>
+        <li>Giriş oturumu, ayarlar ve indirme kayıtları yalnızca kendi bilgisayarında tutulur.</li>
+        <li>Yalnızca okulunun Blackboard adresiyle (ve onun yönlendirdiği giriş ve dosya adresleriyle) ve güncellemeler için GitHub ile bağlantı kurar.</li>
+        <li>Analiz, reklam veya kullanım takibi (telemetri) yoktur; hesap açman gerekmez.</li>
+        <li>Verilerin kimseyle paylaşılmaz, satılmaz.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="sifre">
+      <h2 id="sifre">Şifren ve girişin</h2>
+      <p>Giriş, okulunun kendi Blackboard giriş sayfasında yapılır: ya bilgisayarındaki bir Chromium tabanlı tarayıcıda (Chrome, Edge, Brave ve benzerleri) uygulamaya ayrılmış ayrı bir tarayıcı profiliyle ya da böyle bir tarayıcı yoksa uygulamanın kendi giriş penceresinde (macOS’ta WKWebView, Windows’ta Microsoft Edge WebView2). Şifreni ve varsa iki adımlı doğrulama kodunu bu sayfaya yazarsın; uygulama bunları görmez, okumaz ve hiçbir yere kaydetmez.</p>
+      <p>Giriş tamamlanınca uygulama yalnızca Blackboard adresine ait oturum çerezlerini alır ve kaydeder. Okulunun tek oturum açma (SSO) sağlayıcısının çerezleri bu kayda girmez.</p>
+    </section>
+
+    <section aria-labelledby="saklanan">
+      <h2 id="saklanan">Bilgisayarında saklananlar</h2>
+      <p>Uygulamanın verileri, yalnızca senin kullanıcı hesabının erişebileceği bir klasörde tutulur:</p>
+      <ul class="legal-paths">
+        <li><span>macOS</span><code>~/Library/Application Support/blackboard-sync</code></li>
+        <li><span>Windows</span><code>%APPDATA%\blackboard-sync</code></li>
+      </ul>
+      <p>Bu klasörde şunlar bulunur:</p>
+      <ul>
+        <li><strong>Oturum</strong> (<code>session.json</code>): Blackboard adresi, Blackboard oturum çerezleri ve Blackboard’un bildirdiği kullanıcı kimliği, kullanıcı adı ve görünen ad. Şifre içermez. Blackboard çerezleri yenilediğinde bu dosya güncellenir.</li>
+        <li><strong>Giriş verileri</strong>: giriş için kullanılan ayrı tarayıcı profili (<code>browser-profile</code>) ve Windows’taki giriş penceresinin web verileri (<code>inapp-profile</code>). macOS’taki giriş penceresinin web verilerini macOS, uygulamaya ait WebKit deposunda tutar.</li>
+        <li><strong>Ayarlar</strong> (<code>settings.json</code>): okulunun Blackboard adresi, kayıt klasörü, senkronizasyon aralığı ve otomatik güncelleme denetiminin açık olup olmadığı.</li>
+        <li><strong>İndirme kayıtları</strong> (<code>state.json</code>, <code>last-run.json</code>, <code>menubar.json</code>): hangi ders içeriklerinin indirildiği, yerel dosya yolları, dosya özetleri (SHA-256) ve boyutları, son senkronizasyonun sonucu. Aynı dosyanın tekrar indirilmemesi ve sildiğin dosyaların “Silinenler” sekmesinde gösterilmesi için kullanılır.</li>
+        <li><strong>Günlükler</strong> (macOS’ta <code>menubar.log</code>, Windows’ta <code>windows-tray.log</code> ve <code>windows-tray-faults.log</code>): hata ayıklama için uygulamanın çalışma kayıtları. Bilgisayarından çıkmaz.</li>
+      </ul>
+      <p><strong>İndirilen ders dosyaları</strong> ve duyurular ile bağlantılar için oluşturulan Markdown notları, seçtiğin kayıt klasöründeki <strong>University</strong> klasörüne kaydedilir. Varsayılan konum macOS’ta <code>~/Documents/University</code>, Windows’ta Belgeler klasöründeki <code>University</code> klasörüdür. Belgeler klasörün iCloud Drive veya OneDrive gibi bir hizmetle eşitleniyorsa, bu dosyalar o hizmetin kendi kurallarıyla eşitlenir; Blackboard Sync bu hizmetlere kendisi bir şey göndermez.</p>
+      <p>“Bilgisayar açılınca başlat” seçeneği açıksa macOS’ta <code>~/Library/LaunchAgents</code> içine bir başlatma dosyası, Windows’ta kullanıcının başlangıç kayıt defteri anahtarına (<code>HKCU\…\Run</code>) bir kayıt eklenir. İndirilen güncelleme dosyası macOS’ta geçici bir klasöre veya İndirilenler klasörüne, Windows’ta geçici bir klasöre kaydedilir.</p>
+    </section>
+
+    <section aria-labelledby="ag">
+      <h2 id="ag">İnternete gönderilenler</h2>
+      <p>Uygulama yalnızca şu adreslerle bağlantı kurar:</p>
+      <ul>
+        <li><strong>Okulunun Blackboard adresi</strong> (ayarlarda yazdığın adres): ders listesi, ders içerikleri, duyurular ve dosyalar bu adresten, kayıtlı oturum çerezlerinle istenir. Blackboard bir dosyayı indirmek için kendi dosya depolama adresine yönlendirirse dosya oradan indirilir. Giriş sırasında okulunun giriş sayfası, okulunun tek oturum açma sağlayıcısına yönlendirebilir.</li>
+        <li><strong>GitHub</strong> (<code>api.github.com</code> ve <code>github.com</code>): yeni sürüm olup olmadığını öğrenmek ve güncellemeyi indirmek için. Otomatik denetim günde bir kez yapılır ve Ayarlar’daki <strong>Güncellemeleri otomatik denetle</strong> seçeneğiyle kapatılabilir. Bu istekte uygulamanın sürüm numarası gönderilir; GitHub, her web isteğinde olduğu gibi IP adresini görür. Güncelleme dosyaları GitHub’ın kendi dosya sunucularından indirilir; yüklenmeden önce dosya boyutu ve sürümle yayımlanan SHA-256 özeti denetlenir.</li>
+      </ul>
+      <p>Giriş sırasında kullanılan tarayıcı veya giriş penceresinin kendi ağ etkinliği, o tarayıcının ya da bileşenin üreticisine bağlıdır. Uygulama, giriş tarayıcısıyla yalnızca bilgisayarın içinde (<code>127.0.0.1</code>) haberleşir.</p>
+    </section>
+
+    <section aria-labelledby="analiz">
+      <h2 id="analiz">Analiz ve izleme yok</h2>
+      <p>Uygulamada analiz, reklam, kullanım istatistiği, hata raporu gönderme veya başka bir telemetri yoktur. Uygulama, geliştiricisinin işlettiği hiçbir sunucuya veri göndermez; geliştirici senin hakkında hiçbir veri almaz. Bu web sitesi de analiz veya izleme aracı içermez.</p>
+    </section>
+
+    <section aria-labelledby="paylasim">
+      <h2 id="paylasim">Üçüncü taraflarla paylaşım</h2>
+      <p>Verilerin hiçbir üçüncü tarafla paylaşılmaz, satılmaz veya kiralanmaz. Uygulamanın bağlandığı tek dış hizmetler yukarıda sayılan okulunun Blackboard sunucusu ve GitHub’dır; bu hizmetler kendi gizlilik politikalarına tabidir.</p>
+    </section>
+
+    <section aria-labelledby="silme">
+      <h2 id="silme">Verilerini silmek</h2>
+      <ul>
+        <li><strong>Hesaptan çıkış yap</strong>: oturum dosyasını ve tüm giriş verilerini (giriş tarayıcısı profili ve giriş penceresinin web verileri) siler. Ayarlar, indirme kayıtları ve ders dosyaları korunur.</li>
+        <li><strong>Uygulamayı kaldır…</strong> (Ayarlar’da, Güncellemeler bölümünde): uygulamayı, veri klasörünü (oturum, giriş verileri, ayarlar, indirme kayıtları, günlükler) ve açılışta başlatma kaydını kaldırır. <strong>İndirilmiş ders dosyalarını da sil</strong> seçeneğini işaretlersen, uygulamanın indirdiği dosyalar da Çöp Sepeti’ne / Geri Dönüşüm Kutusu’na taşınır.</li>
+        <li><strong>Elle silmek</strong> istersen: uygulamayı kaldır (macOS’ta Çöp Sepeti’ne taşı, Windows’ta Ayarlar → Uygulamalar), ardından yukarıdaki veri klasörünü ve istersen <strong>University</strong> klasörünü sil. macOS’ta <code>~/Library/LaunchAgents/io.github.umutylcn.blackboard-sync.menubar.plist</code> dosyası da silinebilir.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="cocuklar">
+      <h2 id="cocuklar">Çocuklar</h2>
+      <p>Uygulama, okullarının Blackboard hesabını kullanan öğrenciler içindir ve çocuklara yönelik değildir. Uygulama kimseden yaş veya başka bir kişisel bilgi istemez.</p>
+    </section>
+
+    <section aria-labelledby="degisiklik">
+      <h2 id="degisiklik">Bu politikadaki değişiklikler</h2>
+      <p>Uygulamanın veri kullanımı değişirse bu sayfa güncellenir ve yukarıdaki tarih değiştirilir. Önceki sürümler GitHub’daki depo geçmişinde görülebilir.</p>
+    </section>
+
+    <section aria-labelledby="iletisim">
+      <h2 id="iletisim">İletişim</h2>
+      <p>Sorularını veya taleplerini <a href="https://github.com/UmutYLCN/blackboard-sync/issues">GitHub Issues</a> üzerinden iletebilirsin.</p>
+    </section>
+
+    <p class="legal-note">Blackboard Sync bağımsız bir projedir; Anthology Inc. veya Blackboard ile bağlantılı değildir, onlar tarafından onaylanmamış veya desteklenmemektedir. “Blackboard”, sahibinin ticari markasıdır.</p>
+  </main>
+
+  <footer class="site-footer wrap">
+    <div class="footer-top"><a class="brand" href="/"><img src="assets/logo-128.png" srcset="assets/logo-256.png 2x" alt="" width="28" height="28">Blackboard Sync</a><div><a href="gizlilik.html" aria-current="page">Gizlilik</a><a href="https://github.com/UmutYLCN/blackboard-sync/blob/main/LICENSE">MIT Lisansı</a><a href="https://github.com/UmutYLCN/blackboard-sync">GitHub <span aria-hidden="true">↗</span></a></div></div>
+    <p>Blackboard Sync bağımsız bir projedir; Anthology Inc. veya Blackboard ile bağlantılı değildir, onlar tarafından onaylanmamış veya desteklenmemektedir. “Blackboard”, sahibinin ticari markasıdır.</p>
+  </footer>
+</body>
+</html>
