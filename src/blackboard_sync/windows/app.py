@@ -19,7 +19,7 @@ from blackboard_sync.menubar.main_window_model import GENERAL, main_status, show
 from blackboard_sync.menubar.model import DEST_KEEP, MOVE_JOB, open_target, RunOutcome, UPDATE_ACTIONS
 from blackboard_sync.settings import SettingsError, save_settings
 from blackboard_sync.system import sync_root
-from . import activation, autostart, notifications
+from . import activation, autostart, notifications, package
 from .presentation import icon_image, render_menu
 
 log = logging.getLogger(__name__)
@@ -146,7 +146,7 @@ class TrayApp:
             self.root.after(30000, self.tick)
             return
         self.start_next()
-        if self.model.update_due(jobs.utcnow()):
+        if updater.enabled() and self.model.update_due(jobs.utcnow()):
             self.start_update_check(manual=False)
         self.refresh()
         self.root.after(30000, self.tick)
@@ -209,6 +209,8 @@ class TrayApp:
             threading.Thread(target=self.notify, args=(note,), daemon=True).start()
 
     def start_update_check(self, manual=True):
+        if not updater.enabled():
+            return
         if not self.model.updates.begin("check"):
             return
         self.refresh()
@@ -228,6 +230,8 @@ class TrayApp:
         self.refresh()
 
     def start_update(self):
+        if not updater.enabled():
+            return
         release = self.model.updates.available
         if release is None:
             self.start_update_check()
@@ -297,6 +301,8 @@ class TrayApp:
         if self.window_open:
             self.window.update_status(main_status(self.model, jobs.utcnow()))
         menu = self.model.menu(jobs.utcnow())
+        if package.is_packaged():
+            menu.entries = [entry for entry in menu.entries if entry.action not in UPDATE_ACTIONS]
         if menu != self.drawn:
             self.icon.menu = render_menu(menu.entries,
                                         lambda action, value: self.post(self.dispatch, action, value),
@@ -381,6 +387,9 @@ class TrayApp:
         from .main_window import ask_uninstall
 
         parent = self.window.window if self.window_open else self.root
+        if package.is_packaged():
+            messagebox.showinfo("Blackboard Sync", uninstall.STORE_REMOVAL, parent=parent)
+            return
         if self.model.busy or self.model.updates.busy:
             messagebox.showinfo("Blackboard Sync", uninstall.BUSY, parent=parent)
             return
@@ -549,6 +558,7 @@ def main(argv=None):
 
     parser = argparse.ArgumentParser(description="Blackboard Sync Windows tray")
     parser.add_argument("--notification", choices=[activation.UPDATE_URI])
+    parser.add_argument("--store-notification", action="store_true", help=argparse.SUPPRESS)
     # The login item and the updater's silent reinstall start the app in the
     # tray only; any other start (installer, Start Menu) shows its main window.
     parser.add_argument(autostart.BACKGROUND, action="store_true")
@@ -559,7 +569,7 @@ def main(argv=None):
     if args.notification:
         activation.request_update(config)
     # The packaged (MSIX) app's login item cannot pass --background.
-    show_window = not (args.background or args.notification or autostart.started_at_login())
+    show_window = args.store_notification or not (args.background or args.notification or autostart.started_at_login())
     lock = jobs.single_instance(config)
     if lock is None:
         log.info("Another copy is already running%s", "; asking it to show its window" if show_window else "")

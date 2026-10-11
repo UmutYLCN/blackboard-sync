@@ -6,8 +6,11 @@ import subprocess
 import sys
 
 from blackboard_sync import runtime
+from . import package
 
 UPDATE_URI = "blackboard-sync://update"
+STORE_PROTOCOL = "blackboard-sync-store"
+STORE_URI = f"{STORE_PROTOCOL}://open"
 PROTOCOL_KEY = r"Software\Classes\blackboard-sync"
 
 
@@ -23,6 +26,8 @@ def protocol_command() -> str:
 
 
 def register() -> None:
+    if package.is_packaged():
+        return  # Windows registers STORE_PROTOCOL from the package manifest.
     import winreg
 
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, PROTOCOL_KEY) as key:

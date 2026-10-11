@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from blackboard_sync import runtime, signout
+from blackboard_sync.windows import package
 from blackboard_sync.config import Config
 from blackboard_sync.errors import AlreadyRunning, BlackboardSyncError
 from blackboard_sync.relocate import migration_pending
@@ -29,6 +30,7 @@ MESSAGE = (
     "bu seçeneği işaretlemediğiniz sürece korunur."
 )
 BUSY = "Kaldırmadan önce senkronizasyonun veya klasör taşıma işleminin tamamlanmasını bekleyin."
+STORE_REMOVAL = "Blackboard Sync'i Windows Ayarlar → Uygulamalar bölümünden kaldırabilirsiniz."
 
 
 def trash(path: Path) -> None:
@@ -65,6 +67,8 @@ def app_bundle(executable: Path | None = None) -> Path | None:
 
 
 def remove_app() -> list[str]:
+    if package.is_packaged():
+        return [STORE_REMOVAL]
     if not runtime.is_frozen():
         # A source checkout has no installed app bundle/uninstaller.
         return []
@@ -172,6 +176,8 @@ def uninstall(config: Config, delete_course_files: bool = False, *,
     GUI callers stop timers and close their lifetime/log handles in before_cleanup,
     which runs only after the shared sync/move lock was acquired.
     """
+    if package.is_packaged():
+        return [STORE_REMOVAL]
     data = config.data_dir.resolve()
     dest = config.dest.resolve()
     if data == data.parent or data == Path.home().resolve() or data == dest or data in dest.parents:

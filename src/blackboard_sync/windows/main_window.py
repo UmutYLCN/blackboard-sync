@@ -11,7 +11,8 @@ import logging
 import sys
 from pathlib import Path
 
-from blackboard_sync import __version__, deleted, runtime
+from blackboard_sync import __version__, deleted, runtime, updater, uninstall
+from . import package
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
 from blackboard_sync.menubar.model import T_RECENT, T_RECENT_EMPTY
@@ -350,13 +351,19 @@ class MainWindow:
         place(interval_row, pady=(0, 12))
 
         section(form.T_SECTION_UPDATES)
-        place(ttk.Checkbutton(frame, text=form.T_CHECK_UPDATES, variable=self.check_updates), pady=(0, 8))
+        self.update_button = self.uninstall_button = None
         self.version_label = ttk.Label(frame)
-        self.update_button = action_row(self.version_label, lambda: self.on_action(self.status.form.update_action))
-        self.uninstall_button = ttk.Button(frame, text=form.T_UNINSTALL, width=ACTION_WIDTH,
-                                           command=lambda: self.on_action("uninstall"))
-        self.uninstall_button.grid(row=row, column=1, sticky="e", padx=(8, 0))
-        row += 1
+        if package.is_packaged():
+            place(self.version_label, pady=(0, 8))
+            place(ttk.Label(frame, text=updater.STORE_UPDATES, wraplength=WRAP), pady=(0, 8))
+            place(ttk.Label(frame, text=uninstall.STORE_REMOVAL, wraplength=WRAP), pady=(0, 8))
+        else:
+            place(ttk.Checkbutton(frame, text=form.T_CHECK_UPDATES, variable=self.check_updates), pady=(0, 8))
+            self.update_button = action_row(self.version_label, lambda: self.on_action(self.status.form.update_action))
+            self.uninstall_button = ttk.Button(frame, text=form.T_UNINSTALL, width=ACTION_WIDTH,
+                                               command=lambda: self.on_action("uninstall"))
+            self.uninstall_button.grid(row=row, column=1, sticky="e", padx=(8, 0))
+            row += 1
 
         # Only while something is not saved (or saving failed): the reason, Vazgeç and Kaydet.
         self.button_bar = bar = ttk.Frame(page, padding=(0, 10, 0, 0))
@@ -550,9 +557,11 @@ class MainWindow:
             (self.account_button, form_status.account_title, form_status.account_enabled),
             (self.update_button, form_status.update_title, form_status.update_enabled),
         ):
-            button.configure(text=title, state="normal" if enabled else "disabled")
+            if button is not None:
+                button.configure(text=title, state="normal" if enabled else "disabled")
         self.version_label.configure(text=form_status.version)
-        self.uninstall_button.configure(state="normal" if form_status.uninstall_enabled else "disabled")
+        if self.uninstall_button is not None:
+            self.uninstall_button.configure(state="normal" if form_status.uninstall_enabled else "disabled")
         terms = list(form_status.past_terms)
         self.past_dropdown.configure(values=terms, state="readonly" if terms else "disabled")
         if self.past_term.get() not in terms:
