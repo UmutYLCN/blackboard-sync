@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- The 1920x1080 frame around the vertical promo video in the Store trailer.
+     make-trailer.sh renders it to PNG and places the video (800x1000) on the
+     frame in the middle column, at x 560, y 40. Colors and type follow site/styles.css. -->
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Trailer background</title>
+<style>
+  :root {
+    --bg: #0b1425;
+    --text: #f4f7fc;
+    --muted: #a9b8cd;
+    --line: #26354a;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-synthesis: none;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+  body {
+    background:
+      radial-gradient(ellipse at 14% 30%, #12345399, transparent 40%),
+      radial-gradient(ellipse at 88% 70%, #10303acc, transparent 40%),
+      var(--bg);
+    color: var(--text);
+    display: grid;
+    grid-template-columns: 528px 864px 528px;
+  }
+  .side {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 56px;
+    gap: 28px;
+  }
+  .brand img { width: 168px; height: 168px; }
+  .brand h1 { margin: 18px 0 0; font-size: 50px; font-weight: 750; letter-spacing: -1.2px; }
+  .tagline { margin: 0; font-size: 38px; line-height: 1.15; font-weight: 700; letter-spacing: -.8px; }
+  .tagline span {
+    background: linear-gradient(100deg, #68e8ec, #3d98ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 26px; }
+  li { font-size: 32px; font-weight: 650; letter-spacing: -.4px; }
+  li small { display: block; margin-top: 6px; font-size: 22px; font-weight: 450; color: var(--muted); letter-spacing: 0; }
+  .frame {
+    position: absolute;
+    left: 556px;
+    top: 36px;
+    width: 808px;
+    height: 1008px;
+    border: 4px solid var(--line);
+    border-radius: 6px;
+    box-shadow: 0 30px 80px #000000b0;
+  }
+  .note { font-size: 22px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 22px; }
+</style>
+</head>
+<body>
+  <div class="frame"></div>
+  <div class="side">
+    <div class="brand">
+      <img src="../../../../assets/icon/logo.png" alt="">
+      <h1>Blackboard Sync</h1>
+    </div>
+    <p class="tagline">Ders dosyaların.<br><span>Hep yanında.</span></p>
+  </div>
+  <div></div>
+  <div class="side">
+    <ul>
+      <li>Otomatik indirme<small>Yeni dosyalar arka planda iner.</small></li>
+      <li>Düzenli klasörler<small>Dönem ve ders yapısıyla.</small></li>
+      <li>Silinenler<small>Sildiğini seçip geri indir.</small></li>
+      <li>Eski dönemler<small>Tek seferde indir.</small></li>
+    </ul>
+    <p class="note">Ücretsiz ve açık kaynak.</p>
+  </div>
+</body>
+</html>

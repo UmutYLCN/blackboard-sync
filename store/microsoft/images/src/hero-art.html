@@ -1,0 +1,45 @@
+<!doctype html>
+<!-- 16:9 Super hero art (1920x1080) for the Store listing: Microsoft asks for no
+     text and no app UI, with the key image centred and out of the bottom third.
+     ../make-images.sh renders it to PNG. Colors follow site/styles.css. -->
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Hero art</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+  body {
+    background:
+      radial-gradient(circle at 50% 38%, #1f6fb266, transparent 26%),
+      radial-gradient(ellipse at 22% 20%, #12345399, transparent 40%),
+      radial-gradient(ellipse at 80% 30%, #10303acc, transparent 42%),
+      linear-gradient(180deg, #0d1a30, #0b1425 70%);
+    position: relative;
+  }
+  .ring {
+    position: absolute;
+    left: 50%;
+    top: 38%;
+    border-radius: 50%;
+    border: 2px solid #50ddf41f;
+    transform: translate(-50%, -50%);
+  }
+  img {
+    position: absolute;
+    left: 50%;
+    top: 38%;
+    width: 420px;
+    height: 420px;
+    transform: translate(-50%, -50%);
+    filter: drop-shadow(0 30px 60px #000000a0);
+  }
+</style>
+</head>
+<body>
+  <div class="ring" style="width:640px;height:640px"></div>
+  <div class="ring" style="width:900px;height:900px;border-color:#50ddf414"></div>
+  <div class="ring" style="width:1180px;height:1180px;border-color:#50ddf40d"></div>
+  <img src="../../../../assets/icon/logo.png" alt="">
+</body>
+</html>

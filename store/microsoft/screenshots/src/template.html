@@ -1,0 +1,129 @@
+<!doctype html>
+<!-- One Microsoft Store screenshot, 1920x1080. render.sh opens it in headless
+     Chrome as template.html?shot=<id>&img=<app capture>&lang=tr&draft=1 and
+     saves a PNG. Colors and type follow site/styles.css. -->
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Store screenshot</title>
+<style>
+  :root {
+    --bg: #0b1425;
+    --text: #f4f7fc;
+    --muted: #a9b8cd;
+    --cyan: #50ddf4;
+    --line: #26354a;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-synthesis: none;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+  body {
+    background:
+      radial-gradient(ellipse at 78% 17%, #12345380, transparent 35%),
+      radial-gradient(ellipse at 5% 0%, #182e514d, transparent 30%),
+      radial-gradient(ellipse at 50% 120%, #10303a99, transparent 55%),
+      var(--bg);
+    color: var(--text);
+    position: relative;
+  }
+  h1 {
+    position: absolute;
+    top: 78px;
+    left: 0;
+    right: 0;
+    margin: 0;
+    text-align: center;
+    font-size: 84px;
+    line-height: 1.05;
+    font-weight: 750;
+    letter-spacing: -1.5px;
+  }
+  h1 span {
+    background: linear-gradient(100deg, #68e8ec, #3d98ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .stage {
+    position: absolute;
+    top: 236px;
+    bottom: 36px;
+    left: 110px;
+    right: 110px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+  }
+  .stage img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 30px 60px #000000a0);
+  }
+  .placeholder {
+    width: 1400px;
+    height: 760px;
+    border: 4px dashed #3d98ff;
+    border-radius: 28px;
+    background: #10203a99;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 22px;
+    text-align: center;
+    padding: 60px;
+  }
+  .placeholder strong { font-size: 52px; letter-spacing: -1px; }
+  .placeholder p { margin: 0; font-size: 34px; color: var(--muted); max-width: 1100px; }
+  .draft {
+    position: absolute;
+    top: 22px;
+    left: 22px;
+    padding: 10px 20px;
+    border-radius: 999px;
+    background: #f5a524;
+    color: #1b1300;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: .3px;
+  }
+</style>
+</head>
+<body>
+<h1 id="title"></h1>
+<div class="stage" id="stage"></div>
+<script src="shots.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  const lang = params.get("lang") || "tr";
+  const shot = SHOTS.find(s => s.id === params.get("shot")) || SHOTS[0];
+  const [plain, highlight] = shot.title[lang];
+  const title = document.getElementById("title");
+  title.append(plain);
+  const span = document.createElement("span");
+  span.textContent = highlight;
+  title.append(span);
+  document.documentElement.lang = lang;
+
+  const stage = document.getElementById("stage");
+  const img = params.get("img");
+  if (img) {
+    const el = document.createElement("img");
+    el.src = img;
+    el.alt = "";
+    stage.append(el);
+  } else {
+    stage.innerHTML = '<div class="placeholder"><strong>Windows ekran görüntüsü gerekli</strong><p></p></div>';
+    stage.querySelector("p").textContent = shot.capture;
+  }
+  if (params.get("draft") === "1") {
+    const tag = document.createElement("div");
+    tag.className = "draft";
+    tag.textContent = img ? "TASLAK · macOS görüntüsü · Store'a yüklemeyin" : "TASLAK · Store'a yüklemeyin";
+    document.body.append(tag);
+  }
+</script>
+</body>
+</html>
