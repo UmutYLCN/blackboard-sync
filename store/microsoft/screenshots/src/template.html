@@ -1,7 +1,8 @@
 <!doctype html>
 <!-- One Microsoft Store screenshot, 1920x1080. render.sh opens it in headless
      Chrome as template.html?shot=<id>&img=<app capture>&lang=tr&draft=1 and
-     saves a PNG. Colors and type follow site/styles.css. -->
+     saves a PNG. Capture styling follows site/styles.css; the text-only card
+     adapts the promo video scene.html typography and gradients to 16:9. -->
 <html lang="tr">
 <head>
 <meta charset="utf-8">
@@ -45,6 +46,46 @@
     background-clip: text;
     color: transparent;
   }
+  /* Promo scene.html: navy radial background, cyan glow and .cap/.hl type.
+     Re-laid out for 1920x1080; no video frame, logo or platform UI is embedded. */
+  body.promo {
+    background: radial-gradient(1700px 1100px at 20% 15%, #1a2c55 0%, #111a30 45%, #0b1120 100%);
+    color: #fff;
+    font-family: -apple-system, "SF Pro Display", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body.promo::before {
+    content: "";
+    position: absolute;
+    left: 600px;
+    top: 80px;
+    width: 900px;
+    height: 900px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(34,211,238,.18), transparent 60%);
+    filter: blur(10px);
+  }
+  .promo h1 {
+    top: 290px;
+    left: 120px;
+    right: 120px;
+    font-size: 116px;
+    font-weight: 800;
+    line-height: 1.08;
+    white-space: pre-line;
+  }
+  .promo h1 span { background-image: linear-gradient(90deg, #22d3ee, #3b82f6); }
+  .promo .subtitle {
+    position: absolute;
+    top: 620px;
+    left: 120px;
+    right: 120px;
+    margin: 0;
+    text-align: center;
+    font-size: 54px;
+    font-weight: 500;
+    color: #a9b8d6;
+  }
   .stage {
     position: absolute;
     top: 236px;
@@ -55,6 +96,8 @@
     align-items: flex-start;
     justify-content: center;
   }
+  /* Keep small tray captures at native size, centred below the title. */
+  .stage.compact { align-items: center; bottom: 236px; }
   .stage img {
     max-width: 100%;
     max-height: 100%;
@@ -99,17 +142,25 @@
   const params = new URLSearchParams(location.search);
   const lang = params.get("lang") || "tr";
   const shot = SHOTS.find(s => s.id === params.get("shot")) || SHOTS[0];
-  const [plain, highlight] = shot.title[lang];
+  const [plain, highlight, suffix = ""] = shot.title[lang];
   const title = document.getElementById("title");
   title.append(plain);
   const span = document.createElement("span");
   span.textContent = highlight;
-  title.append(span);
+  title.append(span, suffix);
   document.documentElement.lang = lang;
 
   const stage = document.getElementById("stage");
+  stage.classList.toggle("compact", !!shot.compact);
   const img = params.get("img");
-  if (img) {
+  if (shot.kind === "card") {
+    document.body.classList.add("promo");
+    stage.remove();
+    const subtitle = document.createElement("p");
+    subtitle.className = "subtitle";
+    subtitle.textContent = shot.subtitle[lang];
+    document.body.append(subtitle);
+  } else if (img) {
     const el = document.createElement("img");
     el.src = img;
     el.alt = "";

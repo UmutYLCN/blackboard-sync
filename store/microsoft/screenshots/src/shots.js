@@ -1,52 +1,56 @@
-// The Store screenshots: one entry per image, in listing order. `id` is also the
-// file name of the app capture (windows/<id>.png, or draft-input/<id>.png for a
-// draft). `title` is the large caption drawn on the image ([plain, highlighted]);
-// `caption` is the text for Partner Center's screenshot caption field (200
-// characters at most). `capture` says which Windows screenshot to take.
+// Store upload order: a text-only promo card, then four Windows captures.
+// `id` names the output PNG and, for captures, the PNG in windows/. `kind: "card"`
+// needs no image input. Title parts are [plain, highlighted, optional suffix].
+// Captions are at most 200 characters. Ship Turkish titles for both listings.
 window.SHOTS = [
   {
-    id: "01-genel-bakis",
+    id: "01-tek-tek",
+    kind: "card",
+    title: {
+      tr: ["Blackboard’dan dosyaları\n", "tek tek", " mi indiriyorsun?"],
+      en: ["Still downloading files\n", "one by one", "?"],
+    },
+    subtitle: { tr: "Buna artık gerek yok.", en: "You no longer have to." },
+    caption: {
+      tr: "Blackboard’dan dosyaları tek tek mi indiriyorsun? Blackboard Sync, ders dosyalarını arka planda otomatik olarak bilgisayarına indirir.",
+      en: "Still downloading Blackboard files one by one? Blackboard Sync automatically downloads your course files to your computer in the background.",
+    },
+  },
+  {
+    id: "02-genel-bakis",
     title: { tr: ["Ders dosyaların ", "kendiliğinden iner."], en: ["Your course files ", "download themselves."] },
     caption: {
       tr: "Genel bakış: Blackboard'daki yeni ders dosyaları arka planda kendiliğinden iner; son indirilenler tek listede.",
       en: "Overview: new course files on Blackboard download in the background; the latest downloads are listed in one place.",
     },
-    capture: "Genel bakış after a sync, Son indirilenler list filled",
+    capture: "Genel bakış after a sync, Son indirilenler list with 10 files",
   },
   {
-    id: "02-ayarlar",
-    title: { tr: ["Senkron sıklığını ", "sen seç."], en: ["You choose ", "how often it syncs."] },
+    id: "03-baslangic",
+    title: { tr: ["Okulunu ve klasörünü seç, ", "giriş yap."], en: ["Choose your school and folder, ", "sign in."] },
     caption: {
-      tr: "Genel: okul adresi, kayıt klasörü, otomatik senkron (30 dakikada, saatte, 3 saatte bir ya da yalnızca elle) ve bilgisayar açılınca başlatma.",
-      en: "General: school address, download folder, automatic sync (every 30 minutes, hourly, every 3 hours or manual only) and start at sign-in.",
+      tr: "Başlangıç: okulunun Blackboard adresini yaz, kayıt klasörünü ve bilgisayar açılınca başlatma seçeneğini belirle, ardından giriş yap.",
+      en: "Getting started: enter your school's Blackboard address, choose a save folder and whether to start with your computer, then sign in.",
     },
-    capture: "Genel page, top: Hesap, Klasör and Genel sections",
+    capture: "Başlangıç first-run page: school address, save folder, start with computer and Giriş yap",
   },
   {
-    id: "03-silinenler",
-    title: { tr: ["Sildiğin dosyaları ", "geri indir."], en: ["Get deleted files ", "back."] },
+    id: "04-ilk-senkron",
+    title: { tr: ["Girişten sonra ", "ilk senkron başlar."], en: ["After sign-in, ", "your first sync starts."] },
     caption: {
-      tr: "Silinenler: klasörden sildiğin indirilmiş dosyaları seçip yeniden indirebilir ya da listeden kaldırabilirsin.",
-      en: "Deleted: pick downloaded files you removed from the folder and download them again, or dismiss them from the list.",
+      tr: "İlk senkron girişten sonra başlar. Genel bakışta yeni içerik kontrol edilirken senkronun sürdüğünü görebilirsin.",
+      en: "The first sync starts after sign-in. Overview shows that syncing is in progress while the app checks for new content.",
     },
-    capture: "Silinenler page with a few deleted files listed",
+    capture: "Genel bakış during first sync: Yeni içerik kontrol ediliyor… and Senkron sürüyor",
   },
   {
-    id: "04-eski-donemler",
-    title: { tr: ["Geçmiş dönemleri ", "tek seferde indir."], en: ["Download a past term ", "in one go."] },
+    id: "05-tepsi-menusu",
+    title: { tr: ["Saatin yanında ", "sessizce çalışır."], en: ["Quietly working ", "from your system tray."] },
     caption: {
-      tr: "Eski dönemler: geçmiş bir dönemin dosyalarını tek seferde indir. Eski dönem bir kez indirilir, güncellenmez.",
-      en: "Past terms: download the files of an earlier term in one go. A past term is downloaded once and not kept up to date.",
+      tr: "Pencereyi kapatsan da uygulama saatin yanındaki simgeden çalışır. Son senkronu gör, yeni bir senkron başlat veya derslerine ve indirdiklerine ulaş.",
+      en: "The app keeps working from the system tray after you close its window. Check the last sync, sync again, or access your courses and recent downloads.",
     },
-    capture: "Genel page scrolled to Eski dönemler, a term selected",
-  },
-  {
-    id: "05-klasorler",
-    title: { tr: ["Dönem dönem, ders ders: ", "hep düzenli."], en: ["By term, by course: ", "always organised."] },
-    caption: {
-      tr: "Dosyalar seçtiğin klasördeki University klasörüne, Blackboard'daki dönem ve ders yapısıyla kaydedilir.",
-      en: "Files are saved in the University folder inside the folder you choose, by term and course as on Blackboard.",
-    },
-    capture: "File Explorer on Belgeler\\University, term and course folders expanded",
+    capture: "Windows notification-area icon menu: last sync, sync now, courses, recent downloads and University folder",
+    compact: true,
   },
 ];
