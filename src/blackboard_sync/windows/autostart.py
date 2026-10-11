@@ -104,9 +104,17 @@ def check_package() -> str:
 
     Turns start-at-login on and off again when it was off, leaving it as it was.
     """
+    from blackboard_sync import updater
+    from . import notifications
+
     name = package.full_name()
     if name is None:
         raise RuntimeError("the process has no package identity")
+    if updater.enabled() or updater.check().status != "store":
+        raise RuntimeError("the packaged self-updater is enabled")
+    identity = notifications.check_identity()
+    if identity != package.app_user_model_id():
+        raise RuntimeError("the toast identity is not the packaged app's AUMID")
     before = package.startup_task_state(TASK_ID)
     if before == package.DISABLED:
         set_enabled(True)
@@ -115,4 +123,4 @@ def check_package() -> str:
         set_enabled(False)
         if is_installed():
             raise RuntimeError("disabling the startup task did not take")
-    return f"package ok ({name}, startup task state {before})"
+    return f"package ok ({name}, startup task state {before}, updater off, toast identity {identity})"

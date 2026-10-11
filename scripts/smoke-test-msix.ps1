@@ -78,11 +78,23 @@ try {
   Check ($out -match "login runtime ok \(Playwright, WebView2\)") "the sign-in runtimes (Playwright driver, WebView2 window) load"
   $out = Invoke-InPackage "--check-package"
   Check ($out -match "package ok \(.+\)") "package identity and the startup task work"
+  Check ($out -match "updater off") "the packaged self-updater is off"
+  Check ($out.Contains("toast identity $($package.PackageFamilyName)!$appId")) "the toast notifier uses the packaged app's AUMID"
 
   # Started from the Start menu (an AppsFolder activation), the packaged app shows its main window.
   Start-Process "shell:AppsFolder\$($package.PackageFamilyName)!$appId"
   Check (Wait-Until 60 { MainWindow }) "the packaged app starts and shows its main window"
   Show-AppSnapshot "packaged app running" -Dir (Join-Path $env:LOCALAPPDATA "Packages\$($package.PackageFamilyName)\LocalCache\Roaming\blackboard-sync")
+  $runningPid = (MainWindow).Pid
+  Close-AppWindow (MainWindow)
+  Check (Wait-Until 30 { -not (MainWindow) }) "closing the packaged window hides it"
+  Start-Process "blackboard-sync-store://open"
+  Check (Wait-Until 30 { MainWindow }) "the toast protocol shows the running packaged app"
+  Check ((MainWindow).Pid -eq $runningPid) "the toast protocol reuses the running instance"
+  Get-Process -Name "Blackboard Sync" -ErrorAction SilentlyContinue | Stop-Process -Force
+  Start-Sleep -Seconds 2
+  Start-Process "blackboard-sync-store://open"
+  Check (Wait-Until 60 { MainWindow }) "the toast protocol starts the packaged app when closed"
   Get-Process -Name "Blackboard Sync" -ErrorAction SilentlyContinue | Stop-Process -Force
   Start-Sleep -Seconds 2
 

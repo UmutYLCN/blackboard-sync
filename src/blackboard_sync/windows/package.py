@@ -15,6 +15,7 @@ import sys
 from . import winrt
 
 ERROR_INSUFFICIENT_BUFFER = 122  # the expected answer to the size query
+APP_ID = "BlackboardSync"  # Application/Id in AppxManifest.xml.in
 
 STARTUP_TASK = "Windows.ApplicationModel.StartupTask"
 IID_STARTUP_TASK_STATICS = "ee5b60bd-a148-41a7-b26e-e8b88a1e62f8"
@@ -53,6 +54,26 @@ def full_name() -> str | None:
 
 def is_packaged() -> bool:
     return full_name() is not None
+
+
+@functools.cache
+def family_name() -> str:
+    """The current package family; fail closed if Windows cannot supply it."""
+    function = ctypes.windll.kernel32.GetCurrentPackageFamilyName
+    function.argtypes = [ctypes.POINTER(ctypes.c_uint32), ctypes.c_wchar_p]
+    function.restype = ctypes.c_long
+    length = ctypes.c_uint32(0)
+    if function(ctypes.byref(length), None) != ERROR_INSUFFICIENT_BUFFER:
+        raise OSError("GetCurrentPackageFamilyName could not read the package identity")
+    buffer = ctypes.create_unicode_buffer(length.value)
+    if function(ctypes.byref(length), buffer) != 0:
+        raise OSError("GetCurrentPackageFamilyName failed")
+    return buffer.value
+
+
+def app_user_model_id() -> str:
+    """The GUI app's AUMID, including when called by its CLI twin."""
+    return f"{family_name()}!{APP_ID}"
 
 
 def _with_startup_task(task_id: str, use):

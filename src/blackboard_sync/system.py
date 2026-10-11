@@ -41,11 +41,19 @@ def default_data_dir(
 
     macOS (and anything that is not Windows): ``~/Library/Application Support/
     blackboard-sync``, unchanged so existing sessions and state are found.
-    Windows: ``%APPDATA%\\blackboard-sync``.
+    Windows Setup: ``%APPDATA%\\blackboard-sync``. MSIX: the package's explicit
+    ``%LOCALAPPDATA%\\Packages\\<family>\\LocalCache\\Roaming\\blackboard-sync``.
     """
     env = os.environ if env is None else env
     home = Path.home() if home is None else home
     if is_windows(platform):
+        from blackboard_sync.windows import package
+
+        if package.is_packaged():
+            # Explicitly private: AppData virtualization can read/modify an
+            # existing Setup install's files on Windows 1903 and later.
+            local = Path(env.get("LOCALAPPDATA") or home / "AppData" / "Local")
+            return local / "Packages" / package.family_name() / "LocalCache" / "Roaming" / APP_NAME
         appdata = env.get("APPDATA")
         base = Path(appdata) if appdata else home / "AppData" / "Roaming"
         return base / APP_NAME

@@ -37,6 +37,7 @@ from typing import Callable
 import requests
 
 from blackboard_sync import __version__
+from blackboard_sync.windows import package
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +65,19 @@ class UpdateError(Exception):
     """A download that must not be installed; the message is Turkish, for the student."""
 
 
+STORE_UPDATES = "Güncellemeler Microsoft Store üzerinden yüklenir."
+
+
+def enabled() -> bool:
+    """Package identity means the Store owns updates, including stale requests."""
+    return not package.is_packaged()
+
+
+def _require_enabled() -> None:
+    if not enabled():
+        raise UpdateError(STORE_UPDATES)
+
+
 @dataclass(frozen=True)
 class Release:
     """A newer release that has an installer for this platform."""
@@ -85,7 +99,7 @@ class Release:
 
 @dataclass(frozen=True)
 class CheckResult:
-    status: str  # "available" | "current" | "unknown" (offline, private, rate limited, ...)
+    status: str  # "available" | "current" | "unknown" | "store" (self-updater disabled)
     release: Release | None = None
 
 
@@ -155,6 +169,8 @@ def _get(url: str, **kwargs) -> requests.Response:
 
 def check(current: str = __version__, platform: str | None = None, get: Getter = _get) -> CheckResult:
     """Ask GitHub whether a newer release exists; never raises."""
+    if not enabled():
+        return CheckResult("store")
     try:
         resp = get(
             LATEST_RELEASE_API,
@@ -187,6 +203,7 @@ def parse_checksums(text: str) -> dict[str, str]:
 
 def expected_checksum(release: Release, get: Getter = _get) -> str | None:
     """The installer's SHA-256 from the release's SHA256SUMS.txt; None when it has none."""
+    _require_enabled()
     if release.checksums_url is None:
         return None
     if not is_trusted_url(release.checksums_url):
@@ -223,6 +240,7 @@ def download(release: Release, folder: Path, get: Getter = _get) -> Path:
     The file only appears under its final name once it is complete and its
     checksum (when the release publishes one) matches.
     """
+    _require_enabled()
     if not is_trusted_url(release.asset_url) or Path(release.asset_name).name != release.asset_name:
         raise UpdateError("Güncelleme bu uygulamanın sayfasından gelmiyor; indirilmedi.")
     expected = expected_checksum(release, get)
@@ -275,6 +293,7 @@ def launch_installer(path: Path, popen: Callable[..., object] = subprocess.Popen
     The installer waits for nothing from this process, replaces the app once it
     has exited and starts it again.
     """
+    _require_enabled()
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     popen(installer_command(path), stdin=subprocess.DEVNULL, close_fds=True, creationflags=flags)
 
@@ -285,4 +304,5 @@ def install_windows_update(release: Release, get: Getter = _get, popen: Callable
     Raises ``UpdateError`` when nothing was started; on success the caller
     quits at once so the installer can replace the running app.
     """
+    _require_enabled()
     launch_installer(download(release, download_dir("win32"), get), popen)

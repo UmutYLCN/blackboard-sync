@@ -8,12 +8,13 @@ from xml.etree import ElementTree as ET
 
 import pytest
 
-from blackboard_sync.windows import autostart, package
+from blackboard_sync.windows import activation, autostart, notifications, package
 
 ROOT = Path(__file__).resolve().parent.parent
 NS = {
     "m": "http://schemas.microsoft.com/appx/manifest/foundation/windows10",
     "uap": "http://schemas.microsoft.com/appx/manifest/uap/windows10",
+    "uap3": "http://schemas.microsoft.com/appx/manifest/uap/windows10/3",
     "uap5": "http://schemas.microsoft.com/appx/manifest/uap/windows10/5",
     "rescap": "http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities",
 }
@@ -130,7 +131,15 @@ def test_check_package_needs_identity(monkeypatch):
 def test_check_package_round_trip_restores_the_startup_task(monkeypatch):
     task = Packaged(monkeypatch)
     monkeypatch.setattr(package, "full_name", lambda: "Example_1.5.1.0_x64__abc")
-    assert autostart.check_package() == "package ok (Example_1.5.1.0_x64__abc, startup task state 0)"
+    monkeypatch.setattr(package, "family_name", lambda: "Example_abc")
+    scripts = []
+    monkeypatch.setattr(notifications, "_run_script", scripts.append)
+    assert autostart.check_package() == (
+        "package ok (Example_1.5.1.0_x64__abc, startup task state 0, "
+        "updater off, toast identity Example_abc!BlackboardSync)"
+    )
+    assert len(scripts) == 1 and "CreateToastNotifier('Example_abc!BlackboardSync')" in scripts[0]
+    assert ".Show(" not in scripts[0]  # no interactive notification in CI
     assert task.calls == [True, False] and task.state == package.DISABLED
 
 
@@ -175,6 +184,14 @@ def test_manifest_is_a_full_trust_app_with_a_startup_task():
     # The PyInstaller spec's windowed exe.
     assert application.get("Executable") == "Blackboard Sync.exe"
     assert application.get("EntryPoint") == "Windows.FullTrustApplication"
+    assert application.get("Id") == package.APP_ID
+    protocol_extension = application.find("m:Extensions/uap3:Extension", NS)
+    assert protocol_extension.get("Category") == "windows.protocol"
+    assert protocol_extension.get("Executable") == application.get("Executable")
+    assert protocol_extension.get("EntryPoint") == "Windows.FullTrustApplication"
+    protocol = protocol_extension.find("uap3:Protocol", NS)
+    assert protocol.get("Name") == activation.STORE_PROTOCOL
+    assert protocol.get("Parameters") == "--store-notification"
     extension = application.find("m:Extensions/uap5:Extension", NS)
     assert extension.get("Category") == "windows.startupTask"
     assert extension.get("Executable") == "Blackboard Sync.exe"
@@ -226,3 +243,185 @@ def test_layout_holds_the_app_manifest_and_logos(tmp_path):
 def test_layout_needs_the_pyinstaller_build(tmp_path):
     with pytest.raises(FileNotFoundError):
         make_layout.make_layout(tmp_path, tmp_path / "msix", IDENTITY)
+
+
+@pytest.mark.parametrize("packaged", [True, False])
+def test_updater_never_contacts_github_or_touches_installer_in_package(tmp_path, monkeypatch, packaged):
+    from blackboard_sync import updater
+
+    monkeypatch.setattr(package, "is_packaged", lambda: packaged)
+    network, launched = [], []
+
+    class Response:
+        status_code = 404
+        def close(self):
+            pass
+
+    def get(*args, **kwargs):
+        network.append(args[0])
+        return Response()
+
+    assert updater.enabled() is not packaged
+    result = updater.check(get=get)
+    assert result.status == ("store" if packaged else "unknown")
+    assert len(network) == (0 if packaged else 1)
+    network.clear()
+    release = updater.Release("9.0.0", "", "Setup.exe", updater.DOWNLOAD_PREFIX + "v9.0.0/Setup.exe")
+    if packaged:
+        for operation in (
+            lambda: updater.expected_checksum(release, get),
+            lambda: updater.download(release, tmp_path / "update", get),
+            lambda: updater.launch_installer(tmp_path / "Setup.exe", lambda *args, **kw: launched.append(args)),
+            lambda: updater.install_windows_update(release, get, lambda *args, **kw: launched.append(args)),
+        ):
+            with pytest.raises(updater.UpdateError, match="Microsoft Store"):
+                operation()
+        assert network == launched == []
+        assert not (tmp_path / "update").exists()
+    else:
+        updater.launch_installer(tmp_path / "Setup.exe", lambda *args, **kw: launched.append(args))
+        assert launched[0][0] == [str(tmp_path / "Setup.exe"), *updater.WINDOWS_INSTALLER_ARGS]
+
+
+@pytest.mark.parametrize("delete_files", [True, False])
+def test_packaged_uninstall_preserves_app_data_and_course_files(config, monkeypatch, delete_files):
+    from blackboard_sync import cli, uninstall
+
+    monkeypatch.setattr(package, "is_packaged", lambda: True)
+    config.data_dir.mkdir()
+    config.dest.mkdir()
+    config.session_file.write_text("session")
+    course = config.dest / "course.pdf"
+    course.write_bytes(b"course")
+    calls = []
+    assert uninstall.uninstall(
+        config, delete_files, before_cleanup=lambda: calls.append("prepare"),
+        startup_cleanup=lambda: calls.append("startup"), app_cleanup=lambda: calls.append("remove"),
+    ) == [uninstall.STORE_REMOVAL]
+    assert uninstall.remove_app() == [uninstall.STORE_REMOVAL]
+    assert calls == [] and config.session_file.read_text() == "session" and course.read_bytes() == b"course"
+    monkeypatch.setattr(cli, "make_config", lambda args: config)
+    assert cli.main(["uninstall", "--delete-course-files"]) != 0
+    assert config.session_file.read_text() == "session" and course.read_bytes() == b"course"
+
+
+@pytest.mark.parametrize("packaged", [True, False])
+def test_protocol_registration_is_only_for_the_installer(monkeypatch, packaged):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(package, "is_packaged", lambda: packaged)
+    writes = []
+    class Key:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+    monkeypatch.setitem(sys.modules, "winreg", SimpleNamespace(
+        HKEY_CURRENT_USER=1, REG_SZ=1,
+        CreateKey=lambda hive, name: writes.append(name) or Key(),
+        SetValueEx=lambda *args: writes.append(args[1:]),
+    ))
+    monkeypatch.setattr(activation, "protocol_command", lambda: "app --notification %1")
+    activation.register()
+    assert bool(writes) is not packaged
+
+
+@pytest.mark.parametrize("packaged", [True, False])
+def test_toasts_keep_safe_payload_and_select_the_right_identity(tmp_path, monkeypatch, packaged):
+    import base64
+    import re
+    from blackboard_sync.menubar.model import Notification
+
+    monkeypatch.setattr(package, "is_packaged", lambda: packaged)
+    monkeypatch.setattr(package, "family_name", lambda: "Example_abc")
+    note = Notification("Title", "Course & $(command)", {"open": str(tmp_path)})
+    script = notifications.toast_script(note)
+    expected = "Example_abc!BlackboardSync" if packaged else "Blackboard Sync"
+    assert f"CreateToastNotifier('{expected}')" in script
+    assert "$(command)" not in script
+    payload = re.search(r"FromBase64String\('([^']+)'\)", script).group(1)
+    toast = ET.fromstring(base64.b64decode(payload))
+    assert toast.get("activationType") == "protocol"
+    assert toast.get("launch") == (activation.STORE_URI if packaged else tmp_path.as_uri())
+    assert toast.findtext("visual/binding/text[2]") == note.message
+
+
+@pytest.mark.parametrize("packaged", [True, False])
+def test_store_data_is_private_without_migrating_installer_files(tmp_path, monkeypatch, packaged):
+    from blackboard_sync import system
+    from blackboard_sync.config import Config
+
+    monkeypatch.setattr(package, "is_packaged", lambda: packaged)
+    monkeypatch.setattr(package, "family_name", lambda: "Example_abc")
+    roaming, local = tmp_path / "Roaming", tmp_path / "Local"
+    legacy = roaming / system.APP_NAME
+    legacy.mkdir(parents=True)
+    (legacy / "session.json").write_text("legacy session")
+    data = system.default_data_dir("win32", env={"APPDATA": str(roaming), "LOCALAPPDATA": str(local)})
+    expected = local / "Packages" / "Example_abc" / "LocalCache" / "Roaming" / system.APP_NAME
+    assert data == (expected if packaged else legacy)
+    config = Config.from_env({}, data_dir=data)
+    assert config.session_file.exists() is not packaged
+    assert (legacy / "session.json").read_text() == "legacy session"
+
+
+@pytest.mark.parametrize("result", [0, 5])
+def test_package_family_api_reads_identity_and_fails_closed(monkeypatch, result):
+    import ctypes
+    from types import SimpleNamespace
+
+    class Function:
+        def __call__(self, length, buffer):
+            if buffer is None:
+                ctypes.cast(length, ctypes.POINTER(ctypes.c_uint32)).contents.value = 12
+                return package.ERROR_INSUFFICIENT_BUFFER
+            if result == 0:
+                buffer.value = "Example_abc"
+            return result
+
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(kernel32=SimpleNamespace(
+        GetCurrentPackageFamilyName=Function(),
+    )), raising=False)
+    package.family_name.cache_clear()
+    try:
+        if result:
+            with pytest.raises(OSError, match="GetCurrentPackageFamilyName"):
+                package.family_name()
+        else:
+            assert package.family_name() == "Example_abc"
+            assert package.app_user_model_id() == "Example_abc!BlackboardSync"
+    finally:
+        package.family_name.cache_clear()
+
+
+@pytest.mark.parametrize("already_running", [True, False])
+def test_store_protocol_activation_shows_packaged_app(config, monkeypatch, already_running):
+    from types import SimpleNamespace
+    from blackboard_sync.windows import app as module
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(package, "is_packaged", lambda: True)
+    config.data_dir.mkdir()
+    monkeypatch.setattr(config, "ensure_data_dir", lambda: None)
+    monkeypatch.setattr(module.Config, "from_env", lambda: config)
+    calls = []
+    lock = SimpleNamespace(close=lambda: calls.append("unlock"))
+    monkeypatch.setattr(module.jobs, "single_instance", lambda config: None if already_running else lock)
+    monkeypatch.setattr(autostart, "started_at_login", lambda: pytest.fail("fixed toast flag must show the window"))
+    # Real packaged registration/legacy guards must not access the registry.
+    monkeypatch.setitem(sys.modules, "winreg", None)
+    monkeypatch.setitem(sys.modules, "tkinter", SimpleNamespace(Tk=lambda: SimpleNamespace(withdraw=lambda: None)))
+
+    class App:
+        def __init__(self, config, root, show_window):
+            calls.append(("show", show_window))
+        def run(self):
+            calls.append("run")
+
+    monkeypatch.setattr(module, "TrayApp", App)
+    assert module.main(["--store-notification"]) == 0
+    if already_running:
+        assert calls == []
+        assert activation.take_window_request(config)
+    else:
+        assert calls == [("show", True), "run", "unlock"]

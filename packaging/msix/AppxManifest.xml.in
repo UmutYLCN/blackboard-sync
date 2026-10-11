@@ -5,9 +5,10 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
   xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap5 rescap">
+  IgnorableNamespaces="uap uap3 uap5 rescap">
 
   <Identity Name="${name}" Publisher="${publisher}" Version="${version}" ProcessorArchitecture="x64" />
 
@@ -38,6 +39,13 @@
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
       </uap:VisualElements>
       <Extensions>
+        <!-- Toast clicks open this packaged app, without HKCU protocol writes
+             or the Setup copy's blackboard-sync://update association. -->
+        <uap3:Extension Category="windows.protocol" Executable="Blackboard Sync.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:Protocol Name="blackboard-sync-store" Parameters="--store-notification">
+            <uap:DisplayName>${display_name}</uap:DisplayName>
+          </uap3:Protocol>
+        </uap3:Extension>
         <!-- Start at login. Off until the app turns it on (its settings), as the
              installer build's HKCU Run value; TaskId is autostart.TASK_ID. -->
         <uap5:Extension Category="windows.startupTask" Executable="Blackboard Sync.exe" EntryPoint="Windows.FullTrustApplication">

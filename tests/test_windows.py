@@ -1,6 +1,7 @@
 """Windows adapters must remain importable and testable without a Windows GUI."""
 
 import base64
+import pytest
 import re
 import sys
 from datetime import datetime, timezone
@@ -973,3 +974,80 @@ def test_windows_sync_scene_animates_on_a_timer_and_stands_still_without_animati
     view.start()
     assert view.still and not view.running and drawn  # the still picture, no timer
     assert len(rounded(0, 0, 10, 10, 2)) == 24
+
+
+def test_packaged_update_actions_and_timer_cannot_start_workers(tmp_path, monkeypatch):
+    from blackboard_sync.windows import package
+
+    monkeypatch.setattr(package, 'is_packaged', lambda: True)
+    app, workers = update_app(tmp_path, monkeypatch)
+    app.model.updates.available = release()  # stale saved update / old toast
+    app.model.updates.not_before = None
+    app.start_next = lambda: None
+    app.start_update_check()
+    app.start_update()
+    app.dispatch('check_updates')
+    app.dispatch('update')
+    app.notification_clicked({'action': 'update'})
+    app.tick()
+    assert workers == [] and app.model.updates.busy is None
+
+
+@pytest.mark.parametrize('packaged', [True, False])
+def test_store_settings_explain_updates_and_removal_without_hiding_account(tmp_path, monkeypatch, packaged):
+    from blackboard_sync import updater, uninstall
+    from blackboard_sync.windows import main_window as module, package, sync_scene_view
+    from blackboard_sync.menubar.main_window_model import main_status
+    from blackboard_sync.menubar.settings_form import T_CHECK_UPDATES
+
+    monkeypatch.setattr(package, 'is_packaged', lambda: packaged)
+    widgets = fake_tk(monkeypatch, tmp_path)
+    monkeypatch.setattr(module, 'work_area', lambda window: (0, 0, 1366, 900))
+    monkeypatch.setattr(sync_scene_view, 'reduce_motion', lambda: True)
+    now = datetime.now(timezone.utc)
+    model = AppModel(tmp_path, now)
+    status = main_status(model, now)
+    window = module.MainWindow(None, FormValues('https://school.edu', str(tmp_path), True),
+                               status, lambda *args: None, lambda action: None, lambda: None)
+    window.update_status(status)
+    texts = [widget.options.get('text') for widget in widgets]
+    assert (T_CHECK_UPDATES in texts) is not packaged
+    assert (updater.STORE_UPDATES in texts) is packaged
+    assert (uninstall.STORE_REMOVAL in texts) is packaged
+    assert (window.update_button is None) is packaged
+    assert (window.uninstall_button is None) is packaged
+    assert window.account_button.options['text'] == status.form.account_title
+
+
+def test_packaged_uninstall_action_only_explains_windows_settings(tmp_path, monkeypatch):
+    from tkinter import messagebox
+    from blackboard_sync import uninstall
+    from blackboard_sync.windows import main_window, package
+
+    monkeypatch.setattr(package, 'is_packaged', lambda: True)
+    app = make_app(tmp_path)
+    app.root = object()
+    shown = []
+    monkeypatch.setattr(messagebox, 'showinfo', lambda title, message, **kw: shown.append(message))
+    monkeypatch.setattr(main_window, 'ask_uninstall', lambda *args: pytest.fail('must not ask to delete files'))
+    app.start_uninstall()
+    assert shown == [uninstall.STORE_REMOVAL] and not app.uninstalling
+
+
+@pytest.mark.parametrize('packaged', [True, False])
+def test_tray_menu_filters_stale_updater_actions_only_for_store(tmp_path, monkeypatch, packaged):
+    import sys
+    from blackboard_sync.windows import app as module, package
+
+    monkeypatch.setattr(package, 'is_packaged', lambda: packaged)
+    app = make_app(tmp_path)
+    app.model.updates.available = release()
+    app.drawn = app.drawn_icon = None
+    app.icon = SimpleNamespace()
+    monkeypatch.setitem(sys.modules, 'pystray', SimpleNamespace(Menu=Menu, MenuItem=Item))
+    monkeypatch.setattr(autostart, 'is_installed', lambda: False)
+    monkeypatch.setattr(module, 'icon_image', lambda state: state)
+    del app.refresh
+    app.refresh()
+    assert any(entry.action == 'update' for entry in app.drawn.entries) is not packaged
+    assert any(entry.action == 'settings' for entry in app.drawn.entries)
