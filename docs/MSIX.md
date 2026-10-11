@@ -69,13 +69,15 @@ Remove-Item "Cert:\LocalMachine\TrustedPeople\$($cert.Thumbprint)", "Cert:\Curre
 Uninstall a Setup-installed copy first, so that two copies do not both start at
 login.
 
-Two hidden self-tests check an installed package; CI runs both:
+Two hidden self-tests check an installed package; CI runs both. Windows lets
+only a process in the package's context start the package's programs, so run
+them through `Invoke-CommandInDesktopPackage -PackageFamilyName <family name>
+-AppId BlackboardSync -Command <exe> -Args <args>` (as
+`scripts/smoke-test-msix.ps1` does, writing the output to a file):
 
-- `blackboard-sync-cli.exe --check-login-runtime` (from the package's install
-  folder, `(Get-AppxPackage <name>).InstallLocation`): Playwright and WebView2 load.
-- `blackboard-sync-cli.exe --check-package`, run inside the package's context
-  (`Invoke-CommandInDesktopPackage`): the process has package identity, and the
-  startup task can be turned on and off (it is left as it was).
+- `blackboard-sync-cli.exe --check-login-runtime`: Playwright and WebView2 load.
+- `blackboard-sync-cli.exe --check-package`: the process has package identity,
+  and the startup task can be turned on and off (it is left as it was).
 
 ## Start at login in the package
 

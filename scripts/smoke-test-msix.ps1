@@ -33,6 +33,22 @@ function Wait-Until([int]$Seconds, [scriptblock]$Condition) {
   return [bool](& $Condition)
 }
 function MainWindow { Get-AppWindows | Where-Object { $_.Visible -and $_.Title -eq $windowTitle } | Select-Object -First 1 }
+# Run the CLI twin with one argument in the package's context; its output.
+function Invoke-InPackage([string]$Argument) {
+  $name = $Argument.TrimStart("-")
+  $result = Join-Path $work "$name.txt"
+  $script = Join-Path $work "$name.ps1"
+  Remove-Item $result -ErrorAction SilentlyContinue
+  Set-Content $script "& '$($package.InstallLocation)\blackboard-sync-cli.exe' $Argument *> '$result'; Add-Content '$result' `"exit=`$LASTEXITCODE`""
+  Invoke-CommandInDesktopPackage -PackageFamilyName $package.PackageFamilyName -AppId $appId `
+    -Command "powershell.exe" -Args "-NoProfile -ExecutionPolicy Bypass -File `"$script`"" | Out-Null
+  $finished = Wait-Until 120 { (Test-Path $result) -and ((Get-Content $result -Raw) -match "exit=") }
+  $text = if (Test-Path $result) { Get-Content $result -Raw } else { "" }
+  Write-Host $text
+  Check $finished "blackboard-sync-cli $Argument finished in the package"
+  Check ($text -match "exit=0") "blackboard-sync-cli $Argument exit code"
+  return $text
+}
 
 # The certificate's subject must be the manifest's Publisher.
 $cert = New-SelfSignedCertificate -Type Custom -Subject $identity.Publisher -KeyUsage DigitalSignature `
@@ -55,21 +71,13 @@ try {
   Check (Test-Path "$app\Blackboard Sync.exe") "app in the package"
   Check (Test-Path "$app\blackboard-sync-cli.exe") "CLI twin in the package"
 
-  $out = (& "$app\blackboard-sync-cli.exe" --check-login-runtime 2>&1) -join "`n"
-  Write-Host $out
+  # The self-tests of scripts/smoke-test-windows.ps1 and --check-package (identity
+  # and the startup task). Only a process in the package's context may run the
+  # package's programs, so they run there, writing to a file.
+  $out = Invoke-InPackage "--check-login-runtime"
   Check ($out -match "login runtime ok \(Playwright, WebView2\)") "the sign-in runtimes (Playwright driver, WebView2 window) load"
-
-  # Package identity and the startup task, from a process in the package's context.
-  $result = Join-Path $work "check-package.txt"
-  $script = Join-Path $work "check-package.ps1"
-  Set-Content $script "& '$app\blackboard-sync-cli.exe' --check-package *> '$result'; Add-Content '$result' `"exit=`$LASTEXITCODE`""
-  Invoke-CommandInDesktopPackage -PackageFamilyName $package.PackageFamilyName -AppId $appId `
-    -Command "powershell.exe" -Args "-NoProfile -ExecutionPolicy Bypass -File `"$script`""
-  $finished = Wait-Until 120 { (Test-Path $result) -and ((Get-Content $result -Raw) -match "exit=") }
-  if (Test-Path $result) { Get-Content $result | Write-Host }
-  Check $finished "the package self-test finished"
-  $text = Get-Content $result -Raw
-  Check (($text -match "package ok \(.+\)") -and ($text -match "exit=0")) "package identity and the startup task work"
+  $out = Invoke-InPackage "--check-package"
+  Check ($out -match "package ok \(.+\)") "package identity and the startup task work"
 
   # Started from the Start menu (an AppsFolder activation), the packaged app shows its main window.
   Start-Process "shell:AppsFolder\$($package.PackageFamilyName)!$appId"
