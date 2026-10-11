@@ -25,8 +25,10 @@ still shows **Blackboard Sync**.
 | `trailer/make-trailer.sh` | Builds the 1920x1080 trailer and its thumbnail into `out/` |
 | `trailer/draft-trailer-thumbnail.png` | The thumbnail it makes, for review |
 | `images/hero-art.png` | 16:9 Super hero art, 1920x1080 (no text, no UI) |
-| `images/store-logo-300.png` | 1:1 app tile icon, 300x300 |
-| `images/make-images.sh` | Renders both images |
+| `images/poster-art.png` | Poster art, 1440x2160 (logo and app name) |
+| `images/box-art.png` | 1:1 box art, 2160x2160 (logo and app name) |
+| `images/store-logo-{300,150,71}.png` | 1:1 app tile icons, 300x300, 150x150 and 71x71 |
+| `images/make-images.sh` | Renders the artwork and scales the tile icons |
 | `shot.sh` | Headless Chrome screenshot helper used by the scripts |
 | `out/` | Generated videos and downloads; ignored by git |
 
@@ -148,8 +150,9 @@ copy.
 - [ ] **Screenshots:** upload `01-genel-bakis.png` … `05-klasorler.png` in that order, with
   the captions from the listing file. Only the final (Windows) images; never `draft-*.png`.
   Images are uploaded separately for each language.
-- [ ] **Store logos:** 1:1 app tile icon (300x300): `images/store-logo-300.png` (optional;
-  without it the Store uses the package's logo). Poster and box art are for games; skip.
+- [ ] **Store logos:** poster art (1440x2160): `images/poster-art.png`; 1:1 box art
+  (2160x2160): `images/box-art.png`; 1:1 app tile icons: `images/store-logo-300.png`
+  (300x300), `images/store-logo-150.png` (150x150), `images/store-logo-71.png` (71x71).
 - [ ] **Trailer:** skip it for the first submission (decided; see [Trailer](#trailer)). The
   promo video shows the macOS app; a trailer built from Windows captures can be added in a
   later submission (`out/trailer-1920x1080.mp4`, thumbnail `out/trailer-thumbnail.png`, title
@@ -270,7 +273,10 @@ risks failing certification. A trailer can be added later, rebuilt from Windows 
 
 - `images/hero-art.png` (1920x1080): the logo on the site's background, centred in the top
   two-thirds, no text and no app UI, as Microsoft asks for Super hero art.
-- `images/store-logo-300.png` (300x300): `assets/icon/logo.png` scaled.
+- `images/poster-art.png` (1440x2160) and `images/box-art.png` (2160x2160): the logo
+  and `blackboard-sync` name on the hero art's background style, no app UI.
+- `images/store-logo-300.png` (300x300), `images/store-logo-150.png` (150x150) and
+  `images/store-logo-71.png` (71x71): `assets/icon/logo.png` scaled.
 
 ## Open decisions
 

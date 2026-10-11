@@ -21,12 +21,12 @@ Blackboard’daki ders dosyalarını, duyuruları ve notları arka planda kendil
 
 ## Description
 
-Limit 10,000, plain text, no URLs (Microsoft asks for links in their own fields). 2,490 characters.
+Limit 10,000, plain text, no URLs (Microsoft asks for links in their own fields). 2,456 characters.
 
 ```text
 Blackboard’daki ders içeriklerini otomatik olarak bilgisayarına indirir. Her seferinde siteye girip dosyaları tek tek indirmen gerekmez.
 
-blackboard-sync bağımsız bir projedir; Anthology Inc. veya Blackboard ile bağlantılı değildir, onlar tarafından onaylanmamış veya desteklenmemektedir. “Blackboard”, sahibinin ticari markasıdır.
+blackboard-sync bağımsız bir projedir; Anthology Inc. veya Blackboard ile bağlantılı değildir. “Blackboard” markası bu uygulamaya değil, kendi sahibine aittir.
 
 NASIL ÇALIŞIR
 1. Okulunun Blackboard adresini yaz ve dosyaların kaydedileceği klasörü seç.
@@ -134,10 +134,10 @@ senkronizasyon
 
 ## Copyright and trademark info
 
-Limit 200. 131 characters.
+Limit 200. 192 characters.
 
 ```text
-© 2026 Umut Yalçın. MIT Lisansı. Anthology Inc. veya Blackboard ile bağlantılı değildir. “Blackboard”, sahibinin ticari markasıdır.
+© 2026 Umut Yalçın. MIT Lisansı. blackboard-sync bağımsız bir projedir; Anthology Inc. veya Blackboard ile bağlantılı değildir. “Blackboard” markası bu uygulamaya değil, kendi sahibine aittir.
 ```
 
 ## Additional license terms
