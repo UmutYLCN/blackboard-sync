@@ -104,10 +104,11 @@ Analiz, reklam ve kullanım takibi yok
 
 | Image | Caption |
 | --- | --- |
-| `01-genel-bakis.png` | Genel bakış: Blackboard'daki yeni ders dosyaları arka planda kendiliğinden iner; son indirilenler tek listede. |
-| `02-baslangic.png` | Başlangıç: okulunun Blackboard adresini yaz, kayıt klasörünü ve bilgisayar açılınca başlatma seçeneğini belirle, ardından giriş yap. |
-| `03-ilk-senkron.png` | İlk senkron girişten sonra başlar. Genel bakışta yeni içerik kontrol edilirken senkronun sürdüğünü görebilirsin. |
-| `04-tepsi-menusu.png` | Pencereyi kapatsan da uygulama saatin yanındaki simgeden çalışır. Son senkronu gör, yeni bir senkron başlat veya derslerine ve indirdiklerine ulaş. |
+| `01-tek-tek.png` | Blackboard’dan dosyaları tek tek mi indiriyorsun? Blackboard Sync, ders dosyalarını arka planda otomatik olarak bilgisayarına indirir. |
+| `02-genel-bakis.png` | Genel bakış: Blackboard'daki yeni ders dosyaları arka planda kendiliğinden iner; son indirilenler tek listede. |
+| `03-baslangic.png` | Başlangıç: okulunun Blackboard adresini yaz, kayıt klasörünü ve bilgisayar açılınca başlatma seçeneğini belirle, ardından giriş yap. |
+| `04-ilk-senkron.png` | İlk senkron girişten sonra başlar. Genel bakışta yeni içerik kontrol edilirken senkronun sürdüğünü görebilirsin. |
+| `05-tepsi-menusu.png` | Pencereyi kapatsan da uygulama saatin yanındaki simgeden çalışır. Son senkronu gör, yeni bir senkron başlat veya derslerine ve indirdiklerine ulaş. |
 
 ## Trailer title
 

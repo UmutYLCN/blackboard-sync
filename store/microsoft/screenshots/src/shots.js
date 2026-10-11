@@ -1,10 +1,23 @@
-// The four available Windows captures, in Store listing order. `id` also names
-// the PNG in windows/. Titles are drawn by template.html; captions are for
-// Partner Center (at most 200 characters). Ship the Turkish-titled images for
-// both listing languages. Add further shots only when Windows captures exist.
+// Store upload order: a text-only promo card, then four Windows captures.
+// `id` names the output PNG and, for captures, the PNG in windows/. `kind: "card"`
+// needs no image input. Title parts are [plain, highlighted, optional suffix].
+// Captions are at most 200 characters. Ship Turkish titles for both listings.
 window.SHOTS = [
   {
-    id: "01-genel-bakis",
+    id: "01-tek-tek",
+    kind: "card",
+    title: {
+      tr: ["Blackboard’dan dosyaları\n", "tek tek", " mi indiriyorsun?"],
+      en: ["Still downloading files\n", "one by one", "?"],
+    },
+    subtitle: { tr: "Buna artık gerek yok.", en: "You no longer have to." },
+    caption: {
+      tr: "Blackboard’dan dosyaları tek tek mi indiriyorsun? Blackboard Sync, ders dosyalarını arka planda otomatik olarak bilgisayarına indirir.",
+      en: "Still downloading Blackboard files one by one? Blackboard Sync automatically downloads your course files to your computer in the background.",
+    },
+  },
+  {
+    id: "02-genel-bakis",
     title: { tr: ["Ders dosyaların ", "kendiliğinden iner."], en: ["Your course files ", "download themselves."] },
     caption: {
       tr: "Genel bakış: Blackboard'daki yeni ders dosyaları arka planda kendiliğinden iner; son indirilenler tek listede.",
@@ -13,7 +26,7 @@ window.SHOTS = [
     capture: "Genel bakış after a sync, Son indirilenler list with 10 files",
   },
   {
-    id: "02-baslangic",
+    id: "03-baslangic",
     title: { tr: ["Okulunu ve klasörünü seç, ", "giriş yap."], en: ["Choose your school and folder, ", "sign in."] },
     caption: {
       tr: "Başlangıç: okulunun Blackboard adresini yaz, kayıt klasörünü ve bilgisayar açılınca başlatma seçeneğini belirle, ardından giriş yap.",
@@ -22,7 +35,7 @@ window.SHOTS = [
     capture: "Başlangıç first-run page: school address, save folder, start with computer and Giriş yap",
   },
   {
-    id: "03-ilk-senkron",
+    id: "04-ilk-senkron",
     title: { tr: ["Girişten sonra ", "ilk senkron başlar."], en: ["After sign-in, ", "your first sync starts."] },
     caption: {
       tr: "İlk senkron girişten sonra başlar. Genel bakışta yeni içerik kontrol edilirken senkronun sürdüğünü görebilirsin.",
@@ -31,7 +44,7 @@ window.SHOTS = [
     capture: "Genel bakış during first sync: Yeni içerik kontrol ediliyor… and Senkron sürüyor",
   },
   {
-    id: "04-tepsi-menusu",
+    id: "05-tepsi-menusu",
     title: { tr: ["Saatin yanında ", "sessizce çalışır."], en: ["Quietly working ", "from your system tray."] },
     caption: {
       tr: "Pencereyi kapatsan da uygulama saatin yanındaki simgeden çalışır. Son senkronu gör, yeni bir senkron başlat veya derslerine ve indirdiklerine ulaş.",

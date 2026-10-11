@@ -102,10 +102,11 @@ Free and open source
 
 | Image | Caption |
 | --- | --- |
-| `01-genel-bakis.png` | Overview: new course files on Blackboard download in the background; the latest downloads are listed in one place. |
-| `02-baslangic.png` | Getting started: enter your school's Blackboard address, choose a save folder and whether to start with your computer, then sign in. |
-| `03-ilk-senkron.png` | The first sync starts after sign-in. Overview shows that syncing is in progress while the app checks for new content. |
-| `04-tepsi-menusu.png` | The app keeps working from the system tray after you close its window. Check the last sync, sync again, or access your courses and recent downloads. |
+| `01-tek-tek.png` | Still downloading Blackboard files one by one? Blackboard Sync automatically downloads your course files to your computer in the background. |
+| `02-genel-bakis.png` | Overview: new course files on Blackboard download in the background; the latest downloads are listed in one place. |
+| `03-baslangic.png` | Getting started: enter your school's Blackboard address, choose a save folder and whether to start with your computer, then sign in. |
+| `04-ilk-senkron.png` | The first sync starts after sign-in. Overview shows that syncing is in progress while the app checks for new content. |
+| `05-tepsi-menusu.png` | The app keeps working from the system tray after you close its window. Check the last sync, sync again, or access your courses and recent downloads. |
 
 ## Trailer title
 
