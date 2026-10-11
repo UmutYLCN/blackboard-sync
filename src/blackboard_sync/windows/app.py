@@ -558,7 +558,8 @@ def main(argv=None):
     config.ensure_data_dir()
     if args.notification:
         activation.request_update(config)
-    show_window = not (args.background or args.notification)
+    # The packaged (MSIX) app's login item cannot pass --background.
+    show_window = not (args.background or args.notification or autostart.started_at_login())
     lock = jobs.single_instance(config)
     if lock is None:
         log.info("Another copy is already running%s", "; asking it to show its window" if show_window else "")
