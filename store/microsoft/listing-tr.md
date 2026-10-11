@@ -107,6 +107,7 @@ Analiz, reklam ve kullanım takibi yok
 | `01-genel-bakis.png` | Genel bakış: Blackboard'daki yeni ders dosyaları arka planda kendiliğinden iner; son indirilenler tek listede. |
 | `02-baslangic.png` | Başlangıç: okulunun Blackboard adresini yaz, kayıt klasörünü ve bilgisayar açılınca başlatma seçeneğini belirle, ardından giriş yap. |
 | `03-ilk-senkron.png` | İlk senkron girişten sonra başlar. Genel bakışta yeni içerik kontrol edilirken senkronun sürdüğünü görebilirsin. |
+| `04-tepsi-menusu.png` | Pencereyi kapatsan da uygulama saatin yanındaki simgeden çalışır. Son senkronu gör, yeni bir senkron başlat veya derslerine ve indirdiklerine ulaş. |
 
 ## Trailer title
 

@@ -19,9 +19,9 @@ still shows **Blackboard Sync**.
 | --- | --- |
 | `listing-tr.md` | Turkish Store listing (primary market), ready to paste |
 | `listing-en.md` | English Store listing (additional language), ready to paste |
-| `screenshots/01-genel-bakis.png`, `02-baslangic.png`, `03-ilk-senkron.png` | Final Windows screenshots, 1920x1080, in upload order (see [Screenshots](#screenshots)) |
+| `screenshots/01-genel-bakis.png`, `02-baslangic.png`, `03-ilk-senkron.png`, `04-tepsi-menusu.png` | Final Windows screenshots, 1920x1080, in upload order (see [Screenshots](#screenshots)) |
 | `screenshots/render.sh` | Renders the screenshots from `screenshots/src/` |
-| `screenshots/src/` | `template.html`, `shots.js` (titles, captions, what to capture), `windows/` (the three Windows captures as PNG) |
+| `screenshots/src/` | `template.html`, `shots.js` (titles, captions, what to capture), `windows/` (the four Windows captures as PNG) |
 | `trailer/make-trailer.sh` | Builds the 1920x1080 trailer and its thumbnail into `out/` |
 | `trailer/draft-trailer-thumbnail.png` | The thumbnail it makes, for review |
 | `images/hero-art.png` | 16:9 Super hero art, 1920x1080 (no text, no UI) |
@@ -40,7 +40,7 @@ Chrome) and, for the trailer, `ffmpeg`.
 1. Download the package from CI (see [4. Packages](#4-packages)).
 2. Do the manual test in `docs/MSIX.md` ("Manual Windows verification still required")
    with that exact `.msix`, signed with the test certificate as described there.
-3. Use the three final Windows images in [Screenshots](#screenshots). Capture additional
+3. Use the four final Windows images in [Screenshots](#screenshots). Capture additional
    screens during future manual tests to improve the listing.
 
 ## Partner Center checklist
@@ -147,8 +147,8 @@ copy.
   description, product features, keywords, copyright and trademark info, developed by.
   Leave "What's new in this version" empty for the first submission. The non-affiliation
   sentence is the second paragraph of the description and part of the copyright line.
-- [ ] **Screenshots:** upload `01-genel-bakis.png`, `02-baslangic.png`, then
-  `03-ilk-senkron.png`, with the captions from the listing file. These are the final
+- [ ] **Screenshots:** upload `01-genel-bakis.png`, `02-baslangic.png`,
+  `03-ilk-senkron.png`, then `04-tepsi-menusu.png`, with the captions from the listing file. These are the final
   Windows images. Upload the same Turkish-titled images separately for each language.
 - [ ] **Store logos:** poster art (1440x2160): `images/poster-art.png`; 1:1 box art
   (2160x2160): `images/box-art.png`; 1:1 app tile icons: `images/store-logo-300.png`
@@ -196,7 +196,7 @@ up to 10 per language, with an optional caption of 200 characters each
 They must show the Windows app as it is. The images here are 1920x1080 with one large
 Turkish title at the top (Microsoft asks for key visuals and text in the top two-thirds).
 
-The first submission uses the three **light-mode Windows** captures taken by the
+The first submission uses the four **light-mode Windows** captures taken by the
 maintainer. These final PNGs have no TASLAK label; the old macOS drafts and their inputs
 have been removed. Use the same Turkish-titled images for both listing languages.
 
@@ -205,16 +205,19 @@ have been removed. Use the same Turkish-titled images for both listing languages
 | [01-genel-bakis.png](screenshots/01-genel-bakis.png) | **Genel bakış**, after a sync: **Son indirilenler**, 10 files | 942x726 |
 | [02-baslangic.png](screenshots/02-baslangic.png) | **Başlangıç**: school Blackboard address, save folder, **Bilgisayar açılınca başlat**, **Giriş yap** | 942x672 |
 | [03-ilk-senkron.png](screenshots/03-ilk-senkron.png) | **Genel bakış**, first sync: **Yeni içerik kontrol ediliyor…**, **Senkron sürüyor** | 942x672 |
+| [04-tepsi-menusu.png](screenshots/04-tepsi-menusu.png) | Notification-area menu: last sync, **Şimdi senkronize et**, **Dersler**, **Son indirilenler**, University folder | 391x200 |
 
 ![Genel bakış](screenshots/01-genel-bakis.png)
 
 ### Sources and rendering
 
 Inputs are in `screenshots/src/windows/`. They were converted to PNG from
-`genel-bakis-liste.jpeg`, `baslangic.jpeg` and `senkron-suruyor.jpeg`, respectively,
+`genel-bakis-liste.jpeg`, `baslangic.jpeg`, `senkron-suruyor.jpeg` and
+`tepsi-menusu.jpeg`, respectively,
 received via WhatsApp. The conversion preserves the decoded pixels and original
 sizes; it cannot recover detail lost to JPEG compression. No sharpening or artificial
-upscaling was applied. The existing template fits each capture within its image area.
+upscaling was applied. The template fits each capture within its image area; the small
+tray menu stays at its native 391x200 size, centred below the title (`compact` in `shots.js`).
 
 Render from the repository root:
 
@@ -222,14 +225,14 @@ Render from the repository root:
 ./store/microsoft/screenshots/render.sh
 ```
 
-The three final 1920x1080 PNGs are written directly to `screenshots/`. Upload them in the
+The four final 1920x1080 PNGs are written directly to `screenshots/`. Upload them in the
 table's order, with the captions in `listing-tr.md` or `listing-en.md` (also stored in
 `screenshots/src/shots.js`). The maintainer's upload copies are in
 `~/Downloads/blackboard-sync-store/screenshots-final/`.
 
 ### To add later
 
-These three captures are enough for the first submission. The following have no Windows
+These four captures are enough for the first submission. The following have no Windows
 captures yet and are deliberately absent from `shots.js` and the final image set:
 
 - **Silinenler**: a few deleted files available to download again.
@@ -302,7 +305,7 @@ risks failing certification. A trailer can be added later, rebuilt from Windows 
 
 ## Settled decisions
 
-- **Screenshots:** use the three available light-mode Windows captures with Turkish titles
+- **Screenshots:** use the four available light-mode Windows captures with Turkish titles
   for the first submission, including the English listing if added. More views and dark
   mode can follow later.
 
