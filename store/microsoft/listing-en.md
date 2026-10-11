@@ -134,7 +134,7 @@ student
 Limit 200. 122 characters.
 
 ```text
-© 2026 Umut Yalcin. MIT License. Not affiliated with Anthology Inc. or Blackboard. Blackboard is a trademark of its owner.
+© 2026 Umut Yalçın. MIT License. Not affiliated with Anthology Inc. or Blackboard. Blackboard is a trademark of its owner.
 ```
 
 ## Additional license terms
@@ -144,5 +144,5 @@ Leave empty (see `listing-tr.md`).
 ## Developed by
 
 ```text
-Umut Yalcin
+Umut Yalçın
 ```

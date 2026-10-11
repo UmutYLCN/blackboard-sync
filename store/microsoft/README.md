@@ -66,14 +66,13 @@ Items marked **Decide** are the maintainer's call; all are collected again under
 - [ ] **Privacy:** "Does this product access, collect or transmit personal information?"
   **Yes.** The app stores the Blackboard session cookies, user ID, user name and display
   name on the PC and sends the cookies to the school's Blackboard server.
-- [ ] **Privacy policy URL:** `https://blackboard-sync.umutyalcin.workers.dev/gizlilik`.
-  **Decide/fix first:** the page describes the Setup build only. For the Store package it is
-  wrong in three places: the data folder is
-  `%LOCALAPPDATA%\Packages\<family name>\LocalCache\Roaming\blackboard-sync`, not
-  `%APPDATA%\blackboard-sync`; start at login is a Windows startup task, not an `HKCU\…\Run`
-  value; and the package never contacts GitHub (no update checks, no "Uygulamayı kaldır…"
-  button). Update the page (a site change, not part of this folder) before submitting. The
-  page is Turkish only; an English listing may warrant an English version.
+- [ ] **Privacy policy URL:** `https://blackboard-sync.umutyalcin.workers.dev/privacy`.
+  The page is in English and says which statements apply to the macOS, Windows Setup and
+  Microsoft Store builds. Its "Microsoft Store build" section covers the package's data
+  folder (`%LOCALAPPDATA%\Packages\<family name>\LocalCache\Roaming\blackboard-sync`),
+  the startup task (instead of the `HKCU\…\Run` value), no GitHub contact or self-update,
+  removal through Windows Settings > Apps, and separate data from the Setup build. The old
+  `/gizlilik` address redirects to it.
 - [ ] **Website:** `https://blackboard-sync.umutyalcin.workers.dev`.
 - [ ] **Support contact info:** **Decide.** `https://github.com/UmutYLCN/blackboard-sync/issues`
   (what the privacy page names) or an email address. Required only for Xbox.
@@ -106,7 +105,7 @@ below follow what the app does. Check each question's info icon when its wording
 | Gambling, simulated gambling | No | Same |
 | Users can interact or exchange content with other users (chat, posting, sharing) | No | It only downloads from the student's own courses; nothing is posted |
 | Shares the user's location | No | It reads no location |
-| Shares personal information with third parties | No | The session goes only to the school's own Blackboard (privacy page: "Verilerin hiçbir üçüncü tarafla paylaşılmaz") |
+| Shares personal information with third parties | No | The session goes only to the school's own Blackboard (privacy page: "Your data is not shared with, sold or rented to any third party") |
 | Digital purchases | No | Free, no in-app purchases |
 | Unrestricted internet access (for example a web browser) | No | The sign-in window opens the school's sign-in page; the app is not a browser. Confirm against the question's info text |
 
@@ -151,8 +150,10 @@ copy.
   Images are uploaded separately for each language.
 - [ ] **Store logos:** 1:1 app tile icon (300x300): `images/store-logo-300.png` (optional;
   without it the Store uses the package's logo). Poster and box art are for games; skip.
-- [ ] **Trailer:** **Decide** (see [Trailer](#trailer)). If used: `out/trailer-1920x1080.mp4`,
-  thumbnail `out/trailer-thumbnail.png`, title from the listing file.
+- [ ] **Trailer:** skip it for the first submission (decided; see [Trailer](#trailer)). The
+  promo video shows the macOS app; a trailer built from Windows captures can be added in a
+  later submission (`out/trailer-1920x1080.mp4`, thumbnail `out/trailer-thumbnail.png`, title
+  from the listing file).
 - [ ] **16:9 Super hero art:** `images/hero-art.png`. Optional, but Microsoft shows trailers
   at the top of the listing only when this image is there.
 - [ ] **Supplemental fields:** short title, sort title, voice title and additional system
@@ -253,11 +254,11 @@ frame for 2.5 s with a fade-out.
 ./store/microsoft/trailer/make-trailer.sh promo.mp4 # or uses a local copy
 ```
 
-**Decide:** the promo video shows the macOS app (macOS window frames, Finder) and an end
-card reading "macOS & Windows". Microsoft requires listing media to represent the product
-accurately, so a trailer of the macOS app risks failing certification. Recommendation:
-submit without a trailer, and add one later rebuilt from Windows captures (the promo's
-`scene.html` with Windows images, then this script).
+**Decided:** the first submission goes without a trailer. The promo video shows the macOS
+app (macOS window frames, Finder) and an end card reading "macOS & Windows", and Microsoft
+requires listing media to represent the product accurately, so a trailer of the macOS app
+risks failing certification. A trailer can be added later, rebuilt from Windows captures
+(the promo's `scene.html` with Windows images, then this script).
 
 ![Trailer thumbnail](trailer/draft-trailer-thumbnail.png)
 
@@ -275,17 +276,20 @@ submit without a trailer, and add one later rebuilt from Windows captures (the p
 
 1. **Notes for certification / test account:** how certification testers can sign in
    (school test account or explanation only). The biggest certification risk.
-2. **Privacy policy page:** update it for the Store package (data path, startup task, no
-   GitHub contact) before submitting; consider an English version.
-3. **Trailer:** submit without one (recommended), or with the macOS-based trailer here.
-4. **Markets:** all markets or Turkey only.
-5. **English listing:** add it or not; if yes, Turkish-titled screenshots or `--lang en` ones.
-6. **Category:** Education > Study aids is proposed; secondary category Productivity or none.
-7. **Support contact:** GitHub Issues URL or an email address.
-8. **OneDrive backup declaration:** keep the default (checked) or uncheck.
-9. **Publishing hold:** publish on certification or hold until "Publish now".
-10. **Screenshot style:** Microsoft's guidelines say "Don't add additional logos, icons, or
-    marketing messages to your screenshots"; the images here carry a title (no logo). Keep
-    the titles (common in the Store) or render the plain captures.
-11. **Name spelling:** the copyright line and "Developed by" use "Umut Yalcin", as in
-    `LICENSE`; change to "Umut Yalçın" if preferred.
+2. **Markets:** all markets or Turkey only.
+3. **English listing:** add it or not; if yes, Turkish-titled screenshots or `--lang en` ones.
+4. **Category:** Education > Study aids is proposed; secondary category Productivity or none.
+5. **Support contact:** GitHub Issues URL or an email address.
+6. **OneDrive backup declaration:** keep the default (checked) or uncheck.
+7. **Publishing hold:** publish on certification or hold until "Publish now".
+8. **Screenshot style:** Microsoft's guidelines say "Don't add additional logos, icons, or
+   marketing messages to your screenshots"; the images here carry a title (no logo). Keep
+   the titles (common in the Store) or render the plain captures.
+
+## Settled decisions
+
+- **Privacy policy page:** the page is now English, lives at `/privacy` (the old `/gizlilik`
+  redirects there) and covers the Store package (data folder, startup task, no GitHub
+  contact, removal through Windows Settings).
+- **Trailer:** the first submission goes without one; a Windows-based trailer can come later.
+- **Name spelling:** the copyright line and "Developed by" use "Umut Yalçın".

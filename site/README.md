@@ -19,6 +19,8 @@ npx wrangler@4.149.0 dev --persist-to ../.wrangler/state
 
 Keeping local state outside `site/` stops the dev server from reloading on its own writes.
 
+The privacy policy is `privacy.html`, in English, served at `/privacy`. `_redirects` sends the old Turkish address `/gizlilik` (and `/gizlilik.html`) there with a 301. Extensionless paths and redirects are handled by Cloudflare's asset server, so check them with `wrangler dev` rather than `python3 -m http.server`.
+
 Cloudflare Workers Builds settings:
 
 - Root directory: `/site`
