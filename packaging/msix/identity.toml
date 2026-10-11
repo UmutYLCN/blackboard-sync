@@ -1,13 +1,16 @@
-# Package identity of the Microsoft Store (MSIX) build: the only values that
-# change when the app is reserved in Partner Center. Replace every PLACEHOLDER
-# with the value Partner Center shows under Product management > Product
-# identity (docs/MSIX.md). A local or CI test build works with the placeholders.
+# Package identity of the Microsoft Store (MSIX) build, from Partner Center >
+# Product management > Product identity. The user-facing app name stays
+# "Blackboard Sync" in Start; Package/Properties/DisplayName uses the reserved
+# Store name.
 
 # Package/Identity/Name ("Package/Identity/Name" in Partner Center).
-name = "PLACEHOLDER.BlackboardSync"
+name = "UmutYLCN.blackboard-sync"
 # Package/Identity/Publisher ("Package/Identity/Publisher", a CN=... string).
-publisher = "CN=PLACEHOLDER-PUBLISHER"
+publisher = "CN=32397A73-9242-4378-90EB-34A15F7502AE"
 # Package/Properties/PublisherDisplayName ("Package/Properties/PublisherDisplayName").
-publisher_display_name = "PLACEHOLDER Publisher"
+publisher_display_name = "UmutYLCN"
 # Package/Properties/DisplayName: must be a name reserved for the app in Partner Center.
-display_name = "Blackboard Sync"
+display_name = "blackboard-sync"
+# uap:VisualElements is the friendly Start-menu name; Microsoft documents it
+# separately from the Store package Properties/DisplayName.
+visual_display_name = "Blackboard Sync"

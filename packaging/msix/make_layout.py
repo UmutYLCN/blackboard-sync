@@ -26,7 +26,7 @@ except ModuleNotFoundError:  # Python 3.10
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 LOGO = ROOT / "assets" / "icon" / "logo.png"
-IDENTITY_KEYS = ("name", "publisher", "publisher_display_name", "display_name")
+IDENTITY_KEYS = ("name", "publisher", "publisher_display_name", "display_name", "visual_display_name")
 # File name -> (width, height, logo height as a share of the image height).
 ASSETS = {
     "StoreLogo.png": (50, 50, 1.0),

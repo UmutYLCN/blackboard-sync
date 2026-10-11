@@ -61,11 +61,10 @@ Add-AppxPackage "$env:TEMP\bbsync-test.msix"
 Start **Blackboard Sync** from the Start menu. To remove it again:
 
 ```powershell
-Get-AppxPackage PLACEHOLDER.BlackboardSync | Remove-AppxPackage
+Get-AppxPackage UmutYLCN.blackboard-sync | Remove-AppxPackage
 Remove-Item "Cert:\LocalMachine\TrustedPeople\$($cert.Thumbprint)", "Cert:\CurrentUser\My\$($cert.Thumbprint)"
 ```
 
-(Use the package name from `identity.toml` once the placeholder is replaced.)
 Uninstall a Setup-installed copy first, so that two copies do not both start at
 login.
 
@@ -103,19 +102,20 @@ identity (`windows/package.py`, `is_packaged()`). Without package identity
   as the installer build does with `--background`; started from the Start menu,
   it shows its main window.
 
-## Placeholders to replace from Partner Center
+## Package identity
 
-After reserving the app name in Partner Center, copy these from **Product
-management > Product identity** into `packaging/msix/identity.toml`:
-
-| `identity.toml` | Partner Center | Placeholder now |
-| --- | --- | --- |
-| `name` | Package/Identity/Name | `PLACEHOLDER.BlackboardSync` |
-| `publisher` | Package/Identity/Publisher | `CN=PLACEHOLDER-PUBLISHER` |
-| `publisher_display_name` | Package/Properties/PublisherDisplayName | `PLACEHOLDER Publisher` |
-| `display_name` | the reserved app name | `Blackboard Sync` (keep if that is the reserved name) |
-
-`make_layout.py` prints a note for every value that is still a placeholder.
+`identity.toml` contains the values assigned in Partner Center > Product
+management > Product identity: `UmutYLCN.blackboard-sync`,
+`CN=32397A73-9242-4378-90EB-34A15F7502AE`, and publisher display name
+`UmutYLCN`. Package/Properties/DisplayName is the reserved Store name
+`blackboard-sync`. The Start-menu name remains **Blackboard Sync**:
+Microsoft's [MSIX manifest guide](https://learn.microsoft.com/en-us/windows/msix/desktop/desktop-to-uwp-manual-conversion)
+identifies the reserved Store name with the package `Properties/DisplayName`.
+The separate [`uap:VisualElements` reference](https://learn.microsoft.com/en-us/uwp/schemas/appxpackage/uapmanifestschema/element-uap-visualelements)
+defines its DisplayName as a friendly, localizable name shown to users; it does
+not require that value to match the reserved Store name.
+`make_layout.py` retains its note for any identity value that still contains a
+placeholder; none of the checked-in values do.
 
 ## Store-owned updates and removal
 
