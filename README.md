@@ -37,6 +37,7 @@ irm https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.ps1 
 Şifreni yalnızca okulunun kendi giriş sayfasına yazarsın; uygulama şifreni görmez ve hiçbir yere kaydetmez. Giriş oturumu yalnızca kendi bilgisayarında tutulur ve hiçbir sunucuya gönderilmez.
 
 🌐 **Web sitesi:** [blackboard-sync.umutyalcin.workers.dev](https://blackboard-sync.umutyalcin.workers.dev)
+🎬 **Tanıtım videosu:** https://github.com/user-attachments/assets/d7e1e0a7-a25b-4412-824b-52ee71d25b03
 
 ![Ziyaretçi](https://visitor-badge.laobi.icu/badge?page_id=UmutYLCN.blackboard-sync&left_text=ziyaret%C3%A7i)
 
