@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from blackboard_sync import sync as sync_mod
 from blackboard_sync.state import State
-from blackboard_sync.sync import Term, choose_current_terms, parse_time, run_sync
+from blackboard_sync.sync import Term, choose_current_terms, parse_time, run_sync, sha256_file
 
 from .conftest import assert_owner_only
 
@@ -131,6 +131,70 @@ def test_changed_file_never_overwrites_local_edits(config, client, fake_bb):
     assert (config.dest / SYLLABUS).read_bytes() == b"%PDF syllabus v1 + my highlights"
     updated = SYLLABUS.replace("_v1.pdf", "_v1 (2).pdf")
     assert (config.dest / updated).read_bytes() == b"%PDF syllabus v2"
+
+
+NOTE = f"{CSE}/Lecture Notes/Week 1/Intro - Asymptotic Notation.md"
+
+
+def _edit_note_on_blackboard(fake_bb, body, modified="2026-10-01T00:00:00.000Z"):
+    item = fake_bb.routes["/learn/api/public/v1/courses/_13004_1/contents/_c21_1/children"]["results"][0]
+    item["body"] = body
+    item["modified"] = modified
+
+
+def test_changed_note_replaces_locally_edited_note_in_place(config, client, fake_bb):
+    sync(config, client)
+    (config.dest / NOTE).write_text("my own scribbles", encoding="utf-8")
+    _edit_note_on_blackboard(fake_bb, "<p>Read chapter 4 instead.</p>")
+    report = sync(config, client)
+    assert "Read chapter 4 instead." in (config.dest / NOTE).read_text(encoding="utf-8")
+    assert "my own scribbles" not in (config.dest / NOTE).read_text(encoding="utf-8")
+    assert not any("(2)" in p for p in files_under(config.dest))
+    cse = next(c for c in report.courses if c.code == "CSE303")
+    assert cse.updated_notes == [NOTE]
+    recorded = [o for o in State.load(config.state_file).outputs.values() if o["path"] == NOTE]
+    assert [o["sha256"] for o in recorded] == [sha256_file(config.dest / NOTE)]
+
+
+def test_changed_note_is_recreated_when_deleted_locally(config, client, fake_bb):
+    sync(config, client)
+    (config.dest / NOTE).unlink()
+    _edit_note_on_blackboard(fake_bb, "<p>Read chapter 4 instead.</p>")
+    sync(config, client)
+    assert "Read chapter 4 instead." in (config.dest / NOTE).read_text(encoding="utf-8")
+    assert not any("(2)" in p for p in files_under(config.dest))
+
+
+def _forget_item(config, key):
+    state = State.load(config.state_file)
+    del state.items[key]
+    state.dirty = True
+    state.save()
+
+
+def test_unchanged_note_keeps_local_edit_and_deletion(config, client, fake_bb):
+    sync(config, client)
+    (config.dest / NOTE).write_text("my own scribbles", encoding="utf-8")
+    sync(config, client)  # nothing changed on Blackboard: the item is skipped
+    assert (config.dest / NOTE).read_text(encoding="utf-8") == "my own scribbles"
+    # Even when the item is looked at again, identical note content writes nothing.
+    _forget_item(config, "content:_13004_1:_c211_1")
+    sync(config, client)
+    assert (config.dest / NOTE).read_text(encoding="utf-8") == "my own scribbles"
+    (config.dest / NOTE).unlink()
+    _forget_item(config, "content:_13004_1:_c211_1")
+    sync(config, client)
+    assert not (config.dest / NOTE).exists()
+    assert not any("(2)" in p for p in files_under(config.dest))
+
+
+def test_existing_numbered_note_copies_are_left_alone(config, client, fake_bb):
+    sync(config, client)
+    copy = config.dest / NOTE.replace(".md", " (2).md")
+    copy.write_text("old numbered copy", encoding="utf-8")
+    _edit_note_on_blackboard(fake_bb, "<p>Read chapter 4 instead.</p>")
+    sync(config, client)
+    assert copy.read_text(encoding="utf-8") == "old numbered copy"
 
 
 def test_items_removed_on_blackboard_stay_local(config, client, fake_bb):

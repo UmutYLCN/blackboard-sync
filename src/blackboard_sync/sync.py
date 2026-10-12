@@ -751,7 +751,7 @@ class Syncer:
             fh.write(data)
         tmp_path = Path(tmp)
         try:
-            outcome, rel = self.place(out_key, desired_rel, tmp_path, sha, len(data))
+            outcome, rel = self.place(out_key, desired_rel, tmp_path, sha, len(data), replace_in_place=True)
         finally:
             if tmp_path.exists():
                 tmp_path.unlink()
@@ -761,7 +761,9 @@ class Syncer:
             updated_list.append(rel)
         return rel
 
-    def place(self, out_key: str, desired_rel: str, tmp: Path, sha: str, size: int) -> tuple[str, str]:
+    def place(
+        self, out_key: str, desired_rel: str, tmp: Path, sha: str, size: int, replace_in_place: bool = False
+    ) -> tuple[str, str]:
         """Move a freshly fetched file into place without ever clobbering local work.
 
         Returns (outcome, relative path) with outcome "new", "updated" or "unchanged".
@@ -769,6 +771,8 @@ class Syncer:
         * Changed on Blackboard and our copy is untouched: our copy is replaced.
         * Changed on Blackboard but the student edited/removed our copy: the new
           version is saved beside it as "name (2).ext"; nothing is deleted.
+          With replace_in_place (notes) the new version instead replaces the
+          recorded path, or recreates it there if it was deleted.
         * An identical file already sitting at the target is adopted as-is.
         """
         if self.windows:
@@ -782,6 +786,10 @@ class Syncer:
                     return "new", previous["path"]
                 return "unchanged", previous["path"]
             if prev_abs.is_file() and sha256_file(prev_abs) == previous["sha256"]:
+                self._move_into(tmp, prev_abs)
+                self.state.record_output(out_key, previous["path"], sha, size)
+                return "updated", previous["path"]
+            if replace_in_place and not prev_abs.is_dir():
                 self._move_into(tmp, prev_abs)
                 self.state.record_output(out_key, previous["path"], sha, size)
                 return "updated", previous["path"]
