@@ -37,3 +37,16 @@ class ApiError(BlackboardSyncError):
         super().__init__(f"HTTP {status} for {url}{detail}")
         self.status = status
         self.url = url
+
+
+class SkippedMedia(Exception):
+    """A video or audio file was not downloaded; it is written to the note as a link instead.
+
+    Not an error: it carries no exit code and is never reported as a warning.
+    """
+
+    def __init__(self, url: str, name: str = "", content_type: str = ""):
+        super().__init__(f"Not downloading video/audio: {name or url}")
+        self.url = url
+        self.name = name
+        self.content_type = content_type

@@ -19,7 +19,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 
 import requests
 
-from blackboard_sync.errors import ApiError, LoginRequired
+from blackboard_sync.errors import ApiError, LoginRequired, SkippedMedia
 from blackboard_sync.system import set_hidden
 
 log = logging.getLogger(__name__)
@@ -34,6 +34,13 @@ USER_AGENT = "blackboard-sync/0.1 (+personal course mirror)"
 _LOGIN_MARKERS = ("/webapps/login", "/auth-saml", "/webapps/bb-auth-provider", "/ultra/logout")
 _FILENAME_STAR = re.compile(r"filename\*\s*=\s*([^']*)'[^']*'([^;]+)", re.IGNORECASE)
 _FILENAME = re.compile(r'filename\s*=\s*"?([^";]+)"?', re.IGNORECASE)
+# Videos and audio recordings are never downloaded (they are huge); they become links.
+MEDIA_EXTENSIONS = (
+    ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".wmv", ".webm", ".flv", ".f4v", ".mpg", ".mpeg",
+    ".3gp", ".3g2", ".ogv", ".m2ts", ".mts", ".vob", ".asf",
+    ".mp3", ".m4a", ".m4b", ".wav", ".aac", ".flac", ".ogg", ".oga", ".opus", ".wma", ".aif",
+    ".aiff", ".amr", ".mka",
+)
 
 
 @dataclass
@@ -183,6 +190,10 @@ class BlackboardClient:
             ctype = resp.headers.get("Content-Type", "")
             filename = filename_from_disposition(resp.headers.get("Content-Disposition", ""))
             name = (filename or expected_name).lower()
+            if is_media(ctype, filename, expected_name):
+                # Decided from the headers alone: closing the response (below) drops the
+                # connection without reading the body, and no temporary file exists yet.
+                raise SkippedMedia(url, filename or expected_name, ctype)
             if "text/html" in ctype and not filename and not name.endswith((".html", ".htm")):
                 # A web page where a PDF/slide deck was expected, with no file name from the
                 # server, is an error page. A sign-in redirect was already caught above via
@@ -213,6 +224,13 @@ class BlackboardClient:
             )
         finally:
             resp.close()
+
+
+def is_media(content_type: str | None, *names: str | None) -> bool:
+    """True for a ``video/*`` or ``audio/*`` type, or a name with a video or audio extension."""
+    if (content_type or "").strip().lower().startswith(("video/", "audio/")):
+        return True
+    return any(n.strip().lower().endswith(MEDIA_EXTENSIONS) for n in names if n)
 
 
 def _still_current(resp: requests.Response, known: dict) -> bool:

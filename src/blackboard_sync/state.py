@@ -6,7 +6,8 @@ what was written locally:
 * ``items``   - one entry per content item or announcement, keyed by
   ``<kind>:<course id>:<blackboard id>``, holding the ``modified`` timestamp
   seen when it was last processed and the output keys it produced. An item
-  whose ``modified`` is unchanged is skipped entirely on the next run.
+  whose ``modified`` is unchanged is skipped entirely on the next run. Embedded
+  videos and audio that were left as links are listed under ``media``.
 * ``outputs`` - one entry per local file (attachment, embedded file or note),
   keyed by Blackboard attachment/file id, holding the path relative to the
   destination folder, its SHA-256 and size. This is what prevents
@@ -167,10 +168,22 @@ class State:
         return True
 
     def record_item(
-        self, key: str, modified: str | None, outputs: list[str], title: str, partial: bool = False
+        self,
+        key: str,
+        modified: str | None,
+        outputs: list[str],
+        title: str,
+        partial: bool = False,
+        media: list[str] | None = None,
     ) -> None:
-        """``partial`` marks an item some of whose files failed: it is retried next run."""
+        """``partial`` marks an item some of whose files failed: it is retried next run.
+
+        ``media`` lists the keys of embedded video/audio files that were not downloaded
+        (they are links in the note); they count as handled, but own no local file.
+        """
         entry = {"modified": modified, "outputs": outputs, "title": title}
+        if media:
+            entry["media"] = media
         if partial:
             entry["partial"] = True
         if self.items.get(key) != entry:

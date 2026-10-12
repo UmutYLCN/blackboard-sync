@@ -30,6 +30,7 @@ class EmbeddedFile:
     xid: str  # stable content-collection or upload id; replacements get a new one
     name: str
     url: str  # as found in the body; Ultra URLs carry a short-lived signed query
+    mime: str = ""  # from the data-bbfile metadata, when the editor wrote one
 
 
 def body_text(body) -> str:
@@ -206,14 +207,14 @@ class _EmbedFinder(HTMLParser):
         self.found: list[EmbeddedFile] = []
         self._open: list[dict] = []
 
-    def _add(self, url: str, name: str, file_id: str = "") -> None:
+    def _add(self, url: str, name: str, file_id: str = "", mime: str = "") -> None:
         match = _XID.search(url or "") or _RID.search(url or "")
         file_id = file_id or (match.group(1) if match else "")
         if not file_id:
             return
         if any(f.xid == file_id for f in self.found):
             return
-        self.found.append(EmbeddedFile(xid=file_id, name=name.strip(), url=url))
+        self.found.append(EmbeddedFile(xid=file_id, name=name.strip(), url=url, mime=mime))
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
@@ -227,6 +228,7 @@ class _EmbedFinder(HTMLParser):
             meta = {}
         url = meta.get("resourceUrl") or attrs.get("href") or attrs.get("src") or ""
         name = meta.get("displayName") or meta.get("linkName") or meta.get("fileName") or ""
+        mime = meta.get("mimeType") if isinstance(meta.get("mimeType"), str) else ""
         # Prefer a content-collection link when resourceUrl points to a temporary
         # session upload. Ultra often puts the permanent xid in href/viewerUrl.
         candidates = (url, attrs.get("href") or "", meta.get("viewerUrl") or "")
@@ -234,11 +236,11 @@ class _EmbedFinder(HTMLParser):
         upload = _UPLOAD.search(url) if meta else None
         file_id = f"upload-{upload.group(1)}" if upload else ""
         if tag == "a":
-            self._open.append({"url": url, "name": name, "text": [], "file_id": file_id})
+            self._open.append({"url": url, "name": name, "text": [], "file_id": file_id, "mime": mime})
         elif _XID.search(url) or _RID.search(url):
-            self._add(url, name or attrs.get("alt") or "")
+            self._add(url, name or attrs.get("alt") or "", mime=mime)
         elif file_id:
-            self._add(url, name or attrs.get("alt") or "", file_id)
+            self._add(url, name or attrs.get("alt") or "", file_id, mime)
 
     def handle_data(self, data):
         if self._open:
@@ -247,7 +249,7 @@ class _EmbedFinder(HTMLParser):
     def handle_endtag(self, tag):
         if tag == "a" and self._open:
             link = self._open.pop()
-            self._add(link["url"], link["name"] or "".join(link["text"]), link["file_id"])
+            self._add(link["url"], link["name"] or "".join(link["text"]), link["file_id"], link["mime"])
 
 
 def find_embedded_files(html: str) -> list[EmbeddedFile]:
@@ -258,5 +260,5 @@ def find_embedded_files(html: str) -> list[EmbeddedFile]:
     finder.feed(html)
     finder.close()
     for link in finder._open:  # unclosed anchors
-        finder._add(link["url"], link["name"] or "".join(link["text"]), link["file_id"])
+        finder._add(link["url"], link["name"] or "".join(link["text"]), link["file_id"], link["mime"])
     return finder.found
