@@ -26,7 +26,8 @@ BASE_URL = "https://blackboard.example.edu"
 
 
 class FakeResponse:
-    def __init__(self, status_code=200, url="", json_body=None, content=b"", headers=None):
+    def __init__(self, status_code=200, url="", json_body=None, content=b"", headers=None, on_read=None):
+        self.on_read = on_read
         self.status_code = status_code
         self.url = url
         self._json = json_body
@@ -41,6 +42,8 @@ class FakeResponse:
         return self._json
 
     def iter_content(self, chunk_size=1):
+        if self.on_read:
+            self.on_read()
         for i in range(0, len(self.content), chunk_size):
             yield self.content[i : i + chunk_size]
 
@@ -64,6 +67,10 @@ class FakeBlackboard:
         self.etags: dict[str, str] = {}
         self.conditional_requests: list[str] = []
         self.ignore_conditional = False
+        # Opt-in Content-Type per download path (default application/octet-stream), and
+        # the download paths whose body was actually read.
+        self.content_types: dict[str, str] = {}
+        self.bodies_read: list[str] = []
 
     def get(self, url, params=None, timeout=None, stream=False, headers=None):
         parts = urlsplit(url)
@@ -84,7 +91,7 @@ class FakeBlackboard:
                 headers={"Content-Type": "text/html"},
             )
         if key in self.files:
-            resp_headers = {"Content-Type": "application/octet-stream"}
+            resp_headers = {"Content-Type": self.content_types.get(key, "application/octet-stream")}
             etag = self.etags.get(key)
             if etag:
                 resp_headers["ETag"] = etag
@@ -92,7 +99,10 @@ class FakeBlackboard:
                 if not self.ignore_conditional and (headers or {}).get("If-None-Match") == etag:
                     self.conditional_requests.append(key)
                     return FakeResponse(304, url, content=b"", headers=resp_headers)
-            return FakeResponse(200, url, content=self.files[key], headers=resp_headers)
+            return FakeResponse(
+                200, url, content=self.files[key], headers=resp_headers,
+                on_read=lambda: self.bodies_read.append(key),
+            )
         if key in self.routes:
             return FakeResponse(200, url, copy.deepcopy(self.routes[key]))
         return FakeResponse(404, url, {"status": 404, "message": "Not found"})

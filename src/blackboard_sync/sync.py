@@ -14,9 +14,9 @@ from pathlib import Path, PurePosixPath
 
 import requests
 
-from blackboard_sync.api import PARTIAL_PREFIX, PARTIAL_SUFFIX, BlackboardClient
+from blackboard_sync.api import PARTIAL_PREFIX, PARTIAL_SUFFIX, BlackboardClient, is_media
 from blackboard_sync.config import Config
-from blackboard_sync.errors import AlreadyRunning, ApiError, BlackboardSyncError, LoginRequired
+from blackboard_sync.errors import AlreadyRunning, ApiError, BlackboardSyncError, LoginRequired, SkippedMedia
 from blackboard_sync.htmltext import body_text, find_embedded_files
 from blackboard_sync.notes import (
     announcement_date,
@@ -502,8 +502,10 @@ class Syncer:
             item_dir = self.folder_path(rel_dir, title, report.warnings)
             self.migrate_item_outputs(previous_item, rel_dir, item_dir)
             rel_dir = item_dir
-        # A replaced file shows up as a new id even when "modified" stays put.
-        if set(embedded_keys) <= set(previous_item.get("outputs", [])) and self.state.item_unchanged(
+        # A replaced file shows up as a new id even when "modified" stays put. Videos and
+        # audio left as links have no output but count as handled.
+        handled = set(previous_item.get("outputs", [])) | set(previous_item.get("media", []))
+        if set(embedded_keys) <= handled and self.state.item_unchanged(
             key, modified, self.dest, self.refetch_missing, self.refetch_keys
         ):
             return
@@ -512,6 +514,7 @@ class Syncer:
         hid = handler_id(item)
         outputs: list[str] = []
         saved: list[str] = []
+        media: list[tuple[str, str, str]] = []  # (key, name, link) of videos and audio not downloaded
         # After a partial failure the files that did arrive are not downloaded again
         # while the item is unchanged.
         kept = self.kept_attachments(previous_item, modified)
@@ -539,11 +542,16 @@ class Syncer:
                 name = sanitize_name(att.get("fileName") or att.get("name") or title, windows=self.windows)
                 url = self.client.attachment_url(course.id, item["id"], att["id"])
                 try:
-                    rel = self.fetch_file(out_key, join_rel(rel_dir, name), url, report)
+                    rel = self.fetch_or_link(
+                        media, out_key, att.get("fileName") or att.get("name") or title, att.get("mimeType"),
+                        self.client.url(url), join_rel(rel_dir, name), url, report,
+                    )
                 except (ApiError, *ITEM_ERRORS) as exc:
                     # Keep going so the files that did arrive are recorded and not fetched
                     # again next run; only this attachment is retried.
                     failure = failure or exc
+                    continue
+                if rel is None:
                     continue
                 outputs.append(out_key)
                 saved.append(PurePosixPath(rel).name)
@@ -561,29 +569,36 @@ class Syncer:
                 None,
             )
             try:
-                rel = self.fetch_file(
-                    out_key, desired, self.embedded_url(embedded), report, rel_dir, replaces=replaces
+                rel = self.fetch_or_link(
+                    media, out_key, embedded.name or title, embedded.mime, self.embedded_link(embedded),
+                    desired, self.embedded_url(embedded), report, rel_dir, replaces=replaces,
                 )
             except (ApiError, *ITEM_ERRORS) as exc:
                 failure = failure or exc
                 continue
+            if rel is None:
+                continue
             outputs.append(out_key)
             saved.append(PurePosixPath(rel).name)
 
+        media_keys = [m[0] for m in media]
         if failure is not None:
             if not self.dry_run and self.refetch_keys is None:
-                self.state.record_item(key, modified, outputs, title, partial=True)
+                self.state.record_item(key, modified, outputs, title, partial=True, media=media_keys)
             raise failure
 
-        if needs_note(item):
+        if needs_note(item, bool(media)):
             note_item = {**item, "title": title} if title != item.get("title") else item
-            note = render_item_note(note_item, self.course_label(course), self.course_url(course), saved)
+            note = render_item_note(
+                note_item, self.course_label(course), self.course_url(course), saved,
+                [(name, link) for _, name, link in media],
+            )
             out_key = f"note:{course.id}:{item['id']}"
             self.write_note(out_key, join_rel(rel_dir, note_name(title, windows=self.windows)), note, report, "notes")
             outputs.append(out_key)
 
         if not self.dry_run and self.refetch_keys is None:
-            self.state.record_item(key, modified, outputs, title)
+            self.state.record_item(key, modified, outputs, title, media=media_keys)
 
     def kept_attachments(self, previous_item: dict, modified: str | None) -> set[str]:
         if self.dry_run or modified is None or not previous_item.get("partial"):
@@ -610,6 +625,10 @@ class Syncer:
             return embedded.url
         return f"/bbcswebdav/xid-{embedded.xid}"
 
+    def embedded_link(self, embedded) -> str:
+        """Where a student opens an embedded file in Blackboard (not the short-lived signed URL)."""
+        return self.client.url(embedded.url if embedded.xid.startswith("upload-") else f"/bbcswebdav/xid-{embedded.xid}")
+
     def sync_announcements(self, course: Course, report: CourseReport) -> None:
         try:
             announcements = self.client.announcements(course.id)
@@ -632,7 +651,8 @@ class Syncer:
             # Announcement ids live apart from content ids, so keep their file keys apart too.
             embedded_files = find_embedded_files(body_text(ann.get("body")))
             embedded_keys = [self.embedded_key(course, {"id": f"announcement:{ann['id']}"}, e) for e in embedded_files]
-            if set(embedded_keys) <= set(previous_item.get("outputs", [])) and self.state.item_unchanged(
+            handled = set(previous_item.get("outputs", [])) | set(previous_item.get("media", []))
+            if set(embedded_keys) <= handled and self.state.item_unchanged(
                 key, modified, self.dest, self.refetch_missing, self.refetch_keys
             ):
                 continue
@@ -641,6 +661,7 @@ class Syncer:
             name = note_name(f"{date} {title}" if date else title, windows=self.windows)
             outputs: list[str] = []
             saved: list[str] = []
+            media: list[tuple[str, str, str]] = []
             kept = self.kept_attachments(previous_item, modified)
             failure: Exception | None = None
             if embedded_files and not self.dry_run:
@@ -652,8 +673,9 @@ class Syncer:
                     continue
                 file_name = sanitize_name(embedded.name, windows=self.windows) if embedded.name else ""
                 try:
-                    rel = self.fetch_file(
-                        file_key, join_rel(folder, file_name) if file_name else "", self.embedded_url(embedded),
+                    rel = self.fetch_or_link(
+                        media, file_key, embedded.name or title, embedded.mime, self.embedded_link(embedded),
+                        join_rel(folder, file_name) if file_name else "", self.embedded_url(embedded),
                         report, folder,
                     )
                 except (ApiError, *ITEM_ERRORS) as exc:
@@ -661,12 +683,15 @@ class Syncer:
                     # note anyway and retry only the failed file next run.
                     failure = failure or exc
                     continue
+                if rel is None:
+                    continue
                 outputs.append(file_key)
                 saved.append(PurePosixPath(rel).name)
             if failure is not None:
                 report.warnings.append(f"Could not download a file in announcement {title!r}: {failure}")
             note = render_announcement_note(
-                ann, self.course_label(course), self.course_url(course, "announcements"), saved
+                ann, self.course_label(course), self.course_url(course, "announcements"), saved,
+                [(name, link) for _, name, link in media],
             )
             try:
                 self.write_note(out_key, join_rel(folder, name), note, report, "announcements")
@@ -675,9 +700,42 @@ class Syncer:
                 continue
             outputs.append(out_key)
             if not self.dry_run and self.refetch_keys is None:
-                self.state.record_item(key, modified, outputs, title, partial=failure is not None)
+                self.state.record_item(
+                    key, modified, outputs, title, partial=failure is not None, media=[m[0] for m in media]
+                )
 
     # -- writing files -------------------------------------------------
+    def fetch_or_link(
+        self,
+        media: list[tuple[str, str, str]],
+        out_key: str,
+        name: str,
+        mime: str | None,
+        link: str,
+        desired_rel: str,
+        url: str,
+        report: CourseReport,
+        fallback_dir: str = "",
+        replaces: str | None = None,
+    ) -> str | None:
+        """``fetch_file``, except that a video or audio file is never downloaded.
+
+        The type is judged from what the listing says (*mime*, *name*) before any request,
+        and again from the response headers inside ``BlackboardClient.download``. Such a
+        file is added to *media* as (key, name, link) and None is returned. A copy saved by
+        an older version stays where it is and is returned as before.
+        """
+        try:
+            if self.state.output(out_key) is None and is_media(mime, name, PurePosixPath(desired_rel).name):
+                raise SkippedMedia(url, name, mime or "")
+            return self.fetch_file(out_key, desired_rel, url, report, fallback_dir, replaces=replaces)
+        except SkippedMedia as skipped:
+            previous = self.state.output(out_key)
+            if previous:
+                return previous["path"]
+            media.append((out_key, skipped.name or name, link))
+            return None
+
     def fetch_file(
         self,
         out_key: str,

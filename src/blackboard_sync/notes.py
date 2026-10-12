@@ -20,6 +20,7 @@ HANDLER_LABELS = {
     "resource/x-bb-blti-link": "External tool",
     "resource/x-bb-lti-link": "External tool",
     "resource/x-bb-syllabus": "Syllabus",
+    "resource/x-bb-file": "File",
 }
 
 
@@ -72,6 +73,15 @@ def _deadline_line(item: dict) -> str:
     return " · ".join(p for p in parts if p)
 
 
+def _media_lines(media: list[tuple[str, str]] | None) -> list[str]:
+    """Videos and audio are not downloaded: the note links to them in Blackboard instead."""
+    if not media:
+        return []
+    lines = ["Videos and audio (open in Blackboard):"]
+    lines += [f"- {' '.join(name.split()) or 'Recording'}: <{url}>" for name, url in media]
+    return lines + [""]
+
+
 def _footer(source_url: str, modified: str | None) -> list[str]:
     lines = ["---", f"Open in Blackboard: <{source_url}>"]
     if modified:
@@ -84,6 +94,7 @@ def render_item_note(
     course_label: str,
     source_url: str,
     saved_files: list[str] | None = None,
+    media: list[tuple[str, str]] | None = None,
 ) -> str:
     """Note for a content item: a link, a text page, or anything not a plain file."""
     title = html.unescape(item.get("title") or "Untitled")
@@ -113,6 +124,7 @@ def render_item_note(
         lines.append("Files saved next to this note:")
         lines += [f"- {name}" for name in saved_files]
         lines.append("")
+    lines += _media_lines(media)
 
     lines += _footer(source_url, item.get("modified"))
     return "\n".join(lines).rstrip() + "\n"
@@ -128,6 +140,7 @@ def render_announcement_note(
     course_label: str,
     source_url: str,
     saved_files: list[str] | None = None,
+    media: list[tuple[str, str]] | None = None,
 ) -> str:
     title = html.unescape(ann.get("title") or "Announcement")
     date = announcement_date(ann)
@@ -140,16 +153,21 @@ def render_announcement_note(
         lines.append("Files saved next to this note:")
         lines += [f"- {name}" for name in saved_files]
         lines.append("")
+    lines += _media_lines(media)
     lines += _footer(source_url, ann.get("modified"))
     return "\n".join(lines).rstrip() + "\n"
 
 
-def needs_note(item: dict) -> bool:
-    """Whether an item deserves a Markdown note in addition to its files."""
+def needs_note(item: dict, has_media: bool = False) -> bool:
+    """Whether an item deserves a Markdown note in addition to its files.
+
+    ``has_media``: a video or audio file was not downloaded, so the note is the only
+    place that still points to it.
+    """
     hid = handler_id(item)
     if hid == "resource/x-bb-file":
-        return False
+        return has_media
     if hid == "resource/x-bb-document":
         # A document that is only a wrapper around attachments needs no note.
-        return bool(html_to_markdown(body_text(item.get("body"))).strip())
+        return has_media or bool(html_to_markdown(body_text(item.get("body"))).strip())
     return True
