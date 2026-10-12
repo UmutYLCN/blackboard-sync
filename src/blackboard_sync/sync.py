@@ -618,25 +618,61 @@ class Syncer:
             if ann.get("draft"):
                 continue
             key = f"announcement:{course.id}:{ann['id']}"
-            if self.refetch_keys is not None and not self.should_refetch(f"announcement-note:{course.id}:{ann['id']}"):
+            out_key = f"announcement-note:{course.id}:{ann['id']}"
+            previous_item = self.state.items.get(key) or {}
+            if self.refetch_keys is not None and not any(
+                self.should_refetch(k)
+                for k in [out_key, *(k for k in previous_item.get("outputs", []) if k.startswith("xid:"))]
+            ):
                 continue
             modified = ann.get("modified")
-            if self.state.item_unchanged(key, modified, self.dest, self.refetch_missing, self.refetch_keys):
+            # Announcement ids live apart from content ids, so keep their file keys apart too.
+            embedded_files = find_embedded_files(body_text(ann.get("body")))
+            embedded_keys = [self.embedded_key(course, {"id": f"announcement:{ann['id']}"}, e) for e in embedded_files]
+            if set(embedded_keys) <= set(previous_item.get("outputs", [])) and self.state.item_unchanged(
+                key, modified, self.dest, self.refetch_missing, self.refetch_keys
+            ):
                 continue
             title = ann.get("title") or "Announcement"
             date = announcement_date(ann)
             name = note_name(f"{date} {title}" if date else title, windows=self.windows)
+            outputs: list[str] = []
+            saved: list[str] = []
+            kept = self.kept_attachments(previous_item, modified)
+            failure: Exception | None = None
+            if embedded_files and not self.dry_run:
+                (self.dest / folder).mkdir(parents=True, exist_ok=True)
+            for embedded, file_key in zip(embedded_files, embedded_keys):
+                if file_key in kept:
+                    outputs.append(file_key)
+                    saved.append(PurePosixPath(self.state.outputs[file_key]["path"]).name)
+                    continue
+                file_name = sanitize_name(embedded.name, windows=self.windows) if embedded.name else ""
+                try:
+                    rel = self.fetch_file(
+                        file_key, join_rel(folder, file_name) if file_name else "", self.embedded_url(embedded),
+                        report, folder,
+                    )
+                except (ApiError, *ITEM_ERRORS) as exc:
+                    # The announcement text matters more than one missing file: write the
+                    # note anyway and retry only the failed file next run.
+                    failure = failure or exc
+                    continue
+                outputs.append(file_key)
+                saved.append(PurePosixPath(rel).name)
+            if failure is not None:
+                report.warnings.append(f"Could not download a file in announcement {title!r}: {failure}")
             note = render_announcement_note(
-                ann, self.course_label(course), self.course_url(course, "announcements")
+                ann, self.course_label(course), self.course_url(course, "announcements"), saved
             )
-            out_key = f"announcement-note:{course.id}:{ann['id']}"
             try:
                 self.write_note(out_key, join_rel(folder, name), note, report, "announcements")
             except OSError as exc:
                 report.warnings.append(f"Skipped announcement {title!r}: {exc}")
                 continue
+            outputs.append(out_key)
             if not self.dry_run and self.refetch_keys is None:
-                self.state.record_item(key, modified, [out_key], title)
+                self.state.record_item(key, modified, outputs, title, partial=failure is not None)
 
     # -- writing files -------------------------------------------------
     def fetch_file(
