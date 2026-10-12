@@ -86,7 +86,12 @@ def announcement_date(ann: dict) -> str:
     return _date(duration.get("start") or ann.get("created") or ann.get("modified"))
 
 
-def render_announcement_note(ann: dict, course_label: str, source_url: str) -> str:
+def render_announcement_note(
+    ann: dict,
+    course_label: str,
+    source_url: str,
+    saved_files: list[str] | None = None,
+) -> str:
     title = html.unescape(ann.get("title") or "Announcement")
     date = announcement_date(ann)
     meta = " · ".join(p for p in ("Announcement", course_label, date) if p)
@@ -94,6 +99,10 @@ def render_announcement_note(ann: dict, course_label: str, source_url: str) -> s
     body = html_to_markdown(body_text(ann.get("body")))
     if body:
         lines += [body, ""]
+    if saved_files:
+        lines.append("Files saved next to this note:")
+        lines += [f"- {name}" for name in saved_files]
+        lines.append("")
     lines += _footer(source_url, ann.get("modified"))
     return "\n".join(lines).rstrip() + "\n"
 
