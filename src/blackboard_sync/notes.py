@@ -61,11 +61,16 @@ def render_item_note(
     if url:
         lines += [f"Link: <{url}>", ""]
 
-    body = html_to_markdown(body_text(item.get("body")))
-    description = html_to_markdown(body_text(item.get("description")))
-    for block in (description, body):
-        if block:
-            lines += [block, ""]
+    # Ultra assignments and tests keep the text students see under "View
+    # instructions" in the handler, not in body. Some items repeat it in body.
+    sources = (item.get("description"), item.get("body"), handler.get("instructions"))
+    blocks: list[str] = []
+    for source in sources:
+        block = html_to_markdown(body_text(source))
+        if block and block not in blocks:
+            blocks.append(block)
+    for block in blocks:
+        lines += [block, ""]
 
     if saved_files:
         lines.append("Files saved next to this note:")

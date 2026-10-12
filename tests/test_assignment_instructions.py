@@ -79,6 +79,16 @@ def test_downloads_instructions_for_assignments_and_tests_across_nested_courses(
     assert "- homework.docx" in note and "FIRST" not in note
 
 
+def test_instruction_text_goes_in_the_note_next_to_its_files(config, client, fake_bb):
+    add_assessment(fake_bb, "<p>Answer <strong>all</strong> questions.</p><ol><li>Sort</li></ol>" + file_link())
+    assert not warnings(sync(config, client))
+    assert (config.root / CSE / "Assignment 1" / "homework.docx").exists()
+    note = (config.root / CSE / "Assignment 1" / "Assignment 1.md").read_text()
+    assert "Answer **all** questions.\n\n1. Sort\n" in note
+    assert "Files saved next to this note:\n- homework.docx" in note
+    assert "bbcswebdav" not in note and "FIRST" not in note
+
+
 def test_old_state_discovers_instructions_and_signed_url_rotation_does_not_redownload(config, client, fake_bb):
     item = add_assessment(fake_bb, "")
     sync(config, client)  # old releases recorded an empty assignment with this timestamp
