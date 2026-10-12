@@ -174,6 +174,7 @@ def cmd_sync(args, config: Config) -> int:
                     dry_run=args.dry_run,
                     refetch_missing=args.refetch_missing,
                     refetch_keys=selected,
+                    lock_held=True,
                     user_id=(session_data.get("user") or {}).get("id"),
                 )
             finally:
