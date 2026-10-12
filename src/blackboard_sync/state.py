@@ -26,7 +26,9 @@ what was written locally:
 from __future__ import annotations
 
 import json
+import logging
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Iterable
@@ -34,6 +36,8 @@ from typing import Iterable
 from blackboard_sync.session import write_private_json
 
 STATE_VERSION = 1
+log = logging.getLogger(__name__)
+_monotonic = time.monotonic  # a seam for tests
 
 
 def _set_aside(path: Path) -> Path:
@@ -48,6 +52,9 @@ def _set_aside(path: Path) -> Path:
 
 
 class State:
+    # A run saves its progress as it goes, but at most once per this many seconds.
+    save_interval = 5.0
+
     def __init__(self, path: Path, data: dict | None = None):
         self.path = path
         # A new state only ever records files in the University folder.
@@ -61,6 +68,8 @@ class State:
         self._claimed: dict[str, str] = {o["path"]: key for key, o in self.outputs.items()}
         self.recovery: str | None = None
         self.dirty = False  # True while there are changes not yet written to disk
+        self.save_error: str | None = None  # why the last write by ``checkpoint`` failed
+        self._last_attempt: float | None = None
 
     @classmethod
     def load(cls, path: Path, backup: bool = True) -> "State":
@@ -108,6 +117,30 @@ class State:
             data["university_folder"] = True
         write_private_json(self.path, data)
         self.dirty = False
+
+    def checkpoint(self, force: bool = False) -> bool:
+        """Write pending changes during a run; unlike ``save`` it never raises.
+
+        Without ``force`` the write is skipped when one was attempted less than
+        ``save_interval`` seconds ago, so a run that processes many small items does
+        not rewrite the file for each. A failed write leaves the changes pending, is
+        retried by a later checkpoint and is described by ``save_error``. Returns
+        False when a write failed.
+        """
+        if not self.dirty:
+            return True
+        now = _monotonic()
+        if not force and self._last_attempt is not None and now - self._last_attempt < self.save_interval:
+            return True
+        self._last_attempt = now
+        try:
+            self.save()
+        except Exception as exc:  # a full disk or a locked file must not stop the sync
+            self.save_error = f"{type(exc).__name__}: {exc}"
+            log.warning("Could not save %s: %s", self.path.name, self.save_error)
+            return False
+        self.save_error = None
+        return True
 
     def record_past_term(self, term_id: str, name: str, course_ids: list[str]) -> None:
         """Archive metadata is additive; version-1 items and outputs keep their keys."""
