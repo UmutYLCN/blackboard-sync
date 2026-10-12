@@ -487,7 +487,10 @@ class Syncer:
         # explicit field; assessment attempts, feedback and submissions are unrelated.
         instructions = body_text((item.get("contentHandler") or {}).get("instructions"))
         instruction_files = find_embedded_files(instructions)
-        embedded_files = find_embedded_files(body_text(item.get("body")) + "\n" + instructions)
+        # The description is rendered in the note too, so files linked from it are saved.
+        embedded_files = find_embedded_files(
+            "\n".join((body_text(item.get("description")), body_text(item.get("body")), instructions))
+        )
         embedded_keys = [self.embedded_key(course, item, e) for e in embedded_files]
         previous_item = self.state.items.get(key) or {}
         ultra_body = self.is_ultra_body(item)
