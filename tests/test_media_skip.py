@@ -12,6 +12,7 @@ from blackboard_sync.sync import Syncer
 
 from .conftest import SAMPLE_FILES
 from .test_announcement_files import add_announcement
+from .test_progress_saving import Killed, kill_on_item, writes  # noqa: F401
 from .test_past_terms import COURSE as PAST_COURSE, PAST, ROOT as PAST_ROOT, archive  # noqa: F401
 from .test_sync import COURSE, CSE, NOW, files_under, sync
 
@@ -267,3 +268,28 @@ def test_a_video_saved_by_an_older_version_stays_and_is_not_downloaded_again(con
     state = State.load(config.state_file)
     assert state.output("attachment:_13004_1:_va_1")["path"] == f"{CSE}/lecture1.mp4"
     assert "attachment:_13004_1:_va_1" in state.items["content:_13004_1:_v1_1"]["outputs"]
+
+
+def test_a_skipped_video_is_checkpointed_and_a_killed_run_resumes_without_it(
+    config, client, fake_bb, monkeypatch, writes  # noqa: F811
+):
+    """A run killed after a video was skipped keeps that item recorded, with no temp file."""
+    monkeypatch.setattr(State, "save_interval", 0)
+    path = attach(fake_bb, "_v1_1", "_va_1", "session-5", "application/octet-stream")
+    fake_bb.routes[COURSE]["results"][-1]["position"] = -1  # processed first
+    fake_bb.content_types[path] = "video/mp4"  # only the response headers say video
+
+    with monkeypatch.context() as patch:
+        kill_on_item(patch, writes, 2)
+        with pytest.raises(Killed):
+            sync(config, client)
+
+    assert path in fake_bb.calls and bodies(fake_bb) == [] and no_partials(config)
+    item = State.load(config.state_file).items["content:_13004_1:_v1_1"]
+    assert item["media"] == ["attachment:_13004_1:_va_1"] and not item.get("partial")
+    assert "- session-5: <" in (config.dest / CSE / "Lecture.md").read_text(encoding="utf-8")
+
+    writes.dead = False
+    fake_bb.calls.clear()
+    sync(config, client)
+    assert path not in fake_bb.calls and bodies(fake_bb) == [] and no_partials(config)
