@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
+from typing import Container
 
 import requests
 
@@ -158,22 +159,24 @@ def run_lock(path: Path):
         fh.close()
 
 
-# A live download refreshes its temp file constantly; one untouched for this long
-# belongs to a run that was killed.
-STALE_PARTIAL_AGE = timedelta(hours=1)
+# A live download refreshes its temp file with every chunk and gives up after the
+# 60 second read timeout, so one untouched for this long belongs to a run that was
+# killed. Used only when the run lock is not held; under the lock every one is leftover.
+STALE_PARTIAL_AGE = timedelta(minutes=10)
 
 
 def remove_stale_partials(dest: Path, now: float | None = None, max_age: timedelta = STALE_PARTIAL_AGE) -> int:
     """Delete leftover ``.bbsync-*.partial`` files under *dest*; returns how many went.
 
-    Call this only while holding the run lock. The age check keeps a concurrent
-    run's live temp file safe even when the lock was not taken.
+    Under the run lock no other sync is writing, so every one is leftover: pass
+    ``max_age=timedelta(0)``. Without the lock the age check keeps a concurrent
+    run's live temp file safe.
     """
     cutoff = (time.time() if now is None else now) - max_age.total_seconds()
     removed = 0
     for path in dest.rglob(f"{PARTIAL_PREFIX}*{PARTIAL_SUFFIX}"):
         try:
-            if path.is_file() and not path.is_symlink() and path.stat().st_mtime < cutoff:
+            if path.is_file() and not path.is_symlink() and path.stat().st_mtime <= cutoff:
                 path.unlink()
                 removed += 1
         except OSError as exc:
@@ -181,6 +184,16 @@ def remove_stale_partials(dest: Path, now: float | None = None, max_age: timedel
     if removed:
         log.info("Removed %d leftover partial download(s)", removed)
     return removed
+
+
+class _OnDisk:
+    """A set-like view of the keys for which ``check`` holds."""
+
+    def __init__(self, check):
+        self.check = check
+
+    def __contains__(self, key: str) -> bool:
+        return self.check(key)
 
 
 class Syncer:
@@ -204,6 +217,16 @@ class Syncer:
         self.refetch_keys = refetch_keys
         self.windows = is_windows() if windows is None else windows
         self.missing_only = missing_only
+
+    def checkpoint(self) -> None:
+        """Save progress so far (throttled) so a run that is killed keeps what it finished."""
+        if not self.dry_run:
+            self.state.checkpoint()
+
+    def checkpoint_now(self) -> None:
+        """Save progress now: at the end of a course and of the run."""
+        if not self.dry_run:
+            self.state.checkpoint(force=True)
 
     def should_refetch(self, key: str) -> bool:
         previous = self.state.output(key)
@@ -458,6 +481,7 @@ class Syncer:
                     self.process_item(course, item, rel_dir, report, parent_title)
                 except (ApiError, *ITEM_ERRORS) as exc:
                     report.warnings.append(f"Skipped {item.get('title')!r}: {exc}")
+                self.checkpoint()
 
     @staticmethod
     def is_folder(item: dict) -> bool:
@@ -585,17 +609,25 @@ class Syncer:
         if not self.dry_run and self.refetch_keys is None:
             self.state.record_item(key, modified, outputs, title)
 
-    def kept_attachments(self, previous_item: dict, modified: str | None) -> set[str]:
-        if self.dry_run or modified is None or not previous_item.get("partial"):
+    def kept_attachments(self, previous_item: dict, modified: str | None) -> Container[str]:
+        """The files of this item that are on disk from an earlier run and need no download.
+
+        That is the files of an item that partly failed and has not changed since,
+        and, for an item with no record at all, every recorded file: a run that was
+        killed mid-item saved those files but never the item. A replaced file gets
+        a new id, so a recorded id with its file on disk is the same file.
+        """
+        if self.dry_run or modified is None:
             return set()
-        if previous_item.get("modified") != modified:
-            return set()
-        kept = set()
-        for out_key in previous_item.get("outputs", []):
-            out = self.state.output(out_key)
-            if out_key.startswith(("attachment:", "xid:")) and out and (self.dest / out["path"]).exists():
-                kept.add(out_key)
-        return kept
+        if previous_item:
+            if not previous_item.get("partial") or previous_item.get("modified") != modified:
+                return set()
+            return {k for k in previous_item.get("outputs", []) if self.on_disk(k)}
+        return _OnDisk(self.on_disk)
+
+    def on_disk(self, out_key: str) -> bool:
+        out = self.state.output(out_key)
+        return bool(out_key.startswith(("attachment:", "xid:")) and out and (self.dest / out["path"]).exists())
 
     @staticmethod
     def embedded_key(course: Course, item: dict, embedded) -> str:
@@ -676,6 +708,7 @@ class Syncer:
             outputs.append(out_key)
             if not self.dry_run and self.refetch_keys is None:
                 self.state.record_item(key, modified, outputs, title, partial=failure is not None)
+                self.checkpoint()
 
     # -- writing files -------------------------------------------------
     def fetch_file(
@@ -720,6 +753,8 @@ class Syncer:
         finally:
             if download.path.exists():
                 download.path.unlink()
+        # A long item may be cut off after this file; the next run then skips it.
+        self.checkpoint()
         if outcome == "new" or (self.missing_only and outcome == "updated"):
             report.new_files.append(rel)
         elif outcome == "updated":
@@ -842,8 +877,14 @@ def run_sync(
     user_id: str | None = None,
     now: datetime | None = None,
     refetch_keys: set[str] | None = None,
+    lock_held: bool = False,
 ) -> SyncReport:
-    """Sync current courses, or download one named past term's missing files."""
+    """Sync current courses, or download one named past term's missing files.
+
+    ``lock_held`` says the caller holds ``run_lock``, so no other sync is running and
+    every ``.bbsync-*.partial`` file in the destination is left over from a run that
+    was killed. Without it only the old ones are removed.
+    """
     if term_name is not None and (not term_name.strip() or all_terms or refetch_keys is not None):
         raise BlackboardSyncError("İndirilecek tek bir eski dönem adı belirtin.")
     report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.root), past_term=term_name or "")
@@ -851,7 +892,7 @@ def run_sync(
     if state.recovery:
         report.warnings.append(state.recovery)
     if not dry_run:
-        remove_stale_partials(config.root)
+        remove_stale_partials(config.root, max_age=timedelta(0) if lock_held else STALE_PARTIAL_AGE)
     if refetch_keys is not None:
         from blackboard_sync.deleted import missing_outputs
         refetch_keys = refetch_keys & {row.key for row in missing_outputs(state, config.root)}
@@ -890,18 +931,21 @@ def run_sync(
     for course in courses:
         syncer.migrate_course_folder(course, report.warnings)
     if not dry_run:
-        state.save()  # a renamed folder must never be left with stale recorded paths
+        state.checkpoint(force=True)  # a renamed folder must never be left with stale recorded paths
     if not courses:
         report.warnings.append("No courses found for the selected term.")
     try:
         for course in courses:
             log.info("Syncing %s", course.rel_dir)
             report.courses.append(syncer.sync_course(course))
-            if not dry_run:
-                state.save()  # keep progress even if a later course fails
+            syncer.checkpoint_now()  # keep progress even if a later course fails
     finally:
-        if not dry_run:
-            state.save()
+        syncer.checkpoint_now()
+        if state.save_error:
+            report.warnings.append(
+                f"Could not save progress to {state.path.name} ({state.save_error}); "
+                "files downloaded in this run may be fetched again next time."
+            )
         report.finished_at = _now_iso()
     if refetch_keys is not None:
         remaining = sum(not (config.root / state.outputs[key]["path"]).exists() for key in refetch_keys)

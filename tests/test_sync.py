@@ -666,5 +666,5 @@ def test_progress_is_saved_after_each_changed_course_and_on_failure(config, clie
 
     monkeypatch.setattr(State, "save", tracking_save)
     sync(config, client)
-    assert saved and saved[0] > 0
+    assert saved and max(saved) > 0
     assert State.load(config.state_file).items
