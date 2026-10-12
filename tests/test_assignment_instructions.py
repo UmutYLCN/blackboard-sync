@@ -364,3 +364,51 @@ def test_instruction_folder_uses_normal_windows_sanitization_and_length_limits(c
     expected = fit_windows_folder(config.root, CSE, sanitize_name(item["title"], windows=True))
     assert not warnings(sync(config, client))
     assert (config.root / CSE / expected / "homework.docx").exists()
+
+
+def add_page(fake_bb, **fields):
+    item = {
+        "id": "_page_1", "title": "Dataset page", "modified": STAMP, "position": 20,
+        "contentHandler": {"id": "resource/x-bb-externallink", "url": "https://example.edu/data"}, **fields,
+    }
+    fake_bb.routes[ROOT]["results"].append(item)
+    fake_bb.files["/bbcswebdav/pid-700-dt-asiobject-rid-901_1/xid-901_1"] = b"DATASET"
+    return item
+
+
+def test_file_only_in_description_is_downloaded_and_listed_in_note(config, client, fake_bb):
+    add_page(fake_bb, description=file_link(name="data.csv"))
+    sync(config, client)
+    assert fake_bb.downloads().count("/bbcswebdav/pid-700-dt-asiobject-rid-901_1/xid-901_1") == 1
+    saved = list((config.root / CSE).rglob("data.csv"))
+    assert len(saved) == 1 and saved[0].read_bytes() == b"DATASET"
+    note = next((config.root / CSE).rglob("Dataset page.md")).read_text()
+    assert "Files saved next to this note:\n- data.csv" in note
+    assert saved[0].parent == next((config.root / CSE).rglob("Dataset page.md")).parent
+
+
+def test_description_and_body_files_are_deduplicated_and_both_downloaded(config, client, fake_bb):
+    add_page(fake_bb, description=file_link(name="data.csv"), body=file_link(name="data.csv") + file_link("902_1", "extra.pdf"))
+    fake_bb.files["/bbcswebdav/pid-700-dt-asiobject-rid-902_1/xid-902_1"] = b"EXTRA"
+    sync(config, client)
+    downloads = fake_bb.downloads()
+    assert downloads.count("/bbcswebdav/pid-700-dt-asiobject-rid-901_1/xid-901_1") == 1
+    assert downloads.count("/bbcswebdav/pid-700-dt-asiobject-rid-902_1/xid-902_1") == 1
+    note = next((config.root / CSE).rglob("Dataset page.md")).read_text()
+    assert note.count("- data.csv") == 1 and "- extra.pdf" in note
+
+
+def test_unchanged_item_with_description_file_is_not_downloaded_again(config, client, fake_bb):
+    add_page(fake_bb, description=file_link(name="data.csv"))
+    sync(config, client)
+    before = len(fake_bb.downloads())
+    sync(config, client)
+    assert len(fake_bb.downloads()) == before
+
+
+def test_description_without_files_is_unchanged(config, client, fake_bb):
+    add_page(fake_bb, description="<p>Just text</p>")
+    sync(config, client)
+    assert not list((config.root / CSE).rglob("data.csv"))
+    note = next((config.root / CSE).rglob("Dataset page.md")).read_text()
+    assert "Just text" in note and "Files saved next to this note" not in note
