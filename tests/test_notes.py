@@ -93,6 +93,78 @@ def test_document_note_lists_saved_files():
     assert "Files saved next to this note:\n- week1-slides.pdf" in note
 
 
+INSTRUCTIONS = (
+    "<h3>Lab 2: Sorting</h3><p>Write a short report on your results.</p>"
+    "<h4>Requirements</h4>"
+    "<ol><li>Implement merge sort<ul><li>Use Python</li><li>No sorting libraries</li></ul></li>"
+    "<li>Measure the run time</li></ol>"
+    "<h4>Questions</h4>"
+    "<ol><li>Why is merge sort O(n log n)?</li><li>When is insertion sort faster?</li></ol>"
+)
+
+
+def assignment(**fields):
+    handler = {"id": "resource/x-bb-asmt-test-link", "instructions": fields.pop("instructions", None)}
+    return {"title": "Lab 2", "modified": "2026-10-01T09:00:00.000Z", "contentHandler": handler, **fields}
+
+
+def test_assignment_note_includes_instructions():
+    note = render_item_note(assignment(instructions={"rawText": INSTRUCTIONS}), "CSE303", URL, ["data.csv"])
+    assert note == (
+        "# Lab 2\n\n"
+        "_Assignment / test · CSE303_\n\n"
+        "### Lab 2: Sorting\n\n"
+        "Write a short report on your results.\n\n"
+        "#### Requirements\n\n"
+        "1. Implement merge sort\n"
+        "   - Use Python\n"
+        "   - No sorting libraries\n"
+        "2. Measure the run time\n\n"
+        "#### Questions\n\n"
+        "1. Why is merge sort O(n log n)?\n"
+        "2. When is insertion sort faster?\n\n"
+        "Files saved next to this note:\n- data.csv\n\n"
+        "---\n"
+        f"Open in Blackboard: <{URL}>\n"
+        "Last changed on Blackboard: 2026-10-01T09:00:00.000Z\n"
+    )
+
+
+def test_html_to_markdown_nests_lists_under_their_parent_item_text():
+    html = (
+        "<ul><li>Part A<ol><li>Read</li><li>Write<ul><li>Short</li></ul></li></ol></li></ul>"
+        "<ol>" + "<li>x</li>" * 9 + "<li>Ten<ul><li>Nested</li></ul></li></ol>"
+    )
+    assert html_to_markdown(html) == (
+        "- Part A\n  1. Read\n  2. Write\n     - Short\n\n"
+        + "".join(f"{n}. x\n" for n in range(1, 10))
+        + "10. Ten\n    - Nested"
+    )
+
+
+def test_assignment_note_without_instructions_is_unchanged():
+    expected = (
+        "# Lab 2\n\n"
+        "_Assignment / test · CSE303_\n\n"
+        "---\n"
+        f"Open in Blackboard: <{URL}>\n"
+        "Last changed on Blackboard: 2026-10-01T09:00:00.000Z\n"
+    )
+    assert render_item_note(assignment(), "CSE303", URL) == expected
+    assert render_item_note(assignment(instructions=""), "CSE303", URL) == expected
+    # Instructions that only link files show the files, not an empty block.
+    file_link = '<a href="https://bb.example.edu/bbcswebdav/xid-1_1" data-bbfile="{}">guide.pdf</a>'
+    assert render_item_note(assignment(instructions=f"<p>{file_link}</p>"), "CSE303", URL) == expected
+
+
+def test_instructions_repeated_in_body_appear_once():
+    note = render_item_note(
+        assignment(body=INSTRUCTIONS, instructions={"rawText": INSTRUCTIONS}), "CSE303", URL
+    )
+    assert note.count("Write a short report on your results.") == 1
+    assert note.count("#### Questions") == 1
+
+
 def test_announcement_note():
     ann = {
         "title": "Welcome to CSE303",

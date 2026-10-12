@@ -101,7 +101,9 @@ class _Converter(HTMLParser):
             self.lists.append([tag, 0])
         elif tag == "li":
             self._newlines(1)
-            indent = "  " * max(len(self.lists) - 1, 0)
+            # Markdown nests a list under the text of its parent item, which
+            # starts after "- " or after "12. ", not at a fixed two spaces.
+            indent = " " * sum(len(f"{n}. ") if kind == "ol" else 2 for kind, n in self.lists[:-1])
             if self.lists and self.lists[-1][0] == "ol":
                 self.lists[-1][1] += 1
                 self.out.append(f"{indent}{self.lists[-1][1]}. ")
