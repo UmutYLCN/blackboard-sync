@@ -186,3 +186,45 @@ def test_needs_note():
     assert needs_note({"contentHandler": {"id": "resource/x-bb-document"}, "body": "<p>Hi</p>"})
     assert needs_note({"contentHandler": {"id": "resource/x-bb-externallink", "url": "u"}})
     assert needs_note({"contentHandler": {"id": "resource/x-bb-asmt-test-link"}})
+
+
+def deadline_note(**fields):
+    return render_item_note(assignment(**fields), "CSE303", URL)
+
+
+def test_assignment_note_shows_due_date_and_points():
+    note = deadline_note(grading={"due": "2026-10-16T16:00:00.000Z"}, score={"possible": 100.0})
+    assert note.startswith("# Lab 2\n\n_Assignment / test · CSE303_\n\nDue: 2026-10-16 16:00 UTC · Points: 100\n\n---\n")
+
+
+def test_assignment_note_shows_only_the_deadline_field_it_has():
+    assert "\nDue: 2026-10-16 16:00 UTC\n" in deadline_note(grading={"due": "2026-10-16T16:00:00Z"})
+    assert "Points" not in deadline_note(grading={"due": "2026-10-16T16:00:00Z"})
+    note = deadline_note(score={"possible": 12.5})
+    assert "\nPoints: 12.5\n" in note and "Due" not in note
+
+
+def test_due_date_with_an_offset_is_shown_in_utc_and_unclear_values_are_kept():
+    assert "Due: 2026-10-16 13:00 UTC" in deadline_note(grading={"due": "2026-10-16T16:00:00+03:00"})
+    # No timezone given: show it as received instead of guessing one.
+    assert "Due: 2026-10-16T16:00:00" in deadline_note(grading={"due": "2026-10-16T16:00:00"})
+    assert "Due: next Friday" in deadline_note(grading={"due": "next Friday"})
+
+
+def test_item_without_deadline_fields_is_unchanged():
+    expected = deadline_note()
+    assert deadline_note(grading=None, score=None) == expected
+    assert "Due" not in expected and "Points" not in expected
+
+
+def test_malformed_or_empty_deadline_values_do_not_break_the_note():
+    expected = deadline_note()
+    for fields in (
+        {"grading": {"due": ""}, "score": {"possible": None}},
+        {"grading": {"due": "  "}, "score": {"possible": ""}},
+        {"grading": "soon", "score": [1, 2]},
+        {"grading": {"due": 12345}, "score": {"possible": True}},
+        {"grading": {"due": None}, "score": {"possible": float("nan")}},
+        {"grading": {}, "score": {"possible": float("inf")}},
+    ):
+        assert deadline_note(**fields) == expected

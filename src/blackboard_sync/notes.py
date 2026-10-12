@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from datetime import datetime, timezone
 
 from blackboard_sync.htmltext import body_text, html_to_markdown
 
@@ -39,6 +40,38 @@ def _date(value: str | None) -> str:
     return (value or "")[:10]
 
 
+def _due_text(value: object) -> str:
+    """Due date as "2026-10-16 16:00 UTC"; text we cannot read is kept as received."""
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    text = value.strip()
+    try:
+        when = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text
+    if when.tzinfo is None:
+        return text
+    return when.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _points_text(value: object) -> str:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+        return ""
+    if value in (float("inf"), float("-inf")):
+        return ""
+    return f"{value:g}"
+
+
+def _deadline_line(item: dict) -> str:
+    """"Due: ... · Points: ..." from the item's own grading fields, if it has them."""
+    grading = item.get("grading")
+    score = item.get("score")
+    due = _due_text(grading.get("due") if isinstance(grading, dict) else None)
+    points = _points_text(score.get("possible") if isinstance(score, dict) else None)
+    parts = [f"Due: {due}" if due else "", f"Points: {points}" if points else ""]
+    return " · ".join(p for p in parts if p)
+
+
 def _footer(source_url: str, modified: str | None) -> list[str]:
     lines = ["---", f"Open in Blackboard: <{source_url}>"]
     if modified:
@@ -56,6 +89,10 @@ def render_item_note(
     title = html.unescape(item.get("title") or "Untitled")
     handler = item.get("contentHandler") or {}
     lines = [f"# {title}", "", f"_{handler_label(item)} · {course_label}_", ""]
+
+    deadline = _deadline_line(item)
+    if deadline:
+        lines += [deadline, ""]
 
     url = handler.get("url")
     if url:
