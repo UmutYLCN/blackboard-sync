@@ -117,6 +117,7 @@ from blackboard_sync.menubar.settings_form import (
     window_height,
 )
 from blackboard_sync.menubar.sync_scene_view import SyncSceneView
+from blackboard_sync.menubar.presentation import configure_main_window, present_main_window
 from blackboard_sync.settings import display_path
 
 # The window keeps its width; only the height follows the screen and the student.
@@ -371,6 +372,7 @@ class MainWindow:
             False,
         )
         self.window.setReleasedWhenClosed_(False)
+        configure_main_window(self.window)
         self.window.setTitle_(T_WINDOW_TITLE)
         self.window.setDelegate_(self.target)
         root = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, WIDTH, HEIGHT))
@@ -983,10 +985,7 @@ class MainWindow:
         self._animate()
         if not self.window.isVisible():
             self.fit_to_screen()
-        if self.window.isMiniaturized():
-            self.window.deminiaturize_(None)
-        NSApp.activateIgnoringOtherApps_(True)
-        self.window.makeKeyAndOrderFront_(None)
+        present_main_window(self.window, NSApp)
 
     def select(self, section: str) -> None:
         self.state.select(section)

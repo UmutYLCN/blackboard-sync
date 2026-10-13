@@ -546,6 +546,10 @@ def build_app(config: Config, show_window: bool = False):
             """Open the main window (or bring it forward); the Dock icon comes with it."""
             if self._uninstalling:
                 return
+            # AppKit assigns a window its Space role when it is created. A
+            # window built as an accessory can join another app's full-screen
+            # Space even after the app switches to regular activation policy.
+            set_dock_icon(True)
             if self._window is None:
                 from blackboard_sync.menubar.main_window import MainWindow
 
@@ -567,7 +571,6 @@ def build_app(config: Config, show_window: bool = False):
             if not self.window_open:
                 self.model.reload_past_terms()
             log.info("showing the main window")
-            set_dock_icon(True)
             self._window.show(section)
             self.refresh()  # on Genel, starts looking up the past terms
 
