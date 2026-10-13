@@ -18,6 +18,7 @@ from typing import Container
 import requests
 
 from blackboard_sync.api import PARTIAL_PREFIX, PARTIAL_SUFFIX, BlackboardClient, is_media
+from blackboard_sync.announcements import metadata as announcement_metadata
 from blackboard_sync.config import Config
 from blackboard_sync.deadlines import column_deadline
 from blackboard_sync.errors import AlreadyRunning, ApiError, BlackboardSyncError, LoginRequired, SkippedMedia
@@ -441,6 +442,11 @@ class Syncer:
             )
 
         all_found = merge_term_aliases(list(terms.values()))
+        # Mirrors run_sync's frozen terms: an archived term stays off the page unless it is today's.
+        self.current_course_ids = [
+            c.id for t in choose_current_terms(all_found, now)
+            if not (set(t.ids) & set(self.state.past_terms) and not in_date_range(t, now)) for c in t.courses
+        ]
         if all_terms:
             selected = all_found
         elif term_name is not None or term_id is not None:
@@ -885,6 +891,13 @@ class Syncer:
                 continue
             key = f"announcement:{course.id}:{ann['id']}"
             out_key = f"announcement-note:{course.id}:{ann['id']}"
+            # Backfill older states even when the note itself is unchanged.
+            if not self.dry_run:
+                code, title = course_code_and_title(course.course_id, course.name)
+                self.state.record_announcement(key, announcement_metadata(
+                    ann, course.id, f"{code} {title}".strip(),
+                    f"/ultra/courses/{course.id}/announcements", out_key,
+                ))
             previous_item = self.state.items.get(key) or {}
             if self.refetch_keys is not None and not any(
                 self.should_refetch(k)
@@ -1284,6 +1297,8 @@ def run_sync(
         report.past_term = terms[0].name
         if not dry_run:
             state.record_past_term(terms[0].id, terms[0].name, [c.id for c in courses], complete=False)
+    if not dry_run:
+        state.record_current_courses(syncer.current_course_ids)
     for course in courses:
         syncer.migrate_course_folder(course, report.warnings)
     if not dry_run:

@@ -1,4 +1,4 @@
-"""The main window (AppKit): a sidebar with Başlangıç / Genel bakış, Genel and Silinenler.
+"""The main window (AppKit): Başlangıç / Genel bakış, Duyurular, Genel and Silinenler.
 
 What the window shows and means lives in ``main_window_model.py`` (sections,
 the overview, the unsaved-changes bar) and ``settings_form.py`` (the Genel
@@ -86,6 +86,8 @@ from blackboard_sync.menubar.main_window_model import (
     reopen_hint,
 )
 from blackboard_sync.menubar.model import T_RECENT, T_RECENT_EMPTY
+from blackboard_sync import announcements
+from blackboard_sync.menubar.main_window_model import ANNOUNCEMENTS, SECTIONS
 from blackboard_sync.menubar.settings_form import (
     DEST_CHOICES,
     INTERVAL_OPTIONS,
@@ -143,7 +145,8 @@ FIRST_SCENE = (320, 187)  # the large one in the empty list on the first sync
 # Buttons whose title changes with the app's state ("Giriş yap" / "Hesaptan
 # çıkış yap") keep one width so the row does not jump.
 ACTION_WIDTH = 160
-NAV_SYMBOLS = {OVERVIEW: "house", CALENDAR: "calendar", GENERAL: "gearshape", DELETED: "arrow.counterclockwise"}
+NAV_SYMBOLS = {OVERVIEW: "house", CALENDAR: "calendar", ANNOUNCEMENTS: "megaphone", GENERAL: "gearshape",
+               DELETED: "arrow.counterclockwise"}
 
 # Text fields get Cmd+V and friends from the main menu; while it is not there
 # (the app is a menu bar accessory) the window forwards them itself.
@@ -213,6 +216,12 @@ class _Target(NSObject):
     def start_(self, _sender):
         self.owner.submit(login=self.owner.status.start_login)
 
+    def openAnnouncement_(self, sender):
+        rows = self.owner._drawn_announcements or ()
+        index = int(sender.tag())
+        if 0 <= index < len(rows):
+            self.owner.on_open_announcement(rows[index])
+
     def account_(self, _sender):
         self.owner.account_pressed()
 
@@ -268,10 +277,12 @@ def _label(text: str, size: float | None = None, bold: bool = False, secondary: 
     return field
 
 
-def _wrapping(text: str, width: float, size: float | None = None, secondary: bool = False):
+def _wrapping(text: str, width: float, size: float | None = None, secondary: bool = False,
+              bold: bool = False):
     """A multi-line label and the height it needs at ``width``."""
     field = NSTextField.wrappingLabelWithString_(text)
-    field.setFont_(NSFont.systemFontOfSize_(size or NSFont.systemFontSize()))
+    font = NSFont.boldSystemFontOfSize_ if bold else NSFont.systemFontOfSize_
+    field.setFont_(font(size or NSFont.systemFontSize()))
     if secondary:
         field.setTextColor_(NSColor.secondaryLabelColor())
     field.setPreferredMaxLayoutWidth_(width)
@@ -363,6 +374,8 @@ class MainWindow:
         on_deadline: Callable[[str], None] = lambda target: None,
         recent_seen=None,
         on_seen=lambda: None,
+        on_announcements=lambda: (),
+        on_open_announcement=lambda row: None,
     ):
         self.on_submit, self.on_action, self.on_close = on_submit, on_action, on_close
         self.on_section = on_section
@@ -374,6 +387,7 @@ class MainWindow:
         self.on_values = on_values or (lambda: self.saved)
         self.on_open, self.on_past_term = on_open, on_past_term
         self.on_missing, self.on_deleted_action = on_missing, on_deleted_action
+        self.on_announcements, self.on_open_announcement = on_announcements, on_open_announcement
         self.selection = deleted.DeletedSelection()
         self.state = WindowState()
         self.status = status
@@ -381,6 +395,7 @@ class MainWindow:
         self.error = ""
         self._past_terms: tuple[str, ...] | None = None
         self._drawn_recent = None
+        self._drawn_announcements = None
         self._drawn_rows = None
         self.checks: dict = {}
         self.check_keys: list[str] = []
@@ -403,6 +418,7 @@ class MainWindow:
         self.pages = {}
         for name, build in (("start", self._build_start), (OVERVIEW, self._build_overview),
                             (CALENDAR, self._build_calendar),
+                            (ANNOUNCEMENTS, self._build_announcements),
                             (GENERAL, self._build_general), (DELETED, self._build_deleted)):
             page = _FlippedView.alloc().initWithFrame_(NSMakeRect(SIDEBAR, 0, PAGE, HEIGHT))
             page.setAutoresizingMask_(NSViewHeightSizable)
@@ -471,6 +487,7 @@ class MainWindow:
             self.nav_items[section] = (highlight, icon, title, count, button)
             y += 36
         self.nav_items[GENERAL][2].setStringValue_(T_NAV_GENERAL)
+        self.nav_items[ANNOUNCEMENTS][2].setStringValue_(announcements.T_TAB)
         self.nav_items[DELETED][2].setStringValue_(T_NAV_DELETED)
         self.nav_items[CALENDAR][2].setStringValue_(deadlines.T_TAB)
 
@@ -739,6 +756,15 @@ class MainWindow:
                 view.start()
             else:
                 view.stop()
+
+    def _build_announcements(self, page) -> None:
+        self._header(page, announcements.T_TAB)
+        hint, height = _wrapping(announcements.T_HINT, INNER, _small(), secondary=True)
+        hint.setFrame_(NSMakeRect(PAD, 62, INNER, height))
+        page.addSubview_(hint)
+        top = 62 + height + 16
+        self.announcements_scroll, _ = _scroll(NSMakeRect(PAD, top, INNER, HEIGHT - top - PAD), 1)
+        page.addSubview_(self.announcements_scroll)
 
     def _build_general(self, page) -> None:
         self._header(page, T_NAV_GENERAL)
@@ -1072,6 +1098,8 @@ class MainWindow:
             self.refresh_deleted()
         elif section == CALENDAR:
             self.refresh_calendar()
+        elif section == ANNOUNCEMENTS:
+            self.refresh_announcements()
 
     def values(self) -> FormValues:
         return FormValues(
@@ -1209,6 +1237,7 @@ class MainWindow:
         # Silinenler
         self.deleted_result.setStringValue_(form.deleted_message)
         self.refresh_deleted()
+        self.refresh_announcements()
 
     def _draw_recent(self) -> None:
         rows = self.status.recent
@@ -1274,6 +1303,42 @@ class MainWindow:
                            if index * ROW_HEIGHT < bottom and (index + 1) * ROW_HEIGHT > top]
         if self.recent_seen.observe(visible, active):
             self.on_seen()
+    def refresh_announcements(self) -> None:
+        rows = self.on_announcements()
+        if rows == self._drawn_announcements:
+            return
+        self._drawn_announcements = rows
+        document = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, INNER, 1))
+        y = 0
+        if not rows:
+            empty, height = _wrapping(announcements.T_EMPTY, INNER - 40, secondary=True)
+            empty.setFrame_(NSMakeRect(20, 16, INNER - 40, height))
+            document.addSubview_(empty)
+            y = height + 32
+        for index, row in enumerate(rows):
+            width = INNER - 40
+            detail = _label(row.detail, _small(), secondary=True)
+            detail.setFrame_(NSMakeRect(20, 16, width, 17))
+            detail.setToolTip_(row.detail)
+            title, title_height = _wrapping(row.title, width, 14, bold=True)
+            title.setFrame_(NSMakeRect(20, 40, width, title_height))
+            preview, preview_height = _wrapping(row.preview, width, _small(), secondary=True)
+            preview.setFrame_(NSMakeRect(20, 48 + title_height, width, preview_height))
+            height = 64 + title_height + preview_height
+            card = _card(NSMakeRect(0, y, INNER, height))
+            for label in (detail, title, preview):
+                card.contentView().addSubview_(label)
+            button = NSButton.buttonWithTitle_target_action_("", self.target, "openAnnouncement:")
+            button.setBordered_(False)
+            button.setTransparent_(True)
+            button.setTag_(index)
+            button.setAccessibilityLabel_(f"{row.title} · {row.detail}")
+            button.setFrame_(NSMakeRect(0, 0, INNER, height))
+            card.contentView().addSubview_(button)
+            document.addSubview_(card)
+            y += height + 12
+        document.setFrame_(NSMakeRect(0, 0, INNER, max(y, 1)))
+        self.announcements_scroll.setDocumentView_(document)
 
     def refresh_deleted(self) -> None:
         rows = self.on_missing()

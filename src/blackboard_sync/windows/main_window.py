@@ -1,4 +1,4 @@
-"""The main window (Tk): a sidebar with Başlangıç / Genel bakış, Genel and Silinenler.
+"""The main window (Tk): Başlangıç / Genel bakış, Duyurular, Genel and Silinenler.
 
 What the window shows and means lives in ``menubar/main_window_model.py`` and
 ``menubar/settings_form.py``, shared with macOS; this module only lays out Tk
@@ -11,7 +11,7 @@ import logging
 import sys
 from pathlib import Path
 
-from blackboard_sync import __version__, deadlines, deleted, runtime, updater, uninstall
+from blackboard_sync import __version__, announcements, deadlines, deleted, runtime, updater, uninstall
 from . import package
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
@@ -77,7 +77,8 @@ class MainWindow:
                  on_open=lambda path: None, on_missing=lambda: [],
                  on_deleted_action=lambda action, keys: None, on_past_term=lambda name: None,
                  on_section=lambda section: None, on_deadlines=deadlines.DeadlinePage,
-                 on_deadline=lambda target: None, recent_seen=None, on_seen=lambda: None):
+                 on_deadline=lambda target: None, recent_seen=None, on_seen=lambda: None,
+                 on_announcements=lambda: (), on_open_announcement=lambda row: None):
         import tkinter as tk
         from tkinter import ttk
 
@@ -91,6 +92,7 @@ class MainWindow:
         self.on_values = on_values or (lambda: self.saved)
         self.on_open, self.on_missing = on_open, on_missing
         self.on_deleted_action, self.on_past_term = on_deleted_action, on_past_term
+        self.on_announcements, self.on_open_announcement = on_announcements, on_open_announcement
         self.state = main.WindowState()
         self.selection = deleted.DeletedSelection()
         self.status = status
@@ -99,6 +101,7 @@ class MainWindow:
         self.checks = {}
         self._drawn_rows = None
         self._drawn_recent = None
+        self._drawn_announcements = None
         self._loading = False
 
         self.window = window = tk.Toplevel(root)
@@ -129,6 +132,7 @@ class MainWindow:
         self.pages = {}
         for name, build in (("start", self._build_start), (main.OVERVIEW, self._build_overview),
                             (main.CALENDAR, self._build_calendar),
+                            (main.ANNOUNCEMENTS, self._build_announcements),
                             (main.GENERAL, self._build_general), (main.DELETED, self._build_deleted)):
             page = ttk.Frame(window, padding=(24, 20, 24, 16))
             page.grid(row=0, column=1, sticky="nsew")
@@ -152,7 +156,7 @@ class MainWindow:
 
         bar = ttk.Frame(window, padding=(14, 18, 14, 16), width=SIDEBAR)
         bar.grid(row=0, column=0, sticky="ns")
-        bar.rowconfigure(6, weight=1)
+        bar.rowconfigure(2 + len(main.SECTIONS), weight=1)
         ttk.Label(bar, text=main.T_WINDOW_TITLE, font=HEADING_FONT).grid(row=0, column=0, sticky="w")
         ttk.Label(bar, text=__version__, foreground=MUTED).grid(row=1, column=0, sticky="w", pady=(0, 18))
         self.nav = {}
@@ -165,7 +169,7 @@ class MainWindow:
         import tkinter as tk
 
         card = ttk.LabelFrame(bar, padding=(10, 8))
-        card.grid(row=7, column=0, sticky="sew")
+        card.grid(row=3 + len(main.SECTIONS), column=0, sticky="sew")
         card.columnconfigure(1, weight=1)
         self.account_card = card
         self.avatar = tk.Canvas(card, width=AVATAR, height=AVATAR, highlightthickness=0, borderwidth=0,
@@ -192,7 +196,7 @@ class MainWindow:
         import tkinter as tk
         from tkinter import ttk
 
-        canvas = tk.Canvas(page, highlightthickness=0)
+        canvas = tk.Canvas(page, highlightthickness=0, background=background_of(page))
         canvas.grid(row=row, column=0, sticky="nsew")
         scrollbar = ttk.Scrollbar(page, orient="vertical", command=canvas.yview)
         scrollbar.grid(row=row, column=1, sticky="ns")
@@ -307,6 +311,14 @@ class MainWindow:
         self.first_scene.canvas.grid(row=1, column=0)
         self.first_line = ttk.Label(self.first_frame, foreground=MUTED, font=("Segoe UI", 10))
         self.first_line.grid(row=2, column=0, pady=(10, 0))
+
+    def _build_announcements(self, page):
+        from tkinter import ttk
+
+        self._header(page, announcements.T_TAB)
+        ttk.Label(page, text=announcements.T_HINT, foreground=MUTED, wraplength=WRAP).grid(
+            row=1, column=0, sticky="w", pady=(0, 14))
+        self.announcements_canvas, self.announcements_frame = self._scroll_area(page, 2)
 
     def _build_general(self, page):
         from tkinter import ttk
@@ -437,6 +449,7 @@ class MainWindow:
     def wheel(self, event):
         canvas = {"start": self.start_canvas, main.OVERVIEW: self.recent_canvas,
                   main.CALENDAR: self.calendar_canvas,
+                  main.ANNOUNCEMENTS: self.announcements_canvas,
                   main.GENERAL: self.form_canvas, main.DELETED: self.canvas}[self.visible_page()]
         first, last = canvas.yview()
         if first > 0 or last < 1:  # a section that fits stays put
@@ -495,6 +508,8 @@ class MainWindow:
             self.refresh_deleted()
         elif self.state.section == main.CALENDAR:
             self.refresh_calendar()
+        elif self.state.section == main.ANNOUNCEMENTS:
+            self.refresh_announcements()
 
     def values(self):
         minutes = next((m for m, title in form.INTERVAL_OPTIONS if title == self.interval.get()), 60)
@@ -551,6 +566,7 @@ class MainWindow:
         self.nav[main.OVERVIEW].configure(text=status.overview_title)
         self.nav[main.GENERAL].configure(text=main.T_NAV_GENERAL)
         self.nav[main.CALENDAR].configure(text=deadlines.T_TAB)
+        self.nav[main.ANNOUNCEMENTS].configure(text=announcements.T_TAB)
         if first_run_changed:
             self._show_section()
         # Store builds never offer the GitHub updater, even with stale state.
@@ -621,6 +637,7 @@ class MainWindow:
         # Silinenler
         self.deleted_result.configure(text=form_status.deleted_message)
         self.refresh_deleted()
+        self.refresh_announcements()
 
     def _build_calendar(self, page):
         from tkinter import ttk
@@ -764,6 +781,34 @@ class MainWindow:
             self._recent_after = None
         if self.recent_seen is not None:
             self.recent_seen.hide()
+    def refresh_announcements(self):
+        from tkinter import ttk
+
+        rows = self.on_announcements()
+        if rows == self._drawn_announcements:
+            return
+        self._drawn_announcements = rows
+        for widget in self.announcements_frame.winfo_children():
+            widget.destroy()
+        if not rows:
+            ttk.Label(self.announcements_frame, text=announcements.T_EMPTY,
+                      foreground=MUTED, wraplength=WRAP).pack(anchor="w", pady=12)
+        for row in rows:
+            card = ttk.LabelFrame(self.announcements_frame, padding=14)
+            card.pack(fill="x", pady=(0, 10))
+            detail = ttk.Label(card, text=row.detail, foreground=MUTED, wraplength=WRAP - 60)
+            detail.pack(anchor="w")
+            title = ttk.Label(card, text=row.title, font=BOLD_FONT, wraplength=WRAP - 60)
+            title.pack(anchor="w", pady=4)
+            clickable = [card, detail, title]
+            if row.preview:
+                preview = ttk.Label(card, text=row.preview, wraplength=WRAP - 60)
+                preview.pack(anchor="w")
+                clickable.append(preview)
+            for widget in clickable:
+                widget.bind("<Button-1>", lambda _event, item=row: self.on_open_announcement(item))
+            ttk.Button(card, text=announcements.T_OPEN,
+                       command=lambda item=row: self.on_open_announcement(item)).pack(anchor="e", pady=(8, 0))
 
     def refresh_deleted(self):
         from tkinter import ttk, BooleanVar
