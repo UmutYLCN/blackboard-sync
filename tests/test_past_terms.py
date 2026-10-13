@@ -199,10 +199,11 @@ def test_jobs_pass_term_and_handle_listing_failures(tmp_path):
     runner = fake_runner(stdout=json.dumps({"status": "ok", "past_term": PAST}))
     assert jobs.run_sync("past_term", settings, runner=runner, term_name=PAST).past_term == PAST
     assert runner.calls[0][0][-2:] == ["--term", PAST]
-    assert jobs.run_past_terms(settings, fake_runner(stdout=json.dumps({"terms": [PAST]})))[0] == [PAST]
+    # A listing without term ids (an older command line) still works, by name.
+    assert jobs.run_past_terms(settings, fake_runner(stdout=json.dumps({"terms": [PAST]})))[0] == {PAST: ""}
     for runner in (fake_runner(stdout="bad json"), fake_runner(returncode=3), fake_runner(raises=OSError("offline"))):
         names, result = jobs.run_past_terms(settings, runner)
-        assert names == [] and result.status != "ok"
+        assert names == {} and result.status != "ok"
 
 
 def test_cli_rejects_combined_term_selection():

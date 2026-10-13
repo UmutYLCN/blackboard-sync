@@ -205,6 +205,8 @@ def test_a_run_writes_far_less_often_than_it_has_items(config, client, monkeypat
 def test_complete_run_ends_with_the_same_state_however_often_it_saved(config, client, tmp_path, monkeypatch):
     from blackboard_sync.config import Config
 
+    # Both runs stamp due dates with the same time, even when they straddle a second.
+    monkeypatch.setattr(sync_mod, "_now_iso", lambda: "2026-10-03T12:00:00+00:00")
     monkeypatch.setattr(State, "save_interval", 0)
     sync(config, client)
     eager = json.loads(config.state_file.read_text(encoding="utf-8"))

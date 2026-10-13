@@ -76,12 +76,18 @@ Ayarların ve indirdiğin ders dosyaları korunur.
 Ana pencerenin **Genel** bölümündeki **Eski dönemler** kısmında listeden
 bir dönem seç ve **Eski dönemi indir**'e bas. Liste giriş yapmışken **Genel** bölümü açılınca
 yüklenir; güncel dönem listede görünmez. Dosyalar mevcut
-kayıt klasöründeki dönem/ders klasörlerine indirilir. Eski dönem bir kez indirilir,
-otomatik güncellenmez; tekrar indirmek yalnızca eksik dosyaları tamamlar. Normal
-senkron güncel dönemi takip etmeye devam eder.
+kayıt klasöründeki dönem/ders klasörlerine indirilir: her dönemin kendi klasörü
+güncel dönemin klasörünün yanında açılır (ör. `2026-2027 Güz` ile `2025-2026 Bahar`
+yan yana). Blackboard aynı dönemi hem Türkçe hem İngilizce adla gösterse de
+(`2025-2026 Bahar` / `2025-2026 Spring`) tek dönem ve tek klasör olur; aynı ders iki
+kez listelense de bir kez indirilir. Eski dönem bir kez indirilir,
+otomatik güncellenmez; tekrar indirmek yalnızca eksik dosyaları tamamlar. Bir dersin
+içeriği okunamazsa (ör. erişim kapalı) bu bildirilir ve tekrar denemek eksikleri
+tamamlar. Normal senkron güncel dönemi takip etmeye devam eder.
 
-Terminalden: `blackboard-sync sync --term "2025-2026 - Spring"` (Blackboard'daki
-dönem adını kullan). Kullanılabilir adları `blackboard-sync past-terms` ile listele.
+Terminalden: `blackboard-sync sync --term "2025-2026 Bahar"` (Türkçe ya da İngilizce
+dönem adı olur) veya `blackboard-sync sync --term-id <kimlik>`. Kullanılabilir
+dönemleri ve kimliklerini `blackboard-sync past-terms` ile listele.
 
 ## Kaldırma
 

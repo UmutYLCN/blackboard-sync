@@ -169,7 +169,8 @@ class TrayApp:
         if job == "login":
             self.model.login_method = jobs.login_method()
         self.refresh()
-        settings, config, term_name = self.settings, self.config, self.model.past_term
+        settings, config = self.settings, self.config
+        term_name, term_id = self.model.past_term, self.model.past_term_id
         def worker():
             try:
                 if job == "login":
@@ -177,7 +178,8 @@ class TrayApp:
                 elif job == MOVE_JOB:
                     result = jobs.run_move_guarded(config, old, new)
                 else:
-                    result = jobs.run_sync(job, settings, runner=cli_runner, refetch_keys=refetch_keys, term_name=term_name)
+                    result = jobs.run_sync(job, settings, runner=cli_runner, refetch_keys=refetch_keys,
+                                           term_name=term_name, term_id=term_id)
             except Exception as exc:
                 log.exception("CLI job failed")
                 result = ((False, str(exc)) if job == "login"
