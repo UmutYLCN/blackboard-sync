@@ -597,6 +597,9 @@ def menu_app(config, monkeypatch):
         def __init__(self, values, status, **handlers):
             from blackboard_sync.menubar.main_window_model import WindowState
 
+            # Creating the NSWindow as an accessory assigns it the wrong Space
+            # role. Every entry point must promote the app before construction.
+            assert docks == [True]
             self.state, self.handlers, self.shown, self.statuses = WindowState(), handlers, [], []
             Window.built.append(self)
 
