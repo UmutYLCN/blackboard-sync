@@ -43,7 +43,9 @@ def test_old_state_backfills_metadata_without_rewriting_unchanged_notes(config, 
     assert len(rows) == 1
     import os
     tree = [(d, f) for d, _, f in os.walk(config.root)]
-    assert 0, (rows, before, tree, State.load(config.state_file).outputs)
+    for line in [*rows, before, *tree, *State.load(config.state_file).outputs.items()]:
+        print("DIAG", line)
+    assert 0
 
 
 def test_current_terms_filter_archives(config, client, fake_bb):
