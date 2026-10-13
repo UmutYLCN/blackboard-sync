@@ -206,7 +206,8 @@ class MainWindow:
     def _build_start(self, page):
         from tkinter import ttk
 
-        self.start_canvas, frame = self._scroll_area(page, 0)
+        self.start_update_banner = self._build_update_banner(page, 0)
+        self.start_canvas, frame = self._scroll_area(page, 1)
         frame.columnconfigure(1, weight=1)
         ttk.Label(frame, text=main.T_START_TITLE, font=TITLE_FONT, wraplength=WRAP).grid(
             row=0, column=0, columnspan=2, sticky="w")
@@ -242,11 +243,26 @@ class MainWindow:
         self.start_message = ttk.Label(card, wraplength=300)
         self.start_message.grid(row=7, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
+    def _build_update_banner(self, page, row):
+        from tkinter import ttk
+
+        card = ttk.LabelFrame(page, padding=(16, 14))
+        card.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 14))
+        card.columnconfigure(0, weight=1)
+        title = ttk.Label(card, font=HEADING_FONT, wraplength=WRAP - 160)
+        title.grid(row=0, column=0, sticky="w")
+        ttk.Label(card, text=main.T_UPDATE_INTRO, wraplength=WRAP - 160).grid(
+            row=1, column=0, sticky="w", pady=(4, 0))
+        button = ttk.Button(card, default="active", width=14,
+                            command=lambda: self.on_action(self.status.form.update_action))
+        button.grid(row=0, column=1, rowspan=2, padx=(16, 0))
+        return card, title, button
+
     def _build_overview(self, page):
         from tkinter import ttk
 
         page.columnconfigure(0, weight=1)
-        page.rowconfigure(3, weight=1)
+        page.rowconfigure(4, weight=1)
         header = ttk.Frame(page)
         header.grid(row=0, column=0, columnspan=2, sticky="ew")
         header.columnconfigure(0, weight=1)
@@ -270,8 +286,10 @@ class MainWindow:
         self.scene_line = ttk.Label(self.scene_frame, font=("Segoe UI", 10))
         self.scene_line.grid(row=0, column=1, sticky="w")
 
+        self.overview_update_banner = self._build_update_banner(page, 3)
+
         recent = ttk.LabelFrame(page, text=T_RECENT, padding=(14, 8))
-        recent.grid(row=3, column=0, columnspan=2, sticky="nsew")
+        recent.grid(row=4, column=0, columnspan=2, sticky="nsew")
         recent.columnconfigure(0, weight=1)
         recent.rowconfigure(1, weight=1)
         self.recent_count = ttk.Label(recent, foreground=MUTED)
@@ -535,6 +553,15 @@ class MainWindow:
         self.nav[main.CALENDAR].configure(text=deadlines.T_TAB)
         if first_run_changed:
             self._show_section()
+        # Store builds never offer the GitHub updater, even with stale state.
+        banner = status.update_banner if updater.enabled() else None
+        for box, title, button in (self.start_update_banner, self.overview_update_banner):
+            if banner is None:
+                box.grid_remove()
+            else:
+                title.configure(text=banner.title)
+                button.configure(text=banner.button_title, state="normal" if banner.enabled else "disabled")
+                box.grid()
         # Başlangıç
         self.start_button.configure(text=status.start_title, state="normal" if status.start_enabled else "disabled")
         self._draw_start_message()

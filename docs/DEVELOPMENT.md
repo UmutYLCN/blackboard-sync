@@ -322,6 +322,13 @@ while there is no update). **Şimdi denetle** in **Genel** checks
 right away and answers with a notification; with an update waiting it reads
 **1.1.0 sürümüne güncelle** instead.
 
+The home page (**Başlangıç / Genel bakış**) also shows a version banner with
+a primary **Güncelle** button, directly above **Son indirilenler** on the overview.
+It uses the same update action as **Genel**, stays visible while downloading with
+its button disabled, and disappears when no newer release is available. The
+Microsoft Store build has no Store update detection or Store update action, so
+it keeps the existing **STORE_UPDATES** explanation without a home banner.
+
 On macOS **Güncelle** updates the app in place (`update_macos.py`). It
 downloads `Blackboard-Sync-<version>.dmg` into a temporary folder, checks it
 against the release's `SHA256SUMS.txt`, attaches it hidden and read-only, and

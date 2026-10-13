@@ -35,10 +35,65 @@ from blackboard_sync.menubar.main_window_model import (
 )
 from blackboard_sync.menubar.model import AppModel, RecentItem, RunOutcome
 from blackboard_sync.menubar.settings_form import FormValues
+from blackboard_sync import __version__, updater
+from blackboard_sync.menubar.model import UpdateState
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
 DEST = Path("/Users/student/Documents")
 FINISHED = NOW - timedelta(minutes=20)
+
+
+@pytest.mark.parametrize("first_run", [True, False])
+def test_home_update_banner_tracks_release_checks_and_downloads(first_run):
+    model = AppModel(DEST, NOW, configured=not first_run)
+    if not first_run:
+        signed_in(model)
+    assert main_status(model, NOW).first_run is first_run
+    assert main_status(model, NOW).update_banner is None
+    release = updater.Release("9.9.9", "https://example.com", "installer", "https://example.com/installer")
+    model.updates.finish_check(updater.CheckResult("available", release), NOW, manual=False)
+    banner = main_status(model, NOW).update_banner
+    assert (banner.title, banner.button_title, banner.enabled) == (
+        "Blackboard Sync 9.9.9 hazır", "Güncelle", True)
+    model.updates.begin("check")
+    banner = main_status(model, NOW).update_banner
+    assert banner.button_title == "Güncelle" and not banner.enabled
+    # An offline check preserves the known newer version.
+    model.updates.finish_check(updater.CheckResult("unknown"), NOW, manual=False)
+    assert main_status(model, NOW).update_banner.enabled
+    model.updates.begin("download")
+    banner = main_status(model, NOW).update_banner
+    assert banner.button_title == "İndiriliyor…" and not banner.enabled
+    model.updates.finish_download("failed")
+    assert main_status(model, NOW).update_banner.enabled
+    model.updates.finish_check(updater.CheckResult("current"), NOW, manual=False)
+    assert main_status(model, NOW).update_banner is None
+
+
+@pytest.mark.parametrize("version", [__version__, "0.0.1", "invalid"])
+def test_home_update_banner_does_not_offer_current_or_older_versions(version):
+    model = AppModel(DEST, NOW)
+    model.updates.available = updater.Release(version, "https://example.com", "installer", "https://example.com/installer")
+    assert main_status(model, NOW).update_banner is None
+
+
+def test_home_update_banner_restores_newer_release_and_hides_after_upgrade():
+    model = AppModel(DEST, NOW)
+    model.updates.available = updater.Release("9.9.9", "https://example.com", "installer", "https://example.com/installer")
+    saved = model.updates.saved_state()
+    model.updates = UpdateState.load(saved, NOW)
+    assert main_status(model, NOW).update_banner is not None
+    model.updates = UpdateState.load(saved, NOW, current="9.9.9")
+    assert main_status(model, NOW).update_banner is None
+
+
+def test_store_build_hides_home_update_banner_even_with_stale_release(monkeypatch):
+    from blackboard_sync.windows import package
+
+    model = AppModel(DEST, NOW)
+    model.updates.available = updater.Release("9.9.9", "https://example.com", "installer", "https://example.com/installer")
+    monkeypatch.setattr(package, "is_packaged", lambda: True)
+    assert main_status(model, NOW).update_banner is None
 
 
 def signed_in(model, name="UMUT YALÇIN"):

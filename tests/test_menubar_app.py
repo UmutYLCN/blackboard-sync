@@ -372,6 +372,66 @@ def test_recent_badges_and_viewport_seen_tracking(tmp_path, monkeypatch):
         native_window.close()
 
 
+@pytest.mark.parametrize('appearance', ['NSAppearanceNameAqua', 'NSAppearanceNameDarkAqua'])
+def test_home_update_banner_visibility_action_and_layout(tmp_path, appearance):
+    import AppKit
+    from blackboard_sync.menubar.main_window_model import GENERAL, OVERVIEW, main_status
+    from blackboard_sync.menubar.main_window import GAP, HEADER, PAD, UPDATE_BANNER_HEIGHT
+    from blackboard_sync.menubar.model import RecentItem
+    from blackboard_sync.updater import Release
+
+    actions = []
+    window, model, _ = make_window(tmp_path, on_action=actions.append)
+    try:
+        window.window.setAppearance_(AppKit.NSAppearance.appearanceNamed_(getattr(AppKit, appearance)))
+        banners = (window.start_update_banner, window.overview_update_banner)
+        assert all(box.isHidden() for box, _, _ in banners)
+        assert window.start_scroll.frame().origin.y == 0
+        model.updates.available = Release('9.9.9', 'https://example.com', 'installer', 'https://example.com/installer')
+        window.update_status(main_status(model, NOW))
+        for box, title, button in banners:
+            assert not box.isHidden()
+            assert str(title.stringValue()) == 'Blackboard Sync 9.9.9 hazır'
+            assert str(button.title()) == 'Güncelle' and button.isEnabled()
+            assert button.action() == window.update_button.action() == 'update:'
+            button.performClick_(None)
+        window.update_button.performClick_(None)
+        assert actions == ['update', 'update', 'update']
+        assert window.start_scroll.frame().origin.y == PAD + UPDATE_BANNER_HEIGHT + GAP
+        signed_in(model).recent = [RecentItem('T/C/file.pdf', 'C', NOW.isoformat())]
+        window.update_status(main_status(model, NOW))
+        assert visible_page(window) == OVERVIEW
+        box = window.overview_update_banner[0]
+        assert box.frame().origin.y == HEADER
+        assert window.recent_card.frame().origin.y == box.frame().origin.y + UPDATE_BANNER_HEIGHT + GAP
+        # The sync scene stays above the banner; recent files keep their own scroll area.
+        model.begin('sync')
+        window.update_status(main_status(model, NOW))
+        assert not window.scene_card.isHidden()
+        assert box.frame().origin.y == window.scene_card.frame().origin.y + window.scene_card.frame().size.height + GAP
+        model.note = 'Yeni içerik kontrol ediliyor…'
+        window.window.setContentSize_((960, 378))  # 400-point window including its title bar
+        window.update_status(main_status(model, NOW))
+        frame = window.recent_card.frame()
+        assert frame.origin.y + frame.size.height <= window.pages[OVERVIEW].frame().size.height - PAD
+        assert box.frame().origin.y + box.frame().size.height < frame.origin.y
+        model.busy = None
+        model.updates.begin('download')
+        window.update_status(main_status(model, NOW))
+        assert all(str(button.title()) == 'İndiriliyor…' and not button.isEnabled() for _, _, button in banners)
+        window.select(GENERAL)
+        assert visible_page(window) == GENERAL and not window.update_button.isEnabled()
+        model.updates.finish_download()
+        model.updates.available = None
+        model.note = ''
+        window.update_status(main_status(model, NOW))
+        assert all(box.isHidden() for box, _, _ in banners)
+        assert window.recent_card.frame().origin.y == HEADER
+        assert window.start_scroll.frame().origin.y == 0
+    finally:
+        window.window.close()
+
+
 def test_a_running_sync_shows_the_illustration_and_it_stops_with_the_sync(tmp_path, monkeypatch):
     from blackboard_sync.menubar import sync_scene_view
     from blackboard_sync.menubar.main_window_model import main_status
