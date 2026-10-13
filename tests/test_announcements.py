@@ -42,9 +42,12 @@ def test_old_state_backfills_metadata_without_rewriting_unchanged_notes(config, 
     rows = announcements.load_rows(config)
     assert len(rows) == 1
     import os
-    tree = [(d, f) for d, _, f in os.walk(config.root)]
-    for line in [*rows, before, *tree, *State.load(config.state_file).outputs.items()]:
-        print("DIAG", line)
+    for r in rows:
+        print("DIAG row", ascii(r.path), os.path.exists(config.root / r.path), ascii(str(config.root / r.path)))
+    for k in before:
+        print("DIAG before", ascii(k), os.path.exists(config.root / k))
+    for d, dirs, files in os.walk(config.root):
+        print("DIAG walk", ascii(d), ascii(dirs), ascii(files))
     assert 0
 
 
