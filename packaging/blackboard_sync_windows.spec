@@ -29,7 +29,8 @@ a = Analysis(
         "win32com.shell.shell",
         "win32com.server.policy",
     ],
-    excludes=["pytest", "unittest", "pydoc_data"],
+    # reportlab.graphics: charts and barcodes, which the PDF notes never draw.
+    excludes=["pytest", "unittest", "pydoc_data", "reportlab.graphics"],
 )
 pyz = PYZ(a.pure)
 # Two programs sharing one set of libraries: the windowed app, and a console

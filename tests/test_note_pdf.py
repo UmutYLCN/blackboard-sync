@@ -96,6 +96,17 @@ def test_same_note_gives_the_same_bytes_in_another_process():
     assert other == first
 
 
+def test_drawing_a_note_needs_no_reportlab_graphics():
+    # The packaged apps leave reportlab.graphics out (packaging/*.spec).
+    code = ("import sys; sys.modules['reportlab.graphics'] = None; "
+            "from blackboard_sync.notepdf import render_pdf; "
+            "sys.stdout.buffer.write(render_pdf(sys.stdin.read()))")
+    note = _note()
+    out = subprocess.run([sys.executable, "-c", code], input=note.encode("utf-8"),
+                         capture_output=True, check=True).stdout
+    assert out == render_pdf(note)
+
+
 def test_typical_notes_stay_small():
     assignment = render_pdf(_note())
     announcement = render_pdf(render_announcement_note(

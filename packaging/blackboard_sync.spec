@@ -36,6 +36,8 @@ a = Analysis(
         "PIL._imagingft", "PIL.ImageFont", "PIL._imagingcms", "PIL.ImageCms",
         "PIL._imagingtk", "PIL.ImageTk", "PIL._imagingmath", "PIL.ImageMath",
         "PIL._imagingmorph", "PIL.ImageMorph",
+        # Charts and barcodes; a note never draws one.
+        "reportlab.graphics",
     ],
 )
 pyz = PYZ(a.pure)
