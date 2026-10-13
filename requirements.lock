@@ -14,6 +14,7 @@ pyobjc-core==12.2.2; sys_platform == 'darwin'
 pyobjc-framework-Cocoa==12.2.2; sys_platform == 'darwin'
 pyobjc-framework-WebKit==12.2.2; sys_platform == 'darwin'
 pytest==9.1.1
+tzdata==2026.5
 requests==2.34.2
 rumps==0.4.0; sys_platform == 'darwin'
 tomli==2.4.1

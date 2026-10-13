@@ -127,6 +127,10 @@ class BlackboardClient:
     def contents(self, course_id: str) -> list[dict]:
         return list(self.get_paged(f"{PUBLIC}/v1/courses/{course_id}/contents", {"limit": 200}))
 
+    def grade_columns(self, course_id: str) -> list[dict]:
+        """Student-visible metadata only; never grades, submissions or attempts."""
+        return list(self.get_paged(f"{PUBLIC}/v2/courses/{course_id}/gradebook/columns", {"limit": 200}))
+
     def children(self, course_id: str, content_id: str) -> list[dict]:
         return list(
             self.get_paged(

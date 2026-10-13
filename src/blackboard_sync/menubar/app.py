@@ -13,9 +13,10 @@ import logging
 import subprocess
 import sys
 import threading
+import webbrowser
 from pathlib import Path
 
-from blackboard_sync import deleted, runtime, update_macos, updater, uninstall
+from blackboard_sync import deadlines, deleted, runtime, update_macos, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, launchagent, settings_form
@@ -502,6 +503,12 @@ def build_app(config: Config, show_window: bool = False):
             else:
                 open_path(target)
 
+        def open_deadline(self, target: str) -> None:
+            if target.startswith(self.config.base_url.rstrip("/") + "/"):
+                webbrowser.open(target)
+            else:
+                self.open_recent(target)
+
         def toggle_autostart(self, _sender=None) -> None:
             try:
                 if launchagent.is_installed():
@@ -550,6 +557,8 @@ def build_app(config: Config, show_window: bool = False):
                     on_close=self._window_closed,
                     on_values=self.form_values,
                     on_open=self.open_recent,
+                    on_deadlines=lambda: deadlines.load_calendar(self.config, self.settings.dest),
+                    on_deadline=self.open_deadline,
                     on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
                     on_deleted_action=self.deleted_action,
                     on_past_term=self.download_past_term,
