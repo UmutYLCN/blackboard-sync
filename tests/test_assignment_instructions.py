@@ -1,7 +1,7 @@
 """Public Ultra content responses carry instructor files in handler.instructions.
 
 Shapes match read-only observations from several courses; ids, hosts, tokens and
-file bytes below are invented. No assessment/attempt/grade APIs are used.
+file bytes below are invented. No assessment/attempt/student-grade APIs are used.
 """
 
 import html
@@ -73,7 +73,8 @@ def test_downloads_instructions_for_assignments_and_tests_across_nested_courses(
     for name in expected:
         assert (config.root / name).exists()
     assert not warnings(report)
-    assert not any("assessment" in c or "gradebook" in c or "attempt" in c for c in fake_bb.calls)
+    assert not any("assessment" in c or "attempt" in c for c in fake_bb.calls)
+    assert all(c.endswith("/gradebook/columns") for c in fake_bb.calls if "gradebook" in c)
     assert not any("999_1" in c or "998_1" in c for c in fake_bb.calls)
     note = (config.root / CSE / "Assignment 1" / "Assignment 1.md").read_text()
     assert "- homework.docx" in note and "FIRST" not in note

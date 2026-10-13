@@ -29,6 +29,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest==9.1.1",
+    # IANA zones for deterministic timezone tests on Windows.
+    "tzdata==2026.5",
 ]
 
 [project.scripts]

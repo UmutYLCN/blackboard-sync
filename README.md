@@ -6,6 +6,7 @@ Blackboard’daki ders içeriklerini otomatik olarak bilgisayarına indirir.
 
 - **Otomatik indirme:** Arka planda her saat Blackboard’u kontrol eder, yeni dosyaları kendiliğinden indirir ve sana bildirim gösterir.
 - **Düzenli klasörler:** Dosyalar Blackboard’daki dönem ve ders yapısıyla **University** klasörüne kaydedilir.
+- **Takvim:** Ödev, sınav ve diğer notlandırılan çalışmaların son teslim tarihlerini ders adıyla, gün gün görürsün.
 - **Silinenler sekmesi:** Yanlışlıkla sildiğin dosyaları seçip geri indirebilirsin.
 - **Eski dönem indirme:** Geçmiş bir dönemin dosyalarını tek seferde indirebilirsin.
 - **Tek tıkla güncelleme:** Yeni sürüm çıkınca bildirim gelir, **Güncelle**’ye basman yeter.

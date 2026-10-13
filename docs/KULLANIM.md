@@ -7,13 +7,29 @@ Kurulum için [README](../README.md)'ye bak. Bu sayfa uygulamanın ayrıntılı 
 Blackboard Sync'i **Applications** veya **Launchpad**'den (Windows'ta **Başlat** menüsünden)
 açınca ana pencere açılır; uygulama zaten çalışıyorsa aynı pencere öne gelir. Soldaki
 bölümler: ilk girişe kadar **Başlangıç**, sonra **Genel bakış** (**Şimdi senkronize et**,
-**Klasörü aç**, son indirilenler; senkron sürerken küçük bir animasyon), **Genel** (ayarlar) ve
+**Klasörü aç**, son indirilenler; senkron sürerken küçük bir animasyon), **Takvim**, **Genel** (ayarlar) ve
 **Silinenler**. Hesabın ve son senkronun zamanı sol altta durur; oturum sona erince orada
 **Giriş yap** çıkar. Menüdeki **Ayarlar…** aynı pencereyi **Genel** bölümünde açar.
 
 Pencereyi kapatınca uygulama kapanmaz: menü çubuğundaki (Windows'ta saatin yanındaki)
 simgeyle çalışmaya ve senkronize etmeye devam eder. Bilgisayar açılınca kendiliğinden
 başlayan uygulama pencere açmaz. Tamamen kapatmak için simgenin menüsünden **Çık**'ı seç.
+
+## Takvim
+
+**Takvim**, senkronize edilen derslerin ödev, sınav ve diğer notlandırılan
+çalışmalarını son teslim tarihine göre gün gün gösterir. Yaklaşan tarihler en
+yakından başlar; tarihi geçenler ayrı görünür. Saatler bilgisayarının yerel
+saatidir. Bir çalışmaya tıklayınca indirilmiş notu varsa açılır; yoksa
+Blackboard açılır. İçerik bağlantısı olmayan not sütunlarında dersin notlar
+sayfası açılır.
+
+Tarihler senkron sırasında güncellenir; bu sayfayı açmak internet isteği
+göndermez. Okul bir dersin not sütunlarına erişimi kapatırsa önceki kayıtlar
+korunur ve sayfada güncellenemeyen dersler olduğu belirtilir. Yalnızca
+Blackboard'un açıkça bildirdiği son teslim tarihleri gösterilir. Teslim durumu
+kontrol edilmediği için tamamladığın çalışmalar da tarihi geçenler arasında
+görünebilir.
 
 ## Kayıt klasörü
 

@@ -17,6 +17,7 @@ import requests
 
 from blackboard_sync.api import PARTIAL_PREFIX, PARTIAL_SUFFIX, BlackboardClient, is_media
 from blackboard_sync.config import Config
+from blackboard_sync.deadlines import column_deadline
 from blackboard_sync.errors import AlreadyRunning, ApiError, BlackboardSyncError, LoginRequired, SkippedMedia
 from blackboard_sync.htmltext import body_text, find_embedded_files
 from blackboard_sync.notes import (
@@ -217,6 +218,7 @@ class Syncer:
         self.refetch_keys = refetch_keys
         self.windows = is_windows() if windows is None else windows
         self.missing_only = missing_only
+        self.deadline_content_ids: dict[str, str] = {}
 
     def checkpoint(self) -> None:
         """Save progress so far (throttled) so a run that is killed keeps what it finished."""
@@ -443,6 +445,7 @@ class Syncer:
     def sync_course(self, course: Course) -> CourseReport:
         code, title = course_code_and_title(course.course_id, course.name)
         report = CourseReport(code=code, name=title, folder=course.rel_dir)
+        self.deadline_content_ids = {}
         try:
             if not self.dry_run:
                 (self.dest / course.rel_dir).mkdir(parents=True, exist_ok=True)
@@ -451,11 +454,33 @@ class Syncer:
             report.warnings.append(f"Could not read course content: {exc}")
         else:
             self.walk(course, roots, course.rel_dir, report)
+        if not self.dry_run and self.refetch_keys is None and not self.missing_only:
+            self.sync_deadlines(course, report)
         try:
             self.sync_announcements(course, report)
         except ITEM_ERRORS as exc:
             report.warnings.append(f"Could not sync announcements: {exc}")
         return report
+
+    def sync_deadlines(self, course: Course, report: CourseReport) -> None:
+        previous = self.state.deadline_courses.get(course.id, {})
+        try:
+            # Materialize all pages before replacing the cache: a failed second
+            # page must not remove deadlines saved by an earlier sync.
+            columns = self.client.grade_columns(course.id)
+        except (ApiError, *ITEM_ERRORS) as exc:
+            report.warnings.append(f"Could not read due dates: {exc}")
+            entry = {**previous, "name": self.course_label(course), "unavailable": True}
+        else:
+            items = [parsed for column in columns if (parsed := column_deadline(
+                column, course.id, self.config.base_url, self.deadline_content_ids)) is not None]
+            entry = {"name": self.course_label(course), "items": items, "unavailable": False}
+            old_data = {key: value for key, value in previous.items() if key != "updated_at"}
+            entry["updated_at"] = (previous["updated_at"] if entry == old_data and previous.get("updated_at")
+                                   else _now_iso())
+        if entry != previous:
+            self.state.deadline_courses[course.id] = entry
+            self.state.dirty = True
 
     def walk(
         self,
@@ -466,6 +491,9 @@ class Syncer:
         parent_title: str = "",
     ) -> None:
         for item in sorted(items, key=lambda i: i.get("position", 0)):
+            column_id = (item.get("contentHandler") or {}).get("gradeColumnId")
+            if column_id:
+                self.deadline_content_ids[column_id] = item["id"]
             if self.is_folder(item):
                 try:
                     sub_dir = self.folder_path(rel_dir, item.get("title") or "Folder", report.warnings)
@@ -982,6 +1010,12 @@ def run_sync(
         courses = [c for c in courses if c.term_id not in state.past_terms]
         terms = [t for t in terms if t.id not in state.past_terms]
     report.terms = [t.name for t in terms]
+    if not dry_run and not term_name and not all_terms and not course_filters:
+        current_ids = {c.id for c in courses}
+        active = {key: value for key, value in state.deadline_courses.items() if key in current_ids}
+        if active != state.deadline_courses:
+            state.deadline_courses = active
+            state.dirty = True
     if term_name:
         report.past_term = terms[0].name
         if not dry_run:

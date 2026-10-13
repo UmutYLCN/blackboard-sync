@@ -19,6 +19,9 @@ what was written locally:
   there would choose.
 * ``past_terms`` - term ids explicitly downloaded as one-time archives; normal
   sync leaves their content alone. Missing files are restored only on request.
+* ``deadline_courses`` - student-visible grade-column due dates, grouped by
+  course, with content ids for note lookup and an availability flag. A failed
+  fetch keeps the previous complete list; successful lists replace it.
 * ``university_folder`` - true once the files of versions that wrote straight
   into the chosen folder were moved into its University folder
   (``relocate.migrate_to_root``), so that happens only once.
@@ -65,6 +68,7 @@ class State:
         self.outputs: dict[str, dict] = data.get("outputs", {})
         self.folders: dict[str, str] = data.get("folders", {})
         self.past_terms: dict[str, dict] = data.get("past_terms", {})
+        self.deadline_courses: dict[str, dict] = data.get("deadline_courses", {})
         self.in_university_folder: bool = in_university_folder or data.get("university_folder") is True
         self._claimed: dict[str, str] = {o["path"]: key for key, o in self.outputs.items()}
         self.recovery: str | None = None
@@ -114,6 +118,8 @@ class State:
             data["folders"] = self.folders
         if self.past_terms:
             data["past_terms"] = self.past_terms
+        if self.deadline_courses:
+            data["deadline_courses"] = self.deadline_courses
         if self.in_university_folder:
             data["university_folder"] = True
         write_private_json(self.path, data)

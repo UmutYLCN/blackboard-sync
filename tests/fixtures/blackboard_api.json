@@ -155,5 +155,8 @@
   "/learn/api/public/v1/courses/_13010_1/contents": {"results": []},
   "/learn/api/public/v1/courses/_13010_1/announcements": {"results": []},
   "/learn/api/public/v1/courses/_13050_1/contents": {"results": []},
-  "/learn/api/public/v1/courses/_13050_1/announcements": {"results": []}
+  "/learn/api/public/v1/courses/_13050_1/announcements": {"results": []},
+  "/learn/api/public/v2/courses/_13004_1/gradebook/columns": {"results": []},
+  "/learn/api/public/v2/courses/_13010_1/gradebook/columns": {"results": []},
+  "/learn/api/public/v2/courses/_13050_1/gradebook/columns": {"results": []}
 }
