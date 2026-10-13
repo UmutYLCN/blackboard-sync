@@ -30,10 +30,10 @@ def test_page_persists_all_announcements_newest_first_and_opens_saved_note(confi
 def test_old_state_backfills_metadata_without_rewriting_unchanged_notes(config, client, fake_bb):
     sync(config, client)
     before = {r.path: (config.root / r.path).stat().st_mtime_ns for r in announcements.load_rows(config)}
-    data = json.loads(config.state_file.read_text())
+    data = json.loads(config.state_file.read_text(encoding="utf-8"))
     data.pop("announcements")
     data.pop("current_courses")
-    config.state_file.write_text(json.dumps(data))
+    config.state_file.write_text(json.dumps(data), encoding="utf-8")
     assert announcements.load_rows(config) == ()
     fake_bb.calls.clear()
     report = sync(config, client)
