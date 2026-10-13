@@ -215,14 +215,14 @@ def test_conflicting_and_locked_files_stay_and_are_reported(icloud, client, monk
     conflict = icloud.root / SYLLABUS
     conflict.parent.mkdir(parents=True)
     conflict.write_bytes(b"another file")
-    rename = relocate.os.rename
+    rename = relocate._rename_no_replace
 
     def locked(src, dst):
         if str(src).endswith("hw1.pdf"):
             raise PermissionError(13, "in use", str(src))
         rename(src, dst)
 
-    monkeypatch.setattr(relocate.os, "rename", locked)
+    monkeypatch.setattr(relocate, "_rename_no_replace", locked)
     code, report = cli_sync(icloud, client, monkeypatch, capsys)
 
     assert code == 0
@@ -376,6 +376,6 @@ def test_note_under_the_folder_field():
 
 def test_failed_moves_keep_their_reason(icloud, client, monkeypatch):
     legacy_layout(icloud, client)
-    monkeypatch.setattr(relocate.os, "rename", lambda src, dst: (_ for _ in ()).throw(PermissionError(13, "x")))
+    monkeypatch.setattr(relocate, "_rename_no_replace", lambda src, dst: (_ for _ in ()).throw(PermissionError(13, "x")))
     result = relocate.migrate_to_root(State.load(icloud.state_file), icloud.dest)
     assert result.moved == 0 and result.kept and all(reason == FAILED for _rel, reason in result.kept)

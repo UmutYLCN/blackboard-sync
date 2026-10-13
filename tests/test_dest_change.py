@@ -50,7 +50,206 @@ def move(config, new):
     return move_destination(config.state_file, config.lock_file, config.dest, new)
 
 
+def file_contents(root):
+    """All files, including the hidden Markdown twins of PDF notes."""
+    return {path.relative_to(root).as_posix(): path.read_bytes()
+            for path in root.rglob("*") if path.is_file()}
+
+
+def cross_drive(monkeypatch, windows_error=False):
+    rename = relocate._rename_no_replace
+
+    def other_drive(src, dst):
+        if src.parent == dst.parent:  # publishing the temp copy is on the destination drive
+            return rename(src, dst)
+        error = OSError(errno.EACCES if windows_error else errno.EXDEV, "different drives")
+        if windows_error:
+            error.winerror = 17
+        raise error
+
+    monkeypatch.setattr(relocate, "_rename_no_replace", other_drive)
+
+
 # -- Taşı ---------------------------------------------------------------------
+
+@pytest.fixture
+def nested_move_fixture(config, client, fake_bb, tmp_path, monkeypatch, request):
+    """Downloaded PDFs, a presentation and notes, beside a student-owned file."""
+    from blackboard_sync import sync as sync_mod
+    from .test_windows_long_paths import COURSE, _deep_tree
+
+    windows = request.param
+    monkeypatch.setattr(sync_mod, "is_windows", lambda platform=None: windows)
+    monkeypatch.setattr(relocate, "is_windows", lambda platform=None: windows)
+    monkeypatch.chdir(tmp_path)
+    # A short source path makes Windows re-fit these names at the longer target,
+    # independently of the platform's pytest temporary-directory length.
+    config.dest = SHORT_DEST
+    _deep_tree(fake_bb)
+    fake_bb.routes[f"{COURSE}/_f1_1/attachments"]["results"].append(
+        {"id": "_ap1_1", "fileName": "lecture.pptx"})
+    fake_bb.files[f"{COURSE}/_f1_1/attachments/_ap1_1/download"] = b"PK presentation contents"
+    synced(config, client)
+    before = file_contents(config.root)
+    slides = next(rel for rel in before if rel.endswith("/slides.pdf"))
+    own = config.root / Path(slides).parent / "my notes.txt"
+    own.write_bytes(b"student notes")
+    return config, before, slides, own
+
+
+@pytest.mark.parametrize("nested_move_fixture", [False, True], indirect=True, ids=["macos", "windows-paths"])
+@pytest.mark.parametrize("failure", [None, "conflict", "locked"])
+def test_settings_move_nested_files_and_retry(nested_move_fixture, tmp_path, monkeypatch, caplog, failure):
+    from blackboard_sync.menubar import jobs
+    from blackboard_sync.settings import Settings
+
+    config, before, slides, own = nested_move_fixture
+    shown = sum(not Path(rel).name.startswith(".") for rel in before)
+    old = config.dest
+    new = tmp_path / "A longer destination location"
+    # Exercise the real Settings submission and the worker used by both apps.
+    app = tray(tmp_path, monkeypatch)
+    app.config = config
+    app.settings = Settings(config.base_url, old)
+    app.model.dest = old
+    monkeypatch.setattr(jobs, "synced_file_count",
+                        lambda cfg, dest: relocate.count_synced_files(cfg.state_file, dest))
+    targets = {rel: relocate.Placement(state(config), sync_root(new), relocate.is_windows()).file(rel)
+               for rel in before}
+    if relocate.is_windows():
+        assert targets[slides] != slides
+    blocked = sync_root(new) / targets[slides]
+    rename = relocate._rename_no_replace
+    if failure == "conflict":
+        blocked.parent.mkdir(parents=True, exist_ok=True)
+        blocked.write_bytes(b"destination-owned")
+    elif failure == "locked":
+        def locked(src, dst):
+            if src == config.root / slides:
+                raise PermissionError(errno.EACCES, "file is open", str(src))
+            return rename(src, dst)
+        monkeypatch.setattr(relocate, "_rename_no_replace", locked)
+
+    values = settings_form.FormValues(app.settings.base_url, str(new), False)
+    assert app.settings_submitted(values, False) is None
+    assert app.asked == [(old, new, shown)] and app.started == [MOVE_JOB]
+    result = jobs.run_move_guarded(config, app.model.move_from, app.model.dest)
+    assert result.status == "ok"
+    assert result.kept == ([(slides, CONFLICT if failure == "conflict" else FAILED)] if failure else [])
+    assert result.moved == shown - bool(failure)
+    assert own.read_bytes() == b"student notes" and not result.old_removed
+    for rel, data in before.items():
+        if failure and rel == slides:
+            assert (config.root / rel).read_bytes() == data
+            if failure == "locked":
+                assert not blocked.exists()
+            else:
+                assert blocked.read_bytes() == b"destination-owned"
+        else:
+            assert (sync_root(new) / targets[rel]).read_bytes() == data
+            assert not (config.root / rel).exists()
+    if failure:
+        assert str(config.root / slides) in caplog.text
+        if failure == "conflict":
+            blocked.unlink()
+        monkeypatch.setattr(relocate, "_rename_no_replace", rename)
+
+    # Retry from disk, after the conflict/lock clears. The failed file must still be tracked.
+    again = jobs.run_move_guarded(config, old, new)
+    assert again.kept == [] and again.moved == bool(failure)
+    assert file_contents(sync_root(new)) == {
+        targets[rel]: data for rel, data in before.items()}
+    assert file_contents(config.root) == {own.relative_to(config.root).as_posix(): b"student notes"}
+    own.unlink()
+    final = jobs.run_move_guarded(config, old, new)
+    assert final.moved == 0 and final.kept == [] and final.old_removed
+    assert not config.root.exists()
+
+
+@pytest.mark.parametrize("nested_move_fixture", [False], indirect=True)
+def test_cross_drive_copy_is_verified_before_removing_original(nested_move_fixture, tmp_path, monkeypatch):
+    config, before, slides, _own = nested_move_fixture
+    cross_drive(monkeypatch)
+    copy = relocate.shutil.copyfileobj
+
+    def corrupt(data, out, length):
+        if Path(data.name) == config.root / slides:
+            out.write(b"x" * len(before[slides]))  # same size, different contents
+        else:
+            copy(data, out, length)
+
+    monkeypatch.setattr(relocate.shutil, "copyfileobj", corrupt)
+    new = tmp_path / "USB"
+    result = move(config, new)
+    assert result.kept == [(slides, FAILED)]
+    assert (config.root / slides).read_bytes() == before[slides]
+    assert not (sync_root(new) / slides).exists()
+    assert not result.old_removed
+    assert not [p for p in new.rglob("*") if p.name.startswith(".bbsync-")]
+
+
+@pytest.mark.parametrize("nested_move_fixture", [False], indirect=True)
+def test_destination_hard_link_is_verified_and_original_is_removed(nested_move_fixture, tmp_path):
+    config, before, slides, own = nested_move_fixture
+    shown = sum(not Path(rel).name.startswith(".") for rel in before)
+    new = tmp_path / "Okul"
+    target = sync_root(new) / slides
+    target.parent.mkdir(parents=True)
+    os.link(config.root / slides, target)
+    result = move(config, new)
+    assert result.moved == shown and result.kept == []
+    assert files_under(config.root) == [own.relative_to(config.root).as_posix()]
+    assert target.read_bytes() == before[slides]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Creating symlinks needs Windows developer mode")
+@pytest.mark.parametrize("nested_move_fixture", [False], indirect=True)
+def test_destination_link_back_to_original_is_reported_and_kept(nested_move_fixture, tmp_path, caplog):
+    config, before, slides, _own = nested_move_fixture
+    new = tmp_path / "Okul"
+    target = sync_root(new) / slides
+    target.parent.mkdir(parents=True)
+    target.symlink_to((config.root / slides).resolve())
+    result = move(config, new)
+    assert result.kept == [(slides, FAILED)] and not result.old_removed
+    assert (config.root / slides).read_bytes() == before[slides]
+    assert target.read_bytes() == before[slides] and slides in caplog.text
+
+
+@pytest.mark.parametrize("between_drives", [False, True])
+@pytest.mark.parametrize("nested_move_fixture", [False], indirect=True)
+def test_destination_appearing_during_move_is_not_overwritten(
+        nested_move_fixture, tmp_path, monkeypatch, between_drives):
+    config, before, slides, _own = nested_move_fixture
+    new = tmp_path / "Okul"
+    target = sync_root(new) / slides
+    move_file = relocate._move_file
+    set_hidden = relocate.set_hidden
+
+    def appeared():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"destination-owned")
+
+    def race(src, dst):
+        if src == config.root / slides:
+            if between_drives:
+                return relocate._copy_then_remove(src, dst)
+            appeared()
+        return move_file(src, dst)
+
+    def publish(path, hidden):
+        set_hidden(path, hidden)
+        if not hidden and path.parent == target.parent:
+            appeared()
+
+    monkeypatch.setattr(relocate, "_move_file", race)
+    monkeypatch.setattr(relocate, "set_hidden", publish)
+    result = move(config, new)
+    assert result.kept == [(slides, CONFLICT)]
+    assert target.read_bytes() == b"destination-owned"
+    assert (config.root / slides).read_bytes() == before[slides]
+    assert not result.old_removed
+
 
 def test_move_takes_every_synced_file_and_nothing_is_downloaded_again(config, client, fake_bb, tmp_path):
     files = synced(config, client)
@@ -132,14 +331,14 @@ def test_identical_file_already_in_the_new_folder_counts_as_moved(config, client
 def test_locked_file_stays_and_keeps_the_old_folder(config, client, tmp_path, monkeypatch):
     files = synced(config, client)
     new = tmp_path / "Okul"
-    rename = os.rename
+    rename = relocate._rename_no_replace
 
     def locked(src, dst):
         if str(src).endswith("hw1.pdf"):
             raise PermissionError(13, "The process cannot access the file", str(src))
         rename(src, dst)
 
-    monkeypatch.setattr(relocate.os, "rename", locked)
+    monkeypatch.setattr(relocate, "_rename_no_replace", locked)
     result = move(config, new)
 
     assert result.kept == [(f"{CSE}/hw1.pdf", FAILED)]
@@ -157,14 +356,12 @@ def test_files_deleted_by_the_student_stay_deleted(config, client, tmp_path):
     assert SYLLABUS not in files_under(sync_root(new))
 
 
-def test_move_between_drives_copies_then_removes_the_original(config, client, tmp_path, monkeypatch):
+@pytest.mark.parametrize("windows_error", [False, True])
+def test_move_between_drives_copies_then_removes_the_original(config, client, tmp_path, monkeypatch, windows_error):
     files = synced(config, client)
     new = tmp_path / "USB"
 
-    def other_drive(src, dst):
-        raise OSError(errno.EXDEV, "Invalid cross-device link")
-
-    monkeypatch.setattr(relocate.os, "rename", other_drive)
+    cross_drive(monkeypatch, windows_error)
     result = move(config, new)
 
     assert result.kept == [] and result.moved == len(files)
@@ -176,7 +373,7 @@ def test_move_between_drives_copies_then_removes_the_original(config, client, tm
 def test_copy_is_dropped_when_the_original_cannot_be_removed(config, client, tmp_path, monkeypatch):
     files = synced(config, client)
     new = tmp_path / "USB"
-    monkeypatch.setattr(relocate.os, "rename", lambda src, dst: (_ for _ in ()).throw(OSError(errno.EXDEV, "x")))
+    cross_drive(monkeypatch)
     unlink = Path.unlink
 
     def open_in_reader(self, *args, **kwargs):
