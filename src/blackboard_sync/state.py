@@ -256,10 +256,15 @@ class State:
 
     def move_file(self, old_rel: str, new_rel: str) -> None:
         """Point the output recorded at ``old_rel`` at ``new_rel`` (the file was moved)."""
+        self.move_paths({old_rel: new_rel})
+
+    def move_paths(self, paths: dict[str, str]) -> None:
+        """Update paths together, without applying one file's rename to another."""
         changed = False
         for entry in self.outputs.values():
-            if entry["path"] == old_rel:
-                entry["path"] = new_rel
+            target = paths.get(entry["path"], entry["path"])
+            if entry["path"] != target:
+                entry["path"] = target
                 changed = True
         if changed:
             self._claimed = {o["path"]: key for key, o in self.outputs.items()}

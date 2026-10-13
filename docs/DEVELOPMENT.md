@@ -285,6 +285,12 @@ on a schedule until the settings have been saved once (on **Başlangıç** with
     program) stays in the old folder and is reported; nothing is overwritten.
     Your own files in the old folder are left alone, and the old folders are
     removed only once every downloaded file moved and they are empty.
+    Files left behind retain their recorded source paths, including Windows
+    folder names shortened for the old location, so repeating a move from
+    that location can still find them. Between drives, the copy's contents
+    are verified before the original is removed.
+    A destination link that only points back to the original file also leaves
+    the original in place and is reported.
   - **Yeniden indir** downloads undismissed files again into the new folder;
     the old folder is left untouched.
   - **Sadece yeni dosyalar** leaves the old files where they are; only content

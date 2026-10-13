@@ -10,7 +10,8 @@ On Windows deep folder names are shortened to fit the path limit, and how much
 depends on the length of the destination path (``fit_windows_folder``). The
 folders below each course are therefore named again for the new destination,
 from the full names the state recorded, exactly as a sync there would name
-them; long file names are shortened if needed, and the recorded paths follow.
+them; long file names are shortened if needed, and the recorded paths follow
+for files that moved. Failed moves retain their source names for a retry.
 
 Nothing is ever overwritten or lost:
 
@@ -18,8 +19,9 @@ Nothing is ever overwritten or lost:
   where they are and the file is reported;
 * a file that cannot be moved (open in another program on Windows, no
   permission) stays in the old folder and is reported;
-* between drives a file is copied first and the original removed only once the
-  copy is in place; if the original cannot be removed the copy is dropped again;
+* between drives a file is copied and its contents verified first; the original
+  is removed only once the copy is in place; if the original cannot be removed
+  the copy is dropped again;
 * the student's own files in the old folder are never touched, and old folders
   are only removed once they are empty and every file moved (empty course
   folders are recreated in the new folder).
@@ -40,6 +42,7 @@ import errno
 import logging
 import os
 import shutil
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -58,6 +61,8 @@ log = logging.getLogger(__name__)
 SYSTEM_JUNK = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
 # Windows reports a move between drives as ERROR_NOT_SAME_DEVICE.
 _WINDOWS_NOT_SAME_DEVICE = 17
+# macOS renamex_np: fail atomically if the target already exists.
+_RENAME_EXCL = 0x00000004
 
 # "<term>/<course>": these folder names do not depend on the destination.
 COURSE_DEPTH = 2
@@ -189,8 +194,13 @@ def move_files(state: State, old: Path, new: Path, windows: bool | None = None,
         src, dst = old / rel, new / place.file(rel)
         try:
             if dst.exists() or dst.is_symlink():
-                if dst.exists() and src.samefile(dst):  # reached through a link: already there
-                    continue
+                if dst.exists() and src.samefile(dst):
+                    resolved = dst.resolve()
+                    if (_same_folder(src.parent, resolved.parent)
+                            and src.name.casefold() == resolved.name.casefold()):
+                        # The destination only points back to the source entry.
+                        # Unlinking it would also make the destination disappear.
+                        raise OSError(errno.EINVAL, "the destination links back to the original", str(dst))
                 if not (dst.is_file() and sha256_file(src) == sha256_file(dst)):
                     log.warning("Kept %s: %s already holds a different file", src, dst)
                     result.kept.append((rel, CONFLICT))
@@ -200,12 +210,15 @@ def move_files(state: State, old: Path, new: Path, windows: bool | None = None,
                 _move_file(src, dst)
         except OSError as exc:
             log.warning("Kept %s: could not move it to %s (%s)", src, dst, exc)
-            result.kept.append((rel, FAILED))
+            result.kept.append((rel, CONFLICT if isinstance(exc, FileExistsError) else FAILED))
             continue
         result.moved += _shown(rel)
     if not result.kept or remove_emptied:
-        result.old_removed = _move_empty_folders(present, old, new, place)
-    place.record()
+        # A retry can have no files left to move but still have empty managed
+        # folders. Recorded paths identify their term folders even then.
+        result.old_removed = _move_empty_folders(
+            sorted({entry["path"] for entry in state.outputs.values()}), old, new, place)
+    place.record({rel for rel, _reason in result.kept}, keep_old_folders=not result.old_removed)
     log.info("Moved %d file(s) from %s to %s; %d kept", result.moved, old, new, len(result.kept))
     return result
 
@@ -236,16 +249,25 @@ class Placement:
         path = PurePosixPath(rel)
         return fit_windows_path(self.new, join_rel(self.folder(str(path.parent)), path.name))
 
-    def record(self) -> None:
-        """Point the state at the new names: every recorded file, moved or not, and every folder."""
+    def record(self, kept: set[str], keep_old_folders: bool) -> None:
+        """Record new names, retaining source names needed to retry failed moves.
+
+        Missing files still follow the new path budget, but a file known to be
+        left behind must remain discoverable at its original path. Retain the
+        full names of old shortened folders while the old tree still exists,
+        so retries and empty-folder cleanup choose the same destination names.
+        """
         if not self.windows:
             return
-        for path in sorted({entry["path"] for entry in self.state.outputs.values()}):
-            target = self.file(path)
-            if target != path:
-                self.state.move_file(path, target)
+        paths = {entry["path"]: self.file(entry["path"]) for entry in self.state.outputs.values()
+                 if entry["path"] not in kept}
+        # Update from the original paths together: a fitted target can also
+        # be another output's original path.
+        self.state.move_paths(paths)
         folders = {self.folder(rel): name for rel, name in self.state.folders.items()}
         folders = {rel: name for rel, name in folders.items() if PurePosixPath(rel).name != name}
+        if keep_old_folders:
+            folders = {**self.state.folders, **folders}
         if folders != self.state.folders:
             self.state.folders = folders
             self.state.dirty = True
@@ -261,11 +283,36 @@ def _same_folder(a: Path, b: Path) -> bool:
 def _move_file(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     try:
-        os.rename(src, dst)  # Windows refuses an existing target; it was checked just before
+        _rename_no_replace(src, dst)
     except OSError as exc:
         if exc.errno != errno.EXDEV and getattr(exc, "winerror", None) != _WINDOWS_NOT_SAME_DEVICE:
             raise
         _copy_then_remove(src, dst)
+
+
+def _rename_no_replace(src: Path, dst: Path) -> None:
+    """Publish a file without replacing a destination that appeared meanwhile."""
+    if sys.platform == "win32":
+        os.rename(src, dst)  # Windows refuses an existing target.
+    elif sys.platform == "darwin":
+        import ctypes
+
+        # macOS rename normally replaces a target. RENAME_EXCL makes the
+        # existence check atomic with the rename, including on external drives.
+        rename = ctypes.CDLL(None, use_errno=True).renamex_np
+        rename.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        rename.restype = ctypes.c_int
+        if rename(os.fsencode(src), os.fsencode(dst), _RENAME_EXCL) != 0:
+            error = ctypes.get_errno()
+            raise OSError(error, os.strerror(error), str(dst))
+    else:
+        # Other POSIX systems: linking is exclusive and preserves the inode.
+        os.link(src, dst)
+        try:
+            src.unlink()
+        except OSError:
+            dst.unlink()
+            raise
 
 
 def _copy_then_remove(src: Path, dst: Path) -> None:
@@ -279,14 +326,14 @@ def _copy_then_remove(src: Path, dst: Path) -> None:
         with os.fdopen(fd, "wb") as out, open(src, "rb") as data:
             shutil.copyfileobj(data, out, 1 << 20)
         shutil.copystat(src, tmp)
-        if tmp.stat().st_size != src.stat().st_size:
-            raise OSError(errno.EIO, "the copy is incomplete", str(dst))
+        if tmp.stat().st_size != src.stat().st_size or sha256_file(tmp) != sha256_file(src):
+            raise OSError(errno.EIO, "the copy does not match the original", str(dst))
         if dst.exists():
             raise FileExistsError(errno.EEXIST, "the target appeared meanwhile", str(dst))
         # The attribute follows the file to its final name: only a note's hidden
         # Markdown copy (".Name.md") keeps it.
         set_hidden(tmp, dst.name.startswith("."))
-        os.replace(tmp, dst)
+        _rename_no_replace(tmp, dst)
     finally:
         if tmp.exists():
             tmp.unlink()
