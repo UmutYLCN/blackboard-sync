@@ -283,7 +283,8 @@ def test_dry_run_keeps_every_partial_even_under_the_lock(config, client):
 
 def test_remove_stale_partials_age_zero_removes_all(config):
     paths = [_partial(config), _partial(config, ".bbsync-b.partial")]
-    assert remove_stale_partials(config.dest, max_age=timedelta(0)) == 2
+    import time
+    assert 0, ([(p.stat().st_mtime, time.time(), p.exists()) for p in paths], list(config.dest.rglob("*")))
     assert not any(p.exists() for p in paths)
 
 

@@ -41,7 +41,9 @@ def test_old_state_backfills_metadata_without_rewriting_unchanged_notes(config, 
     assert fake_bb.downloads() == []
     rows = announcements.load_rows(config)
     assert len(rows) == 1
-    assert {r.path: (config.root / r.path).stat().st_mtime_ns for r in rows} == before
+    import os
+    tree = [(d, f) for d, _, f in os.walk(config.root)]
+    assert 0, (rows, before, tree, State.load(config.state_file).outputs)
 
 
 def test_current_terms_filter_archives(config, client, fake_bb):
