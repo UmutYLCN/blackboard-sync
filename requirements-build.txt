@@ -1,3 +1,5 @@
 # Extra pin for building the packaged app (scripts/build-app.sh); installed into
 # the project-local .venv, never globally.
 pyinstaller==6.22.3
+# Draws the PDF notes; listed here too so a build environment cannot miss it.
+reportlab==5.0.1

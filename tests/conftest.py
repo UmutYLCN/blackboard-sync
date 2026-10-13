@@ -22,6 +22,27 @@ POSIX = sys.platform != "win32"
 def assert_owner_only(path: Path, mode: int = 0o600) -> None:
     if POSIX:
         assert (path.stat().st_mode & 0o777) == mode
+
+
+def note_markdown(pdf: Path) -> Path:
+    """The hidden Markdown copy saved beside the PDF note ``pdf``."""
+    return pdf.with_name(f".{pdf.stem}.md")
+
+
+def note_text(pdf: Path) -> str:
+    """What the PDF note ``pdf`` says: the text of its hidden Markdown copy."""
+    assert pdf.read_bytes().startswith(b"%PDF-")
+    return note_markdown(pdf).read_text(encoding="utf-8")
+
+
+def visible_files(root: Path) -> list[str]:
+    """Files under ``root`` a student sees in Finder: no dot-files."""
+    return sorted(
+        p.relative_to(root).as_posix() for p in root.rglob("*")
+        if p.is_file() and not any(part.startswith(".") for part in p.relative_to(root).parts)
+    )
+
+
 BASE_URL = "https://blackboard.example.edu"
 
 

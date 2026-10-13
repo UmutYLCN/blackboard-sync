@@ -13,7 +13,7 @@ import pytest
 from blackboard_sync.paths import fit_windows_folder, sanitize_name
 from blackboard_sync.state import State
 
-from .conftest import FakeResponse
+from .conftest import FakeResponse, note_text
 from .test_sync import CSE, sync
 
 ROOT = "/learn/api/public/v1/courses/_13004_1/contents"
@@ -75,7 +75,7 @@ def test_downloads_instructions_for_assignments_and_tests_across_nested_courses(
     assert not warnings(report)
     assert not any("assessment" in c or "gradebook" in c or "attempt" in c for c in fake_bb.calls)
     assert not any("999_1" in c or "998_1" in c for c in fake_bb.calls)
-    note = (config.root / CSE / "Assignment 1" / "Assignment 1.md").read_text()
+    note = note_text(config.root / CSE / "Assignment 1" / "Assignment 1.pdf")
     assert "- homework.docx" in note and "FIRST" not in note
 
 
@@ -83,7 +83,7 @@ def test_instruction_text_goes_in_the_note_next_to_its_files(config, client, fak
     add_assessment(fake_bb, "<p>Answer <strong>all</strong> questions.</p><ol><li>Sort</li></ol>" + file_link())
     assert not warnings(sync(config, client))
     assert (config.root / CSE / "Assignment 1" / "homework.docx").exists()
-    note = (config.root / CSE / "Assignment 1" / "Assignment 1.md").read_text()
+    note = note_text(config.root / CSE / "Assignment 1" / "Assignment 1.pdf")
     assert "Answer **all** questions.\n\n1. Sort\n" in note
     assert "Files saved next to this note:\n- homework.docx" in note
     assert "bbcswebdav" not in note and "FIRST" not in note
@@ -196,7 +196,7 @@ def test_empty_instructions_and_explicitly_unsupported_collection_are_silent(con
     add_assessment(fake_bb, "")
     assert not warnings(sync(config, client))
     assert not (config.root / CSE / "Assignment 1").exists()
-    assert (config.root / CSE / "Assignment 1.md").exists()
+    assert (config.root / CSE / "Assignment 1.pdf").exists()
 
 
 def test_actual_attachment_collection_is_still_downloaded_with_instructions(config, client, fake_bb):
@@ -273,9 +273,10 @@ def test_recorded_flat_files_and_notes_move_without_downloads_even_with_local_ed
 
     folder = config.root / CSE / "Assignment 1"
     assert (folder / "homework.docx").read_bytes() == b"my annotated instructions"
-    assert (folder / "Assignment 1.md").exists()
+    assert (folder / "Assignment 1.pdf").exists() and (folder / ".Assignment 1.md").exists()
     assert not (folder.parent / "homework.docx").exists()
-    assert not (folder.parent / "Assignment 1.md").exists()
+    assert not (folder.parent / "Assignment 1.pdf").exists()
+    assert not (folder.parent / ".Assignment 1.md").exists()
     assert fake_bb.downloads() == []
     out = State.load(config.state_file).output(key)
     assert out["path"] == f"{CSE}/Assignment 1/homework.docx"
@@ -306,7 +307,7 @@ def test_interrupted_flat_move_adopts_destination_without_duplicate_or_download(
     fake_bb.calls.clear()
     assert not warnings(sync(config, client))
     assert fake_bb.downloads() == []
-    assert sorted(p.name for p in folder.iterdir()) == ["Assignment 1.md", "homework.docx"]
+    assert sorted(p.name for p in folder.iterdir()) == [".Assignment 1.md", "Assignment 1.pdf", "homework.docx"]
     key = "xid:_13004_1:_instructions_1:901_1"
     assert State.load(config.state_file).output(key)["path"] == f"{CSE}/Assignment 1/homework.docx"
 
@@ -382,9 +383,9 @@ def test_file_only_in_description_is_downloaded_and_listed_in_note(config, clien
     assert fake_bb.downloads().count("/bbcswebdav/pid-700-dt-asiobject-rid-901_1/xid-901_1") == 1
     saved = list((config.root / CSE).rglob("data.csv"))
     assert len(saved) == 1 and saved[0].read_bytes() == b"DATASET"
-    note = next((config.root / CSE).rglob("Dataset page.md")).read_text()
+    note = note_text(next((config.root / CSE).rglob("Dataset page.pdf")))
     assert "Files saved next to this note:\n- data.csv" in note
-    assert saved[0].parent == next((config.root / CSE).rglob("Dataset page.md")).parent
+    assert saved[0].parent == next((config.root / CSE).rglob("Dataset page.pdf")).parent
 
 
 def test_description_and_body_files_are_deduplicated_and_both_downloaded(config, client, fake_bb):
@@ -394,7 +395,7 @@ def test_description_and_body_files_are_deduplicated_and_both_downloaded(config,
     downloads = fake_bb.downloads()
     assert downloads.count("/bbcswebdav/pid-700-dt-asiobject-rid-901_1/xid-901_1") == 1
     assert downloads.count("/bbcswebdav/pid-700-dt-asiobject-rid-902_1/xid-902_1") == 1
-    note = next((config.root / CSE).rglob("Dataset page.md")).read_text()
+    note = note_text(next((config.root / CSE).rglob("Dataset page.pdf")))
     assert note.count("- data.csv") == 1 and "- extra.pdf" in note
 
 
@@ -410,5 +411,5 @@ def test_description_without_files_is_unchanged(config, client, fake_bb):
     add_page(fake_bb, description="<p>Just text</p>")
     sync(config, client)
     assert not list((config.root / CSE).rglob("data.csv"))
-    note = next((config.root / CSE).rglob("Dataset page.md")).read_text()
+    note = note_text(next((config.root / CSE).rglob("Dataset page.pdf")))
     assert "Just text" in note and "Files saved next to this note" not in note

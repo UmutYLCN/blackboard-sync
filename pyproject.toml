@@ -13,7 +13,9 @@ dependencies = [
     "Send2Trash==2.1.0",
     "pywin32==312; sys_platform == 'win32'",
     "pystray==0.19.5; sys_platform == 'win32'",
-    "Pillow==11.3.0; sys_platform == 'win32'",
+    # PDF copies of the notes (blackboard_sync.notepdf); ReportLab always imports Pillow.
+    "reportlab==5.0.1",
+    "Pillow==11.3.0",
     "requests==2.34.2",
     "playwright==1.63.0",
     # The macOS menu bar app only; the core and CLI never import them.

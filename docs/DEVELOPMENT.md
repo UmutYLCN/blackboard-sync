@@ -16,12 +16,12 @@ finds your courses for the current term, and copies everything in them to
         CSE303_Algorithm_Analysis_for_Computer_Engineering_Syllabus_v1.pdf
       Lecture Notes/
         Week 1/
-          Intro - Asymptotic Notation.md
+          Intro - Asymptotic Notation.pdf
           week1-slides.pdf
         Week 2/
-      Course Website - Visualizations.md
+      Course Website - Visualizations.pdf
       Duyurular/
-        2026-09-20 Welcome to CSE303.md
+        2026-09-20 Welcome to CSE303.pdf
     MTH201 Linear Algebra/
     ...
 ```
@@ -30,8 +30,9 @@ finds your courses for the current term, and copies everything in them to
   with their original names.
 - **Everything that is not a file** — web links, text pages, assignments and
   tests, discussions, external tools and **announcements** — becomes a small
-  Markdown note (`.md`) in the matching folder, with its text and a link back
-  to Blackboard.
+  PDF note in the matching folder, with its text and clickable links, including
+  one back to Blackboard. The note's Markdown source is saved beside it as a
+  hidden file (`.Intro - Asymptotic Notation.md`) for tools that read notes.
 - Runs are **incremental**: only new or changed items are fetched. Nothing
   local is ever deleted.
 - New term? It switches automatically; no course URLs to configure.

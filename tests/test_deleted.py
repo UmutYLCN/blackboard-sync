@@ -6,7 +6,7 @@ import pytest
 from blackboard_sync.deleted import DeletedSelection, dismiss_missing, missing_outputs
 from blackboard_sync.errors import AlreadyRunning
 from blackboard_sync.state import State
-from blackboard_sync.sync import run_lock
+from blackboard_sync.sync import is_markdown_key, run_lock
 from tests.test_sync import sync, SYLLABUS, SLIDES, SYLLABUS_DL, CSE, _touch_syllabus
 
 SYLLABUS_KEY = 'attachment:_13004_1:_a11_1'
@@ -37,7 +37,9 @@ def test_selective_refetch_downloads_only_selected_output(config, client, fake_b
     report = sync(config, client, refetch_missing=True, refetch_keys={SYLLABUS_KEY})
     assert fake_bb.downloads() == [SYLLABUS_DL]
     assert (config.dest / SYLLABUS).exists()
-    assert len(missing_outputs(State.load(config.state_file), config.dest)) == len(state.outputs) - 1
+    # Hidden Markdown copies of notes are never listed; their PDF stands for them.
+    listed = [key for key in state.outputs if not is_markdown_key(key)]
+    assert len(missing_outputs(State.load(config.state_file), config.dest)) == len(listed) - 1
     assert sum(report.totals().values()) == 1
     sync(config, client)
     assert not (config.dest / SLIDES).exists()

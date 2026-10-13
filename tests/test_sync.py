@@ -6,7 +6,7 @@ from blackboard_sync import sync as sync_mod
 from blackboard_sync.state import State
 from blackboard_sync.sync import Term, choose_current_terms, parse_time, run_sync, sha256_file
 
-from .conftest import assert_owner_only
+from .conftest import assert_owner_only, note_text, visible_files
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
 CSE = "2026-2027 Güz/CSE303 Algorithm Analysis"
@@ -20,7 +20,7 @@ def sync(config, client, **kwargs):
 
 
 def files_under(root):
-    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+    return visible_files(root)
 
 
 def test_first_sync_mirrors_the_course_tree(config, client):
@@ -32,11 +32,11 @@ def test_first_sync_mirrors_the_course_tree(config, client):
         [
             SYLLABUS,
             SLIDES,
-            f"{CSE}/Lecture Notes/Week 1/Intro - Asymptotic Notation.md",
-            f"{CSE}/Course Website - Visualizations.md",
-            f"{CSE}/Homework 1.md",
+            f"{CSE}/Lecture Notes/Week 1/Intro - Asymptotic Notation.pdf",
+            f"{CSE}/Course Website - Visualizations.pdf",
+            f"{CSE}/Homework 1.pdf",
             f"{CSE}/hw1.pdf",
-            f"{CSE}/Duyurular/2026-09-20 Welcome to CSE303.md",
+            f"{CSE}/Duyurular/2026-09-20 Welcome to CSE303.pdf",
         ]
     )
     # Empty folders on Blackboard exist locally too, so the structure matches.
@@ -51,9 +51,9 @@ def test_first_sync_mirrors_the_course_tree(config, client):
 
     cse = next(c for c in report.courses if c.code == "CSE303")
     assert sorted(cse.new_files) == sorted([SYLLABUS, SLIDES, f"{CSE}/hw1.pdf"])
-    assert cse.new_announcements == [f"{CSE}/Duyurular/2026-09-20 Welcome to CSE303.md"]
+    assert cse.new_announcements == [f"{CSE}/Duyurular/2026-09-20 Welcome to CSE303.pdf"]
     assert cse.summary_line() == "CSE303: 3 new files, 3 new notes, 1 new announcement"
-    note = (config.dest / CSE / "Lecture Notes/Week 1/Intro - Asymptotic Notation.md").read_text(encoding="utf-8")
+    note = note_text(config.dest / CSE / "Lecture Notes/Week 1/Intro - Asymptotic Notation.pdf")
     assert "Read chapter 3 before class." in note
     assert "- week1-slides.pdf" in note
 
@@ -133,7 +133,8 @@ def test_changed_file_never_overwrites_local_edits(config, client, fake_bb):
     assert (config.dest / updated).read_bytes() == b"%PDF syllabus v2"
 
 
-NOTE = f"{CSE}/Lecture Notes/Week 1/Intro - Asymptotic Notation.md"
+NOTE = f"{CSE}/Lecture Notes/Week 1/Intro - Asymptotic Notation.pdf"
+NOTE_MD = f"{CSE}/Lecture Notes/Week 1/.Intro - Asymptotic Notation.md"
 
 
 def _edit_note_on_blackboard(fake_bb, body, modified="2026-10-01T00:00:00.000Z"):
@@ -144,24 +145,27 @@ def _edit_note_on_blackboard(fake_bb, body, modified="2026-10-01T00:00:00.000Z")
 
 def test_changed_note_replaces_locally_edited_note_in_place(config, client, fake_bb):
     sync(config, client)
-    (config.dest / NOTE).write_text("my own scribbles", encoding="utf-8")
+    (config.dest / NOTE).write_bytes(b"my own scribbles")
+    (config.dest / NOTE_MD).write_text("my own scribbles", encoding="utf-8")
     _edit_note_on_blackboard(fake_bb, "<p>Read chapter 4 instead.</p>")
     report = sync(config, client)
-    assert "Read chapter 4 instead." in (config.dest / NOTE).read_text(encoding="utf-8")
-    assert "my own scribbles" not in (config.dest / NOTE).read_text(encoding="utf-8")
+    assert "Read chapter 4 instead." in note_text(config.dest / NOTE)
+    assert "my own scribbles" not in note_text(config.dest / NOTE)
     assert not any("(2)" in p for p in files_under(config.dest))
     cse = next(c for c in report.courses if c.code == "CSE303")
     assert cse.updated_notes == [NOTE]
-    recorded = [o for o in State.load(config.state_file).outputs.values() if o["path"] == NOTE]
-    assert [o["sha256"] for o in recorded] == [sha256_file(config.dest / NOTE)]
+    for path in (NOTE, NOTE_MD):
+        recorded = [o for o in State.load(config.state_file).outputs.values() if o["path"] == path]
+        assert [o["sha256"] for o in recorded] == [sha256_file(config.dest / path)]
 
 
 def test_changed_note_is_recreated_when_deleted_locally(config, client, fake_bb):
     sync(config, client)
     (config.dest / NOTE).unlink()
+    (config.dest / NOTE_MD).unlink()
     _edit_note_on_blackboard(fake_bb, "<p>Read chapter 4 instead.</p>")
     sync(config, client)
-    assert "Read chapter 4 instead." in (config.dest / NOTE).read_text(encoding="utf-8")
+    assert "Read chapter 4 instead." in note_text(config.dest / NOTE)
     assert not any("(2)" in p for p in files_under(config.dest))
 
 
@@ -174,13 +178,13 @@ def _forget_item(config, key):
 
 def test_unchanged_note_keeps_local_edit_and_deletion(config, client, fake_bb):
     sync(config, client)
-    (config.dest / NOTE).write_text("my own scribbles", encoding="utf-8")
+    (config.dest / NOTE).write_bytes(b"my own scribbles")
     sync(config, client)  # nothing changed on Blackboard: the item is skipped
-    assert (config.dest / NOTE).read_text(encoding="utf-8") == "my own scribbles"
+    assert (config.dest / NOTE).read_bytes() == b"my own scribbles"
     # Even when the item is looked at again, identical note content writes nothing.
     _forget_item(config, "content:_13004_1:_c211_1")
     sync(config, client)
-    assert (config.dest / NOTE).read_text(encoding="utf-8") == "my own scribbles"
+    assert (config.dest / NOTE).read_bytes() == b"my own scribbles"
     (config.dest / NOTE).unlink()
     _forget_item(config, "content:_13004_1:_c211_1")
     sync(config, client)
@@ -190,7 +194,7 @@ def test_unchanged_note_keeps_local_edit_and_deletion(config, client, fake_bb):
 
 def test_existing_numbered_note_copies_are_left_alone(config, client, fake_bb):
     sync(config, client)
-    copy = config.dest / NOTE.replace(".md", " (2).md")
+    copy = config.dest / NOTE.replace(".pdf", " (2).pdf")
     copy.write_text("old numbered copy", encoding="utf-8")
     _edit_note_on_blackboard(fake_bb, "<p>Read chapter 4 instead.</p>")
     sync(config, client)
@@ -223,8 +227,11 @@ def test_name_collisions_get_numbered(config, client, fake_bb):
         }
     )
     sync(config, client)
-    assert (config.dest / CSE / "Homework 1.md").exists()
-    assert (config.dest / CSE / "Homework 1 (2).md").exists()
+    assert (config.dest / CSE / "Homework 1.pdf").exists()
+    assert (config.dest / CSE / "Homework 1 (2).pdf").exists()
+    # Each note keeps its own hidden Markdown copy beside it.
+    assert "https://example.org/hw" in note_text(config.dest / CSE / "Homework 1 (2).pdf")
+    assert "https://example.org/hw" not in note_text(config.dest / CSE / "Homework 1.pdf")
 
 
 def test_existing_identical_file_is_adopted(config, client, fake_bb):
@@ -326,7 +333,8 @@ def test_windows_names_are_valid_and_paths_fit(config, client, fake_bb, monkeypa
     report = sync(config, client)
     assert report.status == "ok"
     files = files_under(config.dest)
-    assert f"{CSE}/Homework '1' - done.md" in files
+    assert f"{CSE}/Homework '1' - done.pdf" in files
+    assert (config.dest / CSE / ".Homework '1' - done.md").is_file()
     assert f"{CSE}/CON_.pdf" in files
     website = next(f for f in files if f.startswith(f"{CSE}/Course Website - vvv"))
     assert len(website.rsplit("/", 1)[-1]) <= 120
@@ -407,7 +415,8 @@ def test_ultra_document_files_land_in_the_parent_folder(config, client, fake_bb)
     assert (config.dest / pptx).read_bytes() == b"PPTX v1"
     # No hidden-child folder, and an empty layout wrapper produces no note.
     assert not any("ultraDocumentBody" in f for f in files)
-    assert not any(f.startswith(WEEK) and f.endswith(".md") for f in files)
+    assert not any(f.startswith(WEEK) and f.endswith(".pdf") for f in files)
+    assert not any(p.name.endswith(".md") for p in (config.dest / WEEK).rglob("*"))
     assert not [w for c in report.courses for w in c.warnings]
     # Neither the attachment collection nor anything signed is stored.
     assert not any("_body/attachments" in c for c in fake_bb.calls)
@@ -425,7 +434,7 @@ def test_ultra_body_text_becomes_the_documents_note(config, client, fake_bb):
     sync(config, client)
 
     folder = config.dest / CSE / "WEEK 02 - E R MODEL I"
-    note = (folder / "WEEK 02 - E R MODEL I.md").read_text(encoding="utf-8")
+    note = note_text(folder / "WEEK 02 - E R MODEL I.pdf")
     assert "Read chapter 2." in note and "- week2.pptx" in note
     assert "ultraDocumentBody" not in note and "TOKEN" not in note
     assert (folder / "week2.pptx").read_bytes() == b"PPTX w2"
@@ -452,7 +461,7 @@ def test_no_attachments_answer_is_silent(config, client, fake_bb):
     report = sync(config, client)
 
     assert not [w for c in report.courses for w in c.warnings]
-    assert (config.dest / CSE / "Plain doc.md").exists()
+    assert (config.dest / CSE / "Plain doc.pdf").exists()
 
 
 def test_other_400s_still_warn(config, client, fake_bb):

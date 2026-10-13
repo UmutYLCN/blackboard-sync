@@ -13,6 +13,8 @@ a = Analysis(
     datas=[
         (str(ROOT / "assets" / "menubar" / "idle.png"), "assets/menubar"),
         (str(ROOT / "assets" / "menubar" / "idle@2x.png"), "assets/menubar"),
+        # Fonts of the PDF notes (blackboard_sync.notepdf), with their license.
+        (str(ROOT / "assets" / "fonts"), "assets/fonts"),
     ],
     # The sync child run and the menu bar app are imported lazily by app_entry,
     # the in-app sign-in window (WKWebView) lazily by login.
@@ -24,7 +26,17 @@ a = Analysis(
         "blackboard_sync.inapp_macos",
         "WebKit",
     ],
-    excludes=["pytest", "tkinter", "unittest", "pydoc_data"],
+    excludes=[
+        "pytest", "tkinter", "unittest", "pydoc_data",
+        # ReportLab (the PDF notes) imports only PIL.Image and never opens an image
+        # for them; Pillow's other native parts and their libraries (AVIF, WebP,
+        # FreeType, HarfBuzz, LittleCMS, ...) would add about 6 MB to the .dmg.
+        # Pillow skips image plugins it cannot import.
+        "PIL._avif", "PIL.AvifImagePlugin", "PIL._webp", "PIL.WebPImagePlugin",
+        "PIL._imagingft", "PIL.ImageFont", "PIL._imagingcms", "PIL.ImageCms",
+        "PIL._imagingtk", "PIL.ImageTk", "PIL._imagingmath", "PIL.ImageMath",
+        "PIL._imagingmorph", "PIL.ImageMorph",
+    ],
 )
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Blackboard Sync", console=False)

@@ -69,7 +69,7 @@ FAILED = "error"  # moving raised an error (locked, no permission, ...)
 @dataclass
 class MoveResult:
     status: str = "ok"  # "ok" | "locked" | "error"
-    moved: int = 0
+    moved: int = 0  # files the student sees; a note's hidden Markdown copy moves uncounted
     # (path relative to the destination, CONFLICT or FAILED) of every file left in the old folder.
     kept: list[tuple[str, str]] = field(default_factory=list)
     old_removed: bool = False  # the old folder was empty afterwards and is gone
@@ -82,15 +82,22 @@ def synced_files(state: State, dest: Path) -> list[str]:
     return [rel for rel in paths if (dest / rel).is_file()]
 
 
+def _shown(rel: str) -> bool:
+    """Whether the student sees this file: not a note's hidden Markdown copy (".Name.md")."""
+    return not PurePosixPath(rel).name.startswith(".")
+
+
 def count_synced_files(state_file: Path, dest: Path) -> int:
     """How many mirrored files the chosen folder ``dest`` holds; 0 also when the state cannot be read.
 
-    Until ``migrate_to_root`` ran, the files directly in ``dest`` count too.
+    Until ``migrate_to_root`` ran, the files directly in ``dest`` count too. Hidden
+    Markdown copies of notes are not counted.
     """
     try:
         state = State.load(state_file, backup=False)
-        return len(synced_files(state, sync_root(dest))) + (
-            len(synced_files(state, dest)) if migration_pending(state, dest) else 0)
+        files = synced_files(state, sync_root(dest)) + (
+            synced_files(state, dest) if migration_pending(state, dest) else [])
+        return sum(_shown(rel) for rel in files)
     except OSError as exc:
         log.warning("Could not look for synced files in %s: %s", dest, exc)
         return 0
@@ -195,7 +202,7 @@ def move_files(state: State, old: Path, new: Path, windows: bool | None = None,
             log.warning("Kept %s: could not move it to %s (%s)", src, dst, exc)
             result.kept.append((rel, FAILED))
             continue
-        result.moved += 1
+        result.moved += _shown(rel)
     if not result.kept or remove_emptied:
         result.old_removed = _move_empty_folders(present, old, new, place)
     place.record()
@@ -276,7 +283,9 @@ def _copy_then_remove(src: Path, dst: Path) -> None:
             raise OSError(errno.EIO, "the copy is incomplete", str(dst))
         if dst.exists():
             raise FileExistsError(errno.EEXIST, "the target appeared meanwhile", str(dst))
-        set_hidden(tmp, False)  # the attribute would otherwise follow the file to its final name
+        # The attribute follows the file to its final name: only a note's hidden
+        # Markdown copy (".Name.md") keeps it.
+        set_hidden(tmp, dst.name.startswith("."))
         os.replace(tmp, dst)
     finally:
         if tmp.exists():

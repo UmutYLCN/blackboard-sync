@@ -5,11 +5,12 @@ import json
 
 from blackboard_sync.state import State
 
+from .conftest import note_text
 from .test_sync import CSE, sync
 
 ANNOUNCEMENTS = "/learn/api/public/v1/courses/_13004_1/announcements"
 FOLDER = f"{CSE}/Duyurular"
-NOTE = f"{FOLDER}/2026-10-01 Exam rooms.md"
+NOTE = f"{FOLDER}/2026-10-01 Exam rooms.pdf"
 FILE_URL = "/bbcswebdav/pid-700-dt-asiobject-rid-911_1/xid-911_1"
 STATE_KEY = "announcement:_13004_1:_n3_1"
 FILE_KEY = "xid:_13004_1:announcement:_n3_1:911_1"
@@ -41,7 +42,7 @@ def test_announcement_file_is_downloaded_and_listed_in_the_note(config, client, 
 
     assert not warnings(report)
     assert (config.root / FOLDER / "exam-rooms.pdf").read_bytes() == b"%PDF rooms"
-    note = (config.root / NOTE).read_text(encoding="utf-8")
+    note = note_text(config.root / NOTE)
     assert "Rooms are attached." in note
     assert "Files saved next to this note:\n- exam-rooms.pdf\n" in note
     assert "bbcswebdav" not in note and "token" not in note
@@ -52,7 +53,7 @@ def test_announcement_file_is_downloaded_and_listed_in_the_note(config, client, 
 
 def test_announcement_without_files_keeps_the_same_note(config, client, fake_bb):
     sync(config, client)
-    note = (config.root / FOLDER / "2026-09-20 Welcome to CSE303.md").read_text(encoding="utf-8")
+    note = note_text(config.root / FOLDER / "2026-09-20 Welcome to CSE303.pdf")
     assert "Files saved" not in note
     assert note.startswith("# Welcome to CSE303\n\n_Announcement · CSE303 Algorithm Analysis · 2026-09-20_\n\n")
     assert fake_bb.downloads().count(FILE_URL) == 0
@@ -65,7 +66,7 @@ def test_failed_announcement_download_keeps_the_note_and_retries_only_that_file(
 
     assert any("Exam rooms" in w for w in warnings(report))
     assert not (config.root / FOLDER / "exam-rooms.pdf").exists()
-    note = (config.root / NOTE).read_text(encoding="utf-8")
+    note = note_text(config.root / NOTE)
     assert "Rooms are attached." in note and "Files saved" not in note
     assert State.load(config.state_file).items[STATE_KEY]["partial"]
 
@@ -74,7 +75,7 @@ def test_failed_announcement_download_keeps_the_note_and_retries_only_that_file(
     report = sync(config, client)
     assert not warnings(report)
     assert fake_bb.downloads() == [FILE_URL]
-    assert "- exam-rooms.pdf" in (config.root / NOTE).read_text(encoding="utf-8")
+    assert "- exam-rooms.pdf" in note_text(config.root / NOTE)
     assert not State.load(config.state_file).items[STATE_KEY].get("partial")
 
 
@@ -97,4 +98,4 @@ def test_announcement_synced_before_files_were_supported_gets_its_file(config, c
     report = sync(config, client)
     assert not warnings(report)
     assert (config.root / FOLDER / "exam-rooms.pdf").exists()
-    assert "- exam-rooms.pdf" in (config.root / NOTE).read_text(encoding="utf-8")
+    assert "- exam-rooms.pdf" in note_text(config.root / NOTE)
