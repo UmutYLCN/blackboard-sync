@@ -17,6 +17,7 @@ class CourseReport:
     new_announcements: list[str] = field(default_factory=list)
     updated_announcements: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    content_error: str = ""  # why the course's content could not be read at all
 
     @property
     def change_count(self) -> int:

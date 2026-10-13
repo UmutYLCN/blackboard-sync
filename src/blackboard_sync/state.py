@@ -19,6 +19,8 @@ what was written locally:
   there would choose.
 * ``past_terms`` - term ids explicitly downloaded as one-time archives; normal
   sync leaves their content alone. Missing files are restored only on request.
+  ``downloaded_at`` is when a download last read every course; ``incomplete``
+  marks one whose last download could not read a course's content.
 * ``deadline_courses`` - student-visible grade-column due dates, grouped by
   course, with content ids for note lookup and an availability flag. A failed
   fetch keeps the previous complete list; successful lists replace it.
@@ -149,12 +151,21 @@ class State:
         self.save_error = None
         return True
 
-    def record_past_term(self, term_id: str, name: str, course_ids: list[str]) -> None:
-        """Archive metadata is additive; version-1 items and outputs keep their keys."""
-        self.past_terms[term_id] = {
-            "name": name, "courses": course_ids,
-            "downloaded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        }
+    def record_past_term(self, term_id: str, name: str, course_ids: list[str], complete: bool = True) -> None:
+        """Archive metadata is additive; version-1 items and outputs keep their keys.
+
+        Only a ``complete`` download (every course's content was read) sets
+        ``downloaded_at``; any other keeps the time of the last complete one.
+        """
+        entry = {"name": name, "courses": course_ids}
+        previous = (self.past_terms.get(term_id) or {}).get("downloaded_at")
+        if complete:
+            entry["downloaded_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        else:
+            if previous:
+                entry["downloaded_at"] = previous
+            entry["incomplete"] = True
+        self.past_terms[term_id] = entry
         self.dirty = True
 
     # -- items ----------------------------------------------------------

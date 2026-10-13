@@ -104,15 +104,22 @@ MOVE_JOB = "move"
 DEST_MOVE, DEST_REFETCH, DEST_KEEP = "move", "refetch", "keep"
 
 
-def sync_arguments(job: str, settings: Settings, term_name: str = "") -> list[str]:
-    """CLI arguments for a sync job with the settings from the settings window."""
+def sync_arguments(job: str, settings: Settings, term_name: str = "", term_id: str = "") -> list[str]:
+    """CLI arguments for a sync job with the settings from the settings window.
+
+    A past term is passed by its Blackboard id when the list gave one: its name
+    can be shared by another term or change with Blackboard's language.
+    """
     args = ["--base-url", settings.base_url, "sync", "--json", "--dest", str(settings.dest)]
     if job == "refetch":
         args.append("--refetch-missing")
     if job == "past_term":
-        if not term_name:
+        if term_id:
+            args.extend(["--term-id", term_id])
+        elif term_name:
+            args.extend(["--term", term_name])
+        else:
             raise ValueError("Eski dönem seçilmedi.")
-        args.extend(["--term", term_name])
     return args
 
 
@@ -152,6 +159,7 @@ class RunOutcome:
     courses: list[CourseChange] = field(default_factory=list)
     past_term: str = ""
     warning_count: int = 0
+    unreadable_courses: int = 0  # courses whose content could not be read at all
     # The sync first moved files of an older version into the University folder.
     moved_into_root: int = 0
     left_outside_root: int = 0  # ...and these could not be moved
@@ -184,6 +192,7 @@ class RunOutcome:
             past_term=data.get("past_term") or "",
             warning_count=len(data.get("warnings") or []) + sum(
                 len(c.get("warnings") or []) for c in data.get("courses") or []),
+            unreadable_courses=sum(1 for c in data.get("courses") or [] if c.get("content_error")),
             moved_into_root=data.get("moved_into_root") or 0,
             left_outside_root=len(data.get("left_outside_root") or []),
         )
@@ -530,7 +539,9 @@ class AppModel:
         self.autostart = autostart
         self.busy: str | None = None  # "sync" | "refetch" | "login" | "move"
         self.past_term = ""  # only for the active one-time job; never saved as a default
-        self.past_terms: list[str] = []
+        self.past_term_id = ""  # ...and the Blackboard id of that term
+        self.past_terms: list[str] = []  # what the list shows
+        self.past_term_ids: dict[str, str] = {}  # entry of that list -> term id
         # Genel in the main window lists the past terms; they are looked up once
         # per sign-in and opening of the window, and ``past_message`` says how
         # the last lookup or one-time download went.
@@ -634,13 +645,15 @@ class AppModel:
             self.past_terms_loaded = False
             self.past_message = ""
 
-    def finish_past_terms(self, names: list[str], outcome: RunOutcome) -> None:
+    def finish_past_terms(self, names: list[str] | dict[str, str], outcome: RunOutcome) -> None:
+        """``names`` are the list's entries, or a dict of each entry to its term id."""
         self.busy = None
         if self.past_lookup_stale:  # the old school's terms: look again
             self.past_lookup_stale = False
             return
         self.past_terms_loaded = True
-        self.past_terms = names if outcome.status == "ok" else []
+        self.past_terms = list(names) if outcome.status == "ok" else []
+        self.past_term_ids = dict(names) if outcome.status == "ok" and isinstance(names, dict) else {}
         if outcome.status == "login_required":
             self.auth_failed_at = outcome.finished_at or datetime.now(timezone.utc)
             self.note = "Eski dönemleri görmek için giriş yapın ve tekrar deneyin."
@@ -656,6 +669,7 @@ class AppModel:
         if not self.can_download_past_term or name not in self.past_terms:
             return False
         self.past_term = name
+        self.past_term_id = self.past_term_ids.get(name, "")
         return True
 
     @property
@@ -682,12 +696,16 @@ class AppModel:
         notes: list[Notification] = []
         if job == "past_term":
             term = outcome.past_term or self.past_term
-            self.past_term = ""
+            self.past_term = self.past_term_id = ""
             if outcome.status == "ok":
                 count = sum(c.counts.get(key, 0) for c in outcome.courses
                             for key in ("new_files", "new_notes", "new_announcements"))
                 self.note = f"{term} · {count} dosya indirildi (eski dönem)."
-                if outcome.warning_count:
+                if outcome.unreadable_courses:
+                    # Not "nothing new": Blackboard refused the content, so the term is not complete.
+                    self.note += (f" {outcome.unreadable_courses} dersin içeriği okunamadı;"
+                                  " eski dönem tamamlanmadı, tekrar deneyin.")
+                elif outcome.warning_count:
                     self.note += f" {outcome.warning_count} uyarı; eksikler için tekrar deneyin."
                 self.remember(outcome)
                 notes.append(Notification("Blackboard: eski dönem", self.note,
@@ -811,7 +829,8 @@ class AppModel:
         self.dest = dest
         if school_changed:
             self.past_terms = []
-            self.past_term = ""
+            self.past_term_ids = {}
+            self.past_term = self.past_term_id = ""
             self.past_terms_loaded = False
             self.past_message = ""
             self.past_lookup_stale = self.busy == "past_terms"
