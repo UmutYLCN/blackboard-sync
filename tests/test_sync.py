@@ -146,7 +146,9 @@ def _edit_note_on_blackboard(fake_bb, body, modified="2026-10-01T00:00:00.000Z")
 def test_changed_note_replaces_locally_edited_note_in_place(config, client, fake_bb):
     sync(config, client)
     (config.dest / NOTE).write_bytes(b"my own scribbles")
-    (config.dest / NOTE_MD).write_text("my own scribbles", encoding="utf-8")
+    with open(config.dest / NOTE_MD, "r+b") as fh:  # Windows refuses "w" on a hidden file
+        fh.write(b"my own scribbles")
+        fh.truncate()
     _edit_note_on_blackboard(fake_bb, "<p>Read chapter 4 instead.</p>")
     report = sync(config, client)
     assert "Read chapter 4 instead." in note_text(config.dest / NOTE)
