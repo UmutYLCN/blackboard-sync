@@ -149,7 +149,7 @@ def test_settings_move_nested_files_and_retry(nested_move_fixture, tmp_path, mon
             assert (sync_root(new) / targets[rel]).read_bytes() == data
             assert not (config.root / rel).exists()
     if failure:
-        assert slides in caplog.text
+        assert str(config.root / slides) in caplog.text
         if failure == "conflict":
             blocked.unlink()
         monkeypatch.setattr(relocate, "_rename_no_replace", rename)
