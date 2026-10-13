@@ -7,7 +7,7 @@ Kurulum için [README](../README.md)'ye bak. Bu sayfa uygulamanın ayrıntılı 
 Blackboard Sync'i **Applications** veya **Launchpad**'den (Windows'ta **Başlat** menüsünden)
 açınca ana pencere açılır; uygulama zaten çalışıyorsa aynı pencere öne gelir. Soldaki
 bölümler: ilk girişe kadar **Başlangıç**, sonra **Genel bakış** (**Şimdi senkronize et**,
-**Klasörü aç**, son indirilenler; senkron sürerken küçük bir animasyon), **Genel** (ayarlar) ve
+**Klasörü aç**, son indirilenler; senkron sürerken küçük bir animasyon), **Duyurular**, **Genel** (ayarlar) ve
 **Silinenler**. Hesabın ve son senkronun zamanı sol altta durur; oturum sona erince orada
 **Giriş yap** çıkar. Menüdeki **Ayarlar…** aynı pencereyi **Genel** bölümünde açar.
 
@@ -31,6 +31,17 @@ farklı bir dosya var) olduğu yerde kalır ve bildirimle haber verilir.
 
 Ayarlar'da klasörü değiştirirsen **Taşı**, **Yeniden indir** ve **Sadece yeni dosyalar**
 seçenekleri eski ve yeni klasörlerin University klasörleri arasında çalışır.
+
+## Duyurular
+
+Ana pencerenin **Duyurular** bölümü, güncel dönem derslerinden senkronize edilen tüm
+duyuruları en yeniden başlayarak listeler. Her kartta ders adı, başlık, tarih ve kısa
+bir önizleme bulunur. Kartı seçince kayıtlı not açılır; not bilgisayarda yoksa
+Blackboard'daki dersin duyurular sayfası açılır.
+
+Liste yerel senkron verilerinden açılır; bu bölüme geçmek Blackboard'a yeni bir
+istek göndermez. Önceki sürümden güncellediysen duyurular sonraki senkronun ardından
+listelenir. Eski dönem arşivlerinin duyuruları bu listede görünmez.
 
 ## Silinenler
 

@@ -15,7 +15,7 @@ import sys
 import threading
 from pathlib import Path
 
-from blackboard_sync import deleted, runtime, update_macos, updater, uninstall
+from blackboard_sync import announcements, deleted, runtime, update_macos, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, launchagent, settings_form
@@ -502,6 +502,13 @@ def build_app(config: Config, show_window: bool = False):
             else:
                 open_path(target)
 
+        def open_announcement(self, row) -> None:
+            target = announcements.open_target(row, self.model.root)
+            if isinstance(target, Path):
+                open_path(target)
+            elif target:
+                open_url(target)
+
         def toggle_autostart(self, _sender=None) -> None:
             try:
                 if launchagent.is_installed():
@@ -550,6 +557,8 @@ def build_app(config: Config, show_window: bool = False):
                     on_close=self._window_closed,
                     on_values=self.form_values,
                     on_open=self.open_recent,
+                    on_announcements=lambda: announcements.load_rows(self.config),
+                    on_open_announcement=self.open_announcement,
                     on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
                     on_deleted_action=self.deleted_action,
                     on_past_term=self.download_past_term,

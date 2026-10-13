@@ -13,6 +13,7 @@ Applications, Launchpad or the Start menu, also while the app already runs; the
 - Genel: the settings form (``settings_form``). Its Vazgeç/Kaydet bar appears
   only once something was changed, and saving keeps the window open.
 - Silinenler: deleted files to bring back (``deleted``).
+- Duyurular: all synced current-term announcements (``announcements``).
 
 The account (initials, name, the last sync, a status badge or "Giriş yap")
 sits at the bottom of the sidebar, under the sections, once Başlangıç is done.
@@ -45,8 +46,8 @@ from blackboard_sync.menubar.model import (
 )
 from blackboard_sync.menubar.settings_form import T_SAVE, FormValues, WindowStatus, window_status
 
-OVERVIEW, GENERAL, DELETED = "overview", "general", "deleted"
-SECTIONS = (OVERVIEW, GENERAL, DELETED)
+OVERVIEW, GENERAL, DELETED, ANNOUNCEMENTS = "overview", "general", "deleted", "announcements"
+SECTIONS = (OVERVIEW, ANNOUNCEMENTS, GENERAL, DELETED)
 
 T_WINDOW_TITLE = "Blackboard Sync"
 T_NAV_START = "Başlangıç"
