@@ -41,14 +41,7 @@ def test_old_state_backfills_metadata_without_rewriting_unchanged_notes(config, 
     assert fake_bb.downloads() == []
     rows = announcements.load_rows(config)
     assert len(rows) == 1
-    import os
-    for r in rows:
-        print("DIAG row", ascii(r.path), os.path.exists(config.root / r.path), ascii(str(config.root / r.path)))
-    for k in before:
-        print("DIAG before", ascii(k), os.path.exists(config.root / k))
-    for d, dirs, files in os.walk(config.root):
-        print("DIAG walk", ascii(d), ascii(dirs), ascii(files))
-    assert 0
+    assert {r.path: (config.root / r.path).stat().st_mtime_ns for r in rows} == before
 
 
 def test_current_terms_filter_archives(config, client, fake_bb):
@@ -60,7 +53,12 @@ def test_current_terms_filter_archives(config, client, fake_bb):
     state.save()
     assert all(r.title != "Old announcement" for r in announcements.load_rows(config))
     # An explicitly archived term cannot become current when old courses are the fallback.
-    state.record_past_term("_50_1", "2026-2027 Güz", state.current_courses)
+    memberships = next(v for k, v in fake_bb.routes.items() if k.endswith("/courses") and "/users/" in k)
+    memberships["results"] = [m for m in memberships["results"] if m.get("course", {}).get("termId") != "_50_1"]
+    sync(config, client)
+    state = State.load(config.state_file)
+    old_term = next(v for k, v in fake_bb.routes.items() if k.endswith("/terms/_40_1"))["name"]
+    state.record_past_term("_40_1", old_term, state.current_courses)
     state.save()
     sync(config, client)
     assert announcements.load_rows(config) == ()

@@ -63,10 +63,11 @@ def run_sync(
     now: Callable[[], datetime] = utcnow,
     refetch_keys: list[str] | None = None,
     term_name: str = "",
+    term_id: str = "",
 ) -> RunOutcome:
     selection = None
     try:
-        args = sync_arguments(job, settings, term_name)
+        args = sync_arguments(job, settings, term_name, term_id)
         if refetch_keys is not None:
             if job != "refetch":
                 raise ValueError("Selections require a refetch job")
@@ -113,13 +114,13 @@ def run_login(settings: Settings, runner: Runner = subprocess.run) -> tuple[bool
 
 
 def run_sync_guarded(job: str, settings: Settings, refetch_keys: list[str] | None = None,
-                     term_name: str = "") -> RunOutcome:
+                     term_name: str = "", term_id: str = "") -> RunOutcome:
     """``run_sync`` that turns any unexpected exception into a failed outcome.
 
     Worker threads must always report back, or the model stays busy forever.
     """
     try:
-        return run_sync(job, settings, refetch_keys=refetch_keys, term_name=term_name)
+        return run_sync(job, settings, refetch_keys=refetch_keys, term_name=term_name, term_id=term_id)
     except Exception as exc:
         log.exception("Sync job failed")
         return RunOutcome(status="error", message=str(exc), finished_at=utcnow())
@@ -134,20 +135,31 @@ def run_login_guarded(settings: Settings) -> tuple[bool, str]:
         return False, str(exc)
 
 
-def run_past_terms(settings: Settings, runner: Runner = subprocess.run) -> tuple[list[str], RunOutcome]:
-    """Discover on a worker, using the same session, executable and lock as sync."""
+def run_past_terms(settings: Settings, runner: Runner = subprocess.run) -> tuple[dict[str, str], RunOutcome]:
+    """Discover on a worker, using the same session, executable and lock as sync.
+
+    Returns each entry of the list (a term's name, told apart from a same-named
+    term) mapped to the term's Blackboard id, which the download is started with.
+    """
     try:
         proc = runner(cli_command("--base-url", settings.base_url, "past-terms", "--json"),
                       capture_output=True, text=True, timeout=LOGIN_TIMEOUT, stdin=subprocess.DEVNULL)
         if proc.returncode:
-            return [], parse_sync_output("", proc.returncode, proc.stderr, utcnow())
+            return {}, parse_sync_output("", proc.returncode, proc.stderr, utcnow())
         data = json.loads(proc.stdout)
-        names = data["terms"]
-        if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+        options = data.get("options")
+        if options is None:
+            names = data["terms"]
+            if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+                raise ValueError("Eski dönem listesi okunamadı.")
+            options = [{"label": name, "id": ""} for name in names]
+        terms = {option["label"]: option["id"] for option in options}
+        if len(terms) != len(options) or not all(isinstance(k, str) and k and isinstance(v, str)
+                                                 for k, v in terms.items()):
             raise ValueError("Eski dönem listesi okunamadı.")
-        return names, RunOutcome(status="ok")
+        return terms, RunOutcome(status="ok")
     except Exception as exc:
-        return [], RunOutcome(status="error", message=f"Eski dönemler yüklenemedi: {exc}")
+        return {}, RunOutcome(status="error", message=f"Eski dönemler yüklenemedi: {exc}")
 
 
 def synced_file_count(config: Config, dest: Path) -> int:

@@ -322,6 +322,13 @@ while there is no update). **Şimdi denetle** in **Genel** checks
 right away and answers with a notification; with an update waiting it reads
 **1.1.0 sürümüne güncelle** instead.
 
+The home page (**Başlangıç / Genel bakış**) also shows a version banner with
+a primary **Güncelle** button, directly above **Son indirilenler** on the overview.
+It uses the same update action as **Genel**, stays visible while downloading with
+its button disabled, and disappears when no newer release is available. The
+Microsoft Store build has no Store update detection or Store update action, so
+it keeps the existing **STORE_UPDATES** explanation without a home banner.
+
 On macOS **Güncelle** updates the app in place (`update_macos.py`). It
 downloads `Blackboard-Sync-<version>.dmg` into a temporary folder, checks it
 against the release's `SHA256SUMS.txt`, attaches it hidden and read-only, and
@@ -411,15 +418,16 @@ downloads the same files into the same folders as the command does.
 
 ```
 blackboard-sync [--base-url URL] [--data-dir DIR] [-v] login [--browser auto|chrome|edge|brave|vivaldi|opera|operagx|chromium|arc|inapp] [--timeout S]
-blackboard-sync [...] check [--term NAME | --all-terms] [--course CODE ...]
-blackboard-sync [...] sync  [--term NAME | --all-terms] [--course CODE ...]
+blackboard-sync [...] check [--term NAME | --term-id ID | --all-terms] [--course CODE ...]
+blackboard-sync [...] sync  [--term NAME | --term-id ID | --all-terms] [--course CODE ...]
                             [--dest DIR] [--json] [--dry-run] [--refetch-missing]
 ```
 
 | Option | Meaning |
 | --- | --- |
 | `--dest DIR` | Base folder (default: the folder saved in the menu bar app's settings, else `~/Documents/University`; env `BBSYNC_DEST`). Files go into its `University` subfolder unless the folder is already named University. |
-| `--term NAME` | Sync a specific term by its Blackboard name, e.g. `"2025-2026 Bahar"`. |
+| `--term NAME` | Download one past term by its name, Turkish or English, e.g. `"2025-2026 Bahar"` or `"2025-2026 Spring"`. |
+| `--term-id ID` | The same by the term's Blackboard id, as `past-terms --json` lists it (`options[].id`); needed when two terms share a name. |
 | `--all-terms` | Sync every term, including past ones and courses without a term. |
 | `--course CODE` | Only this course (`CSE303`, or the course id); repeatable. Case and Turkish dots do not matter: `bil101` finds `BİL101`. |
 | `--dry-run` | Show what would be fetched; write and download nothing. |
@@ -435,6 +443,15 @@ The announcements folder is called `Duyurular` like on the site; set
 a month before it starts, since courses open early). Between terms it is the
 most recently started term. Courses the instructor has not opened yet
 (shown as private) are skipped until they open.
+
+**One term, one folder.** Blackboard can return a semester as two term records,
+one Turkish and one English ("2025-2026 Bahar", "2025-2026 Spring"), and a course
+in more than one membership. Terms whose names give the same academic year and
+semester (Güz/Fall/Autumn, Bahar/Spring, Yaz/Summer) and whose dates overlap are
+one term, named the Turkish way; each course is synced once. Every term gets its
+own folder beside the others: a course keeps the folder its files are in even
+when Blackboard renames the term or course, and a term whose folder name would be
+another term's gets its id added.
 
 ## Where things go
 

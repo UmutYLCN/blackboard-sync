@@ -67,7 +67,10 @@ ile kaldırdığın dosyalar bir daha önerilmez.
 
 ## Güncelleme
 
-Yeni sürüm çıkınca bildirim gelir; menüden veya Ayarlar'dan **Güncelle**'ye bas.
+Yeni sürüm çıkınca bildirim gelir; ana pencerenin **Başlangıç / Genel bakış** bölümünde
+yeni sürümü gösteren bir kart çıkar. **Son indirilenler** listesinin üstündeki
+**Güncelle** düğmesine bas; menüden veya **Genel** bölümünden de güncelleyebilirsin.
+Microsoft Store sürümünde bu kart gösterilmez; güncellemeleri Store yükler.
 
 - **macOS:** Uygulama yeni sürümü arka planda indirir, imzasını ve Apple onayını
   (notarization) doğrular, eskisinin yerine koyar ve kendini yeniden açar; Finder penceresi
@@ -84,12 +87,18 @@ Ayarların ve indirdiğin ders dosyaları korunur.
 Ana pencerenin **Genel** bölümündeki **Eski dönemler** kısmında listeden
 bir dönem seç ve **Eski dönemi indir**'e bas. Liste giriş yapmışken **Genel** bölümü açılınca
 yüklenir; güncel dönem listede görünmez. Dosyalar mevcut
-kayıt klasöründeki dönem/ders klasörlerine indirilir. Eski dönem bir kez indirilir,
-otomatik güncellenmez; tekrar indirmek yalnızca eksik dosyaları tamamlar. Normal
-senkron güncel dönemi takip etmeye devam eder.
+kayıt klasöründeki dönem/ders klasörlerine indirilir: her dönemin kendi klasörü
+güncel dönemin klasörünün yanında açılır (ör. `2026-2027 Güz` ile `2025-2026 Bahar`
+yan yana). Blackboard aynı dönemi hem Türkçe hem İngilizce adla gösterse de
+(`2025-2026 Bahar` / `2025-2026 Spring`) tek dönem ve tek klasör olur; aynı ders iki
+kez listelense de bir kez indirilir. Eski dönem bir kez indirilir,
+otomatik güncellenmez; tekrar indirmek yalnızca eksik dosyaları tamamlar. Bir dersin
+içeriği okunamazsa (ör. erişim kapalı) bu bildirilir ve tekrar denemek eksikleri
+tamamlar. Normal senkron güncel dönemi takip etmeye devam eder.
 
-Terminalden: `blackboard-sync sync --term "2025-2026 - Spring"` (Blackboard'daki
-dönem adını kullan). Kullanılabilir adları `blackboard-sync past-terms` ile listele.
+Terminalden: `blackboard-sync sync --term "2025-2026 Bahar"` (Türkçe ya da İngilizce
+dönem adı olur) veya `blackboard-sync sync --term-id <kimlik>`. Kullanılabilir
+dönemleri ve kimliklerini `blackboard-sync past-terms` ile listele.
 
 ## Kaldırma
 

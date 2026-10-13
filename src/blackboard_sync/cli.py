@@ -95,7 +95,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _add_selection_args(p: argparse.ArgumentParser) -> None:
     selection = p.add_mutually_exclusive_group()
-    selection.add_argument("--term", help='eski dönemi bir kez indir, ör. "2025-2026 - Spring"; otomatik güncellenmez')
+    selection.add_argument("--term", help='eski dönemi bir kez indir, ör. "2025-2026 Bahar"; otomatik güncellenmez')
+    selection.add_argument("--term-id", metavar="ID",
+                           help="eski dönemi Blackboard kimliğiyle bir kez indir (past-terms --json çıktısındaki id)")
     selection.add_argument("--all-terms", action="store_true", help="sync every term, including past ones")
     p.add_argument(
         "--course",
@@ -131,10 +133,11 @@ def cmd_check(args, config: Config) -> int:
     client, session_data = open_client(config)
     me = client.me()
     print(f"Session OK: signed in as {me.get('userName') or me.get('id')}.")
-    syncer = Syncer(client, config, State(config.state_file), dry_run=True)
+    # The recorded files decide the folders, as in a real sync; nothing is written.
+    syncer = Syncer(client, config, State.load(config.state_file, backup=False), dry_run=True)
     warnings: list[str] = []
     terms, courses = syncer.discover(
-        me["id"], args.term, args.all_terms, args.course, warnings=warnings
+        me["id"], args.term, args.all_terms, args.course, warnings=warnings, term_id=args.term_id
     )
     print(f"Term(s): {', '.join(t.name for t in terms) or 'none found'}")
     for course in courses:
@@ -146,7 +149,8 @@ def cmd_check(args, config: Config) -> int:
 
 
 def cmd_sync(args, config: Config) -> int:
-    report = SyncReport(dry_run=args.dry_run, dest=str(config.root), past_term=args.term or "")
+    past = args.term is not None or args.term_id is not None
+    report = SyncReport(dry_run=args.dry_run, dest=str(config.root), past_term=args.term or args.term_id or "")
     migrated = None
     try:
         config.ensure_data_dir()
@@ -169,6 +173,7 @@ def cmd_sync(args, config: Config) -> int:
                     config,
                     client,
                     term_name=args.term,
+                    term_id=args.term_id,
                     all_terms=args.all_terms,
                     course_filters=args.course,
                     dry_run=args.dry_run,
@@ -196,7 +201,7 @@ def cmd_sync(args, config: Config) -> int:
         report.moved_into_root = migrated.moved
         report.left_outside_root = [rel for rel, _reason in migrated.kept]
 
-    if not args.dry_run and report.status != "locked" and args.term is None:
+    if not args.dry_run and report.status != "locked" and not past:
         write_private_json(config.last_run_file, report.to_dict())
     if args.json:
         print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
@@ -213,17 +218,36 @@ def cmd_past_terms(args, config: Config) -> int:
         with run_lock(config.lock_file):
             me = client.me()
             warnings: list[str] = []
-            terms, _courses = Syncer(client, config, State(config.state_file), dry_run=True).discover(
-                me["id"], all_terms=True, warnings=warnings,
-            )
-            names = [term.name for term in choose_past_terms(terms, datetime.now(timezone.utc))]
+            terms, _courses = Syncer(
+                client, config, State.load(config.state_file, backup=False), dry_run=True,
+            ).discover(me["id"], all_terms=True, warnings=warnings)
+            past = choose_past_terms(terms, datetime.now(timezone.utc))
     finally:
         refresh_saved_cookies(config.session_file, session_data, client.http)
+    options = past_term_options(past)
     if args.json:
-        print(json.dumps({"terms": names, "warnings": warnings}, ensure_ascii=False))
+        # "terms" (names only) is what versions before term ids read.
+        print(json.dumps({"terms": [o["label"] for o in options], "options": options, "warnings": warnings},
+                         ensure_ascii=False))
     else:
-        print("\n".join(names) or "İndirilebilecek eski dönem yok.")
+        print("\n".join(f"{o['label']}  (--term-id {o['id']})" for o in options) or "İndirilebilecek eski dönem yok.")
     return EXIT_OK
+
+
+def past_term_options(terms) -> list[dict]:
+    """One choice per past term: its id, name, folder and a label no other choice has.
+
+    Two terms with the same name are told apart by their folders, or by their ids.
+    """
+    names = [term.name.casefold() for term in terms]
+    folders = [term.folder.casefold() for term in terms]
+
+    def label(term) -> str:
+        if names.count(term.name.casefold()) == 1:
+            return term.name
+        return term.folder if folders.count(term.folder.casefold()) == 1 else f"{term.name} ({term.id})"
+
+    return [{"id": term.id, "name": term.name, "folder": term.folder, "label": label(term)} for term in terms]
 
 
 def cmd_uninstall(args, config: Config) -> int:

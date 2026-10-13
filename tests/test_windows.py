@@ -633,6 +633,41 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     assert visible() == [GENERAL]
 
 
+def test_windows_home_update_banners_show_hide_and_use_existing_action(monkeypatch, tmp_path):
+    from blackboard_sync.menubar.main_window_model import main_status
+    from blackboard_sync.windows.main_window import MainWindow
+
+    fake_tk(monkeypatch, tmp_path)
+    now = datetime.now(timezone.utc)
+    model = AppModel(tmp_path, now, configured=False)
+    actions = []
+    window = MainWindow(None, FormValues('https://school.edu', str(tmp_path), True),
+                        main_status(model, now), lambda *args: None, actions.append, lambda: None)
+    banners = (window.start_update_banner, window.overview_update_banner)
+    assert all(box.removed for box, _, _ in banners)
+    model.updates.available = release()
+    window.update_status(main_status(model, now))
+    for box, title, button in banners:
+        assert not box.removed
+        assert title.options['text'] == 'Blackboard Sync 99.0.0 hazır'
+        assert button.options['text'] == 'Güncelle' and button.options['state'] == 'normal'
+        button.options['command']()
+    window.update_button.options['command']()
+    assert actions == ['update', 'update', 'update']
+    # The overview card sits immediately above the recently downloaded list.
+    assert window.overview_update_banner[0].grid_options['row'] + 1 == window.recent_body.parent.grid_options['row']
+    model.updates.begin('download')
+    window.update_status(main_status(model, now))
+    assert all(button.options['text'] == 'İndiriliyor…' and button.options['state'] == 'disabled'
+               for _, _, button in banners)
+    model.updates.finish_download()
+    model.configured = True
+    model.session = {'saved_at': now.timestamp(), 'user': {'displayName': 'Ada Student'}}
+    model.updates.available = None
+    window.update_status(main_status(model, now))
+    assert all(box.removed for box, _, _ in banners)
+
+
 def test_work_area_is_the_screen_above_the_taskbar():
     import sys
     from blackboard_sync.windows.main_window import work_area
@@ -1091,6 +1126,7 @@ def test_store_settings_explain_updates_and_removal_without_hiding_account(tmp_p
     monkeypatch.setattr(sync_scene_view, 'reduce_motion', lambda: True)
     now = datetime.now(timezone.utc)
     model = AppModel(tmp_path, now)
+    model.updates.available = release()  # a stale GitHub update must not leak into the Store UI
     status = main_status(model, now)
     window = module.MainWindow(None, FormValues('https://school.edu', str(tmp_path), True),
                                status, lambda *args: None, lambda action: None, lambda: None)
@@ -1101,6 +1137,8 @@ def test_store_settings_explain_updates_and_removal_without_hiding_account(tmp_p
     assert (uninstall.STORE_REMOVAL in texts) is packaged
     assert (window.update_button is None) is packaged
     assert (window.uninstall_button is None) is packaged
+    assert window.overview_update_banner[0].removed is packaged
+    assert window.start_update_banner[0].removed is packaged
     assert window.account_button.options['text'] == status.form.account_title
 
 

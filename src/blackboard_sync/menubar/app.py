@@ -313,13 +313,15 @@ def build_app(config: Config, show_window: bool = False):
                 return
             log.info("%s started", job)
             self.refresh()
-            threading.Thread(target=self._sync_worker, args=(job, self.settings, refetch_keys, self.model.past_term), daemon=True).start()
+            threading.Thread(target=self._sync_worker, args=(job, self.settings, refetch_keys, self.model.past_term,
+                                                              self.model.past_term_id), daemon=True).start()
 
         def start_refetch(self, _sender=None) -> None:
             self.start_sync(job="refetch")
 
-        def _sync_worker(self, job: str, settings, refetch_keys=None, term_name: str = "") -> None:
-            outcome = jobs.run_sync_guarded(job, settings, refetch_keys=refetch_keys, term_name=term_name)
+        def _sync_worker(self, job: str, settings, refetch_keys=None, term_name: str = "", term_id: str = "") -> None:
+            outcome = jobs.run_sync_guarded(job, settings, refetch_keys=refetch_keys, term_name=term_name,
+                                            term_id=term_id)
             AppHelper.callAfter(self._sync_done, outcome)
 
         def start_past_terms(self) -> None:

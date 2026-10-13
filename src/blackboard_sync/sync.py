@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import tempfile
 import time
+from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -60,6 +62,19 @@ NO_TERM = "No term"
 TERM_LEAD_TIME = timedelta(days=30)
 # One failing file or request must not stop the rest of the sync: it becomes a warning.
 ITEM_ERRORS = (OSError, requests.RequestException)
+# The Turkish and English names of one semester: "2025-2026 Bahar" and "2025-2026 Spring"
+# are the same term even when Blackboard returns them as two term records.
+SEASONS = {
+    "güz": "Güz", "fall": "Güz", "autumn": "Güz",
+    "bahar": "Bahar", "spring": "Bahar",
+    "yaz": "Yaz", "summer": "Yaz",
+}
+TURKISH_SEASONS = {"güz", "bahar", "yaz"}
+ACADEMIC_TERM = re.compile(
+    r"(\d{4})\s*[-–/]\s*(\d{4})\s*[-–:]?\s*(\w+)"
+    r"(?:\s+(?:dönemi|yarıyılı|okulu|term|semester|school))?",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -83,6 +98,15 @@ class Term:
     start: datetime | None = None
     end: datetime | None = None
     courses: list[Course] = field(default_factory=list)
+    # Every Blackboard id and name this term goes by: the Turkish and English
+    # records of one semester are merged into one term (``merge_term_aliases``).
+    ids: list[str] = field(default_factory=list)
+    names: list[str] = field(default_factory=list)
+    folder: str = ""  # the term's folder in the destination, e.g. "2026-2027 Güz"
+
+    def __post_init__(self):
+        self.ids = self.ids or ([self.id] if self.id else [])
+        self.names = self.names or [self.name]
 
 
 def parse_time(value: str | None) -> datetime | None:
@@ -102,6 +126,70 @@ def term_dates(term: dict | None) -> tuple[datetime | None, datetime | None]:
     return parse_time(duration.get("start")), parse_time(duration.get("end"))
 
 
+def academic_term(name: str) -> tuple[str, str, str] | None:
+    """("2025", "2026", "Bahar") for "2025-2026 Spring", "2025/2026 Bahar Dönemi", ...; else None."""
+    match = ACADEMIC_TERM.fullmatch(name.strip())
+    season = SEASONS.get(match.group(3).casefold()) if match else None
+    return (match.group(1), match.group(2), season) if season else None
+
+
+def _is_turkish(name: str) -> bool:
+    match = ACADEMIC_TERM.fullmatch(name.strip())
+    return bool(match) and match.group(3).casefold() in TURKISH_SEASONS
+
+
+def _dates_overlap(a: Term, b: Term) -> bool:
+    if a.start and a.end and b.start and b.end:
+        return a.start <= b.end and b.start <= a.end
+    return True
+
+
+def merge_term_aliases(terms: list[Term]) -> list[Term]:
+    """Merge the records of one semester that Blackboard returns under different names.
+
+    Two terms are one when their names give the same academic year and semester
+    ("2025-2026 Bahar" and "2025-2026 Spring") and their dates, when both have
+    them, overlap. Other terms are never merged, whatever their names. The
+    merged term keeps the Turkish record's id and name, and a term known only
+    by an English name is named the Turkish way ("2026-2027 Fall" becomes
+    "2026-2027 Güz"), so a term has one folder whatever language Blackboard
+    answers in.
+    """
+    merged: list[Term] = []
+    by_key: dict[tuple[str, str, str], list[Term]] = {}
+    for term in terms:
+        key = academic_term(term.name) if term.id else None
+        same = next((m for m in by_key.get(key, []) if _dates_overlap(m, term)), None) if key else None
+        if same is None:
+            merged.append(term)
+            if key:
+                by_key.setdefault(key, []).append(term)
+            continue
+        log.info("Term %s (%s) is the same term as %s (%s)", term.id, term.name, same.id, same.name)
+        if _is_turkish(term.name) and not _is_turkish(same.name):
+            same.id, same.name = term.id, term.name
+            same.ids.insert(0, term.id)
+            same.names.insert(0, term.name)
+        else:
+            same.ids.append(term.id)
+            same.names.append(term.name)
+        same.start = min(filter(None, (same.start, term.start)), default=None)
+        same.end = max(filter(None, (same.end, term.end)), default=None)
+        same.courses += term.courses
+    for key, group in by_key.items():
+        for term in group:
+            if not _is_turkish(term.name):
+                term.name = f"{key[0]}-{key[1]} {key[2]}"
+            for course in term.courses:
+                course.term_id, course.term_name = term.id, term.name
+    return merged
+
+
+def in_date_range(term: Term, now: datetime) -> bool:
+    """The term's dates contain today (it opens a month early)."""
+    return bool(term.id and term.start and term.end and term.start - TERM_LEAD_TIME <= now <= term.end)
+
+
 def choose_current_terms(terms: list[Term], now: datetime) -> list[Term]:
     """Pick the term(s) a student means by "this term".
 
@@ -111,8 +199,7 @@ def choose_current_terms(terms: list[Term], now: datetime) -> list[Term]:
     3. Without any dates, the term holding the most recently created course.
     Courses without a term are never "current"; use ``--all-terms`` for them.
     """
-    dated = [t for t in terms if t.id and t.start and t.end]
-    current = [t for t in dated if t.start - TERM_LEAD_TIME <= now <= t.end]
+    current = [t for t in terms if in_date_range(t, now)]
     if current:
         return current
     started = [t for t in terms if t.id and t.start and t.start <= now]
@@ -150,18 +237,47 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def choose_past_terms(terms: list[Term], now: datetime) -> list[Term]:
-    """Terms with accessible courses, excluding every term normal sync selects."""
-    current_ids = {term.id for term in choose_current_terms(terms, now)}
+def term_age(term: Term) -> datetime:
+    """When the term started, or else when its newest course was created."""
     floor = datetime.min.replace(tzinfo=timezone.utc)
+    return term.start or max((parse_time(c.created) or floor for c in term.courses), default=floor)
+
+
+def choose_past_terms(terms: list[Term], now: datetime) -> list[Term]:
+    """Earlier terms with accessible courses: not one normal sync selects, nor one yet to start."""
+    current_ids = {term.id for term in choose_current_terms(terms, now)}
     return sorted(
-        (term for term in terms if term.id and term.courses and term.id not in current_ids),
-        key=lambda term: (
-            term.start or max((parse_time(c.created) or floor for c in term.courses), default=floor),
-            term.name,
-        ),
+        (term for term in terms
+         if term.id and term.courses and term.id not in current_ids and not (term.start and term.start > now)),
+        key=lambda term: (term_age(term), term.name),
         reverse=True,
     )
+
+
+def find_past_term(terms: list[Term], now: datetime, term_name: str | None = None,
+                   term_id: str | None = None) -> Term:
+    """The one past term asked for by any of its ids, or by its name in either language."""
+    if term_id is not None:
+        label = term_id
+        matches = [t for t in terms if term_id in t.ids]
+    else:
+        label = term_name
+        wanted, key = term_name.strip().casefold(), academic_term(term_name)
+        matches = [t for t in terms if t.id and (
+            wanted in {n.strip().casefold() for n in t.names} or (key and academic_term(t.name) == key))]
+    if not matches:
+        raise BlackboardSyncError(f"{label!r} adlı dönem bulunamadı.")
+    if len(matches) > 1:
+        raise BlackboardSyncError(
+            f"{label!r} adında birden fazla dönem var; birini kimliğiyle seçin (--term-id): "
+            + ", ".join(t.id for t in matches)
+        )
+    term = matches[0]
+    if term.id in {t.id for t in choose_current_terms(terms, now)}:
+        raise BlackboardSyncError(f"{term.name!r} güncel dönem; indirmek için normal senkronu kullanın.")
+    if term.id not in {t.id for t in choose_past_terms(terms, now)}:
+        raise BlackboardSyncError(f"{term.name!r} indirilebilecek eski bir dönem değil.")
+    return term
 
 
 @contextmanager
@@ -273,11 +389,19 @@ class Syncer:
         course_filters: list[str] | None = None,
         now: datetime | None = None,
         warnings: list[str] | None = None,
+        term_id: str | None = None,
     ) -> tuple[list[Term], list[Course]]:
-        """Return (selected terms, their courses) for this student."""
+        """Return (selected terms, their courses) for this student.
+
+        ``term_name`` or ``term_id`` selects one past term. A course listed in
+        more than one membership (in the other language, or on two pages) is
+        synced once, and the Turkish and English records of one term are one
+        term (``merge_term_aliases``).
+        """
         warnings = warnings if warnings is not None else []
         now = now or datetime.now(timezone.utc)
         terms: dict[str | None, Term] = {}
+        seen: set[str] = set()
         for membership in self.client.memberships(user_id):
             if (membership.get("availability") or {}).get("available") == "No":
                 continue
@@ -290,22 +414,26 @@ class Syncer:
                     continue
             if (course.get("availability") or {}).get("available") == "No":
                 continue  # private / not yet opened by the instructor
-            term_id = course.get("termId")
-            if term_id not in terms:
-                raw = self.client.term(term_id) if term_id else None
-                if term_id and raw is None:
-                    warnings.append(f"Could not read term {term_id}; using its id as folder name.")
-                name = (raw or {}).get("name") or (f"Term {term_id}" if term_id else NO_TERM)
+            if course["id"] in seen:
+                log.info("Course %s is listed more than once; using its first listing", course["id"])
+                continue
+            seen.add(course["id"])
+            course_term = course.get("termId")
+            if course_term not in terms:
+                raw = self.client.term(course_term) if course_term else None
+                if course_term and raw is None:
+                    warnings.append(f"Could not read term {course_term}; using its id as folder name.")
+                name = (raw or {}).get("name") or (f"Term {course_term}" if course_term else NO_TERM)
                 start, end = term_dates(raw)
-                terms[term_id] = Term(term_id, name, start, end)
-            term = terms[term_id]
+                terms[course_term] = Term(course_term, name, start, end)
+            term = terms[course_term]
             code, _ = course_code_and_title(course.get("courseId", ""), course.get("name", ""))
             term.courses.append(
                 Course(
                     id=course["id"],
                     course_id=course.get("courseId", ""),
                     name=course.get("name", ""),
-                    term_id=term_id,
+                    term_id=course_term,
                     term_name=term.name,
                     rel_dir="",
                     code=code,
@@ -313,32 +441,31 @@ class Syncer:
                 )
             )
 
+        all_found = merge_term_aliases(list(terms.values()))
+        # Mirrors run_sync's frozen terms: an archived term stays off the page unless it is today's.
         self.current_course_ids = [
-            c.id for t in choose_current_terms(list(terms.values()), now)
-            if t.id not in self.state.past_terms for c in t.courses
+            c.id for t in choose_current_terms(all_found, now)
+            if not (set(t.ids) & set(self.state.past_terms) and not in_date_range(t, now)) for c in t.courses
         ]
         if all_terms:
-            selected = list(terms.values())
-        elif term_name is not None:
-            wanted = term_name.casefold()
-            selected = [t for t in terms.values() if t.name.casefold() == wanted]
-            if not selected:
-                raise BlackboardSyncError(f"{term_name!r} adlı dönem bulunamadı.")
-            past_ids = {t.id for t in choose_past_terms(list(terms.values()), now)}
-            if len(selected) != 1 or selected[0].id not in past_ids:
-                raise BlackboardSyncError(
-                    "Yalnızca tek bir eski dönem indirilebilir; "
-                    "güncel dönemi indirmek için normal senkronu kullanın."
-                )
+            selected = all_found
+        elif term_name is not None or term_id is not None:
+            selected = [find_past_term(all_found, now, term_name, term_id)]
         else:
-            selected = choose_current_terms(list(terms.values()), now)
+            selected = choose_current_terms(all_found, now)
 
+        recorded = self.recorded_course_dirs()
+        self.assign_term_folders(all_found, recorded)
+        # Course folders already holding files are never given to another course.
+        used: dict[str, set[str]] = {}
+        for rel in recorded.values():
+            term_dir, folder = PurePosixPath(rel).parts
+            used.setdefault(term_dir.casefold(), set()).add(folder.casefold())
         courses: list[Course] = []
         filters = {fold_course_key(f) for f in course_filters or []}
         for term in selected:
-            used: set[str] = set()
+            term_used = used.setdefault(term.folder.casefold(), set())
             legacy_used: set[str] = set()
-            term_dir = sanitize_name(term.name, windows=self.windows)
             for course in sorted(term.courses, key=lambda c: (c.code, c.course_id)):
                 if filters and not filters & {
                     fold_course_key(course.code),
@@ -346,13 +473,52 @@ class Syncer:
                     fold_course_key(course.id),
                 }:
                     continue
-                folder = self.unique_folder(course, course_folder_name, used)
                 legacy = self.unique_folder(course, legacy_course_folder_name, legacy_used)
-                course.rel_dir = join_rel(term_dir, folder)
-                if legacy != folder:
-                    course.legacy_rel_dir = join_rel(term_dir, legacy)
+                known = recorded.get(course.id)
+                legacy_rel = join_rel(term.folder, legacy)
+                if known and (known.casefold() != legacy_rel.casefold()
+                              or legacy == course_folder_name(course.course_id, course.name, windows=self.windows)):
+                    # Its files stay where they are, even when Blackboard now gives the
+                    # term or course another name (another language): the folder the
+                    # report shows is the one holding the files.
+                    course.rel_dir = known
+                else:
+                    folder = self.unique_folder(course, course_folder_name, term_used)
+                    course.rel_dir = join_rel(term.folder, folder)
+                    if legacy != folder:
+                        course.legacy_rel_dir = legacy_rel
                 courses.append(course)
         return selected, courses
+
+    def recorded_course_dirs(self) -> dict[str, str]:
+        """Course id -> the "<term>/<course>" folder that holds most of its recorded files."""
+        counts: dict[str, Counter] = {}
+        for key, out in self.state.outputs.items():
+            parts = key.split(":")
+            path = PurePosixPath(out["path"]).parts
+            if len(parts) >= 3 and len(path) >= 3:
+                counts.setdefault(parts[1], Counter())[join_rel(*path[:2])] += 1
+        return {course_id: count.most_common(1)[0][0] for course_id, count in counts.items()}
+
+    def assign_term_folders(self, terms: list[Term], recorded: dict[str, str]) -> None:
+        """Give every term a folder of its own, side by side in the destination.
+
+        A term whose courses already have files keeps the folder they are in.
+        Every other term is named after the term; when that folder (ignoring case
+        and characters a file name cannot hold) is another term's, its id is
+        added, so two terms never share a folder.
+        """
+        taken: set[str] = set()
+        for term in terms:
+            dirs = Counter(PurePosixPath(recorded[c.id]).parts[0] for c in term.courses if c.id in recorded)
+            term.folder = dirs.most_common(1)[0][0] if dirs else ""
+            taken.add(term.folder.casefold())
+        for term in sorted((t for t in terms if not t.folder), key=lambda t: (term_age(t), t.id or ""), reverse=True):
+            folder = sanitize_name(term.name, windows=self.windows)
+            if folder.casefold() in taken:
+                folder = sanitize_name(f"{term.name} ({term.id or NO_TERM})", windows=self.windows)
+            taken.add(folder.casefold())
+            term.folder = folder
 
     def unique_folder(self, course: Course, folder_name, used: set[str]) -> str:
         folder = folder_name(course.course_id, course.name, windows=self.windows)
@@ -474,6 +640,7 @@ class Syncer:
                 (self.dest / course.rel_dir).mkdir(parents=True, exist_ok=True)
             roots = self.client.contents(course.id)
         except (ApiError, *ITEM_ERRORS) as exc:
+            report.content_error = str(exc)
             report.warnings.append(f"Could not read course content: {exc}")
         else:
             self.walk(course, roots, course.rel_dir, report)
@@ -1062,16 +1229,22 @@ def run_sync(
     now: datetime | None = None,
     refetch_keys: set[str] | None = None,
     lock_held: bool = False,
+    term_id: str | None = None,
 ) -> SyncReport:
-    """Sync current courses, or download one named past term's missing files.
+    """Sync current courses, or download the missing files of one past term.
 
-    ``lock_held`` says the caller holds ``run_lock``, so no other sync is running and
-    every ``.bbsync-*.partial`` file in the destination is left over from a run that
-    was killed. Without it only the old ones are removed.
+    The past term is chosen by ``term_id`` (any of its Blackboard ids) or by
+    ``term_name``. ``lock_held`` says the caller holds ``run_lock``, so no other
+    sync is running and every ``.bbsync-*.partial`` file in the destination is
+    left over from a run that was killed. Without it only the old ones are removed.
     """
-    if term_name is not None and (not term_name.strip() or all_terms or refetch_keys is not None):
+    past = term_name is not None or term_id is not None
+    if past and (not (term_id or term_name or "").strip() or all_terms or refetch_keys is not None
+                 or (term_name is not None and term_id is not None)):
         raise BlackboardSyncError("İndirilecek tek bir eski dönem adı belirtin.")
-    report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.root), past_term=term_name or "")
+    now = now or datetime.now(timezone.utc)
+    report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.root),
+                        past_term=term_name or term_id or "")
     state = State.load(config.state_file, backup=not dry_run)
     if state.recovery:
         report.warnings.append(state.recovery)
@@ -1084,15 +1257,14 @@ def run_sync(
         # A restored note brings back its hidden Markdown copy too, if that is gone.
         refetch_keys = selected | {markdown_key(k) for k in selected if markdown_key(k) in state.outputs}
         all_terms = True
-        term_name = None
         course_filters = sorted({key.split(":")[1] for key in refetch_keys})
         if not refetch_keys:
             report.message = "Seçilen dosyalar zaten mevcut veya listeden kaldırılmış."
             report.finished_at = _now_iso()
             return report
     syncer = Syncer(client, config, state, dry_run=dry_run,
-                    refetch_missing=refetch_missing or bool(term_name), refetch_keys=refetch_keys,
-                    missing_only=bool(term_name))
+                    refetch_missing=refetch_missing or past, refetch_keys=refetch_keys,
+                    missing_only=past)
     me = client.me()  # also the cheapest way to prove the session still works
     user_id = me.get("id") or user_id
     if not user_id:
@@ -1104,23 +1276,27 @@ def run_sync(
         course_filters=course_filters,
         now=now,
         warnings=report.warnings,
+        term_id=term_id,
     )
-    if not term_name and not all_terms:
+    if not past and not all_terms:
         # An archived term stays frozen even if older memberships later become
         # the fallback of choose_current_terms (e.g. current courses disappear).
-        courses = [c for c in courses if c.term_id not in state.past_terms]
-        terms = [t for t in terms if t.id not in state.past_terms]
+        # A term whose dates contain today is never frozen: one an older version
+        # archived under its English name is the current term itself.
+        frozen = {t.id for t in terms if set(t.ids) & set(state.past_terms) and not in_date_range(t, now)}
+        courses = [c for c in courses if c.term_id not in frozen]
+        terms = [t for t in terms if t.id not in frozen]
     report.terms = [t.name for t in terms]
-    if not dry_run and not term_name and not all_terms and not course_filters:
+    if not dry_run and not past and not all_terms and not course_filters:
         current_ids = {c.id for c in courses}
         active = {key: value for key, value in state.deadline_courses.items() if key in current_ids}
         if active != state.deadline_courses:
             state.deadline_courses = active
             state.dirty = True
-    if term_name:
+    if past:
         report.past_term = terms[0].name
         if not dry_run:
-            state.record_past_term(terms[0].id, terms[0].name, [c.id for c in courses])
+            state.record_past_term(terms[0].id, terms[0].name, [c.id for c in courses], complete=False)
     if not dry_run:
         state.record_current_courses(syncer.current_course_ids)
     for course in courses:
@@ -1134,6 +1310,17 @@ def run_sync(
             log.info("Syncing %s", course.rel_dir)
             report.courses.append(syncer.sync_course(course))
             syncer.checkpoint_now()  # keep progress even if a later course fails
+        if past:
+            unreadable = [c.code for c in report.courses if c.content_error]
+            if unreadable:
+                # Not a finished archive: say so instead of "0 files", and keep it open for a retry.
+                report.warnings.append(
+                    f"{len(unreadable)} dersin içeriği okunamadı ({', '.join(unreadable)}); "
+                    "eski dönem tamamlanmadı, tekrar deneyin."
+                )
+            if not dry_run:
+                state.record_past_term(terms[0].id, terms[0].name, [c.id for c in courses],
+                                       complete=not unreadable)
     finally:
         syncer.checkpoint_now()
         if state.save_error:
