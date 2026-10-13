@@ -72,6 +72,7 @@ from blackboard_sync.menubar.main_window_model import (
     T_NEW,
     T_NAV_DELETED,
     T_OPEN_FOLDER,
+    T_UPDATE_INTRO,
     T_START_FORM,
     T_START_INTRO,
     T_START_TITLE,
@@ -137,6 +138,7 @@ BUTTON_HEIGHT = 32
 ROW_HEIGHT = 52
 AVATAR = 34  # the sidebar's account card
 SCENE_HEIGHT = 84  # the small illustration above Son indirilenler while a sync runs
+UPDATE_BANNER_HEIGHT = 86
 FIRST_SCENE = (320, 187)  # the large one in the empty list on the first sync
 # Buttons whose title changes with the app's state ("Giriş yap" / "Hesaptan
 # çıkış yap") keep one width so the row does not jump.
@@ -504,7 +506,9 @@ class MainWindow:
 
     def _build_start(self, page, reopen_where: str) -> None:
         scroll, view = _scroll(NSMakeRect(0, 0, PAGE, HEIGHT), 1)
+        self.start_scroll = scroll
         page.addSubview_(scroll)
+        self.start_update_banner = self._build_update_banner(page)
         title, height = _wrapping(T_START_TITLE, INNER, 20)
         title.setFont_(NSFont.boldSystemFontOfSize_(20))
         height = title.fittingSize().height
@@ -593,6 +597,25 @@ class MainWindow:
         view.addSubview_(card)
         view.setFrame_(NSMakeRect(0, 0, PAGE, max(left_bottom, top + y) + PAD))
 
+    def _build_update_banner(self, page):
+        box = _card(NSMakeRect(PAD, HEADER, INNER, UPDATE_BANNER_HEIGHT))
+        box.setFillColor_(NSColor.controlAccentColor().colorWithAlphaComponent_(0.08))
+        box.setBorderColor_(NSColor.controlAccentColor().colorWithAlphaComponent_(0.4))
+        content = box.contentView()
+        title = _label("", 15, bold=True)
+        title.setFrame_(NSMakeRect(20, 18, INNER - 176, 22))
+        content.addSubview_(title)
+        intro = _label(T_UPDATE_INTRO, _small(), secondary=True)
+        intro.setFrame_(NSMakeRect(20, 48, INNER - 176, 18))
+        content.addSubview_(intro)
+        button = NSButton.buttonWithTitle_target_action_("", self.target, "update:")
+        button.setFrame_(NSMakeRect(INNER - 140, (UPDATE_BANNER_HEIGHT - BUTTON_HEIGHT) / 2,
+                                    120, BUTTON_HEIGHT))
+        _primary(button)
+        content.addSubview_(button)
+        page.addSubview_(box)
+        return box, title, button
+
     def _build_overview(self, page) -> None:
         self.overview_title = self._header(page, "")
         self.sync_button = NSButton.buttonWithTitle_target_action_("", self.target, "sync:")
@@ -619,6 +642,8 @@ class MainWindow:
         self.scene_line.setFrame_(NSMakeRect(152, (SCENE_HEIGHT - 18) / 2, INNER - 172, 18))
         content.addSubview_(self.scene_line)
         page.addSubview_(self.scene_card)
+
+        self.overview_update_banner = self._build_update_banner(page)
 
         # Son indirilenler: a click opens the file in its own application.
         self.recent_card = _card(NSMakeRect(PAD, HEADER + 88, INNER, HEIGHT - HEADER - 88 - PAD))
@@ -687,7 +712,12 @@ class MainWindow:
         if compact:
             self.scene_card.setFrame_(NSMakeRect(PAD, top, INNER, SCENE_HEIGHT))
             top += SCENE_HEIGHT + GAP
-        height = max(page_height - top - PAD, 120)
+        if status.update_banner is not None:
+            self.overview_update_banner[0].setFrame_(NSMakeRect(PAD, top, INNER, UPDATE_BANNER_HEIGHT))
+            top += UPDATE_BANNER_HEIGHT + GAP
+        # A short window can still show the recent heading and scroll its files
+        # while the scene, a message and the update banner are all visible.
+        height = max(page_height - top - PAD, 52)
         self.recent_card.setFrame_(NSMakeRect(PAD, top, INNER, height))
         first = status.scene == SCENE_FIRST
         self.recent_scroll.setHidden_(first)
@@ -1113,6 +1143,18 @@ class MainWindow:
         self.nav_items[OVERVIEW][4].setAccessibilityLabel_(status.overview_title)
         if first_run_changed:
             self._show_section()
+        banner = status.update_banner
+        for box, title, button in (self.start_update_banner, self.overview_update_banner):
+            box.setHidden_(banner is None)
+            if banner is not None:
+                title.setStringValue_(banner.title)
+                title.setToolTip_(banner.title)
+                button.setTitle_(banner.button_title)
+                button.setEnabled_(banner.enabled)
+        self.start_update_banner[0].setFrameOrigin_((PAD, PAD))
+        start_top = PAD + UPDATE_BANNER_HEIGHT + GAP if banner is not None else 0
+        self.start_scroll.setFrame_(NSMakeRect(0, start_top, PAGE,
+                                              self.pages["start"].frame().size.height - start_top))
         # Başlangıç
         self.start_button.setTitle_(status.start_title)
         self.start_button.setEnabled_(status.start_enabled)

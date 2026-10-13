@@ -56,7 +56,10 @@ ile kaldırdığın dosyalar bir daha önerilmez.
 
 ## Güncelleme
 
-Yeni sürüm çıkınca bildirim gelir; menüden veya Ayarlar'dan **Güncelle**'ye bas.
+Yeni sürüm çıkınca bildirim gelir; ana pencerenin **Başlangıç / Genel bakış** bölümünde
+yeni sürümü gösteren bir kart çıkar. **Son indirilenler** listesinin üstündeki
+**Güncelle** düğmesine bas; menüden veya **Genel** bölümünden de güncelleyebilirsin.
+Microsoft Store sürümünde bu kart gösterilmez; güncellemeleri Store yükler.
 
 - **macOS:** Uygulama yeni sürümü arka planda indirir, imzasını ve Apple onayını
   (notarization) doğrular, eskisinin yerine koyar ve kendini yeniden açar; Finder penceresi

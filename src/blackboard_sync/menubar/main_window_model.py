@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
 
-from blackboard_sync import deadlines, deleted
+from blackboard_sync import __version__, deadlines, deleted, updater
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     T_LOGGING_IN,
@@ -79,6 +79,8 @@ def reopen_hint(where: str) -> str:
 # Genel bakış
 T_OPEN_FOLDER = "Klasörü aç"
 T_NEW = "YENİ"
+T_UPDATE = "Güncelle"
+T_UPDATE_INTRO = "En yeni sürüme geçmek için güncelleyin."
 T_SYNC_RUNNING = "Senkron sürüyor"
 T_EXPIRED = "Oturum sona erdi"
 T_SIGNED_OUT = "Giriş yapılmadı"
@@ -149,6 +151,26 @@ class RecentRow:
 
 
 @dataclass(frozen=True)
+class UpdateBanner:
+    title: str
+    button_title: str
+    enabled: bool
+
+
+def update_banner(model: AppModel) -> UpdateBanner | None:
+    """Only an actionable newer release; Store updates have no detection path."""
+    updates = model.updates
+    release = updates.available
+    if not updater.enabled() or release is None or not updater.is_newer(release.version, __version__):
+        return None
+    return UpdateBanner(
+        title=f"Blackboard Sync {release.version} hazır",
+        button_title="İndiriliyor…" if updates.busy == "download" else T_UPDATE,
+        enabled=updates.busy is None,
+    )
+
+
+@dataclass(frozen=True)
 class MainStatus:
     first_run: bool  # Başlangıç instead of Genel bakış
     account: AccountCard
@@ -164,6 +186,7 @@ class MainStatus:
     # Genel bakış while files change: SCENE_FIRST / SCENE_COMPACT ("" otherwise) and its one line.
     scene: str = ""
     scene_line: str = ""
+    update_banner: UpdateBanner | None = None
 
     @property
     def overview_title(self) -> str:
@@ -243,6 +266,7 @@ def main_status(model: AppModel, now: datetime) -> MainStatus:
         start_message=start_message,
         scene=scene,
         scene_line=scene_line,
+        update_banner=update_banner(model),
     )
 
 
