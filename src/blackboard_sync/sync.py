@@ -16,6 +16,7 @@ from typing import Container
 import requests
 
 from blackboard_sync.api import PARTIAL_PREFIX, PARTIAL_SUFFIX, BlackboardClient, is_media
+from blackboard_sync.announcements import metadata as announcement_metadata
 from blackboard_sync.config import Config
 from blackboard_sync.deadlines import column_deadline
 from blackboard_sync.errors import AlreadyRunning, ApiError, BlackboardSyncError, LoginRequired, SkippedMedia
@@ -312,6 +313,10 @@ class Syncer:
                 )
             )
 
+        self.current_course_ids = [
+            c.id for t in choose_current_terms(list(terms.values()), now)
+            if t.id not in self.state.past_terms for c in t.courses
+        ]
         if all_terms:
             selected = list(terms.values())
         elif term_name is not None:
@@ -719,6 +724,13 @@ class Syncer:
                 continue
             key = f"announcement:{course.id}:{ann['id']}"
             out_key = f"announcement-note:{course.id}:{ann['id']}"
+            # Backfill older states even when the note itself is unchanged.
+            if not self.dry_run:
+                code, title = course_code_and_title(course.course_id, course.name)
+                self.state.record_announcement(key, announcement_metadata(
+                    ann, course.id, f"{code} {title}".strip(),
+                    f"/ultra/courses/{course.id}/announcements", out_key,
+                ))
             previous_item = self.state.items.get(key) or {}
             if self.refetch_keys is not None and not any(
                 self.should_refetch(k)
@@ -1109,6 +1121,8 @@ def run_sync(
         report.past_term = terms[0].name
         if not dry_run:
             state.record_past_term(terms[0].id, terms[0].name, [c.id for c in courses])
+    if not dry_run:
+        state.record_current_courses(syncer.current_course_ids)
     for course in courses:
         syncer.migrate_course_folder(course, report.warnings)
     if not dry_run:

@@ -14,6 +14,7 @@ Applications, Launchpad or the Start menu, also while the app already runs; the
   only once something was changed, and saving keeps the window open.
 - Silinenler: deleted files to bring back (``deleted``).
 - Takvim: cached grade-column due dates, grouped by local day (``deadlines``).
+- Duyurular: all synced current-term announcements (``announcements``).
 
 The account (initials, name, the last sync, a status badge or "Giriş yap")
 sits at the bottom of the sidebar, under the sections, once Başlangıç is done.
@@ -46,8 +47,8 @@ from blackboard_sync.menubar.model import (
 )
 from blackboard_sync.menubar.settings_form import T_SAVE, FormValues, WindowStatus, window_status
 
-OVERVIEW, GENERAL, DELETED, CALENDAR = "overview", "general", "deleted", "calendar"
-SECTIONS = (OVERVIEW, CALENDAR, GENERAL, DELETED)
+OVERVIEW, GENERAL, DELETED, CALENDAR, ANNOUNCEMENTS = "overview", "general", "deleted", "calendar", "announcements"
+SECTIONS = (OVERVIEW, CALENDAR, ANNOUNCEMENTS, GENERAL, DELETED)
 
 T_WINDOW_TITLE = "Blackboard Sync"
 T_NAV_START = "Başlangıç"
