@@ -78,6 +78,7 @@ def reopen_hint(where: str) -> str:
 
 # Genel bakış
 T_OPEN_FOLDER = "Klasörü aç"
+T_NEW = "YENİ"
 T_SYNC_RUNNING = "Senkron sürüyor"
 T_EXPIRED = "Oturum sona erdi"
 T_SIGNED_OUT = "Giriş yapılmadı"
@@ -143,6 +144,8 @@ class RecentRow:
     detail: str  # "SWE305 · bugün 14:05"
     path: str  # relative to the University folder, for ``open_target``
     kind: str  # "PDF", "DOCX", ... (empty without an extension)
+    at: str = ""  # download version, for the visibility tracker
+    is_new: bool = False
 
 
 @dataclass(frozen=True)
@@ -214,7 +217,8 @@ def recent_rows(model: AppModel, now: datetime) -> tuple[RecentRow, ...]:
         name = PurePosixPath(item.path).name
         when = parse_iso(item.at)
         detail = f"{item.course} · {day_time(when, now)}" if when else item.course
-        rows.append(RecentRow(name, detail, item.path, Path(name).suffix[1:].upper()[:4]))
+        rows.append(RecentRow(name, detail, item.path, Path(name).suffix[1:].upper()[:4], item.at,
+                              model.recent_seen.is_new(item.path, item.at, now)))
     return tuple(rows)
 
 

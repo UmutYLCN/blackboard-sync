@@ -502,6 +502,12 @@ def build_app(config: Config, show_window: bool = False):
                 self.refresh()
             else:
                 open_path(target)
+                if target.is_file():
+                    for item in self.model.recent:
+                        if item.path == rel_path:
+                            self.model.recent_seen.opened(item)
+                    self._save()
+                    self.refresh()
 
         def open_deadline(self, target: str) -> None:
             if target.startswith(self.config.base_url.rstrip("/") + "/"):
@@ -567,6 +573,8 @@ def build_app(config: Config, show_window: bool = False):
                     on_deleted_action=self.deleted_action,
                     on_past_term=self.download_past_term,
                     on_section=lambda _section: self.refresh(),
+                    recent_seen=self.model.recent_seen,
+                    on_seen=self._save,
                 )
             if not self.window_open:
                 self.model.reload_past_terms()

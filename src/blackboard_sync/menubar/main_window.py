@@ -56,7 +56,7 @@ from AppKit import (
     NSWindowStyleMaskTitled,
     NSWorkspace,
 )
-from Foundation import NSURL, NSMakeRect, NSObject
+from Foundation import NSURL, NSMakeRect, NSObject, NSTimer, NSRunLoop, NSRunLoopCommonModes
 
 from blackboard_sync import __version__, deadlines, deleted
 from blackboard_sync.menubar.main_window_model import (
@@ -69,6 +69,7 @@ from blackboard_sync.menubar.main_window_model import (
     SCENE_FIRST,
     START_STEPS,
     T_NAV_GENERAL,
+    T_NEW,
     T_NAV_DELETED,
     T_OPEN_FOLDER,
     T_START_FORM,
@@ -191,6 +192,21 @@ class _Target(NSObject):
         index = int(sender.tag())
         if index < len(rows):
             self.owner.on_open(rows[index].path)
+
+    def recentTick_(self, _timer):
+        self.owner.observe_recent()
+
+    def windowDidResignKey_(self, _notification):
+        if self.owner.recent_seen is not None:
+            self.owner.recent_seen.reset_exposure()
+
+    def windowDidMiniaturize_(self, _notification):
+        if self.owner.recent_seen is not None:
+            self.owner.recent_seen.hide()
+
+    def windowDidDeminiaturize_(self, _notification):
+        self.owner._show_section()
+        self.owner.on_section(self.owner.section)
 
     def start_(self, _sender):
         self.owner.submit(login=self.owner.status.start_login)
@@ -343,12 +359,16 @@ class MainWindow:
         reopen_where: str = "Applications veya Launchpad'den",
         on_deadlines=deadlines.DeadlinePage,
         on_deadline: Callable[[str], None] = lambda target: None,
+        recent_seen=None,
+        on_seen=lambda: None,
     ):
         self.on_submit, self.on_action, self.on_close = on_submit, on_action, on_close
         self.on_section = on_section
         self.on_deadlines, self.on_deadline = on_deadlines, on_deadline
         self._drawn_deadlines = None
         self.deadline_targets = []
+        self.recent_seen, self.on_seen = recent_seen, on_seen
+        self._recent_timer = None
         self.on_values = on_values or (lambda: self.saved)
         self.on_open, self.on_past_term = on_open, on_past_term
         self.on_missing, self.on_deleted_action = on_missing, on_deleted_action
@@ -986,6 +1006,10 @@ class MainWindow:
         if not self.window.isVisible():
             self.fit_to_screen()
         present_main_window(self.window, NSApp)
+        if self.recent_seen is not None and self._recent_timer is None:
+            self._recent_timer = NSTimer.timerWithTimeInterval_target_selector_userInfo_repeats_(
+                0.25, self.target, "recentTick:", None, True)
+            NSRunLoop.currentRunLoop().addTimer_forMode_(self._recent_timer, NSRunLoopCommonModes)
 
     def select(self, section: str) -> None:
         self.state.select(section)
@@ -999,6 +1023,11 @@ class MainWindow:
     def _show_section(self) -> None:
         section = self.state.section
         visible = "start" if section == OVERVIEW and self.status.first_run else section
+        if self.recent_seen is not None:
+            if self.state.open and visible == OVERVIEW:
+                self.recent_seen.show()
+            else:
+                self.recent_seen.hide()
         for name, page in self.pages.items():
             page.setHidden_(name != visible)
         # Return signs in on Başlangıç; a hidden button must not take the key elsewhere.
@@ -1162,15 +1191,24 @@ class MainWindow:
             icon.setImage_(file_icon(row.name))
             document.addSubview_(icon)
             name = _label(row.name, 13)
-            name.setFrame_(NSMakeRect(64, y + 9, width - 120, 17))
+            text_width = width - (170 if row.is_new else 120)
+            name.setFrame_(NSMakeRect(64, y + 9, text_width, 17))
             document.addSubview_(name)
             detail = _label(row.detail, _small(), secondary=True)
-            detail.setFrame_(NSMakeRect(64, y + 28, width - 120, 15))
+            detail.setFrame_(NSMakeRect(64, y + 28, text_width, 15))
             document.addSubview_(detail)
+            if row.is_new:
+                pill = _pill(NSMakeRect(width - 76, y + 17, 52, 22),
+                             NSColor.colorWithSRGBRed_green_blue_alpha_(37 / 255, 99 / 255, 235 / 255, 1))
+                label = _centered(T_NEW, NSMakeRect(0, 0, 52, 22), 10, bold=True)
+                label.setTextColor_(NSColor.whiteColor())
+                pill.contentView().addSubview_(label)
+                document.addSubview_(pill)
             arrow = NSImageView.alloc().initWithFrame_(NSMakeRect(width - 40, y + 18, 16, 16))
             arrow.setImage_(NSImage.imageWithSystemSymbolName_accessibilityDescription_("arrow.up.right", None))
             arrow.setContentTintColor_(NSColor.tertiaryLabelColor())
-            document.addSubview_(arrow)
+            if not row.is_new:
+                document.addSubview_(arrow)
             # The whole row is one transparent button on top.
             button = NSButton.buttonWithTitle_target_action_("", self.target, "openRecent:")
             button.setBordered_(False)
@@ -1180,6 +1218,20 @@ class MainWindow:
             button.setFrame_(NSMakeRect(0, y, width, ROW_HEIGHT))
             document.addSubview_(button)
         self.recent_scroll.setDocumentView_(document)
+
+    def observe_recent(self) -> None:
+        active = (self.state.open and self.section == OVERVIEW and not self.status.first_run
+                  and self.window.isVisible() and not self.window.isMiniaturized()
+                  and self.window.isKeyWindow() and NSApp.isActive())
+        visible = []
+        if active:
+            rect = self.recent_scroll.documentVisibleRect()
+            top, bottom = rect.origin.y, rect.origin.y + rect.size.height
+            if rect.size.height > 0:
+                visible = [(row.path, row.at) for index, row in enumerate(self.status.recent)
+                           if index * ROW_HEIGHT < bottom and (index + 1) * ROW_HEIGHT > top]
+        if self.recent_seen.observe(visible, active):
+            self.on_seen()
 
     def refresh_deleted(self) -> None:
         rows = self.on_missing()
@@ -1298,6 +1350,11 @@ class MainWindow:
     def closed(self) -> None:
         """The window went away: unsaved edits are dropped, the app keeps running."""
         self.state.closed()
+        if self._recent_timer is not None:
+            self._recent_timer.invalidate()
+            self._recent_timer = None
+        if self.recent_seen is not None:
+            self.recent_seen.hide()
         self._animate()
         self.set_values(self.on_values())
         self.on_close()

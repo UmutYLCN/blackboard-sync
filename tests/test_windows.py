@@ -136,6 +136,34 @@ def make_app(tmp_path):
     return app
 
 
+@pytest.mark.parametrize('outcome', ['file', 'folder', 'failed'])
+def test_open_recent_only_marks_a_successfully_opened_file_seen(tmp_path, monkeypatch, outcome):
+    from blackboard_sync.menubar.model import RecentItem
+    from blackboard_sync.windows import app as module
+
+    app = make_app(tmp_path)
+    now = datetime.now(timezone.utc)
+    item = RecentItem('course/a.pdf', 'CSE303', now.isoformat())
+    app.model.recent = [item]
+    app.model.recent_seen.show()
+    target = app.model.root / item.path
+    target.parent.mkdir(parents=True)
+    if outcome != 'folder':
+        target.write_text('file')
+    saved = []
+    app.save = lambda: saved.append(app.model.saved_state())
+    monkeypatch.setitem(sys.modules, 'tkinter', SimpleNamespace(messagebox=SimpleNamespace()))
+
+    def open_file(path):
+        if outcome == 'failed':
+            raise OSError('could not open')
+
+    monkeypatch.setattr(module.os, 'startfile', open_file, raising=False)
+    app.dispatch('open', item.path)
+    assert app.model.recent_seen.is_new(item.path, item.at, now) is (outcome != 'file')
+    assert bool(saved) is (outcome == 'file')
+
+
 def test_settings_window_lists_past_terms_once_and_dispatches_one_time_job(tmp_path, monkeypatch):
     import sys
     from blackboard_sync.menubar import jobs
@@ -388,6 +416,63 @@ def fake_tk(monkeypatch, tmp_path):
                            filedialog=SimpleNamespace(askdirectory=lambda **kw: str(tmp_path / 'picked')))
     monkeypatch.setitem(sys.modules, 'tkinter', fake)
     return widgets
+
+
+def test_windows_recent_badges_track_viewport_and_return_visit(monkeypatch, tmp_path):
+    import sys
+    from types import SimpleNamespace
+    from blackboard_sync.menubar.main_window_model import GENERAL, OVERVIEW, main_status
+    from blackboard_sync.menubar.model import RecentSeen, RecentItem
+    from blackboard_sync.windows.main_window import MainWindow
+    from .test_recent_seen import Clock
+
+    widgets = fake_tk(monkeypatch, tmp_path)
+    widget_type = sys.modules['tkinter'].Canvas
+    drawings = []
+    monkeypatch.setattr(widget_type, 'create_text', lambda self, *a, **kw: drawings.append((self, kw)), raising=False)
+    monkeypatch.setattr(widget_type, 'pack', lambda self, **kw: setattr(self, 'pack_options', kw), raising=False)
+    clock, saved = Clock(), []
+    now = datetime.now(timezone.utc)
+    items = [RecentItem('a.pdf', 'CSE303', now.isoformat()), RecentItem('b.pdf', 'CSE303', now.isoformat())]
+    model = AppModel(tmp_path, now, recent=items, recent_seen=RecentSeen(clock=clock))
+    values = FormValues('https://school.edu', str(tmp_path), True)
+    window = MainWindow(None, values, main_status(model, now), lambda *a: None, lambda *a: None,
+                        lambda: None, recent_seen=model.recent_seen, on_seen=lambda: saved.append(True),
+                        on_section=lambda section: window.update_status(main_status(model, now)))
+    window.fit = lambda: None  # geometry is covered by the section/layout test
+    window.show()
+    pills = [(widget, options) for widget, options in drawings if options.get('text') == 'YENİ']
+    assert len(pills) == 2
+    assert all(widget.pack_options['side'] == 'right' and options['fill'] == '#ffffff'
+               for widget, options in pills)
+    window.window.focus_displayof = lambda: window.window
+    window.window.winfo_toplevel = lambda: window.window
+    window.window.state = lambda: 'normal'
+    window.window.winfo_rooty = lambda: 0
+    window.window.winfo_height = lambda: 300
+    window.recent_canvas.winfo_rooty = lambda: 100
+    window.recent_canvas.winfo_height = lambda: 50
+    window.recent_canvas.winfo_viewable = lambda: True
+    for i, (entry, _) in enumerate(window._recent_entries):
+        entry.winfo_rooty = lambda i=i: 100 + i * 60
+        entry.winfo_height = lambda: 50
+    for _ in range(13):
+        window.observe_recent()
+        clock.seconds += 0.25
+    assert saved == [True]
+    assert model.recent_seen.seen == {'a.pdf': items[0].at}  # b is below the fold
+    window.update_status(main_status(model, now))
+    assert [r.is_new for r in window.status.recent] == [True, True]
+    window.select(GENERAL)
+    window.select(OVERVIEW)
+    assert [r.is_new for r in window.status.recent] == [False, True]
+    # Minimize/restore starts another presentation, without marking hidden rows.
+    window._recent_unmapped(SimpleNamespace(widget=window.window))
+    assert model.recent_seen.snapshot is None
+    window._recent_mapped(SimpleNamespace(widget=window.window))
+    assert [r.is_new for r in window.status.recent] == [False, True]
+    window.close()
+    assert model.recent_seen.snapshot is None and window._recent_after is None
 
 
 def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_path):
