@@ -12,7 +12,8 @@ Applications, Launchpad or the Start menu, also while the app already runs; the
   later it sits above the list.
 - Genel: the settings form (``settings_form``). Its Vazgeç/Kaydet bar appears
   only once something was changed, and saving keeps the window open.
-- Silinenler: deleted files to bring back (``deleted``).
+- Dersler: one checkbox per current course; an unticked course is not synced
+  and stays out of view (``courses``). The folder mirrors Blackboard.
 - Takvim: cached grade-column due dates, grouped by local day (``deadlines``).
 - Duyurular: all synced current-term announcements (``announcements``).
 
@@ -33,7 +34,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
 
-from blackboard_sync import __version__, deadlines, deleted, updater
+from blackboard_sync import __version__, courses, deadlines, updater
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     T_LOGGING_IN,
@@ -47,14 +48,14 @@ from blackboard_sync.menubar.model import (
 )
 from blackboard_sync.menubar.settings_form import T_SAVE, FormValues, WindowStatus, window_status
 
-OVERVIEW, GENERAL, DELETED, CALENDAR, ANNOUNCEMENTS = "overview", "general", "deleted", "calendar", "announcements"
-SECTIONS = (OVERVIEW, CALENDAR, ANNOUNCEMENTS, GENERAL, DELETED)
+OVERVIEW, GENERAL, COURSES, CALENDAR, ANNOUNCEMENTS = "overview", "general", "courses", "calendar", "announcements"
+SECTIONS = (OVERVIEW, COURSES, CALENDAR, ANNOUNCEMENTS, GENERAL)
 
 T_WINDOW_TITLE = "Blackboard Sync"
 T_NAV_START = "Başlangıç"
 T_NAV_OVERVIEW = "Genel bakış"
 T_NAV_GENERAL = "Genel"
-T_NAV_DELETED = deleted.T_TAB
+T_NAV_COURSES = courses.T_TAB
 T_NAV_CALENDAR = deadlines.T_TAB
 
 # Başlangıç
@@ -95,7 +96,7 @@ SIDEBAR_NAME_LIMIT = 20
 T_UNSAVED = "Kaydedilmemiş değişiklikler"
 
 # Jobs that change files: the account card says a sync is running.
-SYNC_RUNNING_JOBS = ("sync", "refetch", "past_term", MOVE_JOB)
+SYNC_RUNNING_JOBS = ("sync", "past_term", MOVE_JOB)
 # How the illustration shows while one of them runs.
 SCENE_FIRST = "first"  # nothing downloaded yet: large, in place of the empty list
 SCENE_COMPACT = "compact"  # small, above the list
@@ -237,7 +238,7 @@ def sidebar_name(card: AccountCard) -> str:
 
 def recent_rows(model: AppModel, now: datetime) -> tuple[RecentRow, ...]:
     rows = []
-    for item in model.recent:
+    for item in model.visible_recent():
         name = PurePosixPath(item.path).name
         when = parse_iso(item.at)
         detail = f"{item.course} · {day_time(when, now)}" if when else item.course
@@ -276,9 +277,20 @@ def recent_count(rows: tuple[RecentRow, ...]) -> str:
     return f"{len(rows)} dosya" if rows else ""
 
 
-def deleted_detail(row: deleted.MissingOutput) -> str:
-    """The folder of a deleted file: "2026-2027 Güz · CSE301 Algorithms · Week 3"."""
-    return " · ".join(PurePosixPath(row.folder).parts)
+def course_title(row: courses.CourseRow) -> str:
+    """A Dersler row: "CSE303 Algorithm Analysis" (the code alone when there is no title)."""
+    return " ".join(part for part in (row.code, row.title) if part) or row.id
+
+
+def course_detail(row: courses.CourseRow) -> str:
+    """The line under it: the term, and whether the course syncs."""
+    return " · ".join(part for part in (row.term, "senkronize ediliyor" if row.enabled else "senkronize edilmiyor") if part)
+
+
+def enabled_count(rows: tuple[courses.CourseRow, ...]) -> str:
+    """The count beside Dersler in the sidebar: "4/5" while some course is unticked."""
+    enabled = sum(row.enabled for row in rows)
+    return f"{enabled}/{len(rows)}" if enabled != len(rows) else ""
 
 
 def has_changes(saved: FormValues, current: FormValues) -> bool:

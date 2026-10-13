@@ -1,4 +1,4 @@
-"""The main window (AppKit): Başlangıç / Genel bakış, Duyurular, Genel and Silinenler.
+"""The main window (AppKit): Başlangıç / Genel bakış, Dersler, Takvim, Duyurular and Genel.
 
 What the window shows and means lives in ``main_window_model.py`` (sections,
 the overview, the unsaved-changes bar) and ``settings_form.py`` (the Genel
@@ -58,9 +58,9 @@ from AppKit import (
 )
 from Foundation import NSURL, NSMakeRect, NSObject, NSTimer, NSRunLoop, NSRunLoopCommonModes
 
-from blackboard_sync import __version__, deadlines, deleted
+from blackboard_sync import __version__, courses, deadlines
 from blackboard_sync.menubar.main_window_model import (
-    DELETED,
+    COURSES,
     CALENDAR,
     SECTIONS,
     GENERAL,
@@ -70,7 +70,7 @@ from blackboard_sync.menubar.main_window_model import (
     START_STEPS,
     T_NAV_GENERAL,
     T_NEW,
-    T_NAV_DELETED,
+    T_NAV_COURSES,
     T_OPEN_FOLDER,
     T_UPDATE_INTRO,
     T_START_FORM,
@@ -80,14 +80,16 @@ from blackboard_sync.menubar.main_window_model import (
     T_WINDOW_TITLE,
     MainStatus,
     WindowState,
-    deleted_detail,
+    course_detail,
+    course_title,
+    enabled_count,
     has_changes,
     recent_count,
     reopen_hint,
 )
 from blackboard_sync.menubar.model import T_RECENT, T_RECENT_EMPTY
 from blackboard_sync import announcements
-from blackboard_sync.menubar.main_window_model import ANNOUNCEMENTS, SECTIONS
+from blackboard_sync.menubar.main_window_model import ANNOUNCEMENTS
 from blackboard_sync.menubar.settings_form import (
     DEST_CHOICES,
     INTERVAL_OPTIONS,
@@ -145,8 +147,8 @@ FIRST_SCENE = (320, 187)  # the large one in the empty list on the first sync
 # Buttons whose title changes with the app's state ("Giriş yap" / "Hesaptan
 # çıkış yap") keep one width so the row does not jump.
 ACTION_WIDTH = 160
-NAV_SYMBOLS = {OVERVIEW: "house", CALENDAR: "calendar", ANNOUNCEMENTS: "megaphone", GENERAL: "gearshape",
-               DELETED: "arrow.counterclockwise"}
+NAV_SYMBOLS = {OVERVIEW: "house", COURSES: "books.vertical", CALENDAR: "calendar", ANNOUNCEMENTS: "megaphone",
+               GENERAL: "gearshape"}
 
 # Text fields get Cmd+V and friends from the main menu; while it is not there
 # (the app is a menu bar accessory) the window forwards them itself.
@@ -231,19 +233,8 @@ class _Target(NSObject):
     def controlTextDidChange_(self, notification):
         self.owner.changed(notification.object())
 
-    def refetch_(self, _sender):
-        self.owner.deleted_action("refetch")
-
-    def dismiss_(self, _sender):
-        self.owner.deleted_action("dismiss")
-
-    def selectAll_(self, _sender):
-        self.owner.select_all()
-
-    def checked_(self, sender):
-        key = self.owner.check_keys[int(sender.tag())]
-        self.owner.selection.select(key, bool(sender.state()))
-        self.owner.update_deleted_buttons()
+    def courseToggled_(self, sender):
+        self.owner.toggle_course(self.owner.course_ids[int(sender.tag())], bool(sender.state()))
 
     def update_(self, _sender):
         self.owner.on_action(self.owner.status.form.update_action)
@@ -365,8 +356,8 @@ class MainWindow:
         on_close: Callable[[], None],
         on_values: Callable[[], FormValues] | None = None,
         on_open: Callable[[str], None] = lambda path: None,
-        on_missing=lambda: [],
-        on_deleted_action=lambda action, keys: None,
+        on_courses=lambda: (),
+        on_course_toggle: Callable[[str, bool], None] = lambda course_id, enabled: None,
         on_past_term: Callable[[str], object] = lambda name: None,
         on_section: Callable[[str], None] = lambda section: None,
         reopen_where: str = "Applications veya Launchpad'den",
@@ -386,9 +377,8 @@ class MainWindow:
         self._recent_timer = None
         self.on_values = on_values or (lambda: self.saved)
         self.on_open, self.on_past_term = on_open, on_past_term
-        self.on_missing, self.on_deleted_action = on_missing, on_deleted_action
+        self.on_courses, self.on_course_toggle = on_courses, on_course_toggle
         self.on_announcements, self.on_open_announcement = on_announcements, on_open_announcement
-        self.selection = deleted.DeletedSelection()
         self.state = WindowState()
         self.status = status
         self.saved = values
@@ -396,9 +386,8 @@ class MainWindow:
         self._past_terms: tuple[str, ...] | None = None
         self._drawn_recent = None
         self._drawn_announcements = None
-        self._drawn_rows = None
-        self.checks: dict = {}
-        self.check_keys: list[str] = []
+        self._drawn_courses = None
+        self.course_ids: list[str] = []
         self.target = _Target.alloc().init()
         self.target.owner = self
         self.window = _EditableWindow.alloc().initWithContentRect_styleMask_backing_defer_(
@@ -419,7 +408,7 @@ class MainWindow:
         for name, build in (("start", self._build_start), (OVERVIEW, self._build_overview),
                             (CALENDAR, self._build_calendar),
                             (ANNOUNCEMENTS, self._build_announcements),
-                            (GENERAL, self._build_general), (DELETED, self._build_deleted)):
+                            (GENERAL, self._build_general), (COURSES, self._build_courses)):
             page = _FlippedView.alloc().initWithFrame_(NSMakeRect(SIDEBAR, 0, PAGE, HEIGHT))
             page.setAutoresizingMask_(NSViewHeightSizable)
             page.setHidden_(True)
@@ -436,6 +425,7 @@ class MainWindow:
             self.mirrors[one], self.mirrors[other] = other, one
         self.set_values(values)
         self.update_status(status)
+        self.refresh_courses()  # the sidebar shows how many courses sync from the start
         self._show_section()
 
     # -- layout --------------------------------------------------------------
@@ -488,7 +478,7 @@ class MainWindow:
             y += 36
         self.nav_items[GENERAL][2].setStringValue_(T_NAV_GENERAL)
         self.nav_items[ANNOUNCEMENTS][2].setStringValue_(announcements.T_TAB)
-        self.nav_items[DELETED][2].setStringValue_(T_NAV_DELETED)
+        self.nav_items[COURSES][2].setStringValue_(T_NAV_COURSES)
         self.nav_items[CALENDAR][2].setStringValue_(deadlines.T_TAB)
 
         # The account at the bottom: who is signed in, the last sync and a badge or "Giriş yap".
@@ -993,40 +983,23 @@ class MainWindow:
         document.setFrame_(NSMakeRect(0, 0, INNER, y))
         self.calendar_scroll.setDocumentView_(document)
 
-    def _build_deleted(self, page) -> None:
-        self._header(page, T_NAV_DELETED)
-        hint, height = _wrapping(deleted.T_HINT, INNER, secondary=True)
+    def _build_courses(self, page) -> None:
+        self._header(page, T_NAV_COURSES)
+        hint, height = _wrapping(courses.T_HINT, INNER, secondary=True)
         hint.setFrame_(NSMakeRect(PAD, 62, INNER, height))
         page.addSubview_(hint)
-        y = 62 + height + 14
-        self.select_all_button = NSButton.buttonWithTitle_target_action_(deleted.T_SELECT_ALL, self.target, "selectAll:")
-        self.select_all_button.setFrame_(NSMakeRect(PAD - 6, y, max(self.select_all_button.fittingSize().width + 16, 110),
-                                                    BUTTON_HEIGHT))
-        page.addSubview_(self.select_all_button)
-        y += BUTTON_HEIGHT + 10
-        bottom = 2 * BUTTON_HEIGHT + 32  # the buttons and the result line below the list
-        self.deleted_card = _card(NSMakeRect(PAD, y, INNER, HEIGHT - y - bottom))
-        self.deleted_card.setAutoresizingMask_(NSViewHeightSizable)
-        content = self.deleted_card.contentView()
+        y = 62 + height + 8
+        untick, height = _wrapping(courses.T_UNTICK_HINT, INNER, _small(), secondary=True)
+        untick.setFrame_(NSMakeRect(PAD, y, INNER, height))
+        page.addSubview_(untick)
+        y += height + 16
+        self.courses_card = _card(NSMakeRect(PAD, y, INNER, HEIGHT - y - PAD))
+        self.courses_card.setAutoresizingMask_(NSViewHeightSizable)
+        content = self.courses_card.contentView()
         content.setAutoresizingMask_(NSViewHeightSizable)
-        self.deleted_scroll, _ = _scroll(NSMakeRect(0, 1, INNER, HEIGHT - y - bottom - 2), 1)
-        content.addSubview_(self.deleted_scroll)
-        page.addSubview_(self.deleted_card)
-        self.refetch_button = NSButton.buttonWithTitle_target_action_(deleted.T_DOWNLOAD, self.target, "refetch:")
-        self.dismiss_button = NSButton.buttonWithTitle_target_action_(deleted.T_DISMISS, self.target, "dismiss:")
-        _primary(self.refetch_button)
-        x = PAD + INNER + 6
-        for button in (self.refetch_button, self.dismiss_button):
-            width = max(button.fittingSize().width + 16, 130)
-            x -= width
-            button.setFrame_(NSMakeRect(x, HEIGHT - bottom + 12, width, BUTTON_HEIGHT))
-            button.setAutoresizingMask_(NSViewMinYMargin)
-            page.addSubview_(button)
-            x -= 8
-        self.deleted_result = _label("", _small(), secondary=True)
-        self.deleted_result.setFrame_(NSMakeRect(PAD, HEIGHT - bottom + 12 + BUTTON_HEIGHT + 8, INNER, 16))
-        self.deleted_result.setAutoresizingMask_(NSViewMinYMargin)
-        page.addSubview_(self.deleted_result)
+        self.courses_scroll, _ = _scroll(NSMakeRect(0, 1, INNER, HEIGHT - y - PAD - 2), 1)
+        content.addSubview_(self.courses_scroll)
+        page.addSubview_(self.courses_card)
 
     def fit_to_screen(self, screen=None) -> None:
         """Open at the size that shows everything, but never taller than ``screen`` allows.
@@ -1057,7 +1030,7 @@ class MainWindow:
         """Open the window (or bring it forward) on ``section``; see ``WindowState.show``."""
         self.state.show(section)
         self._show_section()
-        self.refresh_deleted()
+        self.refresh_courses()
         self._animate()
         if not self.window.isVisible():
             self.fit_to_screen()
@@ -1094,8 +1067,8 @@ class MainWindow:
             title.setFont_(NSFont.boldSystemFontOfSize_(13) if selected else NSFont.systemFontOfSize_(13))
             icon.setContentTintColor_(NSColor.controlAccentColor() if selected else NSColor.secondaryLabelColor())
             button.setAccessibilityLabel_(title.stringValue())
-        if section == DELETED:
-            self.refresh_deleted()
+        if section == COURSES:
+            self.refresh_courses()
         elif section == CALENDAR:
             self.refresh_calendar()
         elif section == ANNOUNCEMENTS:
@@ -1201,6 +1174,8 @@ class MainWindow:
         self._animate()
         self._draw_recent()
         self.refresh_calendar()
+        if self.state.section == COURSES:
+            self.refresh_courses()  # a sync may have found another course
         # The account, at the bottom of the sidebar.
         self.account_card.setHidden_(not status.shows_account)
         card = status.account
@@ -1234,9 +1209,6 @@ class MainWindow:
         self.past_button.setEnabled_(form.past_enabled)
         self.past_label.setStringValue_(form.past_message)
         self.past_label.setToolTip_(form.past_message or None)
-        # Silinenler
-        self.deleted_result.setStringValue_(form.deleted_message)
-        self.refresh_deleted()
         self.refresh_announcements()
 
     def _draw_recent(self) -> None:
@@ -1340,74 +1312,49 @@ class MainWindow:
         document.setFrame_(NSMakeRect(0, 0, INNER, max(y, 1)))
         self.announcements_scroll.setDocumentView_(document)
 
-    def refresh_deleted(self) -> None:
-        rows = self.on_missing()
-        self.selection.refresh(rows)
-        self.nav_items[DELETED][3].setStringValue_(str(len(rows)) if rows else "")
-        if rows != self._drawn_rows:
-            width = INNER
-            document = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, width, 1))
-            self.checks = {}
-            self.check_keys = []
-            if not rows:
-                empty = _label(deleted.T_EMPTY, secondary=True)
-                empty.setFrame_(NSMakeRect(20, 16, width - 40, 17))
-                document.addSubview_(empty)
-            for index, row in enumerate(rows):
-                y = index * ROW_HEIGHT
-                if index:
-                    line = NSBox.alloc().initWithFrame_(NSMakeRect(16, y, width - 32, 1))
-                    line.setBoxType_(NSBoxSeparator)
-                    document.addSubview_(line)
-                button = NSButton.checkboxWithTitle_target_action_("", self.target, "checked:")
-                button.setFrame_(NSMakeRect(16, y + 16, 20, 20))
-                button.setTag_(index)
-                button.setState_(1 if row.key in self.selection.selected else 0)
-                button.setAccessibilityLabel_(row.name)
-                self.check_keys.append(row.key)
-                self.checks[row.key] = button
-                document.addSubview_(button)
-                icon = NSImageView.alloc().initWithFrame_(NSMakeRect(44, y + 10, 32, 32))
-                icon.setImage_(file_icon(row.name))
-                document.addSubview_(icon)
-                name = _label(row.name, 13)
-                name.setFrame_(NSMakeRect(86, y + 9, width - 106, 17))
-                name.setToolTip_(row.name)
-                document.addSubview_(name)
-                detail = _label(deleted_detail(row), _small(), secondary=True)
-                detail.setFrame_(NSMakeRect(86, y + 28, width - 106, 15))
-                detail.setToolTip_(row.folder)
-                document.addSubview_(detail)
-            document.setFrame_(NSMakeRect(0, 0, width, max(len(rows) * ROW_HEIGHT, 50)))
-            self.deleted_scroll.setDocumentView_(document)
-            self._drawn_rows = rows
-        self.update_deleted_buttons()
-
-    def update_deleted_buttons(self) -> None:
-        enabled = self.status.form.refetch_enabled
-        self.select_all_button.setEnabled_(enabled and bool(self.selection.rows))
-        self.refetch_button.setTitle_(self.status.form.refetch_title)
-        self.refetch_button.setEnabled_(enabled and bool(self.selection.keys()))
-        self.dismiss_button.setEnabled_(enabled and bool(self.selection.keys()))
-        for button in self.checks.values():
-            button.setEnabled_(enabled)
-
-    def select_all(self) -> None:
-        self.selection.select_all()
-        for button in self.checks.values():
-            button.setState_(1)
-        self.update_deleted_buttons()
-
-    def deleted_action(self, action: str) -> None:
-        keys = self.selection.keys()
-        if not keys or not self.status.form.refetch_enabled:
+    def refresh_courses(self) -> None:
+        """Draw Dersler again when the course list or a choice changed."""
+        rows = self.on_courses()
+        self.nav_items[COURSES][3].setStringValue_(enabled_count(rows))
+        if rows == self._drawn_courses:
             return
-        error = self.on_deleted_action(action, keys)
-        self.refresh_deleted()
-        if error:
-            self.deleted_result.setStringValue_(error)
-        elif action == "dismiss":
-            self.deleted_result.setStringValue_("Seçilen dosyalar listeden kaldırıldı.")
+        self._drawn_courses = rows
+        width = INNER
+        document = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, width, 1))
+        self.course_ids = []
+        if not rows:
+            empty = _label(courses.T_EMPTY, secondary=True)
+            empty.setFrame_(NSMakeRect(20, 16, width - 40, 17))
+            document.addSubview_(empty)
+        for index, row in enumerate(rows):
+            y = index * ROW_HEIGHT
+            if index:
+                line = NSBox.alloc().initWithFrame_(NSMakeRect(16, y, width - 32, 1))
+                line.setBoxType_(NSBoxSeparator)
+                document.addSubview_(line)
+            title = course_title(row)
+            button = NSButton.checkboxWithTitle_target_action_("", self.target, "courseToggled:")
+            button.setFrame_(NSMakeRect(16, y + 16, 20, 20))
+            button.setTag_(index)
+            button.setState_(1 if row.enabled else 0)
+            button.setAccessibilityLabel_(title)
+            self.course_ids.append(row.id)
+            document.addSubview_(button)
+            name = _label(title, 13)
+            name.setFrame_(NSMakeRect(48, y + 9, width - 68, 17))
+            name.setToolTip_(title)
+            if not row.enabled:
+                name.setTextColor_(NSColor.secondaryLabelColor())
+            document.addSubview_(name)
+            detail = _label(course_detail(row), _small(), secondary=True)
+            detail.setFrame_(NSMakeRect(48, y + 28, width - 68, 15))
+            document.addSubview_(detail)
+        document.setFrame_(NSMakeRect(0, 0, width, max(len(rows) * ROW_HEIGHT, 50)))
+        self.courses_scroll.setDocumentView_(document)
+
+    def toggle_course(self, course_id: str, enabled: bool) -> None:
+        self.on_course_toggle(course_id, enabled)
+        self.refresh_courses()
 
     def download_past_term(self) -> None:
         """Start the one-time download of the term picked in Eski dönemler; the window stays open."""

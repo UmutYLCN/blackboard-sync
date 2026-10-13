@@ -13,7 +13,6 @@ from blackboard_sync import relocate
 from blackboard_sync.config import Config
 from blackboard_sync.menubar import settings_form
 from blackboard_sync.menubar.model import (
-    DEST_KEEP,
     DEST_MOVE,
     DEST_REFETCH,
     MOVE_JOB,
@@ -492,23 +491,14 @@ def test_windows_sync_records_full_names_of_shortened_folders(config, client, fa
     assert all(ELLIPSIS in Path(rel).name for rel in folders)
 
 
-# -- Yeniden indir / Sadece yeni dosyalar ---------------------------------------
+# -- Yeniden indir ---------------------------------------------------------------
 
 def test_redownload_fills_the_new_folder_and_leaves_the_old_one(config, client, tmp_path):
     files = synced(config, client)
     old = config.dest
     config.dest = tmp_path / "Okul"
-    sync(config, client, refetch_missing=True)
+    sync(config, client)  # the sync the choice queues: the folder mirrors Blackboard
     assert files_under(config.root) == files
-    assert files_under(old) == files
-
-
-def test_new_files_only_leaves_the_new_folder_empty_of_old_content(config, client, tmp_path):
-    files = synced(config, client)
-    old = config.dest
-    config.dest = tmp_path / "Okul"
-    report = sync(config, client)
-    assert report.totals()["new_files"] == 0
     assert files_under(old) == files
 
 
@@ -560,26 +550,26 @@ def test_failed_move_is_shown():
     assert m.pending is None and "taşınamadı" in m.note
 
 
-def test_redownload_choice_queues_a_refetch_once_signed_in():
+def test_redownload_choice_queues_a_sync_once_signed_in():
     m = model()
     m.apply_settings(Path("/Volumes/USB/Okul"), school_changed=False, dest_choice=DEST_REFETCH)
     assert m.recent == []
     m.session = None
     assert m.pending_job() is None  # waits for the sign-in
     m.session = SESSION
-    assert m.pending_job() == "refetch"
-    assert m.begin("refetch") and m.pending is None
+    assert m.pending_job() == "sync"
+    assert m.begin("sync") and m.pending is None
 
 
-def test_new_files_only_choice_queues_nothing():
+def test_a_new_folder_without_downloaded_files_queues_nothing():
     m = model()
-    m.apply_settings(Path("/Volumes/USB/Okul"), school_changed=False, dest_choice=DEST_KEEP)
+    m.apply_settings(Path("/Volumes/USB/Okul"), school_changed=False)
     assert m.pending_job() is None and m.recent == []
 
 
 def test_dialog_offers_move_first_and_names_both_folders():
-    assert [c for c, _ in settings_form.DEST_CHOICES] == [DEST_MOVE, DEST_REFETCH, DEST_KEEP]
-    assert [t for _, t in settings_form.DEST_CHOICES] == ["Taşı", "Yeniden indir", "Sadece yeni dosyalar"]
+    assert [c for c, _ in settings_form.DEST_CHOICES] == [DEST_MOVE, DEST_REFETCH]
+    assert [t for _, t in settings_form.DEST_CHOICES] == ["Taşı", "Yeniden indir"]
     old, new = Path("/tmp/University"), Path("/tmp/Okul")
     text = settings_form.dest_change_message(old, new, 7)
     assert str(old) in text and str(new) in text and "7 dosya" in text
@@ -706,7 +696,7 @@ def test_windows_dialog_defaults_to_move_and_escape_cancels(monkeypatch):
     pressed[:] = [lambda dialog: dialog.bindings["<Return>"](None)]
     assert ask_dest_choice(None, Path("/a"), Path("/b"), 3) == DEST_MOVE
     titles = [w.options.get("text") for w in widgets]
-    assert ["Taşı", "Yeniden indir", "Sadece yeni dosyalar", "Vazgeç"] == [t for t in titles if t in (
+    assert ["Taşı", "Yeniden indir", "Vazgeç"] == [t for t in titles if t in (
         "Taşı", "Yeniden indir", "Sadece yeni dosyalar", "Vazgeç")]
 
     widgets = []
@@ -756,8 +746,8 @@ def test_macos_alert_buttons_map_to_choices(monkeypatch):
 
     monkeypatch.setattr(main_window, "NSAlert", Alert)
     monkeypatch.setattr(main_window, "NSApp", SimpleNamespace(activateIgnoringOtherApps_=lambda flag: None))
-    expected = [DEST_MOVE, DEST_REFETCH, DEST_KEEP, None]
+    expected = [DEST_MOVE, DEST_REFETCH, None]
     for response, choice in enumerate(expected):
         Alert.response = response
         assert main_window.ask_dest_choice(Path("/a"), Path("/b"), 2) == choice
-    assert Alert.buttons == ["Taşı", "Yeniden indir", "Sadece yeni dosyalar", "Vazgeç"]
+    assert Alert.buttons == ["Taşı", "Yeniden indir", "Vazgeç"]

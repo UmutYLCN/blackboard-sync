@@ -84,6 +84,11 @@ class Config:
         return self.data_dir / "state.json"
 
     @property
+    def courses_file(self) -> Path:
+        """The courses the student unticked in Dersler (``courses.py``)."""
+        return self.data_dir / "courses.json"
+
+    @property
     def last_run_file(self) -> Path:
         return self.data_dir / "last-run.json"
 

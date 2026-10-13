@@ -142,14 +142,14 @@ def test_old_state_and_corrupt_markers_do_not_hide_new_downloads(tmp_path):
 
 @pytest.mark.parametrize("move", [True, False])
 def test_destination_changes_preserve_seen_only_when_files_move(tmp_path, move):
-    from blackboard_sync.menubar.model import DEST_MOVE, DEST_KEEP
+    from blackboard_sync.menubar.model import DEST_MOVE, DEST_REFETCH
 
     clock, item = Clock(), row()
     tracker = RecentSeen(clock=clock)
     model = AppModel(tmp_path / "old", NOW, recent=[item], recent_seen=tracker)
     tracker.opened(item)
     tracker.show()
-    model.apply_settings(tmp_path / "new", school_changed=False, dest_choice=DEST_MOVE if move else DEST_KEEP)
+    model.apply_settings(tmp_path / "new", school_changed=False, dest_choice=DEST_MOVE if move else DEST_REFETCH)
     assert bool(model.saved_state()["recent_seen"]) is move
     if not move:
         assert tracker.snapshot == {}  # continue tracking this visit in the new folder

@@ -1,4 +1,4 @@
-"""The main window (Tk): Başlangıç / Genel bakış, Duyurular, Genel and Silinenler.
+"""The main window (Tk): Başlangıç / Genel bakış, Dersler, Takvim, Duyurular and Genel.
 
 What the window shows and means lives in ``menubar/main_window_model.py`` and
 ``menubar/settings_form.py``, shared with macOS; this module only lays out Tk
@@ -11,7 +11,7 @@ import logging
 import sys
 from pathlib import Path
 
-from blackboard_sync import __version__, announcements, deadlines, deleted, runtime, updater, uninstall
+from blackboard_sync import __version__, announcements, courses, deadlines, runtime, updater, uninstall
 from . import package
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
@@ -74,8 +74,8 @@ def wheel_steps(delta):
 
 class MainWindow:
     def __init__(self, root, values, status, on_submit, on_action, on_close, on_values=None,
-                 on_open=lambda path: None, on_missing=lambda: [],
-                 on_deleted_action=lambda action, keys: None, on_past_term=lambda name: None,
+                 on_open=lambda path: None, on_courses=lambda: (),
+                 on_course_toggle=lambda course_id, enabled: None, on_past_term=lambda name: None,
                  on_section=lambda section: None, on_deadlines=deadlines.DeadlinePage,
                  on_deadline=lambda target: None, recent_seen=None, on_seen=lambda: None,
                  on_announcements=lambda: (), on_open_announcement=lambda row: None):
@@ -90,16 +90,14 @@ class MainWindow:
         self._recent_after = None
         self._recent_entries = []
         self.on_values = on_values or (lambda: self.saved)
-        self.on_open, self.on_missing = on_open, on_missing
-        self.on_deleted_action, self.on_past_term = on_deleted_action, on_past_term
+        self.on_open, self.on_courses = on_open, on_courses
+        self.on_course_toggle, self.on_past_term = on_course_toggle, on_past_term
         self.on_announcements, self.on_open_announcement = on_announcements, on_open_announcement
         self.state = main.WindowState()
-        self.selection = deleted.DeletedSelection()
         self.status = status
         self.saved = values
         self.error = ""
-        self.checks = {}
-        self._drawn_rows = None
+        self._drawn_courses = None
         self._drawn_recent = None
         self._drawn_announcements = None
         self._loading = False
@@ -133,7 +131,7 @@ class MainWindow:
         for name, build in (("start", self._build_start), (main.OVERVIEW, self._build_overview),
                             (main.CALENDAR, self._build_calendar),
                             (main.ANNOUNCEMENTS, self._build_announcements),
-                            (main.GENERAL, self._build_general), (main.DELETED, self._build_deleted)):
+                            (main.GENERAL, self._build_general), (main.COURSES, self._build_courses)):
             page = ttk.Frame(window, padding=(24, 20, 24, 16))
             page.grid(row=0, column=1, sticky="nsew")
             page.grid_remove()
@@ -416,23 +414,16 @@ class MainWindow:
         ttk.Button(bar, text=form.T_SAVE, command=lambda: self.submit(False)).grid(row=0, column=2, padx=(4, 0))
         self.window.bind("<Escape>", lambda _e: self.discard() if self.bar_visible() else None)
 
-    def _build_deleted(self, page):
+    def _build_courses(self, page):
         from tkinter import ttk
 
-        self._header(page, main.T_NAV_DELETED)
-        ttk.Label(page, text=deleted.T_HINT, foreground=MUTED, wraplength=WRAP).grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=(0, 10))
-        self.select_all_button = ttk.Button(page, text=deleted.T_SELECT_ALL, command=self.select_all)
-        self.select_all_button.grid(row=2, column=0, sticky="w", pady=(0, 8))
-        self.canvas, self.rows_frame = self._scroll_area(page, 3)
-        buttons = ttk.Frame(page)
-        buttons.grid(row=4, column=0, columnspan=2, sticky="e", pady=(12, 4))
-        self.dismiss_button = ttk.Button(buttons, text=deleted.T_DISMISS, command=lambda: self.deleted_action("dismiss"))
-        self.dismiss_button.pack(side="left", padx=(0, 8))
-        self.refetch_button = ttk.Button(buttons, command=lambda: self.deleted_action("refetch"))
-        self.refetch_button.pack(side="left")
-        self.deleted_result = ttk.Label(page, wraplength=WRAP)
-        self.deleted_result.grid(row=5, column=0, columnspan=2, sticky="w")
+        self._header(page, main.T_NAV_COURSES)
+        ttk.Label(page, text=courses.T_HINT, wraplength=WRAP).grid(row=1, column=0, columnspan=2, sticky="w",
+                                                                  pady=(0, 6))
+        ttk.Label(page, text=courses.T_UNTICK_HINT, foreground=MUTED, wraplength=WRAP).grid(
+            row=2, column=0, columnspan=2, sticky="w", pady=(0, 12))
+        self.courses_canvas, self.courses_frame = self._scroll_area(page, 3)
+        self.courses_canvas.configure(background=background_of(page))
 
     def fit(self):
         """Open at the default size, but never taller than the work area; centred in it."""
@@ -450,7 +441,7 @@ class MainWindow:
         canvas = {"start": self.start_canvas, main.OVERVIEW: self.recent_canvas,
                   main.CALENDAR: self.calendar_canvas,
                   main.ANNOUNCEMENTS: self.announcements_canvas,
-                  main.GENERAL: self.form_canvas, main.DELETED: self.canvas}[self.visible_page()]
+                  main.GENERAL: self.form_canvas, main.COURSES: self.courses_canvas}[self.visible_page()]
         first, last = canvas.yview()
         if first > 0 or last < 1:  # a section that fits stays put
             canvas.yview_scroll(wheel_steps(event.delta), "units")
@@ -461,7 +452,7 @@ class MainWindow:
         opening = not self.state.open
         self.state.show(section)
         self._show_section()
-        self.refresh_deleted()
+        self.refresh_courses()
         self._animate()
         window = self.window
         if opening:
@@ -504,8 +495,8 @@ class MainWindow:
             else:
                 page.grid_remove()
         self.section_var.set(self.state.section)
-        if self.state.section == main.DELETED:
-            self.refresh_deleted()
+        if self.state.section == main.COURSES:
+            self.refresh_courses()
         elif self.state.section == main.CALENDAR:
             self.refresh_calendar()
         elif self.state.section == main.ANNOUNCEMENTS:
@@ -567,6 +558,7 @@ class MainWindow:
         self.nav[main.GENERAL].configure(text=main.T_NAV_GENERAL)
         self.nav[main.CALENDAR].configure(text=deadlines.T_TAB)
         self.nav[main.ANNOUNCEMENTS].configure(text=announcements.T_TAB)
+        self.nav[main.COURSES].configure(text=self.courses_nav_title(self._drawn_courses or ()))
         if first_run_changed:
             self._show_section()
         # Store builds never offer the GitHub updater, even with stale state.
@@ -593,6 +585,8 @@ class MainWindow:
         self._draw_scene()
         self._draw_recent()
         self.refresh_calendar()
+        if self.state.section == main.COURSES:
+            self.refresh_courses()  # a sync may have found another course
         # The account, at the bottom of the sidebar.
         if status.shows_account:
             self.account_card.grid()
@@ -634,9 +628,6 @@ class MainWindow:
             self.past_term.set(terms[0] if terms else "")
         self.past_button.configure(state="normal" if form_status.past_enabled else "disabled")
         self.past_label.configure(text=form_status.past_message)
-        # Silinenler
-        self.deleted_result.configure(text=form_status.deleted_message)
-        self.refresh_deleted()
         self.refresh_announcements()
 
     def _build_calendar(self, page):
@@ -810,64 +801,40 @@ class MainWindow:
             ttk.Button(card, text=announcements.T_OPEN,
                        command=lambda item=row: self.on_open_announcement(item)).pack(anchor="e", pady=(8, 0))
 
-    def refresh_deleted(self):
+    def refresh_courses(self):
+        """Draw Dersler again when the course list or a choice changed."""
         from tkinter import ttk, BooleanVar
 
-        rows = self.on_missing()
-        self.selection.refresh(rows)
-        title = main.T_NAV_DELETED + (f" ({len(rows)})" if rows else "")
-        self.nav[main.DELETED].configure(text=title)
-        if rows != self._drawn_rows:
-            for widget in self.rows_frame.winfo_children():
-                widget.destroy()
-            self.checks = {}
-            if not rows:
-                ttk.Label(self.rows_frame, text=deleted.T_EMPTY).pack(anchor="w", pady=12)
-            for row in rows:
-                variable = BooleanVar(value=row.key in self.selection.selected)
-                entry = ttk.Frame(self.rows_frame, padding=(0, 4))
-                entry.pack(anchor="w", fill="x")
-                check = ttk.Checkbutton(entry, variable=variable,
-                                        command=lambda k=row.key, v=variable: self.checked(k, v.get()))
-                check.pack(side="left", anchor="n")
-                text = ttk.Frame(entry)
-                text.pack(side="left", fill="x", expand=True)
-                ttk.Label(text, text=row.name, wraplength=WRAP - 60).pack(anchor="w")
-                ttk.Label(text, text=main.deleted_detail(row), foreground=MUTED,
-                          wraplength=WRAP - 60).pack(anchor="w")
-                self.checks[row.key] = (variable, check)
-            self._drawn_rows = rows
-        self.update_deleted_buttons()
-
-    def checked(self, key, checked):
-        self.selection.select(key, checked)
-        self.update_deleted_buttons()
-
-    def select_all(self):
-        self.selection.select_all()
-        for variable, _ in self.checks.values():
-            variable.set(True)
-        self.update_deleted_buttons()
-
-    def update_deleted_buttons(self):
-        enabled = self.status.form.refetch_enabled
-        self.select_all_button.configure(state="normal" if enabled and self.selection.rows else "disabled")
-        self.refetch_button.configure(text=self.status.form.refetch_title,
-                                      state="normal" if enabled and self.selection.keys() else "disabled")
-        self.dismiss_button.configure(state="normal" if enabled and self.selection.keys() else "disabled")
-        for _, check in self.checks.values():
-            check.configure(state="normal" if enabled else "disabled")
-
-    def deleted_action(self, action):
-        keys = self.selection.keys()
-        if not keys or not self.status.form.refetch_enabled:
+        rows = self.on_courses()
+        self.nav[main.COURSES].configure(text=self.courses_nav_title(rows))
+        if rows == self._drawn_courses:
             return
-        error = self.on_deleted_action(action, keys)
-        self.refresh_deleted()
-        if error:
-            self.deleted_result.configure(text=error)
-        elif action == "dismiss":
-            self.deleted_result.configure(text="Seçilen dosyalar listeden kaldırıldı.")
+        self._drawn_courses = rows
+        for widget in self.courses_frame.winfo_children():
+            widget.destroy()
+        if not rows:
+            ttk.Label(self.courses_frame, text=courses.T_EMPTY).pack(anchor="w", pady=12)
+        for row in rows:
+            variable = BooleanVar(value=row.enabled)
+            entry = ttk.Frame(self.courses_frame, padding=(0, 4))
+            entry.pack(anchor="w", fill="x")
+            ttk.Checkbutton(entry, variable=variable,
+                            command=lambda c=row.id, v=variable: self.toggle_course(c, v.get())).pack(
+                side="left", anchor="n")
+            text = ttk.Frame(entry)
+            text.pack(side="left", fill="x", expand=True)
+            ttk.Label(text, text=main.course_title(row), font=BOLD_FONT if row.enabled else None,
+                      foreground="" if row.enabled else MUTED, wraplength=WRAP - 60).pack(anchor="w")
+            ttk.Label(text, text=main.course_detail(row), foreground=MUTED, wraplength=WRAP - 60).pack(anchor="w")
+
+    @staticmethod
+    def courses_nav_title(rows):
+        count = main.enabled_count(rows)
+        return main.T_NAV_COURSES + (f" ({count})" if count else "")
+
+    def toggle_course(self, course_id, enabled):
+        self.on_course_toggle(course_id, enabled)
+        self.refresh_courses()
 
     def download_past_term(self):
         """Start the one-time download of the term picked in Eski dönemler; the window stays open."""

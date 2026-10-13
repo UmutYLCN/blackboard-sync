@@ -229,7 +229,8 @@ def make_window(tmp_path, model=None, rows=(), **handlers):
     handlers.setdefault('on_close', lambda: None)
     handlers.setdefault('on_values', lambda: values)
     rows = list(rows)
-    window = MainWindow(values, main_status(model, NOW), on_missing=lambda: list(rows), **handlers)
+    handlers.setdefault('on_courses', lambda: tuple(rows))
+    window = MainWindow(values, main_status(model, NOW), **handlers)
     return window, model, rows
 
 
@@ -246,16 +247,16 @@ def visible_page(window):
 
 
 def test_sidebar_switches_sections_and_baslangic_becomes_genel_bakis(tmp_path):
-    from blackboard_sync.deleted import MissingOutput
-    from blackboard_sync.menubar.main_window_model import DELETED, GENERAL, OVERVIEW, main_status
+    from blackboard_sync.courses import CourseRow
+    from blackboard_sync.menubar.main_window_model import COURSES, GENERAL, OVERVIEW, main_status
     from blackboard_sync.menubar.model import AppModel
 
-    row = MissingOutput('one', 'T/C/one.pdf', 'T', 'C', 'one.pdf', 'T/C')
-    window, model, _ = make_window(tmp_path, AppModel(tmp_path, NOW, configured=False), rows=[row])
+    rows = [CourseRow('_1_1', 'CSE301', 'Algorithms', 'T', True), CourseRow('_2_1', 'MTH201', 'Linear', 'T', False)]
+    window, model, _ = make_window(tmp_path, AppModel(tmp_path, NOW, configured=False), rows=rows)
     try:
-        titles = [str(window.nav_items[s][2].stringValue()) for s in (OVERVIEW, GENERAL, DELETED)]
-        assert titles == ['Başlangıç', 'Genel', 'Silinenler']
-        assert str(window.nav_items[DELETED][3].stringValue()) == '1'
+        titles = [str(window.nav_items[s][2].stringValue()) for s in (OVERVIEW, COURSES, GENERAL)]
+        assert titles == ['Başlangıç', 'Dersler', 'Genel']
+        assert str(window.nav_items[COURSES][3].stringValue()) == '1/2'
         assert visible_page(window) == 'start' and window.section == OVERVIEW
         assert str(window.start_button.title()) == 'Giriş yap'
         assert str(window.start_button.keyEquivalent()) == '\r'  # Return signs in
@@ -263,8 +264,8 @@ def test_sidebar_switches_sections_and_baslangic_becomes_genel_bakis(tmp_path):
         window.target.nav_(window.nav_items[GENERAL][4])
         assert visible_page(window) == GENERAL and window.section == GENERAL
         assert str(window.start_button.keyEquivalent()) == ''  # not from a hidden section
-        window.target.nav_(window.nav_items[DELETED][4])
-        assert visible_page(window) == DELETED
+        window.target.nav_(window.nav_items[COURSES][4])
+        assert visible_page(window) == COURSES
 
         # Signed in: the first section becomes Genel bakış, on its own page.
         model.configured = True
@@ -595,42 +596,40 @@ def test_baslangic_signs_in_with_the_form(tmp_path):
         window.window.close()
 
 
-def test_silinenler_selection_dismissal_and_empty_state(tmp_path):
-    from blackboard_sync.deleted import MissingOutput
-    from blackboard_sync.menubar.main_window_model import DELETED, main_status
+def test_dersler_lists_courses_with_a_checkbox_and_saves_a_change(tmp_path):
+    from blackboard_sync import courses
+    from blackboard_sync.courses import CourseRow
+    from blackboard_sync.menubar.main_window_model import COURSES
 
-    rows = [MissingOutput('one', 'term/course/one.pdf', 'term', 'course', 'one.pdf', 'term/course')]
-    actions = []
+    rows = [CourseRow('_1_1', 'CSE301', 'Algorithms', 'T', True), CourseRow('_2_1', 'MTH201', 'Linear', 'T', True)]
+    toggles = []
 
-    def action(name, keys):
-        actions.append((name, keys))
-        if name == 'dismiss':
-            rows.clear()
+    def toggle(course_id, enabled):
+        toggles.append((course_id, enabled))
+        rows[:] = [CourseRow(r.id, r.code, r.title, r.term, enabled if r.id == course_id else r.enabled) for r in rows]
 
-    window, model, _ = make_window(tmp_path, on_deleted_action=action)
-    window.on_missing = lambda: list(rows)
+    window, model, _ = make_window(tmp_path, on_course_toggle=toggle)
+    window.on_courses = lambda: tuple(rows)
     try:
-        window.select(DELETED)
-        labels = [str(v.stringValue()) for v in window.pages[DELETED].subviews() if hasattr(v, 'stringValue')]
-        assert ('Daha önce indirilip klasörden silinen dosyaları seçip geri indirebilirsiniz; '
-                'listeden kaldırılanlar tekrar önerilmez.') in labels
-        assert not window.refetch_button.isEnabled()
-        button = window.checks['one']
-        button.setState_(1)
-        window.target.checked_(button)
-        assert window.refetch_button.isEnabled()
-        window.target.refetch_(None)
-        assert actions == [('refetch', ['one'])]
-        model.begin('sync')
-        window.update_status(main_status(model, NOW))
-        assert not window.refetch_button.isEnabled() and not window.dismiss_button.isEnabled()
-        model.busy = None
-        window.update_status(main_status(model, NOW))
-        window.target.dismiss_(None)
-        assert actions[-1] == ('dismiss', ['one'])
-        assert window.selection.rows == [] and str(window.nav_items[DELETED][3].stringValue()) == ''
-        assert 'Silinmiş dosya yok.' in [str(control.stringValue())
-                                      for control in window.deleted_scroll.documentView().subviews()]
+        window.select(COURSES)
+        labels = [str(v.stringValue()) for v in window.pages[COURSES].subviews() if hasattr(v, 'stringValue')]
+        assert courses.T_HINT in labels and courses.T_UNTICK_HINT in labels
+        document = window.courses_scroll.documentView()
+        texts = [str(v.stringValue()) for v in document.subviews() if hasattr(v, 'stringValue')]
+        assert 'CSE301 Algorithms' in texts and 'T · senkronize ediliyor' in texts
+        boxes = [v for v in document.subviews() if hasattr(v, 'action') and str(v.action() or '') == 'courseToggled:']
+        assert [int(b.state()) for b in boxes] == [1, 1] and str(window.nav_items[COURSES][3].stringValue()) == ''
+        boxes[1].setState_(0)
+        window.target.courseToggled_(boxes[1])
+        assert toggles == [('_2_1', False)]
+        assert str(window.nav_items[COURSES][3].stringValue()) == '1/2'
+        texts = [str(v.stringValue()) for v in window.courses_scroll.documentView().subviews()
+                 if hasattr(v, 'stringValue')]
+        assert 'T · senkronize edilmiyor' in texts  # drawn again with the new choice
+        rows.clear()
+        window.refresh_courses()
+        assert courses.T_EMPTY in [str(v.stringValue()) for v in window.courses_scroll.documentView().subviews()
+                                   if hasattr(v, 'stringValue')]
     finally:
         window.window.close()
 

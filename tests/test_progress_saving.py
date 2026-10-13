@@ -214,6 +214,9 @@ def test_complete_run_ends_with_the_same_state_however_often_it_saved(config, cl
     monkeypatch.setattr(State, "save_interval", 10**9)
     sync(other, client)
     lazy = json.loads(other.state_file.read_text(encoding="utf-8"))
+    for data in (eager, lazy):  # when each file was written differs, of course
+        for output in data["outputs"].values():
+            output.pop("mtime_ns")
     assert eager == lazy
     assert eager["items"] and eager["outputs"]
 

@@ -26,8 +26,8 @@ Nothing is ever overwritten or lost:
   are only removed once they are empty and every file moved (empty course
   folders are recreated in the new folder).
 
-A file left behind is treated as deleted in the new folder until it is moved by
-hand or brought back with "Silinenleri tekrar indir".
+A file left behind is missing in the new folder, so the next sync downloads it
+there again (the folder mirrors Blackboard); the copy in the old folder stays.
 
 The files live in the University folder inside the chosen folder
 (``system.sync_root``), so a move goes from the old one's University folder to

@@ -8,7 +8,7 @@ Blackboard’daki ders içeriklerini otomatik olarak bilgisayarına indirir.
 - **Düzenli klasörler:** Dosyalar Blackboard’daki dönem ve ders yapısıyla **University** klasörüne kaydedilir.
 - **Takvim:** Ödev, sınav ve diğer notlandırılan çalışmaların son teslim tarihlerini ders adıyla, gün gün görürsün.
 - **Duyurular sekmesi:** Güncel dönem derslerinin senkronize edilen duyurularını en yeniden başlayarak tek yerde görebilir, kayıtlı notlarını açabilirsin.
-- **Silinenler sekmesi:** Yanlışlıkla sildiğin dosyaları seçip geri indirebilirsin.
+- **Dersler:** İstemediğin dersin işaretini kaldır, o ders artık senkronize edilmez. Klasör Blackboard'un bir kopyasıdır; silinen ya da bozulan dosyalar kendiliğinden geri gelir.
 - **Eski dönem indirme:** Geçmiş bir dönemin dosyalarını tek seferde indirebilirsin.
 - **Tek tıkla güncelleme:** Yeni sürüm çıkınca bildirim gelir, **Güncelle**’ye basman yeter.
 - **Kolay kaldırma:** Ayarlar’dan uygulamayı ve verilerini tek düğmeyle kaldırabilirsin.

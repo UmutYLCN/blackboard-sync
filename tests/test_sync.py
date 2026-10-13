@@ -178,7 +178,7 @@ def _forget_item(config, key):
     state.save()
 
 
-def test_unchanged_note_keeps_local_edit_and_deletion(config, client, fake_bb):
+def test_unchanged_note_keeps_local_edit_and_comes_back_when_deleted(config, client, fake_bb):
     sync(config, client)
     (config.dest / NOTE).write_bytes(b"my own scribbles")
     sync(config, client)  # nothing changed on Blackboard: the item is skipped
@@ -188,9 +188,8 @@ def test_unchanged_note_keeps_local_edit_and_deletion(config, client, fake_bb):
     sync(config, client)
     assert (config.dest / NOTE).read_bytes() == b"my own scribbles"
     (config.dest / NOTE).unlink()
-    _forget_item(config, "content:_13004_1:_c211_1")
-    sync(config, client)
-    assert not (config.dest / NOTE).exists()
+    sync(config, client)  # the folder mirrors Blackboard
+    assert (config.dest / NOTE).read_bytes() != b"my own scribbles" and note_text(config.dest / NOTE)
     assert not any("(2)" in p for p in files_under(config.dest))
 
 
@@ -210,13 +209,14 @@ def test_items_removed_on_blackboard_stay_local(config, client, fake_bb):
     assert (config.dest / SYLLABUS).exists()
 
 
-def test_locally_deleted_files_are_respected_unless_asked(config, client, fake_bb):
+def test_locally_deleted_files_come_back_on_the_next_sync(config, client, fake_bb):
     sync(config, client)
     (config.dest / SYLLABUS).unlink()
-    sync(config, client)
-    assert not (config.dest / SYLLABUS).exists()
-    sync(config, client, refetch_missing=True)
+    fake_bb.calls.clear()
+    report = sync(config, client)
     assert (config.dest / SYLLABUS).read_bytes() == b"%PDF syllabus v1"
+    assert fake_bb.downloads() == [SYLLABUS_DL]
+    assert next(c for c in report.courses if c.code == "CSE303").new_files == [SYLLABUS]
 
 
 def test_name_collisions_get_numbered(config, client, fake_bb):
@@ -315,8 +315,9 @@ def test_state_reload_round_trip(tmp_path):
     state.save()
     again = State.load(tmp_path / "state.json")
     assert again.owner_of("T/C/x.pdf") == "attachment:c:a"
-    assert again.item_unchanged("content:c:i", "2026-01-01", tmp_path, check_missing=False)
-    assert not again.item_unchanged("content:c:i", "2026-02-01", tmp_path, check_missing=False)
+    assert again.item_unchanged("content:c:i", "2026-01-01", lambda key: True)
+    assert not again.item_unchanged("content:c:i", "2026-01-01", lambda key: False)
+    assert not again.item_unchanged("content:c:i", "2026-02-01", lambda key: True)
 
 
 def _route_item(fake_bb, item_id):

@@ -81,8 +81,9 @@ def _date(value: str) -> datetime | None:
         return None
 
 
-def rows(state: State, base_url: str) -> tuple[AnnouncementRow, ...]:
-    current = set(state.current_courses)
+def rows(state: State, base_url: str, hidden: frozenset[str] | set[str] = frozenset()) -> tuple[AnnouncementRow, ...]:
+    """Newest first; courses in ``hidden`` (unticked in Dersler) are left out."""
+    current = set(state.current_courses) - set(hidden)
     result = []
     floor = datetime.min.replace(tzinfo=timezone.utc)
     for key, entry in state.announcements.items():
@@ -100,7 +101,9 @@ def rows(state: State, base_url: str) -> tuple[AnnouncementRow, ...]:
 
 
 def load_rows(config: Config) -> tuple[AnnouncementRow, ...]:
-    return rows(State.load(config.state_file, backup=False), config.base_url)
+    from blackboard_sync.courses import load_disabled  # it imports this module's State too
+
+    return rows(State.load(config.state_file, backup=False), config.base_url, hidden=load_disabled(config))
 
 
 def open_target(row: AnnouncementRow, root: Path) -> Path | str | None:

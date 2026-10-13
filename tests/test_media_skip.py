@@ -100,10 +100,10 @@ def test_skipped_files_are_recorded_so_the_item_is_not_reprocessed(config, clien
 
     item = State.load(config.state_file).items["content:_13004_1:_v2_1"]
     assert item["media"] == ["xid:_13004_1:_v2_1:900_1"] and not item.get("partial")
-    # even when the files are checked for being missing (past-term and refetch runs)
-    assert State.load(config.state_file).item_unchanged(
-        "content:_13004_1:_v2_1", "2026-09-30T10:00:00.000Z", config.dest, True
-    )
+    # every run checks the item's files are present; a link has none to miss
+    state = State.load(config.state_file)
+    assert state.item_unchanged("content:_13004_1:_v2_1", "2026-09-30T10:00:00.000Z",
+                                lambda key: (config.dest / state.outputs[key]["path"]).is_file())
 
 
 @pytest.mark.parametrize("mime", ["audio/mpeg", "audio/x-m4a", "VIDEO/WebM"])
@@ -240,10 +240,10 @@ def test_past_term_download_skips_videos_too(config, client, archive):  # noqa: 
 
 
 def test_every_fetch_file_path_goes_through_the_gate(config, client, fake_bb):
-    """The refetch path calls fetch_file with a recorded key and no pre-filter."""
+    """Restoring a missing file calls fetch_file with a recorded key and no pre-filter."""
     path = "/bbcswebdav/xid-8_1"
     fake_bb.files[path], fake_bb.content_types[path] = BIG, "video/mp4"
-    syncer = Syncer(client, config, State(config.state_file), refetch_missing=True)
+    syncer = Syncer(client, config, State(config.state_file))
     (config.dest / "Dir").mkdir(parents=True)
     with pytest.raises(SkippedMedia):
         syncer.fetch_file("xid:c:i:8_1", "Dir/anything.bin", path, None)  # type: ignore[arg-type]

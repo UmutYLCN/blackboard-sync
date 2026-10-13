@@ -45,7 +45,7 @@ from blackboard_sync.paths import (
     sanitize_name,
 )
 from blackboard_sync.report import CourseReport, SyncReport
-from blackboard_sync.state import State
+from blackboard_sync.state import State, intact, untouched
 from blackboard_sync.system import is_windows, set_hidden, try_lock
 
 log = logging.getLogger(__name__)
@@ -336,9 +336,7 @@ class Syncer:
         config: Config,
         state: State,
         dry_run: bool = False,
-        refetch_missing: bool = False,
         windows: bool | None = None,
-        refetch_keys: set[str] | None = None,
         missing_only: bool = False,
     ):
         self.client = client
@@ -346,8 +344,6 @@ class Syncer:
         self.state = state
         self.dest = config.root  # every path below is relative to the University folder
         self.dry_run = dry_run
-        self.refetch_missing = refetch_missing
-        self.refetch_keys = refetch_keys
         self.windows = is_windows() if windows is None else windows
         self.missing_only = missing_only
         self.deadline_content_ids: dict[str, str] = {}
@@ -362,23 +358,21 @@ class Syncer:
         if not self.dry_run:
             self.state.checkpoint(force=True)
 
-    def should_refetch(self, key: str) -> bool:
-        previous = self.state.output(key)
-        return bool(self.refetch_missing and previous and not previous.get("dismissed")
-                    and (self.refetch_keys is None or key in self.refetch_keys))
+    def present(self, out_key: str) -> bool:
+        """The file recorded as ``out_key`` is on disk and not broken (``state.intact``).
+
+        The folder mirrors Blackboard: whatever is not present is downloaded again.
+        A video or audio file an older version downloaded is the exception; those
+        are links in the note now (``fetch_or_link``) and are not brought back.
+        """
+        out = self.state.output(out_key)
+        if out is None:
+            return False
+        return intact(self.dest / out["path"], out) or is_media(None, out["path"])
 
     def skip_output(self, key: str) -> bool:
-        previous = self.state.output(key)
-        if previous and previous.get("dismissed"):
-            return True
-        if self.refetch_keys is not None:
-            if previous is None:
-                # Only a note output handed over to a new key this run (``hide_legacy_note``).
-                return key not in self.refetch_keys
-            return not self.should_refetch(key) or (self.dest / previous["path"]).exists()
-        if self.missing_only and previous:
-            return (self.dest / previous["path"]).exists()
-        return False
+        """A past term downloaded again only gets what is not present; nothing is updated."""
+        return self.missing_only and self.state.output(key) is not None and self.present(key)
 
     # -- course discovery ----------------------------------------------
     def discover(
@@ -644,7 +638,7 @@ class Syncer:
             report.warnings.append(f"Could not read course content: {exc}")
         else:
             self.walk(course, roots, course.rel_dir, report)
-        if not self.dry_run and self.refetch_keys is None and not self.missing_only:
+        if not self.dry_run and not self.missing_only:
             self.sync_deadlines(course, report)
         try:
             self.sync_announcements(course, report)
@@ -717,11 +711,6 @@ class Syncer:
     ) -> None:
         key = f"content:{course.id}:{item['id']}"
         modified = item.get("modified")
-        if self.refetch_keys is not None and not any(
-            self.should_refetch(k) and not (self.dest / self.state.outputs[k]["path"]).exists()
-            for k in self.state.items.get(key, {}).get("outputs", [])
-        ):
-            return
         # Bodies come fresh with every listing, so the signed file URLs in them are
         # still valid for the downloads below.
         # Ultra assignments and tests expose instructor instructions in the public
@@ -747,9 +736,7 @@ class Syncer:
         # A replaced file shows up as a new id even when "modified" stays put. Videos and
         # audio left as links have no output but count as handled.
         handled = set(previous_item.get("outputs", [])) | set(previous_item.get("media", []))
-        if set(embedded_keys) <= handled and self.state.item_unchanged(
-            key, modified, self.dest, self.refetch_missing, self.refetch_keys
-        ):
+        if set(embedded_keys) <= handled and self.state.item_unchanged(key, modified, self.present):
             return
         if instruction_files and not self.dry_run:
             (self.dest / rel_dir).mkdir(parents=True, exist_ok=True)
@@ -825,7 +812,7 @@ class Syncer:
 
         media_keys = [m[0] for m in media]
         if failure is not None:
-            if not self.dry_run and self.refetch_keys is None:
+            if not self.dry_run:
                 self.state.record_item(key, modified, outputs, title, partial=True, media=media_keys)
             raise failure
 
@@ -839,7 +826,7 @@ class Syncer:
             self.write_note(out_key, join_rel(rel_dir, note_name(title, windows=self.windows)), note, report, "notes")
             outputs += [out_key, markdown_key(out_key)]
 
-        if not self.dry_run and self.refetch_keys is None:
+        if not self.dry_run:
             self.state.record_item(key, modified, outputs, title, media=media_keys)
 
     def kept_attachments(self, previous_item: dict, modified: str | None) -> Container[str]:
@@ -860,7 +847,7 @@ class Syncer:
 
     def on_disk(self, out_key: str) -> bool:
         out = self.state.output(out_key)
-        return bool(out_key.startswith(("attachment:", "xid:")) and out and (self.dest / out["path"]).exists())
+        return bool(out_key.startswith(("attachment:", "xid:")) and out and intact(self.dest / out["path"], out))
 
     @staticmethod
     def embedded_key(course: Course, item: dict, embedded) -> str:
@@ -899,19 +886,12 @@ class Syncer:
                     f"/ultra/courses/{course.id}/announcements", out_key,
                 ))
             previous_item = self.state.items.get(key) or {}
-            if self.refetch_keys is not None and not any(
-                self.should_refetch(k)
-                for k in [out_key, *(k for k in previous_item.get("outputs", []) if k.startswith("xid:"))]
-            ):
-                continue
             modified = ann.get("modified")
             # Announcement ids live apart from content ids, so keep their file keys apart too.
             embedded_files = find_embedded_files(body_text(ann.get("body")))
             embedded_keys = [self.embedded_key(course, {"id": f"announcement:{ann['id']}"}, e) for e in embedded_files]
             handled = set(previous_item.get("outputs", [])) | set(previous_item.get("media", []))
-            if set(embedded_keys) <= handled and self.state.item_unchanged(
-                key, modified, self.dest, self.refetch_missing, self.refetch_keys
-            ):
+            if set(embedded_keys) <= handled and self.state.item_unchanged(key, modified, self.present):
                 continue
             title = ann.get("title") or "Announcement"
             date = announcement_date(ann)
@@ -956,7 +936,7 @@ class Syncer:
                 report.warnings.append(f"Skipped announcement {title!r}: {exc}")
                 continue
             outputs += [out_key, markdown_key(out_key)]
-            if not self.dry_run and self.refetch_keys is None:
+            if not self.dry_run:
                 self.state.record_item(
                     key, modified, outputs, title, partial=failure is not None, media=[m[0] for m in media]
                 )
@@ -1004,14 +984,14 @@ class Syncer:
         replaces: str | None = None,
     ) -> str:
         """Download one file unless it is already mirrored; return its local path."""
-        if replaces and self.refetch_keys is None and not self.dry_run and self.state.output(out_key) is None:
+        if replaces and not self.dry_run and self.state.output(out_key) is None:
             self.state.move_output(replaces, out_key)
         previous = self.state.output(out_key)
         if self.skip_output(out_key):
             return previous["path"] if previous else desired_rel
         if self.dry_run:
             if previous:
-                if self.missing_only:
+                if not self.present(out_key):
                     report.new_files.append(previous["path"])
                 return previous["path"]
             rel = desired_rel or join_rel(fallback_dir, out_key.rsplit(":", 1)[-1])
@@ -1020,10 +1000,9 @@ class Syncer:
         target_dir = self.dest / (PurePosixPath(desired_rel).parent if desired_rel else fallback_dir)
         expected = PurePosixPath(desired_rel).name if desired_rel else ""
         known = None
-        if previous and (previous.get("etag") or previous.get("last_modified")):
-            # A recorded copy that is gone from disk must be fetched again when asked to.
-            if (self.dest / previous["path"]).exists() or not self.should_refetch(out_key):
-                known = previous
+        if previous and (previous.get("etag") or previous.get("last_modified")) and self.present(out_key):
+            # A copy that is gone or broken is fetched in full; the server must not just confirm it.
+            known = previous
         download = self.client.download(url, target_dir, expected_name=expected, known=known)
         if download.unchanged:
             return previous["path"]
@@ -1070,10 +1049,6 @@ class Syncer:
         previous = self.state.output(out_key)
         if not previous or not previous["path"].endswith(".md") or self.state.output(md_key):
             return
-        # Without a PDF to take its place the old note stays as it is: one the student
-        # removed from the list, or one not chosen in a restore of deleted files.
-        if previous.get("dismissed") or (self.refetch_keys is not None and out_key not in self.refetch_keys):
-            return
         old_rel = previous["path"]
         hidden = markdown_twin(old_rel)
         source = self.dest / old_rel
@@ -1086,8 +1061,6 @@ class Syncer:
                 set_hidden(self.dest / hidden, True)
         self.state.move_output(out_key, md_key)
         self.state.move_file(old_rel, hidden)
-        if self.refetch_keys is not None and out_key in self.refetch_keys:
-            self.refetch_keys.add(md_key)  # restoring the note restores both files
 
     def write_output(
         self,
@@ -1113,7 +1086,7 @@ class Syncer:
             if previous and PurePosixPath(previous["path"]).suffix != PurePosixPath(desired_rel).suffix:
                 previous = None  # an older version's Markdown note, not this PDF
             if report is not None:
-                if previous is None or self.missing_only:
+                if previous is None or not self.present(out_key):
                     getattr(report, f"new_{kind}").append(previous["path"] if previous else desired_rel)
                 elif previous["sha256"] != sha:
                     getattr(report, f"updated_{kind}").append(previous["path"])
@@ -1152,12 +1125,14 @@ class Syncer:
         """Move a freshly fetched file into place without ever clobbering local work.
 
         Returns (outcome, relative path) with outcome "new", "updated" or "unchanged".
-        * Same content as last time: nothing is written.
-        * Changed on Blackboard and our copy is untouched: our copy is replaced.
-        * Changed on Blackboard but the student edited/removed our copy: the new
-          version is saved beside it as "name (2).ext"; nothing is deleted.
-          With replace_in_place (notes) the new version instead replaces the
-          recorded path, or recreates it there if it was deleted.
+        * Same content as last time: nothing is written, unless our copy is gone
+          or broken (``state.intact``); then it is put back ("new").
+        * Changed on Blackboard and our copy is untouched (or broken): it is replaced.
+        * Changed on Blackboard but the student edited our copy: the new version
+          is saved beside it as "name (2).ext"; nothing is deleted. With
+          replace_in_place (notes) the new version instead replaces the recorded
+          path. A copy that is gone is recreated at its recorded path when the
+          name is still free.
         * An identical file already sitting at the target is adopted as-is.
         ``hidden`` keeps the placed file hidden on Windows (the Markdown copy of a note).
         """
@@ -1167,29 +1142,40 @@ class Syncer:
         if previous:
             prev_abs = self.dest / previous["path"]
             if previous["sha256"] == sha:
-                if not prev_abs.exists() and self.should_refetch(out_key):
+                if not intact(prev_abs, previous):
                     self._move_into(tmp, prev_abs, hidden)
+                    self.record_placed(out_key, previous["path"], sha, size)
                     return "new", previous["path"]
                 return "unchanged", previous["path"]
-            if prev_abs.is_file() and sha256_file(prev_abs) == previous["sha256"]:
+            # The modification time is still ours: whatever changed the bytes, it was not the student.
+            if prev_abs.is_file() and (not intact(prev_abs, previous) or untouched(prev_abs, previous)
+                                       or sha256_file(prev_abs) == previous["sha256"]):
                 self._move_into(tmp, prev_abs, hidden)
-                self.state.record_output(out_key, previous["path"], sha, size)
+                self.record_placed(out_key, previous["path"], sha, size)
                 return "updated", previous["path"]
             if replace_in_place and not prev_abs.is_dir():
                 self._move_into(tmp, prev_abs, hidden)
-                self.state.record_output(out_key, previous["path"], sha, size)
+                self.record_placed(out_key, previous["path"], sha, size)
                 return "updated", previous["path"]
             rel, adopt = self.free_path(out_key, desired_rel, sha)
             if not adopt:
                 self._move_into(tmp, self.dest / rel, hidden)
-            self.state.record_output(out_key, rel, sha, size)
+            self.record_placed(out_key, rel, sha, size)
             return "updated", rel
 
         rel, adopt = self.free_path(out_key, desired_rel, sha)
         if not adopt:
             self._move_into(tmp, self.dest / rel, hidden)
-        self.state.record_output(out_key, rel, sha, size)
+        self.record_placed(out_key, rel, sha, size)
         return ("unchanged" if adopt else "new"), rel
+
+    def record_placed(self, out_key: str, rel: str, sha: str, size: int) -> None:
+        """Record the file now at ``rel`` with the modification time it has as we wrote it."""
+        try:
+            mtime_ns = (self.dest / rel).stat().st_mtime_ns
+        except OSError:
+            mtime_ns = None
+        self.state.record_output(out_key, rel, sha, size, mtime_ns)
 
     def free_path(self, out_key: str, desired_rel: str, sha: str) -> tuple[str, bool]:
         """First "name", "name (2)", ... that is free; (path, adopt-existing-identical)."""
@@ -1224,22 +1210,26 @@ def run_sync(
     all_terms: bool = False,
     course_filters: list[str] | None = None,
     dry_run: bool = False,
-    refetch_missing: bool = False,
     user_id: str | None = None,
     now: datetime | None = None,
-    refetch_keys: set[str] | None = None,
     lock_held: bool = False,
     term_id: str | None = None,
 ) -> SyncReport:
-    """Sync current courses, or download the missing files of one past term.
+    """Mirror the current courses, or download the missing files of one past term.
+
+    A course the student unticked in Dersler (``courses.py``) is skipped
+    entirely; the file is read again before each course, so unticking one while
+    a sync runs takes effect for the courses still to come.
 
     The past term is chosen by ``term_id`` (any of its Blackboard ids) or by
     ``term_name``. ``lock_held`` says the caller holds ``run_lock``, so no other
     sync is running and every ``.bbsync-*.partial`` file in the destination is
     left over from a run that was killed. Without it only the old ones are removed.
     """
+    from blackboard_sync.courses import load_disabled  # it builds on this module's State
+
     past = term_name is not None or term_id is not None
-    if past and (not (term_id or term_name or "").strip() or all_terms or refetch_keys is not None
+    if past and (not (term_id or term_name or "").strip() or all_terms
                  or (term_name is not None and term_id is not None)):
         raise BlackboardSyncError("İndirilecek tek bir eski dönem adı belirtin.")
     now = now or datetime.now(timezone.utc)
@@ -1250,21 +1240,7 @@ def run_sync(
         report.warnings.append(state.recovery)
     if not dry_run:
         remove_stale_partials(config.root, max_age=timedelta(0) if lock_held else STALE_PARTIAL_AGE)
-    selected: set[str] = set()
-    if refetch_keys is not None:
-        from blackboard_sync.deleted import missing_outputs
-        selected = refetch_keys & {row.key for row in missing_outputs(state, config.root)}
-        # A restored note brings back its hidden Markdown copy too, if that is gone.
-        refetch_keys = selected | {markdown_key(k) for k in selected if markdown_key(k) in state.outputs}
-        all_terms = True
-        course_filters = sorted({key.split(":")[1] for key in refetch_keys})
-        if not refetch_keys:
-            report.message = "Seçilen dosyalar zaten mevcut veya listeden kaldırılmış."
-            report.finished_at = _now_iso()
-            return report
-    syncer = Syncer(client, config, state, dry_run=dry_run,
-                    refetch_missing=refetch_missing or past, refetch_keys=refetch_keys,
-                    missing_only=past)
+    syncer = Syncer(client, config, state, dry_run=dry_run, missing_only=past)
     me = client.me()  # also the cheapest way to prove the session still works
     user_id = me.get("id") or user_id
     if not user_id:
@@ -1287,7 +1263,18 @@ def run_sync(
         courses = [c for c in courses if c.term_id not in frozen]
         terms = [t for t in terms if t.id not in frozen]
     report.terms = [t.name for t in terms]
-    if not dry_run and not past and not all_terms and not course_filters:
+    everything = not past and not all_terms and not course_filters
+    if everything and not dry_run:
+        # Dersler lists every current course, the unticked ones too.
+        found = {c.id: {"code": c.code, "title": course_code_and_title(c.course_id, c.name)[1],
+                        "term": c.term_name, "folder": c.rel_dir} for c in courses}
+        if found != state.courses:
+            state.courses = found
+            state.dirty = True
+    disabled = load_disabled(config)
+    discovered = bool(courses)
+    courses = [c for c in courses if c.id not in disabled]
+    if everything and not dry_run:
         current_ids = {c.id for c in courses}
         active = {key: value for key, value in state.deadline_courses.items() if key in current_ids}
         if active != state.deadline_courses:
@@ -1303,10 +1290,13 @@ def run_sync(
         syncer.migrate_course_folder(course, report.warnings)
     if not dry_run:
         state.checkpoint(force=True)  # a renamed folder must never be left with stale recorded paths
-    if not courses:
+    if not discovered:
         report.warnings.append("No courses found for the selected term.")
     try:
         for course in courses:
+            if course.id in load_disabled(config):
+                log.info("Skipping %s: unticked in Dersler", course.rel_dir)
+                continue
             log.info("Syncing %s", course.rel_dir)
             report.courses.append(syncer.sync_course(course))
             syncer.checkpoint_now()  # keep progress even if a later course fails
@@ -1329,9 +1319,4 @@ def run_sync(
                 "files downloaded in this run may be fetched again next time."
             )
         report.finished_at = _now_iso()
-    if refetch_keys is not None:
-        remaining = sum(not (config.root / state.outputs[key]["path"]).exists() for key in selected)
-        report.message = f"{len(selected) - remaining} dosya indirildi."
-        if remaining:
-            report.message += f" {remaining} dosya indirilemedi; listede tutuldu."
     return report

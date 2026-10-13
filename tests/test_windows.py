@@ -476,8 +476,8 @@ def test_windows_recent_badges_track_viewport_and_return_visit(monkeypatch, tmp_
 
 
 def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_path):
-    from blackboard_sync.deleted import MissingOutput
-    from blackboard_sync.menubar.main_window_model import DELETED, GENERAL, OVERVIEW, main_status
+    from blackboard_sync.courses import CourseRow
+    from blackboard_sync.menubar.main_window_model import COURSES, GENERAL, OVERVIEW, main_status
     from blackboard_sync.menubar.model import RecentItem
     from blackboard_sync.menubar.settings_form import SCREEN_MARGIN
     from blackboard_sync.windows import main_window as module
@@ -500,17 +500,17 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
         saved.append(values)
         return None
 
-    rows = [MissingOutput('key', 'term/course/file.pdf', 'term', 'course', 'file.pdf', 'term/course')]
-    deleted_actions = []
+    rows = [CourseRow('_1_1', 'CSE301', 'Algorithms', '2026-2027 Güz', True),
+            CourseRow('_2_1', 'MTH201', 'Linear Algebra', '2026-2027 Güz', False)]
+    toggles = []
 
-    def deleted_action(action, keys):
-        deleted_actions.append((action, keys))
-        if action == 'dismiss':
-            rows.clear()
+    def toggle(course_id, enabled):
+        toggles.append((course_id, enabled))
+        rows[:] = [CourseRow(r.id, r.code, r.title, r.term, enabled if r.id == course_id else r.enabled) for r in rows]
 
     window = MainWindow(None, saved[0], main_status(model, now), submit, actions.append,
                         lambda: closed.append(True), on_values=lambda: saved[-1], on_open=opened.append,
-                        on_missing=lambda: list(rows), on_deleted_action=deleted_action)
+                        on_courses=lambda: tuple(rows), on_course_toggle=toggle)
 
     def visible():
         return [name for name, page in window.pages.items() if not page.removed]
@@ -529,8 +529,8 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     window.window.later()
     assert window.window.topmost is False
     assert visible() == ['start'] and window.state.open
-    assert [window.nav[s].options['text'] for s in (OVERVIEW, GENERAL, DELETED)] == [
-        'Başlangıç', 'Genel', 'Silinenler (1)']
+    assert [window.nav[s].options['text'] for s in (OVERVIEW, GENERAL, COURSES)] == [
+        'Başlangıç', 'Genel', 'Dersler (1/2)']
     assert window.start_button.options['text'] == 'Giriş yap'
     for text in ('Ders dosyalarınız burada başlayacak.', 'Okulunuzu ve klasörünüzü seçin',
                  'Bu pencereyi kapatabilirsiniz. Tekrar görmek için Başlat menüsünden Blackboard Sync\'i açmanız yeterli.'):
@@ -599,24 +599,28 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     window.update_status(main_status(model, now))
     assert window.first_frame.removed and not window.recent_body.removed and not window.first_scene.running
 
-    # Silinenler: one sentence, select, bring back, dismiss.
-    window.nav[DELETED].options['command']()
-    assert visible() == [DELETED]
-    assert ('Daha önce indirilip klasörden silinen dosyaları seçip geri indirebilirsiniz; '
-            'listeden kaldırılanlar tekrar önerilmez.') in labels()
-    assert 'term · course' in labels()
-    assert window.refetch_button.options['state'] == 'disabled'
-    window.select_all_button.options['command']()
-    window.refetch_button.options['command']()
-    assert deleted_actions == [('refetch', ['key'])]
-    window.dismiss_button.options['command']()
-    assert deleted_actions[-1] == ('dismiss', ['key']) and 'Silinmiş dosya yok.' in labels()
-    assert window.nav[DELETED].options['text'] == 'Silinenler'
+    # Dersler: the mirror explained, one checkbox per course; ticking one saves it.
+    from blackboard_sync import courses
+
+    window.nav[COURSES].options['command']()
+    assert visible() == [COURSES]
+    assert courses.T_HINT in labels() and courses.T_UNTICK_HINT in labels()
+    assert 'CSE301 Algorithms' in labels() and '2026-2027 Güz · senkronize edilmiyor' in labels()
+    def checks():
+        return [check for entry in window.courses_frame.children for check in entry.children
+                if check.options.get('variable') is not None]
+
+    assert [c.options['variable'].get() for c in checks()] == [True, False]
+    checks()[1].options['variable'].set(True)
+    checks()[1].options['command']()
+    assert toggles == [('_2_1', True)]
+    assert window.nav[COURSES].options['text'] == 'Dersler'
+    assert [c.options['variable'].get() for c in checks()] == [True, True]  # drawn again
 
     # The wheel scrolls the section in view, not one that fits.
-    window.canvas.view = (0.0, 0.7)
+    window.courses_canvas.view = (0.0, 0.7)
     window.window.bindings['<MouseWheel>'](SimpleNamespace(delta=-120))
-    assert window.canvas.scrolled == [(1, 'units')]
+    assert window.courses_canvas.scrolled == [(1, 'units')]
     assert window.interval_dropdown.bindings['<MouseWheel>'](SimpleNamespace(delta=120)) == 'break'
 
     # Closing hides the window and drops unsaved edits; nothing else stops.
