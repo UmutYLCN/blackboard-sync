@@ -89,8 +89,8 @@ def test_same_note_gives_the_same_bytes_in_another_process():
     assert render_pdf(note) == first
     assert b"/CreationDate (D:20000101000000+00'00')" in first
     code = ("import sys; from blackboard_sync.notepdf import render_pdf; "
-            "sys.stdout.buffer.write(render_pdf(sys.stdin.read()))")
-    env = {**os.environ, "PYTHONHASHSEED": "12345", "PYTHONIOENCODING": "utf-8"}
+            "sys.stdout.buffer.write(render_pdf(sys.stdin.buffer.read().decode('utf-8')))")
+    env = {**os.environ, "PYTHONHASHSEED": "12345"}
     other = subprocess.run([sys.executable, "-c", code], input=note.encode("utf-8"),
                            capture_output=True, check=True, env=env).stdout
     assert other == first
@@ -100,7 +100,7 @@ def test_drawing_a_note_needs_no_reportlab_graphics():
     # The packaged apps leave reportlab.graphics out (packaging/*.spec).
     code = ("import sys; sys.modules['reportlab.graphics'] = None; "
             "from blackboard_sync.notepdf import render_pdf; "
-            "sys.stdout.buffer.write(render_pdf(sys.stdin.read()))")
+            "sys.stdout.buffer.write(render_pdf(sys.stdin.buffer.read().decode('utf-8')))")
     note = _note()
     out = subprocess.run([sys.executable, "-c", code], input=note.encode("utf-8"),
                          capture_output=True, check=True).stdout
