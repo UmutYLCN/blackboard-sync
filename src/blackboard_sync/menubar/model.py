@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -462,6 +463,78 @@ class RecentItem:
         return shorten(f"{self.course} · {Path(self.path).name}", 60)
 
 
+class RecentSeen:
+    """Unread download versions, with badges frozen for one overview visit.
+
+    Per-row markers keep downloads below the fold unread. A new download of
+    the same path has a new timestamp, so it becomes unread again.
+    """
+
+    def __init__(self, saved=None, clock: Callable[[], float] = time.monotonic):
+        self.seen = {path: at for path, at in (saved.items() if isinstance(saved, dict) else [])
+                     if isinstance(path, str) and isinstance(at, str) and parse_iso(at)}
+        self.clock = clock
+        self.snapshot: dict[str, str] | None = None
+        self.started: dict[tuple[str, str], float] = {}
+        self.last_sample: float | None = None
+
+    def show(self) -> None:
+        if self.snapshot is None:
+            self.snapshot = dict(self.seen)
+            self.reset_exposure()
+
+    def hide(self) -> None:
+        self.snapshot = None
+        self.reset_exposure()
+
+    def reset_exposure(self) -> None:
+        self.started.clear()
+        self.last_sample = None
+
+    def is_new(self, path: str, at: str, now: datetime) -> bool:
+        when = parse_iso(at)
+        markers = self.seen if self.snapshot is None else self.snapshot
+        return bool(when and timedelta(0) <= now - when <= timedelta(days=7)
+                    and markers.get(path) != at)
+
+    def observe(self, visible: list[tuple[str, str]], active: bool) -> bool:
+        """Sample on-screen rows every 250 ms; return whether storage changed.
+
+        Focus loss, scrolling away, and a stalled timer (including sleep) break
+        continuous exposure. Seeing a row persists it without changing this
+        visit's snapshot, so its badge remains until the list is shown again.
+        """
+        if not active or self.snapshot is None:
+            self.reset_exposure()
+            return False
+        now = self.clock()
+        if self.last_sample is not None and now - self.last_sample > 1:
+            self.started.clear()
+        self.last_sample = now
+        keys = set(visible)
+        self.started = {key: start for key, start in self.started.items() if key in keys}
+        changed = False
+        for path, at in keys:
+            if self.seen.get(path) == at:
+                continue
+            start = self.started.setdefault((path, at), now)
+            if now - start >= 3:
+                self.seen[path] = at
+                changed = True
+        return changed
+
+    def opened(self, item: RecentItem) -> bool:
+        changed = self.seen.get(item.path) != item.at
+        self.seen[item.path] = item.at
+        if self.snapshot is not None:
+            self.snapshot[item.path] = item.at
+        return changed
+
+    def saved_state(self, recent: list[RecentItem]) -> dict[str, str]:
+        # The list is capped at ten rows; don't accumulate old markers forever.
+        return {item.path: item.at for item in recent if self.seen.get(item.path) == item.at}
+
+
 @dataclass
 class MenuModel:
     status_lines: list[str]  # the two lines at the top (plus a transient note)
@@ -517,6 +590,7 @@ class AppModel:
         check_updates: bool = True,
         updates: UpdateState | None = None,
         sync_interval_minutes: int = DEFAULT_SYNC_INTERVAL_MINUTES,
+        recent_seen: RecentSeen | None = None,
     ):
         self.dest = dest  # the folder the student chose; the files are in ``root``
         self.session = session
@@ -526,6 +600,7 @@ class AppModel:
         self.configured = configured
         self.last = last
         self.recent = list(recent or [])
+        self.recent_seen = recent_seen or RecentSeen()
         self.login_prompted = login_prompted
         self.autostart = autostart
         self.busy: str | None = None  # "sync" | "refetch" | "login" | "move"
@@ -806,6 +881,10 @@ class AppModel:
             else:
                 self.courses = []
                 self.recent = []
+                self.recent_seen.seen.clear()
+                if self.recent_seen.snapshot is not None:
+                    self.recent_seen.snapshot.clear()
+                self.recent_seen.reset_exposure()
                 if dest_choice == DEST_REFETCH:
                     self.pending = "refetch"
         self.dest = dest
@@ -978,6 +1057,7 @@ class AppModel:
             "courses": [vars(course) for course in self.courses],
             "login_prompted": self.login_prompted,
             "recent": [vars(item) for item in self.recent],
+            "recent_seen": self.recent_seen.saved_state(self.recent),
             "updates": self.updates.saved_state(),
         }
 

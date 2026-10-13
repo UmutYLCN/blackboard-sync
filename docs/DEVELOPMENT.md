@@ -197,7 +197,12 @@ A sidebar switches between three sections:
   saves the form and opens the sign-in. Afterwards this section is **Genel
   bakış**: **Şimdi senkronize et**, **Klasörü aç** and **Son indirilenler**,
   the last 10 files, notes and announcements; a click opens one in its own
-  application. While a sync (or another job that changes files) runs, a small
+  application. Unseen downloads have a **YENİ** pill at the right end of the
+  row. A row is marked seen after three continuous seconds on screen while
+  the window is active; its pill stays for that visit and disappears when you
+  return to the overview or reopen the window. Opening the file removes the
+  pill immediately. Seen markers survive restarts, and downloads older than
+  seven days have no pill. While a sync (or another job that changes files) runs, a small
   animation of papers flying from a cloud into a folder shows above the list;
   on the first sync, with nothing listed yet, a large one fills the list. It is
   drawn natively (AppKit / Tk canvas) and stands still with reduce motion

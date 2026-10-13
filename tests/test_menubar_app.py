@@ -295,6 +295,54 @@ def test_overview_buttons_and_recent_files(tmp_path):
         window.window.close()
 
 
+def test_recent_badges_and_viewport_seen_tracking(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import AppKit
+    from Foundation import NSMakeRect
+    from blackboard_sync.menubar import main_window as module
+    from blackboard_sync.menubar.main_window_model import GENERAL, OVERVIEW, main_status
+    from blackboard_sync.menubar.model import AppModel, RecentItem, RecentSeen
+    from .test_recent_seen import Clock
+
+    clock, saved = Clock(), []
+    model = signed_in(AppModel(tmp_path, NOW, recent_seen=RecentSeen(clock=clock)))
+    model.recent = [RecentItem('a.pdf', 'CSE303', NOW.isoformat()),
+                    RecentItem('b.pdf', 'CSE303', NOW.isoformat())]
+    window, _, _ = make_window(tmp_path, model=model, recent_seen=model.recent_seen,
+                               on_seen=lambda: saved.append(True),
+                               on_section=lambda section: window.update_status(main_status(model, NOW)))
+    native_window, native_scroll = window.window, window.recent_scroll
+    try:
+        pills = [v for v in native_scroll.documentView().subviews() if isinstance(v, AppKit.NSBox) and v.contentView() is not None
+                 and any(hasattr(label, 'stringValue') and label.stringValue() == 'YENİ'
+                         for label in v.contentView().subviews())]
+        assert len(pills) == 2
+        window.state.show()
+        window._show_section()
+        window.window = SimpleNamespace(isVisible=lambda: True, isMiniaturized=lambda: False,
+                                        isKeyWindow=lambda: True)
+        window.recent_scroll = SimpleNamespace(documentVisibleRect=lambda: NSMakeRect(0, 0, 500, module.ROW_HEIGHT))
+        monkeypatch.setattr(module, 'NSApp', SimpleNamespace(isActive=lambda: True))
+        for _ in range(13):
+            window.observe_recent()
+            clock.seconds += 0.25
+        assert saved == [True]
+        assert model.recent_seen.seen == {'a.pdf': model.recent[0].at}
+        window.window, window.recent_scroll = native_window, native_scroll
+        window.update_status(main_status(model, NOW))
+        assert all(r.is_new for r in window.status.recent)
+        window.select(GENERAL)
+        window.select(OVERVIEW)
+        assert [r.is_new for r in window.status.recent] == [False, True]
+        window.target.windowDidMiniaturize_(None)
+        assert model.recent_seen.snapshot is None
+        window.target.windowDidDeminiaturize_(None)
+        assert [r.is_new for r in window.status.recent] == [False, True]
+    finally:
+        window.window, window.recent_scroll = native_window, native_scroll
+        native_window.close()
+
+
 def test_a_running_sync_shows_the_illustration_and_it_stops_with_the_sync(tmp_path, monkeypatch):
     from blackboard_sync.menubar import sync_scene_view
     from blackboard_sync.menubar.main_window_model import main_status
@@ -620,6 +668,29 @@ def menu_app(config, monkeypatch):
     menu_app.docks = docks
     menu_app.windows = Window.built
     return menu_app
+
+
+@pytest.mark.parametrize('exists', [True, False])
+def test_open_recent_marks_file_seen_and_persists_immediately(menu_app, monkeypatch, exists):
+    from blackboard_sync.menubar import app, jobs
+    from blackboard_sync.menubar.model import RecentItem
+
+    item = RecentItem('course/a.pdf', 'CSE303', NOW.isoformat())
+    menu_app.model.recent = [item]
+    menu_app.model.recent_seen.show()
+    target = menu_app.model.root / item.path
+    target.parent.mkdir(parents=True)
+    if exists:
+        target.write_text('file')
+    opened = []
+    monkeypatch.setattr(app, 'open_path', opened.append)
+    monkeypatch.setattr(menu_app, 'refresh', lambda: None)
+    menu_app.open_recent(item.path)
+    assert opened == [target if exists else target.parent]
+    assert menu_app.model.recent_seen.is_new(item.path, item.at, NOW) is not exists
+    if exists:
+        restored = jobs.load_model(menu_app.config, NOW, autostart=False)
+        assert not restored.recent_seen.is_new(item.path, item.at, NOW)
 
 
 def test_reopening_the_app_shows_one_main_window_with_the_dock_icon(menu_app):

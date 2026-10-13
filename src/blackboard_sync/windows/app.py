@@ -330,6 +330,11 @@ class TrayApp:
             if target and target.exists():
                 try:
                     os.startfile(str(target))
+                    if action == "open" and target.is_file():
+                        for item in self.model.recent:
+                            if item.path == value:
+                                self.model.recent_seen.opened(item)
+                        self.save()
                 except OSError:
                     self.model.note = "Dosya veya klasör açılamadı."
             else:
@@ -463,7 +468,8 @@ class TrayApp:
                                      on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
                                      on_deleted_action=self.deleted_action,
                                      on_past_term=self.download_past_term,
-                                     on_section=lambda _section: self.refresh())
+                                     on_section=lambda _section: self.refresh(),
+                                     recent_seen=self.model.recent_seen, on_seen=self.save)
         if not self.window_open:
             self.model.reload_past_terms()
         self.window.show(section)

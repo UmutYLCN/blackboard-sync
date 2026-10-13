@@ -25,6 +25,7 @@ from blackboard_sync.menubar.model import (
     MOVE_JOB,
     AppModel,
     CourseChange,
+    RecentSeen,
     RunOutcome,
     UpdateState,
     load_saved_state,
@@ -230,6 +231,7 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
         check_updates=settings.check_updates,
         sync_interval_minutes=settings.sync_interval_minutes,
         updates=UpdateState.load((saved or {}).get("updates"), now),
+        recent_seen=RecentSeen((saved or {}).get("recent_seen")),
     )
     if saved and not (last and last.status == "ok") and isinstance(saved.get("courses"), list):
         try:

@@ -76,12 +76,15 @@ class MainWindow:
     def __init__(self, root, values, status, on_submit, on_action, on_close, on_values=None,
                  on_open=lambda path: None, on_missing=lambda: [],
                  on_deleted_action=lambda action, keys: None, on_past_term=lambda name: None,
-                 on_section=lambda section: None):
+                 on_section=lambda section: None, recent_seen=None, on_seen=lambda: None):
         import tkinter as tk
         from tkinter import ttk
 
         self.on_submit, self.on_action, self.on_close = on_submit, on_action, on_close
         self.on_section = on_section
+        self.recent_seen, self.on_seen = recent_seen, on_seen
+        self._recent_after = None
+        self._recent_entries = []
         self.on_values = on_values or (lambda: self.saved)
         self.on_open, self.on_missing = on_open, on_missing
         self.on_deleted_action, self.on_past_term = on_deleted_action, on_past_term
@@ -105,6 +108,10 @@ class MainWindow:
         window.columnconfigure(1, weight=1)
         window.rowconfigure(0, weight=1)
         window.protocol("WM_DELETE_WINDOW", self.close)
+        if self.recent_seen is not None:
+            window.bind("<Unmap>", self._recent_unmapped)
+            window.bind("<Map>", self._recent_mapped)
+            window.bind("<FocusOut>", self._recent_focus_out)
 
         # The form's values; Başlangıç and Genel share them.
         self.url = tk.StringVar(value=values.base_url)
@@ -430,6 +437,8 @@ class MainWindow:
         window.attributes("-topmost", True)
         window.after(1000, self.release_topmost)
         window.focus_force()
+        if self.recent_seen is not None and self._recent_after is None:
+            self._recent_after = window.after(250, self._recent_tick)
 
     def release_topmost(self):
         try:
@@ -448,6 +457,11 @@ class MainWindow:
 
     def _show_section(self):
         visible = self.visible_page()
+        if self.recent_seen is not None:
+            if self.state.open and visible == main.OVERVIEW:
+                self.recent_seen.show()
+            else:
+                self.recent_seen.hide()
         for name, page in self.pages.items():
             if name == visible:
                 page.grid()
@@ -598,6 +612,7 @@ class MainWindow:
                 view.stop()
 
     def _draw_recent(self):
+        import tkinter as tk
         from tkinter import ttk
 
         rows = self.status.recent
@@ -605,13 +620,23 @@ class MainWindow:
         if rows == self._drawn_recent:
             return
         self._drawn_recent = rows
+        self._recent_entries = []
         for widget in self.recent_frame.winfo_children():
             widget.destroy()
         if not rows:
             ttk.Label(self.recent_frame, text=T_RECENT_EMPTY, foreground=MUTED).pack(anchor="w", pady=8)
         for row in rows:
             entry = ttk.Frame(self.recent_frame, padding=(0, 6))
+            self._recent_entries.append((entry, row))
             entry.pack(anchor="w", fill="x")
+            if row.is_new:
+                pill = tk.Canvas(entry, width=52, height=22, highlightthickness=0,
+                                 background=self.recent_canvas.cget("background") or "#f0f0f0")
+                pill.pack(side="right", padx=(8, 0))
+                pill.create_oval(0, 0, 22, 22, fill="#2563eb", outline="")
+                pill.create_oval(30, 0, 52, 22, fill="#2563eb", outline="")
+                pill.create_rectangle(11, 0, 41, 22, fill="#2563eb", outline="")
+                pill.create_text(26, 11, text=main.T_NEW, fill="#ffffff", font=("Segoe UI", 9, "bold"))
             ttk.Label(entry, text=row.kind or "•", width=5, anchor="center", font=BOLD_FONT,
                       foreground=MUTED).pack(side="left", padx=(0, 10))
             text = ttk.Frame(entry)
@@ -620,6 +645,48 @@ class MainWindow:
             ttk.Button(text, text=row.name, style="Toolbutton",
                        command=lambda path=row.path: self.on_open(path)).pack(anchor="w")
             ttk.Label(text, text=row.detail, foreground=MUTED).pack(anchor="w", padx=(4, 0))
+
+    def _recent_unmapped(self, event):
+        if event.widget == self.window:
+            self.recent_seen.hide()
+
+    def _recent_mapped(self, event):
+        if event.widget == self.window:
+            self._show_section()
+            self.on_section(self.state.section)
+
+    def _recent_focus_out(self, _event):
+        focus = self.window.focus_displayof()
+        if focus is None or focus.winfo_toplevel() != self.window:
+            self.recent_seen.reset_exposure()
+
+    def observe_recent(self):
+        focus = self.window.focus_displayof()
+        active = (self.state.open and self.visible_page() == main.OVERVIEW
+                  and self.window.state() == "normal" and focus is not None
+                  and focus.winfo_toplevel() == self.window)
+        visible = []
+        if active and self.recent_canvas.winfo_viewable():
+            top = max(self.recent_canvas.winfo_rooty(), self.window.winfo_rooty())
+            bottom = min(self.recent_canvas.winfo_rooty() + self.recent_canvas.winfo_height(),
+                         self.window.winfo_rooty() + self.window.winfo_height())
+            visible = [(row.path, row.at) for entry, row in self._recent_entries
+                       if entry.winfo_rooty() < bottom and entry.winfo_rooty() + entry.winfo_height() > top]
+        if self.recent_seen.observe(visible, active):
+            self.on_seen()
+
+    def _recent_tick(self):
+        self._recent_after = None
+        if self.state.open:
+            self.observe_recent()
+            self._recent_after = self.window.after(250, self._recent_tick)
+
+    def _stop_recent_tracking(self):
+        if self._recent_after is not None:
+            self.window.after_cancel(self._recent_after)
+            self._recent_after = None
+        if self.recent_seen is not None:
+            self.recent_seen.hide()
 
     def refresh_deleted(self):
         from tkinter import ttk, BooleanVar
@@ -714,12 +781,14 @@ class MainWindow:
         """Hide the window: unsaved edits are dropped, the app keeps running in the tray."""
         self.window.withdraw()
         self.state.closed()
+        self._stop_recent_tracking()
         self._animate()
         self.set_values(self.on_values())
         self.on_close()
 
     def destroy(self):
         self.state.closed()
+        self._stop_recent_tracking()
         self._animate()
         self.window.destroy()
 
