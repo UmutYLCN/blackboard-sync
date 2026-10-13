@@ -4,6 +4,7 @@ import http.server
 import json
 import os
 import threading
+from pathlib import Path
 
 import pytest
 import requests
@@ -11,7 +12,7 @@ import requests
 from blackboard_sync import cli
 from blackboard_sync.session import http_session
 
-from .test_sync import CSE, SYLLABUS_DL, files_under, sync
+from .test_sync import CSE, SLIDES, SYLLABUS, SYLLABUS_DL, files_under, sync
 
 
 def _cli_sync(config, client, monkeypatch):
@@ -23,11 +24,15 @@ def _cli_sync(config, client, monkeypatch):
     )
 
 
+# The PDF files Blackboard serves; the notes' own PDFs are still saved.
+DOWNLOADED_PDFS = {Path(SYLLABUS).name, Path(SLIDES).name, "hw1.pdf"}
+
+
 def _block_pdfs(monkeypatch):
     real_replace = os.replace
 
     def replace(src, dst):
-        if str(dst).endswith(".pdf"):
+        if Path(dst).name in DOWNLOADED_PDFS:
             raise PermissionError(13, "Access is denied (file open in another program)", str(dst))
         return real_replace(src, dst)
 
@@ -41,7 +46,7 @@ def test_oserror_while_placing_a_file_becomes_a_warning(config, client, monkeypa
     assert report.status == "ok"
     assert any("Access is denied" in w for c in report.courses for w in c.warnings)
     # Other items and the other courses still synced.
-    assert f"{CSE}/Course Website - Visualizations.md" in files_under(config.dest)
+    assert f"{CSE}/Course Website - Visualizations.pdf" in files_under(config.dest)
     assert (config.dest / "2026-2027 Güz" / "MTH201 Linear Algebra").is_dir()
     assert not list(config.dest.rglob("*.partial"))
 

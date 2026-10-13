@@ -90,7 +90,8 @@ def test_sync_writes_into_the_university_folder(icloud, client):
     assert files and all(f.startswith("University/2026-2027 Güz/") for f in files)
     assert report.dest == str(icloud.root)
     # Recorded paths stay relative to the University folder.
-    assert {o["path"] for o in State.load(icloud.state_file).outputs.values()} == set(files_under(icloud.root))
+    every_file = {p.relative_to(icloud.root).as_posix() for p in icloud.root.rglob("*") if p.is_file()}
+    assert {o["path"] for o in State.load(icloud.state_file).outputs.values()} == every_file
 
 
 def test_folder_already_named_university_gets_no_second_one(config, client):

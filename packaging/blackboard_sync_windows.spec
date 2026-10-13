@@ -11,6 +11,8 @@ ICON = str(ROOT / "assets" / "icon" / "app.ico")
 a = Analysis(
     [str(ROOT / "packaging" / "app_entry.py")],
     pathex=[str(ROOT / "src")],
+    # Fonts of the PDF notes (blackboard_sync.notepdf), with their license.
+    datas=[(str(ROOT / "assets" / "fonts"), "assets/fonts")],
     # The sync child run and the tray app are imported lazily by app_entry, the
     # in-app sign-in window (pywebview on WebView2, through pythonnet) by login.
     # pyinstaller-hooks-contrib's pywebview hook bundles the WebView2 interop DLLs.
@@ -27,7 +29,8 @@ a = Analysis(
         "win32com.shell.shell",
         "win32com.server.policy",
     ],
-    excludes=["pytest", "unittest", "pydoc_data"],
+    # reportlab.graphics: charts and barcodes, which the PDF notes never draw.
+    excludes=["pytest", "unittest", "pydoc_data", "reportlab.graphics"],
 )
 pyz = PYZ(a.pure)
 # Two programs sharing one set of libraries: the windowed app, and a console

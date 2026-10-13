@@ -93,18 +93,18 @@ def test_repeated_archive_only_fetches_missing_outputs_even_when_remote_changed(
     assert not sync(config, client, term_name=PAST).totals()["new_files"]
     assert archive.downloads() == []
     (config.dest / COURSE / "second.pdf").unlink()
-    (config.dest / COURSE / "Lecture.md").unlink()
+    (config.dest / COURSE / "Lecture.pdf").unlink()
     archive.files[FILE1] = b"remote update must be ignored"
     archive.routes[f"{ROOT}/contents"]["results"][0].update(
         modified="2026-10-01T00:00:00Z", body="<p>Changed remote note</p>")
-    announcement = next((config.dest / COURSE / "Duyurular").glob("*.md"))
+    announcement = next((config.dest / COURSE / "Duyurular").glob("*.pdf"))
     before = announcement.read_bytes()
     archive.routes[f"{ROOT}/announcements"]["results"][0].update(
         modified="2026-10-01T00:00:00Z", body="<p>Changed announcement</p>")
     report = sync(config, client, term_name=PAST)
     assert archive.downloads() == [FILE2]
     assert (config.dest / COURSE / "first.pdf").read_bytes() == b"first archive file"
-    assert (config.dest / COURSE / "Lecture.md").exists()
+    assert (config.dest / COURSE / "Lecture.pdf").exists()
     assert announcement.read_bytes() == before
     assert report.totals()["updated_files"] == report.totals()["updated_notes"] == 0
 
@@ -214,7 +214,7 @@ def test_cli_rejects_combined_term_selection():
 def test_archive_dry_run_reports_missing_outputs(config, client, archive):
     sync(config, client, term_name=PAST)
     (config.dest / COURSE / "first.pdf").unlink()
-    (config.dest / COURSE / "Lecture.md").unlink()
+    (config.dest / COURSE / "Lecture.pdf").unlink()
     archive.calls.clear()
     state = config.state_file.read_bytes()
     report = sync(config, client, term_name=PAST, dry_run=True)

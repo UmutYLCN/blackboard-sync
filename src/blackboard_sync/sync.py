@@ -19,6 +19,7 @@ from blackboard_sync.api import PARTIAL_PREFIX, PARTIAL_SUFFIX, BlackboardClient
 from blackboard_sync.config import Config
 from blackboard_sync.errors import AlreadyRunning, ApiError, BlackboardSyncError, LoginRequired, SkippedMedia
 from blackboard_sync.htmltext import body_text, find_embedded_files
+from blackboard_sync.notepdf import render_pdf
 from blackboard_sync.notes import (
     announcement_date,
     handler_id,
@@ -34,6 +35,7 @@ from blackboard_sync.paths import (
     fold_course_key,
     join_rel,
     legacy_course_folder_name,
+    markdown_twin,
     note_name,
     numbered_variant,
     sanitize_name,
@@ -123,6 +125,19 @@ def choose_current_terms(terms: list[Term], now: datetime) -> list[Term]:
         return max((s for s in stamps if s), default=datetime.min.replace(tzinfo=timezone.utc))
 
     return [max(candidates, key=newest_course)]
+
+
+def markdown_key(out_key: str) -> str:
+    """The key of the hidden Markdown copy of the note recorded as ``out_key``.
+
+    "note:<course>:<item>" -> "note-md:<course>:<item>"; the course id stays second.
+    """
+    kind, rest = out_key.split(":", 1)
+    return f"{kind}-md:{rest}"
+
+
+def is_markdown_key(key: str) -> bool:
+    return key.split(":", 1)[0].endswith("-md")
 
 
 def sha256_file(path: Path) -> str:
@@ -238,6 +253,9 @@ class Syncer:
         if previous and previous.get("dismissed"):
             return True
         if self.refetch_keys is not None:
+            if previous is None:
+                # Only a note output handed over to a new key this run (``hide_legacy_note``).
+                return key not in self.refetch_keys
             return not self.should_refetch(key) or (self.dest / previous["path"]).exists()
         if self.missing_only and previous:
             return (self.dest / previous["path"]).exists()
@@ -619,7 +637,7 @@ class Syncer:
             )
             out_key = f"note:{course.id}:{item['id']}"
             self.write_note(out_key, join_rel(rel_dir, note_name(title, windows=self.windows)), note, report, "notes")
-            outputs.append(out_key)
+            outputs += [out_key, markdown_key(out_key)]
 
         if not self.dry_run and self.refetch_keys is None:
             self.state.record_item(key, modified, outputs, title, media=media_keys)
@@ -730,7 +748,7 @@ class Syncer:
             except OSError as exc:
                 report.warnings.append(f"Skipped announcement {title!r}: {exc}")
                 continue
-            outputs.append(out_key)
+            outputs += [out_key, markdown_key(out_key)]
             if not self.dry_run and self.refetch_keys is None:
                 self.state.record_item(
                     key, modified, outputs, title, partial=failure is not None, media=[m[0] for m in media]
@@ -822,19 +840,76 @@ class Syncer:
     def write_note(
         self, out_key: str, desired_rel: str, text: str, report: CourseReport, kind: str
     ) -> str:
+        """Save a note as a PDF and a hidden Markdown copy beside it; return the PDF's path.
+
+        The Markdown text is the note's source: the PDF is drawn from it, and it is
+        kept (hidden, see ``markdown_twin``) for features that read notes. Only the
+        PDF counts in the report. A note an older version saved as a visible ``.md``
+        is hidden the first time it is written again, never deleted.
+        """
+        md_key = markdown_key(out_key)
+        if not self.dry_run:
+            self.hide_legacy_note(out_key, md_key)
+        rel = self.write_output(out_key, desired_rel, lambda: render_pdf(text), report, kind)
+        self.write_output(md_key, markdown_twin(rel), lambda: text.encode("utf-8"), None, kind, hidden=True)
+        return rel
+
+    def hide_legacy_note(self, out_key: str, md_key: str) -> None:
+        """Turn the visible "Name.md" an older version recorded as ``out_key`` into the hidden copy.
+
+        The file is renamed to ".Name.md" and its record moves to ``md_key``, so the
+        PDF is written as a new file and the in-place update applies to the copy.
+        """
+        previous = self.state.output(out_key)
+        if not previous or not previous["path"].endswith(".md") or self.state.output(md_key):
+            return
+        # Without a PDF to take its place the old note stays as it is: one the student
+        # removed from the list, or one not chosen in a restore of deleted files.
+        if previous.get("dismissed") or (self.refetch_keys is not None and out_key not in self.refetch_keys):
+            return
+        old_rel = previous["path"]
+        hidden = markdown_twin(old_rel)
+        source = self.dest / old_rel
+        if source.is_file():
+            hidden, adopt = self.free_path(md_key, hidden, sha256_file(source))
+            if adopt:
+                source.unlink()  # an identical hidden copy is already there
+            else:
+                os.rename(source, self.dest / hidden)
+                set_hidden(self.dest / hidden, True)
+        self.state.move_output(out_key, md_key)
+        self.state.move_file(old_rel, hidden)
+        if self.refetch_keys is not None and out_key in self.refetch_keys:
+            self.refetch_keys.add(md_key)  # restoring the note restores both files
+
+    def write_output(
+        self,
+        out_key: str,
+        desired_rel: str,
+        render,
+        report: CourseReport | None,
+        kind: str,
+        hidden: bool = False,
+    ) -> str:
+        """Write generated content (``render()`` gives its bytes) as ``out_key``; return its path.
+
+        Unlike downloads, a changed note replaces the recorded file in place. With
+        ``report`` None nothing is reported; ``hidden`` hides the file on Windows.
+        """
         if self.skip_output(out_key):
             previous = self.state.output(out_key)
             return previous["path"] if previous else desired_rel
-        new_list = getattr(report, f"new_{kind}")
-        updated_list = getattr(report, f"updated_{kind}")
-        data = text.encode("utf-8")
+        data = render()
         sha = hashlib.sha256(data).hexdigest()
         previous = self.state.output(out_key)
         if self.dry_run:
-            if previous is None or self.missing_only:
-                new_list.append(previous["path"] if previous else desired_rel)
-            elif previous["sha256"] != sha:
-                updated_list.append(previous["path"])
+            if previous and PurePosixPath(previous["path"]).suffix != PurePosixPath(desired_rel).suffix:
+                previous = None  # an older version's Markdown note, not this PDF
+            if report is not None:
+                if previous is None or self.missing_only:
+                    getattr(report, f"new_{kind}").append(previous["path"] if previous else desired_rel)
+                elif previous["sha256"] != sha:
+                    getattr(report, f"updated_{kind}").append(previous["path"])
             return previous["path"] if previous else desired_rel
         target_dir = self.dest / PurePosixPath(desired_rel).parent
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -844,18 +919,28 @@ class Syncer:
             fh.write(data)
         tmp_path = Path(tmp)
         try:
-            outcome, rel = self.place(out_key, desired_rel, tmp_path, sha, len(data), replace_in_place=True)
+            outcome, rel = self.place(
+                out_key, desired_rel, tmp_path, sha, len(data), replace_in_place=True, hidden=hidden
+            )
         finally:
             if tmp_path.exists():
                 tmp_path.unlink()
-        if outcome == "new" or (self.missing_only and outcome == "updated"):
-            new_list.append(rel)
-        elif outcome == "updated":
-            updated_list.append(rel)
+        if report is not None:
+            if outcome == "new" or (self.missing_only and outcome == "updated"):
+                getattr(report, f"new_{kind}").append(rel)
+            elif outcome == "updated":
+                getattr(report, f"updated_{kind}").append(rel)
         return rel
 
     def place(
-        self, out_key: str, desired_rel: str, tmp: Path, sha: str, size: int, replace_in_place: bool = False
+        self,
+        out_key: str,
+        desired_rel: str,
+        tmp: Path,
+        sha: str,
+        size: int,
+        replace_in_place: bool = False,
+        hidden: bool = False,
     ) -> tuple[str, str]:
         """Move a freshly fetched file into place without ever clobbering local work.
 
@@ -867,6 +952,7 @@ class Syncer:
           With replace_in_place (notes) the new version instead replaces the
           recorded path, or recreates it there if it was deleted.
         * An identical file already sitting at the target is adopted as-is.
+        ``hidden`` keeps the placed file hidden on Windows (the Markdown copy of a note).
         """
         if self.windows:
             desired_rel = fit_windows_path(self.dest, desired_rel)
@@ -875,26 +961,26 @@ class Syncer:
             prev_abs = self.dest / previous["path"]
             if previous["sha256"] == sha:
                 if not prev_abs.exists() and self.should_refetch(out_key):
-                    self._move_into(tmp, prev_abs)
+                    self._move_into(tmp, prev_abs, hidden)
                     return "new", previous["path"]
                 return "unchanged", previous["path"]
             if prev_abs.is_file() and sha256_file(prev_abs) == previous["sha256"]:
-                self._move_into(tmp, prev_abs)
+                self._move_into(tmp, prev_abs, hidden)
                 self.state.record_output(out_key, previous["path"], sha, size)
                 return "updated", previous["path"]
             if replace_in_place and not prev_abs.is_dir():
-                self._move_into(tmp, prev_abs)
+                self._move_into(tmp, prev_abs, hidden)
                 self.state.record_output(out_key, previous["path"], sha, size)
                 return "updated", previous["path"]
             rel, adopt = self.free_path(out_key, desired_rel, sha)
             if not adopt:
-                self._move_into(tmp, self.dest / rel)
+                self._move_into(tmp, self.dest / rel, hidden)
             self.state.record_output(out_key, rel, sha, size)
             return "updated", rel
 
         rel, adopt = self.free_path(out_key, desired_rel, sha)
         if not adopt:
-            self._move_into(tmp, self.dest / rel)
+            self._move_into(tmp, self.dest / rel, hidden)
         self.state.record_output(out_key, rel, sha, size)
         return ("unchanged" if adopt else "new"), rel
 
@@ -914,9 +1000,9 @@ class Syncer:
             candidate = numbered_variant(desired_rel, n, windows=self.windows)
 
     @staticmethod
-    def _move_into(tmp: Path, target: Path) -> None:
+    def _move_into(tmp: Path, target: Path, hidden: bool = False) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
-        set_hidden(tmp, False)  # the attribute would otherwise follow the file to its final name
+        set_hidden(tmp, hidden)  # the attribute follows the file to its final name
         os.replace(tmp, target)
 
 
@@ -951,9 +1037,12 @@ def run_sync(
         report.warnings.append(state.recovery)
     if not dry_run:
         remove_stale_partials(config.root, max_age=timedelta(0) if lock_held else STALE_PARTIAL_AGE)
+    selected: set[str] = set()
     if refetch_keys is not None:
         from blackboard_sync.deleted import missing_outputs
-        refetch_keys = refetch_keys & {row.key for row in missing_outputs(state, config.root)}
+        selected = refetch_keys & {row.key for row in missing_outputs(state, config.root)}
+        # A restored note brings back its hidden Markdown copy too, if that is gone.
+        refetch_keys = selected | {markdown_key(k) for k in selected if markdown_key(k) in state.outputs}
         all_terms = True
         term_name = None
         course_filters = sorted({key.split(":")[1] for key in refetch_keys})
@@ -1006,8 +1095,8 @@ def run_sync(
             )
         report.finished_at = _now_iso()
     if refetch_keys is not None:
-        remaining = sum(not (config.root / state.outputs[key]["path"]).exists() for key in refetch_keys)
-        report.message = f"{len(refetch_keys) - remaining} dosya indirildi."
+        remaining = sum(not (config.root / state.outputs[key]["path"]).exists() for key in selected)
+        report.message = f"{len(selected) - remaining} dosya indirildi."
         if remaining:
             report.message += f" {remaining} dosya indirilemedi; listede tutuldu."
     return report

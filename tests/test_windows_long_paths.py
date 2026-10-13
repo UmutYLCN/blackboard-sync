@@ -18,6 +18,7 @@ from blackboard_sync.paths import (
     fit_windows_folder,
     fit_windows_path,
     join_rel,
+    markdown_twin,
     sanitize_name,
 )
 from blackboard_sync.state import State
@@ -137,8 +138,10 @@ def test_deep_course_tree_syncs_within_the_limit(config, client, fake_bb, monkey
     assert len(deep) == 2
     slides = next(f for f in deep if f.endswith("/slides.pdf"))
     assert (config.dest / slides).read_bytes() == SLIDES
-    assert any(f.endswith("/Reading for this week.md") for f in deep)
-    assert all(len(str(config.dest)) + 1 + len(f) <= WINDOWS_MAX_PATH for f in files_under(config.dest))
+    note = next(f for f in deep if f.endswith("/Reading for this week.pdf"))
+    assert (config.dest / markdown_twin(note)).is_file()  # the hidden copy fits as well
+    every_file = [p.relative_to(config.dest).as_posix() for p in config.dest.rglob("*") if p.is_file()]
+    assert all(len(str(config.dest)) + 1 + len(f) <= WINDOWS_MAX_PATH for f in every_file)
     # The same folders are chosen again: nothing new, nothing downloaded twice.
     downloads = len(fake_bb.downloads())
     again = sync(config, client)
@@ -226,4 +229,5 @@ def test_deep_course_tree_on_real_windows(config, client, fake_bb):
     assert report.warnings == [] and all(c.warnings == [] for c in report.courses)
     deep = _deep_files(config)
     assert (config.dest / next(f for f in deep if f.endswith("/slides.pdf"))).read_bytes() == SLIDES
-    assert any(f.endswith("/Reading for this week.md") for f in deep)
+    note = next(f for f in deep if f.endswith("/Reading for this week.pdf"))
+    assert (config.dest / markdown_twin(note)).is_file()

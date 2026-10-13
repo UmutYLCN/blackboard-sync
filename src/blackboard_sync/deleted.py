@@ -7,7 +7,7 @@ from typing import Iterable
 
 from blackboard_sync.config import Config
 from blackboard_sync.state import State
-from blackboard_sync.sync import run_lock
+from blackboard_sync.sync import is_markdown_key, run_lock
 from blackboard_sync.system import sync_root
 
 T_TAB = "Silinenler"
@@ -30,12 +30,15 @@ class MissingOutput:
 
 
 def missing_outputs(state: State, root: Path) -> list[MissingOutput]:
-    """Only safe relative paths inside this University folder, never dismissed entries."""
+    """Only safe relative paths inside this University folder, never dismissed entries.
+
+    A note's hidden Markdown copy is not listed: restoring the note restores it.
+    """
     result = []
     resolved = root.resolve()
     for key, output in state.outputs.items():
         rel = PurePosixPath(output["path"])
-        if output.get("dismissed") or rel.is_absolute() or ".." in rel.parts:
+        if output.get("dismissed") or is_markdown_key(key) or rel.is_absolute() or ".." in rel.parts:
             continue
         target = root / rel
         try:

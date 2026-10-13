@@ -14,6 +14,8 @@ CHECK_LOGIN_RUNTIME = "--check-login-runtime"
 # Hidden self-test used by CI on the installed MSIX package: package identity and
 # the start-at-login startup task (see docs/MSIX.md).
 CHECK_PACKAGE = "--check-package"
+# Hidden self-test used by CI: draws a PDF note with the bundled fonts.
+CHECK_NOTE_PDF = "--check-note-pdf"
 CLI_COMMANDS = {"login", "sync", "check", "past-terms", "uninstall", "--version", "-h", "--help"}
 # CLI options that come before the subcommand; the menu bar app passes the
 # school from its settings window as ``--base-url URL sync ...``.
@@ -27,6 +29,11 @@ def main() -> int:
 
         web_view = check_runtime()
         print(f"login runtime ok (Playwright, {web_view})")
+        return 0
+    if args == [CHECK_NOTE_PDF]:
+        from blackboard_sync.notepdf import check_runtime as check_note_pdf
+
+        print(check_note_pdf())
         return 0
     if args == [CHECK_PACKAGE] and sys.platform == "win32":
         from blackboard_sync.windows.autostart import check_package

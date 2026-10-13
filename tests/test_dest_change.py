@@ -85,7 +85,9 @@ def test_move_leaves_the_students_own_files_and_their_folder(config, client, tmp
 
     assert result.moved == len(files) and not result.old_removed
     assert own.read_text(encoding="utf-8") == "mine"
-    assert files_under(config.dest) == [f"{CSE}/.DS_Store", f"{CSE}/my notes.txt"]
+    assert files_under(config.dest) == [f"{CSE}/my notes.txt"]
+    assert (config.dest / CSE / ".DS_Store").exists()
+    assert not list(config.dest.rglob("*.md"))  # the notes' hidden copies moved too
     assert files_under(sync_root(new)) == files
     # Only the folder with the student's file is left.
     assert [p.name for p in (config.dest / "2026-2027 Güz").iterdir()] == ["CSE303 Algorithm Analysis"]
@@ -259,7 +261,9 @@ def test_windows_move_renames_folders_for_the_new_path_budget(config, client, fa
     moved = files_under(sync_root(new))
     assert len(moved) == len(files) and moved != files  # the shortened folders were named again
     assert all(len(str(sync_root(new))) + 1 + len(f) <= WINDOWS_MAX_PATH for f in moved)
-    assert sorted(o["path"] for o in state(config).outputs.values()) == moved  # the state follows
+    root = sync_root(new)
+    every_file = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+    assert sorted(o["path"] for o in state(config).outputs.values()) == every_file  # the state follows
     slides = next(f for f in moved if f.endswith("/slides.pdf"))
     assert (sync_root(new) / slides).read_bytes() == SLIDES
 

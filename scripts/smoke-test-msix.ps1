@@ -76,6 +76,8 @@ try {
   # package's programs, so they run there, writing to a file.
   $out = Invoke-InPackage "--check-login-runtime"
   Check ($out -match "login runtime ok \(Playwright, WebView2\)") "the sign-in runtimes (Playwright driver, WebView2 window) load"
+  $out = Invoke-InPackage "--check-note-pdf"
+  Check ($out -match "note pdf ok") "notes are drawn as PDF with the bundled fonts"
   $out = Invoke-InPackage "--check-package"
   Check ($out -match "package ok \(.+\)") "package identity and the startup task work"
   Check ($out -match "updater off") "the packaged self-updater is off"
