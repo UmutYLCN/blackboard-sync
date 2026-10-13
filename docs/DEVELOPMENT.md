@@ -16,12 +16,12 @@ finds your courses for the current term, and copies everything in them to
         CSE303_Algorithm_Analysis_for_Computer_Engineering_Syllabus_v1.pdf
       Lecture Notes/
         Week 1/
-          Intro - Asymptotic Notation.md
+          Intro - Asymptotic Notation.pdf
           week1-slides.pdf
         Week 2/
-      Course Website - Visualizations.md
+      Course Website - Visualizations.pdf
       Duyurular/
-        2026-09-20 Welcome to CSE303.md
+        2026-09-20 Welcome to CSE303.pdf
     MTH201 Linear Algebra/
     ...
 ```
@@ -30,8 +30,9 @@ finds your courses for the current term, and copies everything in them to
   with their original names.
 - **Everything that is not a file** — web links, text pages, assignments and
   tests, discussions, external tools and **announcements** — becomes a small
-  Markdown note (`.md`) in the matching folder, with its text and a link back
-  to Blackboard.
+  PDF note in the matching folder, with its text and clickable links, including
+  one back to Blackboard. The note's Markdown source is saved beside it as a
+  hidden file (`.Intro - Asymptotic Notation.md`) for tools that read notes.
 - Runs are **incremental**: only new or changed items are fetched. Nothing
   local is ever deleted.
 - New term? It switches automatically; no course URLs to configure.
@@ -190,7 +191,7 @@ window is in front) quits. The start at login (`--background`) stays quiet: no
 window. The menu bar icon's menu is the same as before; **Ayarlar…** in it
 opens the main window on **Genel**.
 
-A sidebar switches between three sections:
+A sidebar switches between four sections:
 
 - **Başlangıç** until you first sign in: three steps and a short form (school
   address, folder, **Bilgisayar açılınca başlat**) with **Giriş yap**, which
@@ -208,6 +209,8 @@ A sidebar switches between three sections:
   drawn natively (AppKit / Tk canvas) and stands still with reduce motion
   (macOS) or animations turned off (Windows).
 - **Genel**: the [settings](#settings).
+- **Takvim**: due dates grouped by local day, upcoming first and elapsed dates
+  separately. Clicking opens an existing downloaded note or Blackboard.
 - **Silinenler**: deleted files to bring back (see [Settings](#settings)).
 
 Under the sections, at the bottom of the sidebar, the account card shows who
@@ -468,6 +471,24 @@ On Windows a few more rules apply there only (see
   time — an unchanged item is skipped without any download;
 - every local file written (attachment, embedded file or note), with its path
   and SHA-256.
+- `deadline_courses`: complete student-visible grade-column metadata for each
+  synced course. The normal sync reads the paginated public v2
+  `/courses/{courseId}/gradebook/columns` endpoint and uses only `grading.due`.
+  Dates update independently of content `modified`. Removed dates disappear
+  on the next successful fetch; a failed fetch keeps the prior list and marks
+  the calendar incomplete. Opening **Takvim** only reads this local cache.
+  Archive downloads and selected-file restores leave the calendar alone.
+
+The source is documented in [Anthology's REST schema](https://developer.anthology.com/assets/lib/swagger-ui/swagger-index.html).
+Enrolled students can read `grading.due` when the course's My Grades tool and
+the column are visible. The content handler documents `gradeColumnId`, but
+does not document a due date. The calendar API requires an enabled course
+calendar and caps a query at 16 weeks, so it is not used. This app does not
+infer dates from availability windows or prose and does not read submissions
+or attempt status; elapsed dates can include already completed work.
+Columns with no `contentId` and no matching content-handler `gradeColumnId`
+open the course's Grades page. The bound source check used the official
+schema and synthetic responses; no live university session was available.
 
 When an item changes on Blackboard, its files are fetched again and compared:
 

@@ -113,13 +113,26 @@ def numbered_variant(rel_path: str, n: int, *, windows: bool | None = None) -> s
 
 
 def note_name(title: str, *, windows: bool | None = None) -> str:
-    """File name for a Markdown note about an item titled ``title``."""
+    """File name for the PDF note about an item titled ``title``."""
     windows = is_windows() if windows is None else windows
     base = sanitize_name(title, windows=windows)
     base = truncate_name(
-        base, MAX_NAME_BYTES - len(".md"), WINDOWS_MAX_NAME_CHARS - len(".md") if windows else None
+        base, MAX_NAME_BYTES - len(".pdf"), WINDOWS_MAX_NAME_CHARS - len(".pdf") if windows else None
     )
-    return base + ".md"
+    return base + ".pdf"
+
+
+def markdown_twin(rel_path: str) -> str:
+    """Where the hidden Markdown copy of the note at ``rel_path`` lives.
+
+    "Week 1/Intro.pdf" -> "Week 1/.Intro.md": the leading dot hides it in Finder,
+    and the sync sets the hidden attribute for Windows Explorer, so the folder
+    shows only the PDF. One name on both systems, exactly as long as the PDF's,
+    so it fits wherever the PDF fits. Also hides an older version's "Intro.md".
+    """
+    path = PurePosixPath(rel_path)
+    stem, _ = split_ext(path.name)
+    return str(path.with_name(f".{stem}.md"))
 
 
 def fit_windows_path(base: Path, rel_path: str, limit: int = WINDOWS_MAX_PATH - NUMBER_SUFFIX_ROOM) -> str:

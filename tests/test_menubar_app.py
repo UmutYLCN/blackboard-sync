@@ -8,6 +8,35 @@ from rumps.rumps import NSApp
 from blackboard_sync.menubar.app import forget_menu_items
 
 
+def test_native_calendar_draws_days_and_routes_item_clicks(tmp_path):
+    from datetime import datetime, timezone
+    from blackboard_sync import deadlines
+    from blackboard_sync.menubar.main_window_model import CALENDAR
+    from blackboard_sync.state import State
+    state = State(tmp_path / "cache.json")
+    now = datetime(2026, 10, 13, 12, tzinfo=timezone.utc)
+    state.deadline_courses["course"] = {"name": "Ders adı", "items": [
+        deadlines.column_deadline({"id": "grade", "name": "Ödev", "contentId": "content",
+                                   "grading": {"due": "2026-10-14T10:00:00Z"}}, "course", "https://school.edu")]}
+    page = [deadlines.calendar_page(state, tmp_path, now)]
+    opened = []
+    window, _, _ = make_window(tmp_path, on_deadlines=lambda: page[0], on_deadline=opened.append)
+    window.select(CALENDAR)
+    assert not window.pages[CALENDAR].isHidden()
+    assert str(window.nav_items[CALENDAR][2].stringValue()) == "Takvim"
+    assert window.deadline_targets == [page[0].days[0].rows[0].target]
+    class Click:
+        def tag(self):
+            return 0
+    window.target.openDeadline_(Click())
+    assert opened == window.deadline_targets
+    page[0] = deadlines.DeadlinePage()
+    window.select(CALENDAR)
+    assert window.deadline_targets == []
+    assert window.calendar_scroll.documentView().frame().size.height > 0
+    window.window.close()
+
+
 @pytest.mark.parametrize("frozen", [False, True])
 def test_idle_uses_the_logo_as_an_18_point_template(frozen, tmp_path, monkeypatch):
     import shutil
@@ -645,6 +674,9 @@ def menu_app(config, monkeypatch):
         def __init__(self, values, status, **handlers):
             from blackboard_sync.menubar.main_window_model import WindowState
 
+            # Creating the NSWindow as an accessory assigns it the wrong Space
+            # role. Every entry point must promote the app before construction.
+            assert docks == [True]
             self.state, self.handlers, self.shown, self.statuses = WindowState(), handlers, [], []
             Window.built.append(self)
 

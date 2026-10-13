@@ -11,7 +11,7 @@ import time
 import webbrowser
 from pathlib import Path
 
-from blackboard_sync import deleted, relocate, runtime, updater, uninstall
+from blackboard_sync import deadlines, deleted, relocate, runtime, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, settings_form
@@ -325,6 +325,11 @@ class TrayApp:
             return
         elif action == "settings":
             self.show_window(GENERAL)
+        elif action == "deadline":
+            if value.startswith(self.config.base_url.rstrip("/") + "/"):
+                webbrowser.open(value)
+            else:
+                self.dispatch("open", value)
         elif action in ("folder", "open"):
             target = self.model.root if action == "folder" else open_target(self.model.root, value)
             if target and target.exists():
@@ -465,6 +470,8 @@ class TrayApp:
                                      self.settings_submitted, self.dispatch, self.window_closed,
                                      on_values=self.form_values,
                                      on_open=lambda path: self.dispatch("open", path),
+                                     on_deadlines=lambda: deadlines.load_calendar(self.config, self.settings.dest),
+                                     on_deadline=lambda target: self.dispatch("deadline", target),
                                      on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
                                      on_deleted_action=self.deleted_action,
                                      on_past_term=self.download_past_term,

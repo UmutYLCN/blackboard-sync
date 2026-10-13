@@ -2,12 +2,14 @@ import unicodedata
 from pathlib import Path
 
 from blackboard_sync.paths import (
+    MAX_NAME_BYTES,
     NUMBER_SUFFIX_ROOM,
     WINDOWS_MAX_NAME_CHARS,
     WINDOWS_MAX_PATH,
     course_code_and_title,
     course_folder_name,
     fit_windows_path,
+    markdown_twin,
     note_name,
     numbered_variant,
     sanitize_name,
@@ -66,7 +68,18 @@ def test_numbered_variant():
 
 
 def test_note_name():
-    assert note_name("Course Website: Visualizations") == "Course Website - Visualizations.md"
+    assert note_name("Course Website: Visualizations") == "Course Website - Visualizations.pdf"
+
+
+def test_markdown_twin_is_a_hidden_name_beside_the_pdf():
+    assert markdown_twin("Week 1/Intro.pdf") == "Week 1/.Intro.md"
+    assert markdown_twin("Week 1/v1.2 notes (2).pdf") == "Week 1/.v1.2 notes (2).md"
+    # An older version's visible note gets the same hidden name.
+    assert markdown_twin("Week 1/Intro.md") == "Week 1/.Intro.md"
+    for windows in (False, True):
+        pdf = note_name("x" * 300, windows=windows)
+        assert len(markdown_twin(pdf)) == len(pdf)
+        assert len(markdown_twin(pdf).encode()) <= MAX_NAME_BYTES
 
 
 def test_course_code_from_course_id_when_name_has_none():
@@ -114,6 +127,7 @@ def test_windows_names_are_kept_short():
     out = sanitize_name("a" * 300 + ".pdf", windows=True)
     assert len(out) == WINDOWS_MAX_NAME_CHARS and out.endswith(".pdf")
     assert len(note_name("b" * 300, windows=True)) == WINDOWS_MAX_NAME_CHARS
+    assert note_name("b" * 300, windows=True).endswith(".pdf")
     variant = numbered_variant("Week 1/" + "c" * 116 + ".pdf", 12, windows=True)
     assert variant.endswith(" (12).pdf") and len(variant.split("/")[-1]) <= WINDOWS_MAX_NAME_CHARS
 

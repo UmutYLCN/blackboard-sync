@@ -10,7 +10,7 @@ from blackboard_sync.errors import SkippedMedia
 from blackboard_sync.state import State
 from blackboard_sync.sync import Syncer
 
-from .conftest import SAMPLE_FILES
+from .conftest import SAMPLE_FILES, note_text
 from .test_announcement_files import add_announcement
 from .test_progress_saving import Killed, kill_on_item, writes  # noqa: F401
 from .test_past_terms import COURSE as PAST_COURSE, PAST, ROOT as PAST_ROOT, archive  # noqa: F401
@@ -81,9 +81,9 @@ def test_video_attachment_and_embedded_video_are_links_not_downloads(config, cli
     assert bodies(fake_bb) == [] and bodies(fake_bb) == []
     assert not [w for c in report.courses for w in c.warnings]
     assert not any(f.endswith((".mp4", ".partial")) for f in tree(config)) and no_partials(config)
-    attachment_note = (config.dest / CSE / "Lecture.md").read_text(encoding="utf-8")
+    attachment_note = note_text(config.dest / CSE / "Lecture.pdf")
     assert f"{HEADING}\n- lecture1.mp4: <{BASE}{video}>\n" in attachment_note
-    note = (config.dest / CSE / "Week recording.md").read_text(encoding="utf-8")
+    note = note_text(config.dest / CSE / "Week recording.pdf")
     assert f"{HEADING}\n- week1-recording.mp4: <{BASE}/bbcswebdav/xid-900_1>\n" in note
     assert "Recording:" in note and "Files saved" not in note and "TOKEN" not in note
 
@@ -111,7 +111,7 @@ def test_audio_and_other_video_types_are_links(config, client, fake_bb, mime):
     attach(fake_bb, "_v1_1", "_va_1", "talk", mime)
     sync(config, client)
     assert bodies(fake_bb) == []
-    assert "- talk: <" in (config.dest / CSE / "Lecture.md").read_text(encoding="utf-8")
+    assert "- talk: <" in note_text(config.dest / CSE / "Lecture.pdf")
 
 
 def test_media_extension_without_a_mime_type_is_skipped_before_any_request(config, client, fake_bb):
@@ -119,8 +119,8 @@ def test_media_extension_without_a_mime_type_is_skipped_before_any_request(confi
     attach(fake_bb, "_v3_1", "_va_3", "clip.mov", "application/octet-stream", title="Clip")
     sync(config, client)
     assert path not in fake_bb.calls and bodies(fake_bb) == []
-    assert (config.dest / CSE / "Lecture.md").read_text(encoding="utf-8").count("- Podcast ep 1.MP3: <") == 1
-    assert "- clip.mov: <" in (config.dest / CSE / "Clip.md").read_text(encoding="utf-8")
+    assert note_text(config.dest / CSE / "Lecture.pdf").count("- Podcast ep 1.MP3: <") == 1
+    assert "- clip.mov: <" in note_text(config.dest / CSE / "Clip.pdf")
 
 
 def test_video_content_type_header_stops_the_download_before_the_body(config, client, fake_bb):
@@ -132,8 +132,8 @@ def test_video_content_type_header_stops_the_download_before_the_body(config, cl
 
     assert path in fake_bb.calls and bodies(fake_bb) == []
     assert not [w for c in report.courses for w in c.warnings]
-    assert no_partials(config) and not any("session-5" in f for f in tree(config) if f != f"{CSE}/Lecture.md")
-    assert "- session-5: <" in (config.dest / CSE / "Lecture.md").read_text(encoding="utf-8")
+    assert no_partials(config) and not any("session-5" in f for f in tree(config) if f != f"{CSE}/Lecture.pdf")
+    assert "- session-5: <" in note_text(config.dest / CSE / "Lecture.pdf")
 
 
 def test_header_gate_leaves_no_temporary_file(tmp_path, client, fake_bb):
@@ -172,7 +172,7 @@ def test_unknown_large_file_is_still_downloaded(config, client, fake_bb):
     assert (config.dest / CSE / "dataset.bin").read_bytes() == BIG
     assert (config.dest / CSE / "notes.pdf").read_bytes() == b"%PDF"
     assert path in bodies(fake_bb)
-    assert not (config.dest / CSE / "Data.md").exists()  # a plain file still needs no note
+    assert not (config.dest / CSE / "Data.pdf").exists()  # a plain file still needs no note
 
 
 def test_an_item_with_a_video_and_a_pdf_keeps_the_pdf_and_links_the_video(config, client, fake_bb):
@@ -191,7 +191,7 @@ def test_an_item_with_a_video_and_a_pdf_keeps_the_pdf_and_links_the_video(config
     sync(config, client)
 
     assert (config.dest / CSE / "slides.pdf").read_bytes() == b"%PDF"
-    note = (config.dest / CSE / "Week 3.md").read_text(encoding="utf-8")
+    note = note_text(config.dest / CSE / "Week 3.pdf")
     assert "Files saved next to this note:\n- slides.pdf\n" in note
     assert "- week3.mp4: <" in note and bodies(fake_bb) == [f"{base}/_p_1/download"]
 
@@ -201,7 +201,7 @@ def test_description_file_that_is_a_video_becomes_a_link(config, client, fake_bb
     fake_bb.files["/bbcswebdav/xid-901_1"] = BIG
     sync(config, client)
     assert bodies(fake_bb) == []
-    note = (config.dest / CSE / "Week recording.md").read_text(encoding="utf-8")
+    note = note_text(config.dest / CSE / "Week recording.pdf")
     assert f"{HEADING}\n- overview.mov: <{BASE}/bbcswebdav/xid-901_1>" in note
 
 
@@ -210,7 +210,7 @@ def test_announcement_video_is_a_link_and_not_reprocessed(config, client, fake_b
     report = sync(config, client)
     assert bodies(fake_bb) == [] and bodies(fake_bb) == []
     assert not [w for c in report.courses for w in c.warnings]
-    note = (config.dest / CSE / "Duyurular" / "2026-10-01 Exam rooms.md").read_text(encoding="utf-8")
+    note = note_text(config.dest / CSE / "Duyurular" / "2026-10-01 Exam rooms.pdf")
     assert "Watch this." in note and f"{HEADING}\n- rec.mp4: <{BASE}/bbcswebdav/xid-902_1>" in note
     assert State.load(config.state_file).items["announcement:_13004_1:_n3_1"]["media"]
 
@@ -226,7 +226,7 @@ def test_announcement_video_found_only_by_its_response_headers(config, client, f
     fake_bb.files[path], fake_bb.content_types[path] = BIG, "video/mp4"
     sync(config, client)
     assert path in fake_bb.calls and bodies(fake_bb) == [] and no_partials(config)
-    assert "- rec: <" in (config.dest / CSE / "Duyurular" / "2026-10-01 Exam rooms.md").read_text(encoding="utf-8")
+    assert "- rec: <" in note_text(config.dest / CSE / "Duyurular" / "2026-10-01 Exam rooms.pdf")
 
 
 def test_past_term_download_skips_videos_too(config, client, archive):  # noqa: F811
@@ -236,7 +236,7 @@ def test_past_term_download_skips_videos_too(config, client, archive):  # noqa: 
     sync(config, client, term_name=PAST)
     assert (config.dest / PAST_COURSE / "second.pdf").exists()
     assert not (config.dest / PAST_COURSE / "lecture.mp4").exists()
-    assert "- lecture.mp4: <" in (config.dest / PAST_COURSE / "Lecture.md").read_text(encoding="utf-8")
+    assert "- lecture.mp4: <" in note_text(config.dest / PAST_COURSE / "Lecture.pdf")
 
 
 def test_every_fetch_file_path_goes_through_the_gate(config, client, fake_bb):
@@ -263,7 +263,7 @@ def test_a_video_saved_by_an_older_version_stays_and_is_not_downloaded_again(con
     sync(config, client)
 
     assert old.read_bytes() == b"old video" and bodies(fake_bb) == []
-    note_path = config.dest / CSE / "Lecture.md"
+    note_path = config.dest / CSE / "Lecture.pdf"
     assert not note_path.exists()  # nothing is left to link: the file is still saved locally
     state = State.load(config.state_file)
     assert state.output("attachment:_13004_1:_va_1")["path"] == f"{CSE}/lecture1.mp4"
@@ -287,7 +287,7 @@ def test_a_skipped_video_is_checkpointed_and_a_killed_run_resumes_without_it(
     assert path in fake_bb.calls and bodies(fake_bb) == [] and no_partials(config)
     item = State.load(config.state_file).items["content:_13004_1:_v1_1"]
     assert item["media"] == ["attachment:_13004_1:_va_1"] and not item.get("partial")
-    assert "- session-5: <" in (config.dest / CSE / "Lecture.md").read_text(encoding="utf-8")
+    assert "- session-5: <" in note_text(config.dest / CSE / "Lecture.pdf")
 
     writes.dead = False
     fake_bb.calls.clear()

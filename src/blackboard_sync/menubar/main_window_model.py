@@ -13,6 +13,7 @@ Applications, Launchpad or the Start menu, also while the app already runs; the
 - Genel: the settings form (``settings_form``). Its Vazgeç/Kaydet bar appears
   only once something was changed, and saving keeps the window open.
 - Silinenler: deleted files to bring back (``deleted``).
+- Takvim: cached grade-column due dates, grouped by local day (``deadlines``).
 
 The account (initials, name, the last sync, a status badge or "Giriş yap")
 sits at the bottom of the sidebar, under the sections, once Başlangıç is done.
@@ -31,7 +32,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
 
-from blackboard_sync import deleted
+from blackboard_sync import deadlines, deleted
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     T_LOGGING_IN,
@@ -45,14 +46,15 @@ from blackboard_sync.menubar.model import (
 )
 from blackboard_sync.menubar.settings_form import T_SAVE, FormValues, WindowStatus, window_status
 
-OVERVIEW, GENERAL, DELETED = "overview", "general", "deleted"
-SECTIONS = (OVERVIEW, GENERAL, DELETED)
+OVERVIEW, GENERAL, DELETED, CALENDAR = "overview", "general", "deleted", "calendar"
+SECTIONS = (OVERVIEW, CALENDAR, GENERAL, DELETED)
 
 T_WINDOW_TITLE = "Blackboard Sync"
 T_NAV_START = "Başlangıç"
 T_NAV_OVERVIEW = "Genel bakış"
 T_NAV_GENERAL = "Genel"
 T_NAV_DELETED = deleted.T_TAB
+T_NAV_CALENDAR = deadlines.T_TAB
 
 # Başlangıç
 T_START_TITLE = "Ders dosyalarınız burada başlayacak."

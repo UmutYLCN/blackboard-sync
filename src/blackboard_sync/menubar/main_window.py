@@ -58,9 +58,11 @@ from AppKit import (
 )
 from Foundation import NSURL, NSMakeRect, NSObject, NSTimer, NSRunLoop, NSRunLoopCommonModes
 
-from blackboard_sync import __version__, deleted
+from blackboard_sync import __version__, deadlines, deleted
 from blackboard_sync.menubar.main_window_model import (
     DELETED,
+    CALENDAR,
+    SECTIONS,
     GENERAL,
     OVERVIEW,
     SCENE_COMPACT,
@@ -116,6 +118,7 @@ from blackboard_sync.menubar.settings_form import (
     window_height,
 )
 from blackboard_sync.menubar.sync_scene_view import SyncSceneView
+from blackboard_sync.menubar.presentation import configure_main_window, present_main_window
 from blackboard_sync.settings import display_path
 
 # The window keeps its width; only the height follows the screen and the student.
@@ -138,7 +141,7 @@ FIRST_SCENE = (320, 187)  # the large one in the empty list on the first sync
 # Buttons whose title changes with the app's state ("Giriş yap" / "Hesaptan
 # çıkış yap") keep one width so the row does not jump.
 ACTION_WIDTH = 160
-NAV_SYMBOLS = {OVERVIEW: "house", GENERAL: "gearshape", DELETED: "arrow.counterclockwise"}
+NAV_SYMBOLS = {OVERVIEW: "house", CALENDAR: "calendar", GENERAL: "gearshape", DELETED: "arrow.counterclockwise"}
 
 # Text fields get Cmd+V and friends from the main menu; while it is not there
 # (the app is a menu bar accessory) the window forwards them itself.
@@ -170,7 +173,10 @@ class _Target(NSObject):
     """Receives clicks, text edits and the window-closed notice for ``MainWindow``."""
 
     def nav_(self, sender):
-        self.owner.select((OVERVIEW, GENERAL, DELETED)[int(sender.tag())])
+        self.owner.select(SECTIONS[int(sender.tag())])
+
+    def openDeadline_(self, sender):
+        self.owner.on_deadline(self.owner.deadline_targets[int(sender.tag())])
 
     def sync_(self, _sender):
         self.owner.on_action("sync")
@@ -351,11 +357,16 @@ class MainWindow:
         on_past_term: Callable[[str], object] = lambda name: None,
         on_section: Callable[[str], None] = lambda section: None,
         reopen_where: str = "Applications veya Launchpad'den",
+        on_deadlines=deadlines.DeadlinePage,
+        on_deadline: Callable[[str], None] = lambda target: None,
         recent_seen=None,
         on_seen=lambda: None,
     ):
         self.on_submit, self.on_action, self.on_close = on_submit, on_action, on_close
         self.on_section = on_section
+        self.on_deadlines, self.on_deadline = on_deadlines, on_deadline
+        self._drawn_deadlines = None
+        self.deadline_targets = []
         self.recent_seen, self.on_seen = recent_seen, on_seen
         self._recent_timer = None
         self.on_values = on_values or (lambda: self.saved)
@@ -381,6 +392,7 @@ class MainWindow:
             False,
         )
         self.window.setReleasedWhenClosed_(False)
+        configure_main_window(self.window)
         self.window.setTitle_(T_WINDOW_TITLE)
         self.window.setDelegate_(self.target)
         root = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, WIDTH, HEIGHT))
@@ -388,6 +400,7 @@ class MainWindow:
         self._build_sidebar(root)
         self.pages = {}
         for name, build in (("start", self._build_start), (OVERVIEW, self._build_overview),
+                            (CALENDAR, self._build_calendar),
                             (GENERAL, self._build_general), (DELETED, self._build_deleted)):
             page = _FlippedView.alloc().initWithFrame_(NSMakeRect(SIDEBAR, 0, PAGE, HEIGHT))
             page.setAutoresizingMask_(NSViewHeightSizable)
@@ -432,7 +445,7 @@ class MainWindow:
 
         self.nav_items = {}
         y = 76
-        for index, section in enumerate((OVERVIEW, GENERAL, DELETED)):
+        for index, section in enumerate(SECTIONS):
             highlight = _pill(NSMakeRect(10, y, SIDEBAR - 20, 32), NSColor.quaternaryLabelColor())
             highlight.setCornerRadius_(6)
             view.addSubview_(highlight)
@@ -457,6 +470,7 @@ class MainWindow:
             y += 36
         self.nav_items[GENERAL][2].setStringValue_(T_NAV_GENERAL)
         self.nav_items[DELETED][2].setStringValue_(T_NAV_DELETED)
+        self.nav_items[CALENDAR][2].setStringValue_(deadlines.T_TAB)
 
         # The account at the bottom: who is signed in, the last sync and a badge or "Giriş yap".
         self.sidebar_view = view
@@ -849,6 +863,80 @@ class MainWindow:
         self.button_bar.addSubview_(self.error_label)
         page.addSubview_(self.button_bar)
 
+    def _build_calendar(self, page) -> None:
+        self._header(page, deadlines.T_TAB)
+        hint, height = _wrapping(deadlines.T_HINT, INNER, secondary=True)
+        hint.setFrame_(NSMakeRect(PAD, 62, INNER, height))
+        page.addSubview_(hint)
+        y = 62 + height + 16
+        self.calendar_scroll, _ = _scroll(NSMakeRect(PAD, y, INNER, HEIGHT - y - PAD), 1)
+        self.calendar_scroll.setAutoresizingMask_(NSViewHeightSizable)
+        page.addSubview_(self.calendar_scroll)
+
+    def refresh_calendar(self) -> None:
+        data = self.on_deadlines()
+        if data == self._drawn_deadlines:
+            return
+        self._drawn_deadlines = data
+        self.deadline_targets = []
+        document = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, INNER, 1))
+        y = 8
+        if data.message:
+            message, height = _wrapping(data.message, INNER - 16, secondary=True)
+            message.setFrame_(NSMakeRect(8, y, INNER - 16, height))
+            document.addSubview_(message)
+            y += height + 16
+        if not data.days:
+            empty = _label(deadlines.T_EMPTY, secondary=True)
+            empty.setFrame_(NSMakeRect(8, y, INNER - 16, 20))
+            document.addSubview_(empty)
+            y += 32
+        section = None
+        for day in data.days:
+            if day.past != section:
+                section = day.past
+                heading = _label(deadlines.T_PAST if day.past else deadlines.T_UPCOMING, 15, bold=True)
+                heading.setFrame_(NSMakeRect(8, y, INNER - 16, 24))
+                document.addSubview_(heading)
+                y += 32
+                if day.past:
+                    hint, height = _wrapping(deadlines.T_PAST_HINT, INNER - 16, secondary=True)
+                    hint.setFrame_(NSMakeRect(8, y, INNER - 16, height))
+                    document.addSubview_(hint)
+                    y += height + 12
+            height = 42 + len(day.rows) * ROW_HEIGHT
+            card = _card(NSMakeRect(0, y, INNER, height), warning=day.past)
+            document.addSubview_(card)
+            content = card.contentView()
+            title = _label(day.title, 13, bold=True)
+            title.setFrame_(NSMakeRect(16, 12, INNER - 32, 18))
+            content.addSubview_(title)
+            for index, row in enumerate(day.rows):
+                top = 42 + index * ROW_HEIGHT
+                time_label = _label(row.time, 13, bold=True)
+                time_label.setFrame_(NSMakeRect(16, top + 10, 58, 20))
+                content.addSubview_(time_label)
+                name = _label(row.title, 13)
+                name.setFrame_(NSMakeRect(86, top + 7, INNER - 102, 18))
+                name.setToolTip_(row.title)
+                content.addSubview_(name)
+                course = _label(row.course, _small(), secondary=True)
+                course.setFrame_(NSMakeRect(86, top + 27, INNER - 102, 18))
+                course.setToolTip_(row.course)
+                content.addSubview_(course)
+                button = NSButton.buttonWithTitle_target_action_("", self.target, "openDeadline:")
+                button.setBordered_(False)
+                button.setTransparent_(True)
+                button.setTag_(len(self.deadline_targets))
+                self.deadline_targets.append(row.target)
+                button.setAccessibilityLabel_(f"{row.title}, {row.course}, {row.time}")
+                button.setToolTip_("İndirilen notu aç" if not row.target.startswith("https://") else "Blackboard'da aç")
+                button.setFrame_(NSMakeRect(0, top, INNER, ROW_HEIGHT))
+                content.addSubview_(button)
+            y += height + 16
+        document.setFrame_(NSMakeRect(0, 0, INNER, y))
+        self.calendar_scroll.setDocumentView_(document)
+
     def _build_deleted(self, page) -> None:
         self._header(page, T_NAV_DELETED)
         hint, height = _wrapping(deleted.T_HINT, INNER, secondary=True)
@@ -917,10 +1005,7 @@ class MainWindow:
         self._animate()
         if not self.window.isVisible():
             self.fit_to_screen()
-        if self.window.isMiniaturized():
-            self.window.deminiaturize_(None)
-        NSApp.activateIgnoringOtherApps_(True)
-        self.window.makeKeyAndOrderFront_(None)
+        present_main_window(self.window, NSApp)
         if self.recent_seen is not None and self._recent_timer is None:
             self._recent_timer = NSTimer.timerWithTimeInterval_target_selector_userInfo_repeats_(
                 0.25, self.target, "recentTick:", None, True)
@@ -955,6 +1040,8 @@ class MainWindow:
             button.setAccessibilityLabel_(title.stringValue())
         if section == DELETED:
             self.refresh_deleted()
+        elif section == CALENDAR:
+            self.refresh_calendar()
 
     def values(self) -> FormValues:
         return FormValues(
@@ -1043,6 +1130,7 @@ class MainWindow:
         self._layout_overview()
         self._animate()
         self._draw_recent()
+        self.refresh_calendar()
         # The account, at the bottom of the sidebar.
         self.account_card.setHidden_(not status.shows_account)
         card = status.account

@@ -23,6 +23,7 @@ jobs:
       # Both sign-in methods can load what they need: the Playwright driver and
       # the in-app window's web component (WKWebView / WebView2).
       - run: python packaging/app_entry.py --check-login-runtime
+      - run: python packaging/app_entry.py --check-note-pdf
       # Windows' default is no long paths (MAX_PATH = 260). Switch them off for a
       # new process and sync a deep course tree into a real folder (audit B9).
       - name: Deep folders without long paths

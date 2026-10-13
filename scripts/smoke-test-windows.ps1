@@ -47,6 +47,10 @@ $out = (& "$app\blackboard-sync-cli.exe" --check-login-runtime 2>&1) -join "`n"
 Write-Host $out
 Check ($out -match "login runtime ok \(Playwright, WebView2\)") "the sign-in runtimes (Playwright driver, WebView2 window) load"
 
+$out = (& "$app\blackboard-sync-cli.exe" --check-note-pdf 2>&1) -join "`n"
+Write-Host $out
+Check ($out -match "note pdf ok") "notes are drawn as PDF with the bundled fonts"
+
 # The GUI itself: a fresh profile shows the main window (Başlangıç), in front.
 $shown = Wait-Until 45 { (Test-Path $log) -and (MainWindow) }
 Check ($null -ne (Get-Process -Name "Blackboard Sync" -ErrorAction SilentlyContinue)) "the installer started the app"

@@ -13,9 +13,10 @@ import logging
 import subprocess
 import sys
 import threading
+import webbrowser
 from pathlib import Path
 
-from blackboard_sync import deleted, runtime, update_macos, updater, uninstall
+from blackboard_sync import deadlines, deleted, runtime, update_macos, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, launchagent, settings_form
@@ -508,6 +509,12 @@ def build_app(config: Config, show_window: bool = False):
                     self._save()
                     self.refresh()
 
+        def open_deadline(self, target: str) -> None:
+            if target.startswith(self.config.base_url.rstrip("/") + "/"):
+                webbrowser.open(target)
+            else:
+                self.open_recent(target)
+
         def toggle_autostart(self, _sender=None) -> None:
             try:
                 if launchagent.is_installed():
@@ -545,6 +552,10 @@ def build_app(config: Config, show_window: bool = False):
             """Open the main window (or bring it forward); the Dock icon comes with it."""
             if self._uninstalling:
                 return
+            # AppKit assigns a window its Space role when it is created. A
+            # window built as an accessory can join another app's full-screen
+            # Space even after the app switches to regular activation policy.
+            set_dock_icon(True)
             if self._window is None:
                 from blackboard_sync.menubar.main_window import MainWindow
 
@@ -556,6 +567,8 @@ def build_app(config: Config, show_window: bool = False):
                     on_close=self._window_closed,
                     on_values=self.form_values,
                     on_open=self.open_recent,
+                    on_deadlines=lambda: deadlines.load_calendar(self.config, self.settings.dest),
+                    on_deadline=self.open_deadline,
                     on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
                     on_deleted_action=self.deleted_action,
                     on_past_term=self.download_past_term,
@@ -566,7 +579,6 @@ def build_app(config: Config, show_window: bool = False):
             if not self.window_open:
                 self.model.reload_past_terms()
             log.info("showing the main window")
-            set_dock_icon(True)
             self._window.show(section)
             self.refresh()  # on Genel, starts looking up the past terms
 

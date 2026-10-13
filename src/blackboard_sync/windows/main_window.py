@@ -11,7 +11,7 @@ import logging
 import sys
 from pathlib import Path
 
-from blackboard_sync import __version__, deleted, runtime, updater, uninstall
+from blackboard_sync import __version__, deadlines, deleted, runtime, updater, uninstall
 from . import package
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
@@ -76,12 +76,15 @@ class MainWindow:
     def __init__(self, root, values, status, on_submit, on_action, on_close, on_values=None,
                  on_open=lambda path: None, on_missing=lambda: [],
                  on_deleted_action=lambda action, keys: None, on_past_term=lambda name: None,
-                 on_section=lambda section: None, recent_seen=None, on_seen=lambda: None):
+                 on_section=lambda section: None, on_deadlines=deadlines.DeadlinePage,
+                 on_deadline=lambda target: None, recent_seen=None, on_seen=lambda: None):
         import tkinter as tk
         from tkinter import ttk
 
         self.on_submit, self.on_action, self.on_close = on_submit, on_action, on_close
         self.on_section = on_section
+        self.on_deadlines, self.on_deadline = on_deadlines, on_deadline
+        self._drawn_deadlines = None
         self.recent_seen, self.on_seen = recent_seen, on_seen
         self._recent_after = None
         self._recent_entries = []
@@ -125,6 +128,7 @@ class MainWindow:
         self._build_sidebar(window)
         self.pages = {}
         for name, build in (("start", self._build_start), (main.OVERVIEW, self._build_overview),
+                            (main.CALENDAR, self._build_calendar),
                             (main.GENERAL, self._build_general), (main.DELETED, self._build_deleted)):
             page = ttk.Frame(window, padding=(24, 20, 24, 16))
             page.grid(row=0, column=1, sticky="nsew")
@@ -148,7 +152,7 @@ class MainWindow:
 
         bar = ttk.Frame(window, padding=(14, 18, 14, 16), width=SIDEBAR)
         bar.grid(row=0, column=0, sticky="ns")
-        bar.rowconfigure(5, weight=1)
+        bar.rowconfigure(6, weight=1)
         ttk.Label(bar, text=main.T_WINDOW_TITLE, font=HEADING_FONT).grid(row=0, column=0, sticky="w")
         ttk.Label(bar, text=__version__, foreground=MUTED).grid(row=1, column=0, sticky="w", pady=(0, 18))
         self.nav = {}
@@ -161,7 +165,7 @@ class MainWindow:
         import tkinter as tk
 
         card = ttk.LabelFrame(bar, padding=(10, 8))
-        card.grid(row=6, column=0, sticky="sew")
+        card.grid(row=7, column=0, sticky="sew")
         card.columnconfigure(1, weight=1)
         self.account_card = card
         self.avatar = tk.Canvas(card, width=AVATAR, height=AVATAR, highlightthickness=0, borderwidth=0,
@@ -414,6 +418,7 @@ class MainWindow:
 
     def wheel(self, event):
         canvas = {"start": self.start_canvas, main.OVERVIEW: self.recent_canvas,
+                  main.CALENDAR: self.calendar_canvas,
                   main.GENERAL: self.form_canvas, main.DELETED: self.canvas}[self.visible_page()]
         first, last = canvas.yview()
         if first > 0 or last < 1:  # a section that fits stays put
@@ -470,6 +475,8 @@ class MainWindow:
         self.section_var.set(self.state.section)
         if self.state.section == main.DELETED:
             self.refresh_deleted()
+        elif self.state.section == main.CALENDAR:
+            self.refresh_calendar()
 
     def values(self):
         minutes = next((m for m, title in form.INTERVAL_OPTIONS if title == self.interval.get()), 60)
@@ -525,6 +532,7 @@ class MainWindow:
         self.status = status
         self.nav[main.OVERVIEW].configure(text=status.overview_title)
         self.nav[main.GENERAL].configure(text=main.T_NAV_GENERAL)
+        self.nav[main.CALENDAR].configure(text=deadlines.T_TAB)
         if first_run_changed:
             self._show_section()
         # Başlangıç
@@ -541,6 +549,7 @@ class MainWindow:
             self.account_message.grid_remove()
         self._draw_scene()
         self._draw_recent()
+        self.refresh_calendar()
         # The account, at the bottom of the sidebar.
         if status.shows_account:
             self.account_card.grid()
@@ -585,6 +594,47 @@ class MainWindow:
         # Silinenler
         self.deleted_result.configure(text=form_status.deleted_message)
         self.refresh_deleted()
+
+    def _build_calendar(self, page):
+        from tkinter import ttk
+
+        self._header(page, deadlines.T_TAB)
+        ttk.Label(page, text=deadlines.T_HINT, wraplength=WRAP).grid(row=1, column=0, sticky="w", pady=(0, 16))
+        self.calendar_canvas, self.calendar_body = self._scroll_area(page, 2)
+        self.calendar_canvas.configure(background=background_of(page))
+
+    def refresh_calendar(self):
+        from tkinter import ttk
+
+        data = self.on_deadlines()
+        if data == self._drawn_deadlines:
+            return
+        self._drawn_deadlines = data
+        for child in self.calendar_body.winfo_children():
+            child.destroy()
+        if data.message:
+            ttk.Label(self.calendar_body, text=data.message, wraplength=WRAP).pack(anchor="w", pady=(0, 12))
+        if not data.days:
+            ttk.Label(self.calendar_body, text=deadlines.T_EMPTY).pack(anchor="w", pady=12)
+        section = None
+        for day in data.days:
+            if day.past != section:
+                section = day.past
+                ttk.Label(self.calendar_body, text=deadlines.T_PAST if day.past else deadlines.T_UPCOMING,
+                          font=HEADING_FONT).pack(anchor="w", pady=(8, 12))
+                if day.past:
+                    ttk.Label(self.calendar_body, text=deadlines.T_PAST_HINT, wraplength=WRAP).pack(
+                        anchor="w", pady=(0, 12))
+            card = ttk.LabelFrame(self.calendar_body, text=day.title, padding=(16, 10))
+            card.pack(fill="x", pady=(0, 14))
+            card.columnconfigure(1, weight=1)
+            for index, row in enumerate(day.rows):
+                ttk.Label(card, text=row.time, font=BOLD_FONT, width=7).grid(
+                    row=index * 2, column=0, rowspan=2, sticky="nw", padx=(0, 12), pady=(4, 12))
+                ttk.Button(card, text=row.title, command=lambda target=row.target: self.on_deadline(target)).grid(
+                    row=index * 2, column=1, sticky="ew", pady=(2, 0))
+                ttk.Label(card, text=row.course, wraplength=WRAP).grid(
+                    row=index * 2 + 1, column=1, sticky="w", pady=(2, 12))
 
     def _draw_scene(self):
         """The illustration while files change: small above the list, or large in place of an empty one."""
