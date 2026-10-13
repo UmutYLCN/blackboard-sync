@@ -71,17 +71,19 @@ def test_dst_fold_sorts_by_instant_and_not_wall_clock(tmp_path):
     assert [r.due.fold for r in page.days[0].rows] == [0, 1]
 
 
-def test_note_opening_tracks_relocation_and_falls_back_when_missing_or_unsafe(tmp_path):
+@pytest.mark.parametrize("extension", ["md", "pdf"])
+def test_note_opening_tracks_relocation_and_falls_back_when_missing_or_unsafe(tmp_path, extension):
     state = State(tmp_path / "cache.json")
     cache(state, column())
     note_key = f"note:{COURSE}:_c4_1"
-    note = tmp_path / "new" / "Ödev.md"
+    name = f"Ödev.{extension}"
+    note = tmp_path / "new" / name
     note.parent.mkdir()
     note.write_text("instructions")
-    state.record_output(note_key, "old/Ödev.md", "sha", 12)
+    state.record_output(note_key, f"old/{name}", "sha", 12)
     state.move_tree("old", "new")
     page = deadlines.calendar_page(state, tmp_path, NOW)
-    assert page.days[0].rows[0].target == "new/Ödev.md"
+    assert page.days[0].rows[0].target == f"new/{name}"
     note.unlink()
     assert deadlines.calendar_page(state, tmp_path, NOW).days[0].rows[0].target.startswith("https://")
     state.record_output(note_key, "../outside.md", "sha", 12)
@@ -208,7 +210,10 @@ def test_handler_column_id_matches_nested_content_when_column_lacks_content_id(c
     item = state.deadline_courses[COURSE]["items"][0]
     assert item["content_id"] == "_nested_1"
     page = deadlines.load_calendar(config, config.dest)
-    assert page.days[0].rows[0].target.endswith("Sınav yönergesi.md")
+    note = state.output(f"note:{COURSE}:_nested_1")
+    assert note is not None
+    assert page.days[0].rows[0].target == note["path"]
+    assert (config.root / note["path"]).is_file()
 
 
 def test_archive_and_selected_file_restore_leave_deadlines_and_network_alone(config, client, fake_bb):
