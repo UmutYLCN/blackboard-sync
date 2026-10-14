@@ -28,6 +28,10 @@ finds your courses for the current term, and copies everything in them to
 
 - **Files** (PDFs, slides, documents, files embedded in pages) are downloaded
   with their original names.
+- **Video and audio** stay in Blackboard and are linked from the note. Other files
+  larger than 500 MB are also linked instead of downloaded; the note shows the
+  reported size and the sync summary counts them. A size skipped this way is
+  remembered until the Blackboard item changes.
 - **Everything that is not a file** — web links, text pages, assignments and
   tests, discussions, external tools and **announcements** — becomes a small
   PDF note in the matching folder, with its text and clickable links, including

@@ -40,13 +40,29 @@ class ApiError(BlackboardSyncError):
 
 
 class SkippedMedia(Exception):
-    """A video or audio file was not downloaded; it is written to the note as a link instead.
+    """A media or oversized file was not downloaded; the note links to Blackboard.
 
     Not an error: it carries no exit code and is never reported as a warning.
     """
 
-    def __init__(self, url: str, name: str = "", content_type: str = ""):
-        super().__init__(f"Not downloading video/audio: {name or url}")
+    def __init__(
+        self, url: str, name: str = "", content_type: str = "", *, reason: str = "media", size: int | None = None
+    ):
+        super().__init__(f"Not downloading {reason}: {name or url}")
         self.url = url
         self.name = name
         self.content_type = content_type
+        self.reason = reason
+        self.size = size
+
+
+def human_size(size: int) -> str:
+    """Format a byte count with Turkish decimal punctuation."""
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if value < 1000 or unit == "TB":
+            if unit == "B":
+                return f"{int(value)} B"
+            return f"{value:.1f}".replace(".", ",").rstrip("0").rstrip(",") + f" {unit}"
+        value /= 1000
+    return f"{value:.1f}".replace(".", ",") + " TB"

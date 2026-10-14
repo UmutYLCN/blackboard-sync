@@ -39,6 +39,11 @@ seçersen dosyalar `iCloud Drive/University/2026-2027 Güz/…` altına iner. Se
 klasörün adı zaten University ise (varsayılan `Belgeler/University` gibi) içine ikinci bir
 University klasörü açılmaz.
 
+Video ve ses kayıtları indirilmez; notlarında Blackboard bağlantısı görünür. 500 MB'tan
+büyük diğer dosyalar da indirilmez. Notta dosyanın boyutu ve Blackboard'da açma bağlantısı
+yer alır; senkron özeti bu şekilde atlanan dosyaların sayısını gösterir. Blackboard'da
+dosya değişirse sonraki senkron yeni sürümü yeniden değerlendirir.
+
 Önceki sürümler dönem klasörlerini doğrudan seçilen klasöre koyuyordu
 (`iCloud Drive/2026-2027 Güz/…`). Güncellemeden sonraki ilk açılışta veya ilk
 senkronizasyonda bu dosyalar bir kez University klasörüne taşınır; yeniden indirilmez.

@@ -91,6 +91,7 @@ class FakeBlackboard:
         # Opt-in Content-Type per download path (default application/octet-stream), and
         # the download paths whose body was actually read.
         self.content_types: dict[str, str] = {}
+        self.content_lengths: dict[str, str] = {}
         self.bodies_read: list[str] = []
 
     def get(self, url, params=None, timeout=None, stream=False, headers=None):
@@ -113,6 +114,8 @@ class FakeBlackboard:
             )
         if key in self.files:
             resp_headers = {"Content-Type": self.content_types.get(key, "application/octet-stream")}
+            if key in self.content_lengths:
+                resp_headers["Content-Length"] = self.content_lengths[key]
             etag = self.etags.get(key)
             if etag:
                 resp_headers["ETag"] = etag

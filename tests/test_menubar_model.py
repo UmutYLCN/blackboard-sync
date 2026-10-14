@@ -90,6 +90,11 @@ def test_course_line_is_turkish_and_singular():
     assert course_line(cse) == "CSE303: 2 yeni dosya, 1 yeni duyuru"
 
 
+def test_size_skips_are_in_the_turkish_sync_summary():
+    data = report(courses=[course("CSE303", CSE, skipped_large_files=2)])
+    assert course_line(outcome(data).courses[0]) == "CSE303: 2 büyük dosya indirilmedi"
+
+
 def test_notification_lists_each_changed_course_and_opens_its_folder():
     note = changes_notification(outcome(), DEST)
     assert note.message == "CSE303: 2 yeni dosya, 1 yeni duyuru"
