@@ -77,7 +77,7 @@ def _media_lines(media: list[tuple[str, str]] | None) -> list[str]:
     """Videos and audio are not downloaded: the note links to them in Blackboard instead."""
     if not media:
         return []
-    lines = ["Videos and audio (open in Blackboard):"]
+    lines = ["Video ve ses dosyaları (Blackboard'da aç):"]
     lines += [f"- {' '.join(name.split()) or 'Recording'}: <{url}>" for name, url in media]
     return lines + [""]
 

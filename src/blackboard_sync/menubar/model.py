@@ -50,6 +50,7 @@ CHANGE_LABELS = (
     ("updated_notes", "güncellenen not"),
     ("new_announcements", "yeni duyuru"),
     ("updated_announcements", "güncellenen duyuru"),
+    ("skipped_large_files", "büyük dosya indirilmedi"),
 )
 # What "Son indirilenler" lists: things that appeared or changed locally.
 RECENT_KEYS = ("new_files", "updated_files", "new_notes", "new_announcements")
@@ -168,7 +169,10 @@ class RunOutcome:
     def from_report(cls, data: dict) -> "RunOutcome":
         courses = []
         for c in data.get("courses") or []:
-            counts = {key: len(c.get(key) or []) for key, _ in CHANGE_LABELS}
+            counts = {
+                key: (int(c.get(key) or 0) if key == "skipped_large_files" else len(c.get(key) or []))
+                for key, _ in CHANGE_LABELS
+            }
             recent = [p for key in RECENT_KEYS for p in c.get(key) or []]
             courses.append(
                 CourseChange(

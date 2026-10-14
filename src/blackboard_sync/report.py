@@ -16,6 +16,7 @@ class CourseReport:
     updated_notes: list[str] = field(default_factory=list)
     new_announcements: list[str] = field(default_factory=list)
     updated_announcements: list[str] = field(default_factory=list)
+    skipped_large_files: int = 0
     warnings: list[str] = field(default_factory=list)
     content_error: str = ""  # why the course's content could not be read at all
 
@@ -31,7 +32,7 @@ class CourseReport:
                 "new_announcements",
                 "updated_announcements",
             )
-        )
+        ) + self.skipped_large_files
 
     def summary_line(self) -> str:
         """e.g. "CSE303: 2 new files, 1 new announcement"."""
@@ -46,6 +47,8 @@ class CourseReport:
         ):
             if count:
                 parts.append(f"{count} {singular}{'' if count == 1 else 's'}")
+        if self.skipped_large_files:
+            parts.append(f"{self.skipped_large_files} büyük dosya indirilmedi")
         return f"{self.code}: {', '.join(parts) if parts else 'no changes'}"
 
 
@@ -74,8 +77,12 @@ class SyncReport:
             "updated_notes",
             "new_announcements",
             "updated_announcements",
+            "skipped_large_files",
         )
-        return {k: sum(len(getattr(c, k)) for c in self.courses) for k in keys}
+        return {
+            k: sum(getattr(c, k) if k == "skipped_large_files" else len(getattr(c, k)) for c in self.courses)
+            for k in keys
+        }
 
     def to_dict(self) -> dict:
         data = asdict(self)

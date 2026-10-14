@@ -7,7 +7,8 @@ what was written locally:
   ``<kind>:<course id>:<blackboard id>``, holding the ``modified`` timestamp
   seen when it was last processed and the output keys it produced. An item
   whose ``modified`` is unchanged is skipped entirely on the next run. Embedded
-  videos and audio that were left as links are listed under ``media``.
+  videos and audio that were left as links are listed under ``media``; files
+  skipped for size are listed in ``large_files`` with their reported byte count.
 * ``outputs`` - one entry per local file (attachment, embedded file or note),
   keyed by Blackboard attachment/file id, holding the path relative to the
   destination folder, its SHA-256, size and (since files are restored) the
@@ -247,6 +248,7 @@ class State:
         title: str,
         partial: bool = False,
         media: list[str] | None = None,
+        large_files: dict[str, int] | None = None,
     ) -> None:
         """``partial`` marks an item some of whose files failed: it is retried next run.
 
@@ -256,6 +258,8 @@ class State:
         entry = {"modified": modified, "outputs": outputs, "title": title}
         if media:
             entry["media"] = media
+        if large_files:
+            entry["large_files"] = large_files
         if partial:
             entry["partial"] = True
         if self.items.get(key) != entry:

@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from blackboard_sync import api
 from blackboard_sync.api import BlackboardClient
 from blackboard_sync.errors import SkippedMedia
 from blackboard_sync.state import State
@@ -16,7 +17,7 @@ from .test_progress_saving import Killed, kill_on_item, writes  # noqa: F401
 from .test_past_terms import COURSE as PAST_COURSE, PAST, ROOT as PAST_ROOT, archive  # noqa: F401
 from .test_sync import COURSE, CSE, NOW, files_under, sync
 
-HEADING = "Videos and audio (open in Blackboard):"
+HEADING = "Video ve ses dosyaları (Blackboard'da aç):"
 BASE = "https://blackboard.example.edu"
 BIG = b"\0" * (3 << 20)
 
@@ -149,6 +150,47 @@ def test_header_gate_leaves_no_temporary_file(tmp_path, client, fake_bb):
     assert skipped.value.content_type == "audio/mpeg"
 
 
+def test_content_length_over_limit_skips_before_reading_body(tmp_path, client, fake_bb):
+    path = "/bbcswebdav/xid-large"
+    fake_bb.files[path] = b"body must not be read"
+    fake_bb.content_lengths[path] = str(api.MAX_DOWNLOAD_SIZE + 1)
+    into = tmp_path / "out"
+    into.mkdir()
+
+    with pytest.raises(SkippedMedia) as skipped:
+        client.download(path, into, expected_name="dataset.iso")
+
+    assert skipped.value.reason == "size" and skipped.value.size == api.MAX_DOWNLOAD_SIZE + 1
+    assert fake_bb.bodies_read == [] and list(into.iterdir()) == []
+
+
+def test_chunked_file_crossing_limit_removes_partial_file(tmp_path, client, fake_bb, monkeypatch):
+    monkeypatch.setattr(api, "MAX_DOWNLOAD_SIZE", 10)
+    path = "/bbcswebdav/xid-chunked"
+    fake_bb.files[path] = b"01234567890"  # no Content-Length: the stream crosses the cap
+    into = tmp_path / "out"
+    into.mkdir()
+
+    with pytest.raises(SkippedMedia) as skipped:
+        client.download(path, into, expected_name="dataset.bin")
+
+    assert skipped.value.reason == "size" and skipped.value.size == 11
+    assert fake_bb.bodies_read == [path] and list(into.iterdir()) == []
+
+
+def test_file_at_limit_is_downloaded_normally(tmp_path, client, fake_bb, monkeypatch):
+    monkeypatch.setattr(api, "MAX_DOWNLOAD_SIZE", 10)
+    path = "/bbcswebdav/xid-small"
+    fake_bb.files[path] = b"0123456789"
+    into = tmp_path / "out"
+    into.mkdir()
+
+    result = client.download(path, into, expected_name="small.bin")
+
+    assert result.path is not None and result.path.read_bytes() == b"0123456789"
+    result.path.unlink()
+
+
 def test_download_gate_checks_the_name_from_the_server(tmp_path, client, fake_bb):
     path = "/bbcswebdav/xid-5_1"
     fake_bb.files[path] = BIG
@@ -165,7 +207,7 @@ def test_download_gate_checks_the_name_from_the_server(tmp_path, client, fake_bb
     assert list(tmp_path.iterdir()) == [] and bodies(fake_bb) == []
 
 
-def test_unknown_large_file_is_still_downloaded(config, client, fake_bb):
+def test_unknown_under_cap_file_is_still_downloaded(config, client, fake_bb):
     path = attach(fake_bb, "_v1_1", "_va_1", "dataset.bin", "application/octet-stream", title="Data")
     attach(fake_bb, "_v2_1", "_va_2", "notes.pdf", "application/pdf", body=b"%PDF", title="Notes")
     sync(config, client)
@@ -173,6 +215,40 @@ def test_unknown_large_file_is_still_downloaded(config, client, fake_bb):
     assert (config.dest / CSE / "notes.pdf").read_bytes() == b"%PDF"
     assert path in bodies(fake_bb)
     assert not (config.dest / CSE / "Data.pdf").exists()  # a plain file still needs no note
+
+
+def test_size_skipped_file_is_linked_counted_and_not_retried(config, client, fake_bb, monkeypatch):
+    monkeypatch.setattr(api, "MAX_DOWNLOAD_SIZE", 10)
+    path = attach(fake_bb, "_large_1", "_large_att_1", "dataset.bin", "application/octet-stream",
+                  body=b"01234567890", title="Dataset")
+
+    report = sync(config, client)
+
+    assert report.totals()["skipped_large_files"] >= 1
+    course_report = next(course for course in report.courses if course.code == "CSE303")
+    assert "büyük dosya indirilmedi" in course_report.summary_line()
+    assert "büyük dosya indirilmedi" in report.render_text()
+    note = note_text(config.dest / CSE / "Dataset.pdf")
+    assert "Bu dosya çok büyük (11 B), Blackboard'da aç" in note
+    assert f"<{BASE}{path}>" in note
+    item = State.load(config.state_file).items["content:_13004_1:_large_1"]
+    assert item["media"] == ["attachment:_13004_1:_large_att_1"]
+
+    fake_bb.calls.clear()
+    again = sync(config, client)
+    assert path not in fake_bb.calls and again.totals()["skipped_large_files"] == 0
+
+    # Rebuilding a missing note must reuse the recorded skip instead of fetching it again.
+    (config.dest / CSE / "Dataset.pdf").unlink()
+    fake_bb.calls.clear()
+    restored = sync(config, client)
+    assert path not in fake_bb.calls and restored.totals()["skipped_large_files"] == 1
+    assert (config.dest / CSE / "Dataset.pdf").exists()
+
+    fake_bb.routes[COURSE]["results"][-1]["modified"] = "2026-10-01T10:00:00.000Z"
+    fake_bb.calls.clear()
+    changed = sync(config, client)
+    assert path in fake_bb.calls and changed.totals()["skipped_large_files"] >= 1
 
 
 def test_an_item_with_a_video_and_a_pdf_keeps_the_pdf_and_links_the_video(config, client, fake_bb):

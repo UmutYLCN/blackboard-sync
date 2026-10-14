@@ -30,6 +30,7 @@ PRIVATE = "/learn/api/v1"
 PARTIAL_PREFIX = ".bbsync-"
 PARTIAL_SUFFIX = ".partial"
 USER_AGENT = "blackboard-sync/0.1 (+personal course mirror)"
+MAX_DOWNLOAD_SIZE = 500_000_000  # 500 MB (decimal)
 # Paths that mean Blackboard bounced us to a login page instead of answering.
 _LOGIN_MARKERS = ("/webapps/login", "/auth-saml", "/webapps/bb-auth-provider", "/ultra/logout")
 _FILENAME_STAR = re.compile(r"filename\*\s*=\s*([^']*)'[^']*'([^;]+)", re.IGNORECASE)
@@ -198,6 +199,11 @@ class BlackboardClient:
                 # Decided from the headers alone: closing the response (below) drops the
                 # connection without reading the body, and no temporary file exists yet.
                 raise SkippedMedia(url, filename or expected_name, ctype)
+            content_length = resp.headers.get("Content-Length", "")
+            if content_length.isdigit() and int(content_length) > MAX_DOWNLOAD_SIZE:
+                raise SkippedMedia(
+                    url, filename or expected_name, ctype, reason="size", size=int(content_length)
+                )
             if "text/html" in ctype and not filename and not name.endswith((".html", ".htm")):
                 # A web page where a PDF/slide deck was expected, with no file name from the
                 # server, is an error page. A sign-in redirect was already caught above via
@@ -212,6 +218,11 @@ class BlackboardClient:
                 with os.fdopen(fd, "wb") as fh:
                     for chunk in resp.iter_content(chunk_size=1 << 16):
                         if chunk:
+                            if size + len(chunk) > MAX_DOWNLOAD_SIZE:
+                                raise SkippedMedia(
+                                    url, filename or expected_name, ctype,
+                                    reason="size", size=size + len(chunk),
+                                )
                             fh.write(chunk)
                             digest.update(chunk)
                             size += len(chunk)

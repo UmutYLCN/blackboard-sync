@@ -21,7 +21,7 @@ from blackboard_sync.api import PARTIAL_PREFIX, PARTIAL_SUFFIX, BlackboardClient
 from blackboard_sync.announcements import metadata as announcement_metadata
 from blackboard_sync.config import Config
 from blackboard_sync.deadlines import column_deadline
-from blackboard_sync.errors import AlreadyRunning, ApiError, BlackboardSyncError, LoginRequired, SkippedMedia
+from blackboard_sync.errors import AlreadyRunning, ApiError, BlackboardSyncError, LoginRequired, SkippedMedia, human_size
 from blackboard_sync.htmltext import body_text, find_embedded_files
 from blackboard_sync.notepdf import render_pdf
 from blackboard_sync.notes import (
@@ -745,7 +745,7 @@ class Syncer:
         hid = handler_id(item)
         outputs: list[str] = []
         saved: list[str] = []
-        media: list[tuple[str, str, str]] = []  # (key, name, link) of videos and audio not downloaded
+        media: list[tuple[str, str, str, int | None]] = []  # key, display, link, size when skipped for size
         # After a partial failure the files that did arrive are not downloaded again
         # while the item is unchanged.
         kept = self.kept_attachments(previous_item, modified)
@@ -772,6 +772,19 @@ class Syncer:
                     continue
                 name = sanitize_name(att.get("fileName") or att.get("name") or title, windows=self.windows)
                 url = self.client.attachment_url(course.id, item["id"], att["id"])
+                prior_size = (previous_item.get("large_files") or {}).get(out_key)
+                already_skipped = (
+                    modified is not None
+                    and previous_item.get("modified") == modified
+                    and out_key in previous_item.get("media", [])
+                )
+                if already_skipped:
+                    media.append(
+                        (out_key, self.media_label(name, prior_size), self.client.url(url), prior_size)
+                    )
+                    if prior_size is not None:
+                        report.skipped_large_files += 1
+                    continue
                 try:
                     rel = self.fetch_or_link(
                         media, out_key, att.get("fileName") or att.get("name") or title, att.get("mimeType"),
@@ -795,6 +808,20 @@ class Syncer:
                 continue
             name = sanitize_name(embedded.name, windows=self.windows) if embedded.name else ""
             desired = join_rel(rel_dir, name) if name else ""
+            prior_size = (previous_item.get("large_files") or {}).get(out_key)
+            already_skipped = (
+                modified is not None
+                and previous_item.get("modified") == modified
+                and out_key in previous_item.get("media", [])
+            )
+            if already_skipped:
+                media.append(
+                    (out_key, self.media_label(embedded.name or title, prior_size),
+                     self.embedded_link(embedded), prior_size)
+                )
+                if prior_size is not None:
+                    report.skipped_large_files += 1
+                continue
             replaces = next(
                 (k for k in stale if desired and (self.state.output(k) or {}).get("path") == desired),
                 None,
@@ -813,23 +840,25 @@ class Syncer:
             saved.append(PurePosixPath(rel).name)
 
         media_keys = [m[0] for m in media]
+        large_files = {m[0]: m[3] for m in media if m[3] is not None}
         if failure is not None:
             if not self.dry_run:
-                self.state.record_item(key, modified, outputs, title, partial=True, media=media_keys)
+                self.state.record_item(key, modified, outputs, title, partial=True, media=media_keys,
+                                       large_files=large_files)
             raise failure
 
         if needs_note(item, bool(media)):
             note_item = {**item, "title": title} if title != item.get("title") else item
             note = render_item_note(
                 note_item, self.course_label(course), self.course_url(course), saved,
-                [(name, link) for _, name, link in media],
+                [(name, link) for _, name, link, _size in media],
             )
             out_key = f"note:{course.id}:{item['id']}"
             self.write_note(out_key, join_rel(rel_dir, note_name(title, windows=self.windows)), note, report, "notes")
             outputs += [out_key, markdown_key(out_key)]
 
         if not self.dry_run:
-            self.state.record_item(key, modified, outputs, title, media=media_keys)
+            self.state.record_item(key, modified, outputs, title, media=media_keys, large_files=large_files)
 
     def kept_attachments(self, previous_item: dict, modified: str | None) -> Container[str]:
         """The files of this item that are on disk from an earlier run and need no download.
@@ -900,7 +929,7 @@ class Syncer:
             name = note_name(f"{date} {title}" if date else title, windows=self.windows)
             outputs: list[str] = []
             saved: list[str] = []
-            media: list[tuple[str, str, str]] = []
+            media: list[tuple[str, str, str, int | None]] = []
             kept = self.kept_attachments(previous_item, modified)
             failure: Exception | None = None
             if embedded_files and not self.dry_run:
@@ -911,6 +940,20 @@ class Syncer:
                     saved.append(PurePosixPath(self.state.outputs[file_key]["path"]).name)
                     continue
                 file_name = sanitize_name(embedded.name, windows=self.windows) if embedded.name else ""
+                prior_size = (previous_item.get("large_files") or {}).get(file_key)
+                already_skipped = (
+                    modified is not None
+                    and previous_item.get("modified") == modified
+                    and file_key in previous_item.get("media", [])
+                )
+                if already_skipped:
+                    media.append(
+                        (file_key, self.media_label(embedded.name or title, prior_size),
+                         self.embedded_link(embedded), prior_size)
+                    )
+                    if prior_size is not None:
+                        report.skipped_large_files += 1
+                    continue
                 try:
                     rel = self.fetch_or_link(
                         media, file_key, embedded.name or title, embedded.mime, self.embedded_link(embedded),
@@ -930,7 +973,7 @@ class Syncer:
                 report.warnings.append(f"Could not download a file in announcement {title!r}: {failure}")
             note = render_announcement_note(
                 ann, self.course_label(course), self.course_url(course, "announcements"), saved,
-                [(name, link) for _, name, link in media],
+                [(name, link) for _, name, link, _size in media],
             )
             try:
                 self.write_note(out_key, join_rel(folder, name), note, report, "announcements")
@@ -940,14 +983,15 @@ class Syncer:
             outputs += [out_key, markdown_key(out_key)]
             if not self.dry_run:
                 self.state.record_item(
-                    key, modified, outputs, title, partial=failure is not None, media=[m[0] for m in media]
+                    key, modified, outputs, title, partial=failure is not None, media=[m[0] for m in media],
+                    large_files={m[0]: m[3] for m in media if m[3] is not None},
                 )
                 self.checkpoint()
 
     # -- writing files -------------------------------------------------
     def fetch_or_link(
         self,
-        media: list[tuple[str, str, str]],
+        media: list[tuple[str, str, str, int | None]],
         out_key: str,
         name: str,
         mime: str | None,
@@ -973,8 +1017,20 @@ class Syncer:
             previous = self.state.output(out_key)
             if previous:
                 return previous["path"]
-            media.append((out_key, skipped.name or name, link))
+            label = skipped.name or name
+            size = None
+            if skipped.reason == "size":
+                report.skipped_large_files += 1
+                size = skipped.size or 0
+                label = self.media_label(label, size)
+            media.append((out_key, label, link, size))
             return None
+
+    @staticmethod
+    def media_label(name: str, size: int | None) -> str:
+        if size is None:
+            return name
+        return f"{name} (Bu dosya çok büyük ({human_size(size)}), Blackboard'da aç)"
 
     def fetch_file(
         self,
