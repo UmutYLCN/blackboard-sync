@@ -98,15 +98,19 @@ def note_target(state: State, root: Path, course_id: str, item: dict) -> str:
     return item["url"]
 
 
-def calendar_page(state: State, root: Path, now: datetime, zone: tzinfo | None = None) -> DeadlinePage:
+def calendar_page(state: State, root: Path, now: datetime, zone: tzinfo | None = None,
+                  hidden: frozenset[str] | set[str] = frozenset()) -> DeadlinePage:
     """Upcoming first, ascending by instant; elapsed dates in a separate section.
+
+    Courses in ``hidden`` (unticked in Dersler) are left out.
 
     Convert each instant individually using the system zone (including DST).
     ``zone`` makes timezone boundaries deterministic in tests.
     """
     local_now = now.astimezone(zone)
     grouped: dict[tuple[bool, date], list[DeadlineRow]] = {}
-    for course_id, course in state.deadline_courses.items():
+    shown = {course_id: course for course_id, course in state.deadline_courses.items() if course_id not in hidden}
+    for course_id, course in shown.items():
         for item in course.get("items", []):
             due = parse_due(item.get("due"))
             if due is None:
@@ -119,10 +123,13 @@ def calendar_page(state: State, root: Path, now: datetime, zone: tzinfo | None =
                  for (past, day), rows in sorted(grouped.items(), key=lambda entry: (
                      entry[0][0], -entry[0][1].toordinal() if entry[0][0] else entry[0][1].toordinal())))
     message = T_NOT_SYNCED if not state.deadline_courses else ""
-    if any(c.get("unavailable") for c in state.deadline_courses.values()):
+    if any(c.get("unavailable") for c in shown.values()):
         message = T_INCOMPLETE
     return DeadlinePage(days, message)
 
 
 def load_calendar(config: Config, dest: Path) -> DeadlinePage:
-    return calendar_page(State.load(config.state_file, backup=False), sync_root(dest), datetime.now(timezone.utc))
+    from blackboard_sync.courses import load_disabled  # it imports this module's State too
+
+    return calendar_page(State.load(config.state_file, backup=False), sync_root(dest), datetime.now(timezone.utc),
+                         hidden=load_disabled(config))

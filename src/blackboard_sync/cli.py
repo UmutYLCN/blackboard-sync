@@ -73,14 +73,8 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--dest", type=Path, help="base folder (env BBSYNC_DEST, default Documents/University)")
     sync.add_argument("--json", action="store_true", help="print the run summary as JSON")
     sync.add_argument("--dry-run", action="store_true", help="show what would be fetched, write nothing")
-    sync.add_argument(
-        "--refetch-missing",
-        action="store_true",
-        help="download again files that were deleted locally (default: respect deletions)",
-    )
-
-    sync.add_argument("--refetch-selection", type=Path,
-                      help="JSON array of output keys; limits --refetch-missing to these files")
+    # Every sync restores missing files now; the flag stays accepted for old scripts.
+    sync.add_argument("--refetch-missing", action="store_true", help=argparse.SUPPRESS)
 
     check = sub.add_parser("check", help="verify the session and list the courses that would sync")
     _add_selection_args(check)
@@ -159,14 +153,6 @@ def cmd_sync(args, config: Config) -> int:
                 # Before anything is downloaded, so files an older version put
                 # straight into the chosen folder are not fetched again.
                 migrated = relocate.migrate_destination(config.state_file, config.dest)
-            selected = None
-            if args.refetch_selection is not None:
-                if not args.refetch_missing:
-                    raise BlackboardSyncError("--refetch-selection requires --refetch-missing")
-                selected = json.loads(args.refetch_selection.read_text(encoding="utf-8"))
-                if not isinstance(selected, list) or not all(isinstance(k, str) for k in selected):
-                    raise BlackboardSyncError("Refetch selection must be a JSON array of output keys")
-                selected = set(selected)
             client, session_data = open_client(config)
             try:
                 report = run_sync(
@@ -177,8 +163,6 @@ def cmd_sync(args, config: Config) -> int:
                     all_terms=args.all_terms,
                     course_filters=args.course,
                     dry_run=args.dry_run,
-                    refetch_missing=args.refetch_missing,
-                    refetch_keys=selected,
                     lock_held=True,
                     user_id=(session_data.get("user") or {}).get("id"),
                 )

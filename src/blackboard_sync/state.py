@@ -10,9 +10,12 @@ what was written locally:
   videos and audio that were left as links are listed under ``media``.
 * ``outputs`` - one entry per local file (attachment, embedded file or note),
   keyed by Blackboard attachment/file id, holding the path relative to the
-  destination folder, its SHA-256 and size. This is what prevents
-  re-downloads and protects files the student changed locally. Optional
-  ``dismissed`` flags permanently exclude outputs from missing-file recovery.
+  destination folder, its SHA-256, size and (since files are restored) the
+  modification time it had when written. This is what prevents re-downloads,
+  brings back files that went missing or broke (``intact``) and protects files
+  the student changed locally. Versions before that had ``dismissed`` flags
+  (files taken off the Silinenler list); they are dropped on load, so those
+  files come back once.
 * ``folders`` - Windows only: the full Blackboard name of every folder whose
   name was shortened to fit the path limit, keyed by its relative path. Moving
   to another destination folder needs it to give the folders the names a sync
@@ -21,6 +24,9 @@ what was written locally:
   sync leaves their content alone. Missing files are restored only on request.
   ``downloaded_at`` is when a download last read every course; ``incomplete``
   marks one whose last download could not read a course's content.
+* ``courses`` - the current term's courses the last normal sync found, keyed
+  by Blackboard course primary key: code, title, term and folder. The Dersler
+  section lists them (``courses.py``), the unticked ones too.
 * ``deadline_courses`` - student-visible grade-column due dates, grouped by
   course, with content ids for note lookup and an availability flag. A failed
   fetch keeps the previous complete list; successful lists replace it.
@@ -36,16 +42,48 @@ from __future__ import annotations
 import json
 import logging
 import os
+import stat
 import time
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Iterable
+from typing import Callable
 
 from blackboard_sync.session import write_private_json
 
 STATE_VERSION = 1
 log = logging.getLogger(__name__)
 _monotonic = time.monotonic  # a seam for tests
+
+
+def intact(path: Path, entry: dict) -> bool:
+    """Whether the file recorded as ``entry`` is at ``path`` and not clearly broken.
+
+    Only the file's metadata is read: hashing every file on each run would be
+    slow and would download every file a cloud drive (iCloud, OneDrive) keeps
+    online only. Broken means zero bytes where more was recorded, or another
+    size while the modification time is still the one recorded when the file
+    was written, so the student never touched it. A file changed since then is
+    the student's edit and counts as intact; so does anything that is not a
+    regular file, and a file iCloud moved to the cloud as ``.name.icloud``.
+    """
+    try:
+        info = path.stat()
+    except OSError:
+        return (path.parent / f".{path.name}.icloud").exists()
+    if not stat.S_ISREG(info.st_mode):
+        return True
+    size = entry.get("size")
+    if info.st_size == 0 and size:
+        return False
+    return not (entry.get("mtime_ns") == info.st_mtime_ns and size is not None and info.st_size != size)
+
+
+def untouched(path: Path, entry: dict) -> bool:
+    """The file still has the modification time recorded when it was written."""
+    try:
+        return entry.get("mtime_ns") is not None and path.stat().st_mtime_ns == entry["mtime_ns"]
+    except OSError:
+        return False
 
 
 def _set_aside(path: Path) -> Path:
@@ -75,10 +113,14 @@ class State:
         self.deadline_courses: dict[str, dict] = data.get("deadline_courses", {})
         self.announcements: dict[str, dict] = data.get("announcements", {})
         self.current_courses: list[str] = data.get("current_courses", [])
+        self.courses: dict[str, dict] = data.get("courses", {})
         self.in_university_folder: bool = in_university_folder or data.get("university_folder") is True
         self._claimed: dict[str, str] = {o["path"]: key for key, o in self.outputs.items()}
         self.recovery: str | None = None
         self.dirty = False  # True while there are changes not yet written to disk
+        for entry in self.outputs.values():
+            if entry.pop("dismissed", None) is not None:
+                self.dirty = True  # every file is restored now; written with the next save
         self.save_error: str | None = None  # why the last write by ``checkpoint`` failed
         self._last_attempt: float | None = None
 
@@ -130,6 +172,8 @@ class State:
             data["past_terms"] = self.past_terms
         if self.deadline_courses:
             data["deadline_courses"] = self.deadline_courses
+        if self.courses:
+            data["courses"] = self.courses
         if self.in_university_folder:
             data["university_folder"] = True
         write_private_json(self.path, data)
@@ -188,20 +232,12 @@ class State:
             self.current_courses = course_ids
             self.dirty = True
 
-    def item_unchanged(self, key: str, modified: str | None, dest: Path, check_missing: bool, selected_keys: set[str] | None = None) -> bool:
+    def item_unchanged(self, key: str, modified: str | None, present: Callable[[str], bool]) -> bool:
+        """Nothing to do for this item: same ``modified`` and every file it produced is ``present``."""
         entry = self.items.get(key)
         if entry is None or modified is None or entry.get("modified") != modified or entry.get("partial"):
             return False
-        if check_missing:
-            for out_key in entry.get("outputs", []):
-                out = self.outputs.get(out_key)
-                if out is not None and out.get("dismissed"):
-                    continue
-                if selected_keys is not None and out_key not in selected_keys:
-                    continue
-                if out is None or not (dest / out["path"]).exists():
-                    return False
-        return True
+        return all(present(out_key) for out_key in entry.get("outputs", []))
 
     def record_item(
         self,
@@ -227,26 +263,20 @@ class State:
             self.dirty = True
 
     # -- outputs --------------------------------------------------------
-    def dismiss_outputs(self, keys: Iterable[str]) -> None:
-        for key in keys:
-            entry = self.outputs.get(key)
-            if entry is not None and not entry.get("dismissed"):
-                entry["dismissed"] = True
-                self.dirty = True
-
     def output(self, key: str) -> dict | None:
         return self.outputs.get(key)
 
     def owner_of(self, rel_path: str) -> str | None:
         return self._claimed.get(rel_path)
 
-    def record_output(self, key: str, rel_path: str, sha256: str, size: int) -> None:
+    def record_output(self, key: str, rel_path: str, sha256: str, size: int, mtime_ns: int | None = None) -> None:
+        """``mtime_ns`` is the file's modification time right after it was written (``intact``)."""
         old = self.outputs.get(key)
         if old and self._claimed.get(old["path"]) == key:
             del self._claimed[old["path"]]
         entry = {"path": rel_path, "sha256": sha256, "size": size}
-        if old and old.get("dismissed"):
-            entry["dismissed"] = True
+        if mtime_ns is not None:
+            entry["mtime_ns"] = mtime_ns
         if old != entry:
             self.outputs[key] = entry
             self.dirty = True

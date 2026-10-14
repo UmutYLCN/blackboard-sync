@@ -13,12 +13,11 @@ import logging
 import os
 import subprocess
 import sys
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, IO
 
-from blackboard_sync import relocate, runtime, signout
+from blackboard_sync import courses, relocate, runtime, signout
 from blackboard_sync.config import Config
 from blackboard_sync.errors import EXIT_ERROR, LoginRequired
 from blackboard_sync.menubar.model import (
@@ -61,21 +60,11 @@ def run_sync(
     settings: Settings,
     runner: Runner = subprocess.run,
     now: Callable[[], datetime] = utcnow,
-    refetch_keys: list[str] | None = None,
     term_name: str = "",
     term_id: str = "",
 ) -> RunOutcome:
-    selection = None
     try:
         args = sync_arguments(job, settings, term_name, term_id)
-        if refetch_keys is not None:
-            if job != "refetch":
-                raise ValueError("Selections require a refetch job")
-            fd, name = tempfile.mkstemp(prefix="bbsync-refetch-", suffix=".json")
-            selection = Path(name)
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(refetch_keys, fh)
-            args.extend(["--refetch-selection", str(selection)])
         proc = runner(
             cli_command(*args),
             capture_output=True,
@@ -87,9 +76,6 @@ def run_sync(
         return RunOutcome(status="error", message="Senkron çok uzun sürdü ve durduruldu.", finished_at=now())
     except OSError as exc:
         return RunOutcome(status="error", message=str(exc), finished_at=now())
-    finally:
-        if selection is not None:
-            selection.unlink(missing_ok=True)
     return parse_sync_output(proc.stdout, proc.returncode, proc.stderr, now())
 
 
@@ -113,14 +99,13 @@ def run_login(settings: Settings, runner: Runner = subprocess.run) -> tuple[bool
     return False, lines[-1] if lines else f"exit status {proc.returncode}"
 
 
-def run_sync_guarded(job: str, settings: Settings, refetch_keys: list[str] | None = None,
-                     term_name: str = "", term_id: str = "") -> RunOutcome:
+def run_sync_guarded(job: str, settings: Settings, term_name: str = "", term_id: str = "") -> RunOutcome:
     """``run_sync`` that turns any unexpected exception into a failed outcome.
 
     Worker threads must always report back, or the model stays busy forever.
     """
     try:
-        return run_sync(job, settings, refetch_keys=refetch_keys, term_name=term_name, term_id=term_id)
+        return run_sync(job, settings, term_name=term_name, term_id=term_id)
     except Exception as exc:
         log.exception("Sync job failed")
         return RunOutcome(status="error", message=str(exc), finished_at=utcnow())
@@ -160,6 +145,14 @@ def run_past_terms(settings: Settings, runner: Runner = subprocess.run) -> tuple
         return terms, RunOutcome(status="ok")
     except Exception as exc:
         return {}, RunOutcome(status="error", message=f"Eski dönemler yüklenemedi: {exc}")
+
+
+def refresh_hidden_folders(config: Config, model: AppModel) -> None:
+    """Which folders hold the files of the courses unticked in Dersler (hidden from Son indirilenler)."""
+    try:
+        model.hidden_folders = courses.load_hidden_folders(config)
+    except OSError as exc:
+        log.warning("Could not read the course choices: %s", exc)
 
 
 def synced_file_count(config: Config, dest: Path) -> int:
@@ -254,8 +247,9 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
         model.auth_failed_at = model.auth_failed_at or parse_iso(saved.get("auth_failed_at"))
     if model.configured and relocate.root_migration_pending(config.state_file, settings.dest):
         # Files of a version before the University folder: move them in first, so the
-        # folder, the Silinenler tab and "Son indirilenler" find them before the next sync.
+        # folder and "Son indirilenler" find them before the next sync.
         model.pending, model.move_from = MOVE_JOB, settings.dest
+    refresh_hidden_folders(config, model)
     refresh_session(config, model, settings)
     if saved is None and last is not None and last.status == "ok":
         # First start: show what the last terminal sync brought in.

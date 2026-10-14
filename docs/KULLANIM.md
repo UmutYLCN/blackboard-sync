@@ -7,8 +7,8 @@ Kurulum için [README](../README.md)'ye bak. Bu sayfa uygulamanın ayrıntılı 
 Blackboard Sync'i **Applications** veya **Launchpad**'den (Windows'ta **Başlat** menüsünden)
 açınca ana pencere açılır; uygulama zaten çalışıyorsa aynı pencere öne gelir. Soldaki
 bölümler: ilk girişe kadar **Başlangıç**, sonra **Genel bakış** (**Şimdi senkronize et**,
-**Klasörü aç**, son indirilenler; senkron sürerken küçük bir animasyon), **Takvim**, **Duyurular**, **Genel** (ayarlar) ve
-**Silinenler**. Hesabın ve son senkronun zamanı sol altta durur; oturum sona erince orada
+**Klasörü aç**, son indirilenler; senkron sürerken küçük bir animasyon), **Dersler**, **Takvim**,
+**Duyurular** ve **Genel** (ayarlar). Hesabın ve son senkronun zamanı sol altta durur; oturum sona erince orada
 **Giriş yap** çıkar. Menüdeki **Ayarlar…** aynı pencereyi **Genel** bölümünde açar.
 
 Pencereyi kapatınca uygulama kapanmaz: menü çubuğundaki (Windows'ta saatin yanındaki)
@@ -45,8 +45,26 @@ senkronizasyonda bu dosyalar bir kez University klasörüne taşınır; yeniden 
 Taşınamayan bir dosya (başka bir programda açık, ya da University klasöründe aynı adda
 farklı bir dosya var) olduğu yerde kalır ve bildirimle haber verilir.
 
-Ayarlar'da klasörü değiştirirsen **Taşı**, **Yeniden indir** ve **Sadece yeni dosyalar**
-seçenekleri eski ve yeni klasörlerin University klasörleri arasında çalışır.
+University klasörü Blackboard'un bir kopyasıdır: bir dosyayı silersen ya da dosya bozulursa
+(boş kalırsa, yarım inerse) bir sonraki senkronda yeniden indirilir. Kendi düzenin için
+dosyaları başka bir klasöre kopyala. Senin değiştirdiğin bir dosyanın (örneğin üzerine not
+aldığın bir PDF) üzerine hiçbir zaman yazılmaz; Blackboard'da yeni sürümü çıkarsa yanına
+`ad (2).pdf` olarak iner.
+
+Ayarlar'da klasörü değiştirirsen **Taşı** dosyaları yeni klasöre taşır, **Yeniden indir**
+ise eski klasöre dokunmadan dosyaları yeni klasöre yeniden indirir.
+
+## Dersler
+
+Ana pencerenin **Dersler** bölümü güncel dönemdeki derslerini birer onay kutusuyla
+listeler. İşaretli dersler senkronize edilir; yeni bir ders çıkınca o da kendiliğinden
+işaretli gelir. İstemediğin bir dersin işaretini kaldır: o ders artık hiç senkronize
+edilmez (Blackboard'a o ders için istek gönderilmez), **Takvim**, **Duyurular** ve son
+indirilenler listesinde görünmez. Daha önce indirilmiş dosyaları silinmez. Tekrar
+işaretlersen eksik dosyaları hemen başlayan senkronda iner.
+
+Liste ilk senkrondan sonra dolar. Eski dönemler bu listede yer almaz; onları
+**Genel** bölümündeki **Eski dönemler** kısmından ayrıca indirirsin.
 
 ## Duyurular
 
@@ -58,12 +76,6 @@ Blackboard'daki dersin duyurular sayfası açılır.
 Liste yerel senkron verilerinden açılır; bu bölüme geçmek Blackboard'a yeni bir
 istek göndermez. Önceki sürümden güncellediysen duyurular sonraki senkronun ardından
 listelenir. Eski dönem arşivlerinin duyuruları bu listede görünmez.
-
-## Silinenler
-
-Ana pencerenin **Silinenler** bölümü, kayıt klasöründen silinmiş indirilmiş
-dosyaları listeler. Geri istediklerini seçip **Seçilenleri indir**'e bas; **Listeden kaldır**
-ile kaldırdığın dosyalar bir daha önerilmez.
 
 ## Güncelleme
 

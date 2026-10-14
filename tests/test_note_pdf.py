@@ -10,7 +10,6 @@ import zlib
 import pytest
 
 from blackboard_sync import relocate
-from blackboard_sync.deleted import missing_outputs
 from blackboard_sync.notepdf import MONO, inline, render_pdf
 from blackboard_sync.notes import render_announcement_note, render_item_note
 from blackboard_sync.state import State
@@ -231,35 +230,25 @@ def test_older_note_keeps_an_unrelated_hidden_file_of_the_same_name(config, clie
     assert not (config.dest / LEGACY).exists()
 
 
-def test_restoring_a_deleted_note_brings_back_both_files(config, client):
+def test_a_deleted_note_comes_back_with_its_hidden_copy(config, client):
     sync(config, client)
     (config.dest / NOTE).unlink()
     (config.dest / NOTE_MD).unlink()
-    rows = missing_outputs(State.load(config.state_file), config.dest)
-    assert [row.key for row in rows] == [PDF_KEY]  # the hidden copy is not listed
-    report = sync(config, client, refetch_missing=True, refetch_keys={PDF_KEY})
-    assert report.message == "1 dosya indirildi."
+    report = sync(config, client)
     assert "Read chapter 3 before class." in note_text(config.dest / NOTE)
+    assert (config.dest / NOTE_MD).is_file()
+    cse = next(c for c in report.courses if c.code == "CSE303")
+    assert cse.new_notes == [NOTE]  # the hidden copy is not reported
 
 
-def test_restoring_a_deleted_older_note_saves_it_as_pdf(config, client):
+def test_a_deleted_older_note_comes_back_as_pdf(config, client):
     sync(config, client)
     _as_older_version(config)
     (config.dest / LEGACY).unlink()
-    assert [row.key for row in missing_outputs(State.load(config.state_file), config.dest)] == [PDF_KEY]
-    report = sync(config, client, refetch_missing=True, refetch_keys={PDF_KEY})
-    assert report.message == "1 dosya indirildi."
-    assert "Read chapter 3 before class." in note_text(config.dest / NOTE)
-    assert not (config.dest / LEGACY).exists()
-
-
-def test_restoring_another_file_leaves_an_older_note_alone(config, client, fake_bb):
     sync(config, client)
-    _as_older_version(config)
-    slides = next(k for k, o in State.load(config.state_file).outputs.items() if o["path"].endswith("week1-slides.pdf"))
-    (config.dest / State.load(config.state_file).output(slides)["path"]).unlink()
-    sync(config, client, refetch_missing=True, refetch_keys={slides})
-    assert LEGACY in visible_files(config.dest) and NOTE not in visible_files(config.dest)
+    assert "Read chapter 3 before class." in note_text(config.dest / NOTE)
+    assert (config.dest / NOTE_MD).is_file()
+    assert not (config.dest / LEGACY).exists()
 
 
 def test_dry_run_reports_an_older_note_as_its_pdf(config, client, fake_bb):

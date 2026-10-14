@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
 
-from blackboard_sync import cli, deleted, relocate, uninstall
+from blackboard_sync import cli, relocate, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.menubar import jobs, settings_form
 from blackboard_sync.menubar.model import MOVE_JOB, AppModel, RunOutcome
@@ -116,21 +116,21 @@ def test_stale_partials_are_cleaned_in_the_university_folder(icloud, client):
     assert not partial.exists()
 
 
-def test_deleted_tab_lists_and_dismisses_in_the_university_folder(icloud, client):
+def test_a_deleted_file_comes_back_into_the_university_folder(icloud, client):
     sync(icloud, client)
     (icloud.root / SYLLABUS).unlink()
-    rows = deleted.load_missing(icloud, icloud.dest)
-    assert [row.path for row in rows] == [SYLLABUS]
-    deleted.dismiss_missing(icloud, icloud.dest, [rows[0].key])
-    assert deleted.load_missing(icloud, icloud.dest) == []
-
-
-def test_refetch_selection_restores_into_the_university_folder(icloud, client):
     sync(icloud, client)
-    (icloud.root / SYLLABUS).unlink()
-    key = deleted.load_missing(icloud, icloud.dest)[0].key
-    report = sync(icloud, client, refetch_missing=True, refetch_keys={key})
-    assert (icloud.root / SYLLABUS).is_file() and report.message.startswith("1 dosya")
+    assert (icloud.root / SYLLABUS).is_file()
+    assert not (icloud.dest / SYLLABUS).exists()
+
+
+def test_a_file_icloud_moved_online_is_not_downloaded_again(icloud, client, fake_bb):
+    sync(icloud, client)
+    syllabus = icloud.root / SYLLABUS
+    syllabus.rename(syllabus.with_name(f".{syllabus.name}.icloud"))  # how iCloud evicts on older macOS
+    fake_bb.calls.clear()
+    sync(icloud, client)
+    assert not syllabus.exists() and fake_bb.downloads() == []
 
 
 def _trash(trashed):

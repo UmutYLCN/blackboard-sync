@@ -4,8 +4,7 @@ The settings live in the main window (``main_window_model``). Its Genel section
 has five parts: Hesap (school address, who is signed in, sign in or out),
 Klasör (destination), Eski dönemler (download a past term once), Genel (start
 at login, sync interval) and Güncellemeler (automatic checks, check now,
-version, uninstall). Silinenler lists missing outputs for selective recovery or
-permanent dismissal. The GUI layers (``main_window.py`` on macOS,
+version, uninstall). Dersler (``courses.py``) picks the courses that sync. The GUI layers (``main_window.py`` on macOS,
 ``windows/main_window.py``) only draw ``FormValues`` and ``WindowStatus`` and
 report which button was pressed.
 
@@ -18,9 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from blackboard_sync import __version__, uninstall
-from blackboard_sync.deleted import T_DOWNLOAD
 from blackboard_sync.menubar.model import (
-    DEST_KEEP,
     DEST_MOVE,
     DEST_REFETCH,
     T_CHECK_NOW,
@@ -28,7 +25,6 @@ from blackboard_sync.menubar.model import (
     T_LOGIN,
     T_LOGOUT,
     T_PAST_LOADING,
-    T_REFETCHING,
     AppModel,
     login_waiting_line,
 )
@@ -92,9 +88,8 @@ T_DEST_NOT_CHANGED = "Klasör değiştirilmedi."
 T_DEST_CHANGE_TITLE = "İndirilen dosyalar ne olsun?"
 T_MOVE = "Taşı"
 T_REDOWNLOAD = "Yeniden indir"
-T_NEW_ONLY = "Sadece yeni dosyalar"
 # (choice, button); the first one is the default.
-DEST_CHOICES = ((DEST_MOVE, T_MOVE), (DEST_REFETCH, T_REDOWNLOAD), (DEST_KEEP, T_NEW_ONLY))
+DEST_CHOICES = ((DEST_MOVE, T_MOVE), (DEST_REFETCH, T_REDOWNLOAD))
 
 
 # The window never grows past the screen: what does not fit scrolls inside it,
@@ -123,9 +118,7 @@ def dest_change_message(old: Path, new: Path, files: int) -> str:
         f"“{display_path(old)}” klasöründe Blackboard'dan indirilmiş {files} dosya var.\n\n"
         f"{T_MOVE}: dosyalar “{display_path(new)}” klasörüne taşınır, yeniden indirilmez. "
         "Kendi eklediğiniz dosyalar eski klasörde kalır.\n"
-        f"{T_REDOWNLOAD}: dosyalar yeni klasöre yeniden indirilir; eski klasöre dokunulmaz.\n"
-        f"{T_NEW_ONLY}: dosyalar eski klasörde kalır; yeni klasöre yalnızca bundan sonra "
-        "eklenenler indirilir."
+        f"{T_REDOWNLOAD}: dosyalar yeni klasöre yeniden indirilir; eski klasöre dokunulmaz."
     )
 
 
@@ -160,9 +153,8 @@ class Submission:
 class WindowStatus:
     """The live part of the window: who is signed in and which buttons work now.
 
-    Buttons that need the app's single job slot (sign in, sign out, bring back
-    deleted files, download a past term, uninstall) are disabled while a sync or
-    a sign-in runs.
+    Buttons that need the app's single job slot (sign in, sign out, download a
+    past term, uninstall) are disabled while a sync or a sign-in runs.
     """
 
     account: str
@@ -170,13 +162,10 @@ class WindowStatus:
     account_title: str
     account_action: str  # "login" (saves the form first) | "logout"
     account_enabled: bool
-    refetch_title: str
-    refetch_enabled: bool
     version: str
     update_title: str
     update_action: str  # "check_updates" | "update"
     update_enabled: bool
-    deleted_message: str = ""
     # Eski dönemler: the terms in the list (newest first, never the current one),
     # the line under it (loading, empty, progress or result) and the button.
     past_terms: tuple[str, ...] = ()
@@ -226,19 +215,10 @@ def window_status(model: AppModel) -> WindowStatus:
         account_title=title,
         account_action=action,
         account_enabled=idle,
-        refetch_title=T_REFETCHING if model.busy == "refetch" else T_DOWNLOAD,
-        # Before the first save there is no folder to bring files back to.
-        refetch_enabled=idle and model.configured and model.updates.busy != "download",
         version=f"Sürüm {__version__}",
         update_title=update_title,
         update_action=update_action,
         update_enabled=updates.busy is None,
-        deleted_message=model.activity() or model.note or (
-            (model.last.message or "Son işlem tamamlandı.") if model.last and model.last.status == "ok"
-            else "Oturum sona erdi; tekrar giriş yapın." if model.last and model.last.status == "login_required"
-            else "Başka bir senkron çalışıyor; bitmesini bekleyin." if model.last and model.last.status == "locked"
-            else "İşlem tamamlanamadı. Ayrıntılar uygulama menüsünde." if model.last else ""
-        ),
         past_terms=past_terms,
         past_message=past_message,
         past_enabled=past_enabled,

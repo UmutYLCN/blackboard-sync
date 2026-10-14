@@ -80,10 +80,12 @@ def test_regular_sync_never_requests_or_updates_past_content(config, client, arc
     archive.routes[f"{ROOT}/contents"]["results"][0]["modified"] = "2026-10-01T00:00:00Z"
     archive.calls.clear()
     before = copy.deepcopy(State.load(config.state_file).past_terms)
-    report = sync(config, client, refetch_missing=True)
+    (config.dest / COURSE / "second.pdf").unlink()
+    report = sync(config, client)
     assert report.terms == ["2026-2027 Güz"] and not report.past_term
     assert not any(call.startswith(ROOT) for call in archive.calls)
     assert (config.dest / COURSE / "first.pdf").read_bytes() == b"first archive file"
+    assert not (config.dest / COURSE / "second.pdf").exists()  # only a new archive download restores it
     assert State.load(config.state_file).past_terms == before
 
 
@@ -125,17 +127,17 @@ def test_archive_stays_frozen_if_current_memberships_disappear(config, client, a
     assert not any(call.startswith(ROOT) for call in archive.calls)
 
 
-def test_archive_honors_deleted_files_dismissal(config, client, archive):
+def test_archive_restores_a_file_an_older_version_dismissed(config, client, archive):
     sync(config, client, term_name=PAST)
-    state = State.load(config.state_file)
-    state.dismiss_outputs(["attachment:_12001_1:_old1"])
-    state.save()
+    data = json.loads(config.state_file.read_text(encoding="utf-8"))
+    data["outputs"]["attachment:_12001_1:_old1"]["dismissed"] = True
+    config.state_file.write_text(json.dumps(data), encoding="utf-8")
     (config.dest / COURSE / "first.pdf").unlink()
     (config.dest / COURSE / "second.pdf").unlink()
     archive.calls.clear()
     sync(config, client, term_name=PAST)
-    assert archive.downloads() == [FILE2]
-    assert not (config.dest / COURSE / "first.pdf").exists()
+    assert sorted(archive.downloads()) == sorted([FILE1, FILE2])
+    assert (config.dest / COURSE / "first.pdf").read_bytes() == b"first archive file"
 
 
 @pytest.mark.parametrize("name, message", [("2026-2027 Güz", "güncel"), ("unknown", "bulunamadı"), ("", "belirtin")])

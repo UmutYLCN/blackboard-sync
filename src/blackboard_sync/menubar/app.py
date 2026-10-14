@@ -16,13 +16,12 @@ import threading
 import webbrowser
 from pathlib import Path
 
-from blackboard_sync import announcements, deadlines, deleted, runtime, update_macos, updater, uninstall
+from blackboard_sync import announcements, courses, deadlines, runtime, update_macos, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, launchagent, settings_form
 from blackboard_sync.menubar.main_window_model import GENERAL, main_status, shows_window_at_launch
 from blackboard_sync.menubar.model import (
-    DEST_KEEP,
     MOVE_JOB,
     AppModel,
     Icon,
@@ -299,7 +298,7 @@ def build_app(config: Config, show_window: bool = False):
 
         def start_next(self) -> None:
             """A job a folder change asked for goes first, then the scheduled sync."""
-            jobs.refresh_session(self.config, self.model, self.settings)  # a refetch waits for it
+            jobs.refresh_session(self.config, self.model, self.settings)  # a queued sync waits for it
             job = self.model.pending_job()
             if job == MOVE_JOB:
                 self.start_move()
@@ -308,20 +307,16 @@ def build_app(config: Config, show_window: bool = False):
             elif self.model.due(jobs.utcnow()):
                 self.start_sync()
 
-        def start_sync(self, _sender=None, job: str = "sync", refetch_keys=None) -> None:
+        def start_sync(self, _sender=None, job: str = "sync") -> None:
             if not self.model.begin(job):
                 return
             log.info("%s started", job)
             self.refresh()
-            threading.Thread(target=self._sync_worker, args=(job, self.settings, refetch_keys, self.model.past_term,
+            threading.Thread(target=self._sync_worker, args=(job, self.settings, self.model.past_term,
                                                               self.model.past_term_id), daemon=True).start()
 
-        def start_refetch(self, _sender=None) -> None:
-            self.start_sync(job="refetch")
-
-        def _sync_worker(self, job: str, settings, refetch_keys=None, term_name: str = "", term_id: str = "") -> None:
-            outcome = jobs.run_sync_guarded(job, settings, refetch_keys=refetch_keys, term_name=term_name,
-                                            term_id=term_id)
+        def _sync_worker(self, job: str, settings, term_name: str = "", term_id: str = "") -> None:
+            outcome = jobs.run_sync_guarded(job, settings, term_name=term_name, term_id=term_id)
             AppHelper.callAfter(self._sync_done, outcome)
 
         def start_past_terms(self) -> None:
@@ -351,6 +346,7 @@ def build_app(config: Config, show_window: bool = False):
             log.info("sync finished: %s %s", outcome.status, outcome.message)
             for note in self.model.finish_sync(outcome, jobs.utcnow()):
                 self.notify(note)
+            jobs.refresh_hidden_folders(self.config, self.model)  # the sync may have found new courses
             self._save()
             if self._login_after_job:
                 self._login_after_job = False
@@ -580,8 +576,8 @@ def build_app(config: Config, show_window: bool = False):
                     on_deadline=self.open_deadline,
                     on_announcements=lambda: announcements.load_rows(self.config),
                     on_open_announcement=self.open_announcement,
-                    on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
-                    on_deleted_action=self.deleted_action,
+                    on_courses=lambda: courses.load_rows(self.config),
+                    on_course_toggle=self.course_toggled,
                     on_past_term=self.download_past_term,
                     on_section=lambda _section: self.refresh(),
                     recent_seen=self.model.recent_seen,
@@ -593,24 +589,23 @@ def build_app(config: Config, show_window: bool = False):
             self._window.show(section)
             self.refresh()  # on Genel, starts looking up the past terms
 
-        def deleted_action(self, action, keys):
-            if self._uninstalling or self.model.busy is not None or self.model.updates.busy == "download":
-                return settings_form.T_BUSY
+        def course_toggled(self, course_id: str, enabled: bool) -> None:
+            """A Dersler checkbox: save the choice; a course ticked again syncs right away."""
             try:
-                if action == "dismiss":
-                    deleted.dismiss_missing(self.config, self.settings.dest, keys)
-                elif keys:
-                    self.start_sync(job="refetch", refetch_keys=keys)
-            except Exception as exc:
-                log.warning("Deleted-file action failed: %s", exc)
-                return "İşlem tamamlanamadı; çalışan senkron varsa bitmesini bekleyin."
-            return None
+                courses.set_enabled(self.config, course_id, enabled)
+            except OSError as exc:
+                log.warning("Could not save the course choice: %s", exc)
+                self.model.note = f"Ders seçimi kaydedilemedi: {exc.strerror or exc}"
+            jobs.refresh_hidden_folders(self.config, self.model)
+            if enabled and not self._uninstalling and self.model.account()[0] is not None:
+                self.start_sync()  # does nothing while another job runs
+            self.refresh()
 
         def window_action(self, action: str) -> None:
             """A button in the main window that acts right away instead of saving."""
             {
                 "sync": self.start_sync, "folder": self.open_school_folder, "login": self.start_login,
-                "logout": self.logout, "refetch": self.start_refetch,
+                "logout": self.logout,
                 "check_updates": self.start_update_check, "update": self.start_update,
                 "uninstall": self.start_uninstall,
             }[action]()
@@ -626,7 +621,7 @@ def build_app(config: Config, show_window: bool = False):
                 submission = settings_form.submit(values, self.settings)
             except SettingsError as exc:
                 return str(exc), exc.field
-            choice = DEST_KEEP
+            choice = None
             files = jobs.synced_file_count(self.config, self.settings.dest) if submission.dest_changed else 0
             if files:
                 # A running sync still writes into the old folder.

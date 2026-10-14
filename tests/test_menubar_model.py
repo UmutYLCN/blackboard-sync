@@ -304,63 +304,12 @@ def test_saved_state_round_trip():
     assert load_saved_state(None) == ([], False)
 
 
-# -- "Silinenleri tekrar indir" ---------------------------------------------
+# -- every sync mirrors Blackboard -------------------------------------------
 
-def test_only_the_refetch_job_brings_back_deleted_files():
+def test_a_sync_needs_no_flag_to_bring_back_deleted_files():
     settings = Settings(base_url="https://bb.example.edu", dest=DEST)
-    common = ["--base-url", "https://bb.example.edu", "sync", "--json", "--dest", str(DEST)]
-    assert sync_arguments("sync", settings) == common
-    assert sync_arguments("refetch", settings) == common + ["--refetch-missing"]
-
-
-def test_scheduled_runs_stay_plain_syncs_after_a_refetch():
-    # The scheduler and "Şimdi senkronize et" always claim the "sync" job.
-    m = model()
-    assert m.begin("refetch")
-    m.finish_sync(outcome(), NOW)
-    assert m.busy is None
-    assert m.due(NOW + SYNC_INTERVAL)
-
-
-def test_refetch_shares_the_single_job_slot():
-    m = model()
-    assert m.begin("refetch")
-    assert m.icon() == Icon.SYNCING
-    assert not m.begin("sync") and not m.begin("login") and not m.begin("refetch")
-    assert not m.due(NOW + timedelta(days=1))
-    menu = m.menu(NOW)
-    assert (menu.sync_enabled, menu.entries[0].enabled) == (False, False)
-    assert menu.status_lines == ["Silinen dosyalar tekrar indiriliyor…"]
-    status = window_status(m)
-    assert (status.refetch_title, status.refetch_enabled, status.account_enabled) == ("Silinenler indiriliyor…", False, False)
-
-
-def test_locked_refetch_asks_the_student_to_try_again():
-    m = model(last=outcome())
-    m.begin("refetch")
-    assert m.finish_sync(RunOutcome(status="locked"), NOW) == []
-    assert m.note == "Başka bir senkron sürüyor; birazdan tekrar deneyin."
-    assert m.next_run_at == NOW + RETRY_DELAY  # the retry is a normal sync
-
-
-def test_refetch_notification_is_one_line_per_course():
-    many = [f"{CSE}/Week {i}/slides{i}.pdf" for i in range(40)]
-    data = report(
-        courses=[
-            course("CSE303", CSE, new_files=many, new_notes=[f"{CSE}/Homework 1.md"]),
-            course("MTH201", MTH, new_files=[f"{MTH}/a.pdf", f"{MTH}/b.pdf"]),
-        ]
-    )
-    m = model()
-    m.begin("refetch")
-    notes = m.finish_sync(outcome(data), NOW)
-    assert len(notes) == 1
-    assert notes[0].message.splitlines() == [
-        "CSE303: 40 yeni dosya, 1 yeni not",
-        "MTH201: 2 yeni dosya",
-    ]
-    status = window_status(m)
-    assert status.refetch_enabled and status.refetch_title == "Seçilenleri indir"
+    assert sync_arguments("sync", settings) == [
+        "--base-url", "https://bb.example.edu", "sync", "--json", "--dest", str(DEST)]
 
 
 def entries(menu):
@@ -435,12 +384,12 @@ def test_saved_session_without_sync_and_legacy_username():
     assert model(session_expired=True).menu(NOW).entries[0].warning
     status = window_status(model(configured=False))
     assert (status.account, status.account_title, status.account_action) == ("Henüz giriş yapılmadı.", "Giriş yap", "login")
-    assert status.account_enabled and not status.refetch_enabled  # no folder before the first save
+    assert status.account_enabled
 
 
 def test_syncing_disables_mutating_actions_but_keeps_folders():
     m = model(session=signed_session(), last=outcome())
-    assert window_status(m).account_enabled and window_status(m).refetch_enabled
+    assert window_status(m).account_enabled
     m.begin("sync")
     menu = m.menu(NOW)
     actions = {e.action: e for e in entries(menu) if e.action}
@@ -449,7 +398,7 @@ def test_syncing_disables_mutating_actions_but_keeps_folders():
     assert actions["folder"].enabled and actions["settings"].enabled
     assert menu.status_lines == [f"✓ Ada Student · {format_time(NOW, NOW)} senkronize edildi", "Yeni içerik kontrol ediliyor…"]
     status = window_status(m)
-    assert not status.account_enabled and not status.refetch_enabled
+    assert not status.account_enabled
     assert status.update_enabled  # update checks do not use the job slot
 
 

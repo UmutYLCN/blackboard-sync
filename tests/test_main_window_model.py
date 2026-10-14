@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from blackboard_sync.deleted import MissingOutput
+from blackboard_sync.courses import CourseRow
 from blackboard_sync.menubar.main_window_model import (
-    DELETED,
+    COURSES,
     GENERAL,
     OVERVIEW,
     SCENE_COMPACT,
@@ -21,8 +21,10 @@ from blackboard_sync.menubar.main_window_model import (
     T_SYNC_RUNNING,
     T_WAITING,
     WindowState,
+    course_detail,
+    course_title,
     day_time,
-    deleted_detail,
+    enabled_count,
     has_changes,
     is_first_run,
     last_sync_text,
@@ -157,7 +159,7 @@ def test_signed_in_card_shows_the_last_sync_once():
     assert status.sync_title == "Şimdi senkronize et" and status.sync_enabled
 
 
-@pytest.mark.parametrize("job", ["sync", "refetch", "past_term", "move"])
+@pytest.mark.parametrize("job", ["sync", "past_term", "move"])
 def test_while_syncing_the_card_keeps_the_last_sync_time(job):
     model = synced()
     model.begin(job)
@@ -191,7 +193,6 @@ def test_later_syncs_show_it_small_above_the_list():
 
 
 @pytest.mark.parametrize("job, line", [
-    ("refetch", "Silinen dosyalar tekrar indiriliyor…"),
     ("move", "Dosyalar yeni klasöre taşınıyor…"),
 ])
 def test_other_jobs_that_change_files_show_it_with_their_own_line(job, line):
@@ -257,9 +258,22 @@ def test_recent_rows_name_the_file_course_and_day():
     assert recent_count(rows) == "2 dosya" and recent_count(()) == ""
 
 
-def test_deleted_row_shows_its_folder_once():
-    row = MissingOutput("k", "T/C/W/a.pdf", "T", "C", "a.pdf", "2026-2027 Güz/CSE301 Algorithms/Week 3")
-    assert deleted_detail(row) == "2026-2027 Güz · CSE301 Algorithms · Week 3"
+def test_course_rows_name_the_course_and_whether_it_syncs():
+    on = CourseRow("_1_1", "CSE301", "Algorithms", "2026-2027 Güz", True)
+    off = CourseRow("_2_1", "MTH201", "", "2026-2027 Güz", False)
+    assert course_title(on) == "CSE301 Algorithms" and course_title(off) == "MTH201"
+    assert course_detail(on) == "2026-2027 Güz · senkronize ediliyor"
+    assert course_detail(off) == "2026-2027 Güz · senkronize edilmiyor"
+    assert enabled_count((on,)) == "" and enabled_count((on, off)) == "1/2"
+
+
+def test_recent_files_of_an_unticked_course_are_hidden():
+    model = synced(recent=[RecentItem("T/CSE301 Algorithms/a.pdf", "CSE301", NOW.isoformat()),
+                           RecentItem("T/CSE301 Algorithms 2/b.pdf", "CSE301", NOW.isoformat()),
+                           RecentItem("T/MTH201 Linear/c.pdf", "MTH201", NOW.isoformat())])
+    model.hidden_folders = ("T/CSE301 Algorithms",)
+    assert [row.name for row in main_status(model, NOW).recent] == ["b.pdf", "c.pdf"]
+    assert [entry[1] for entry in model.menu(NOW).recent] == ["T/CSE301 Algorithms 2/b.pdf", "T/MTH201 Linear/c.pdf"]
 
 
 def test_the_save_bar_appears_only_after_a_change():
@@ -280,8 +294,8 @@ def test_window_state_reopens_on_the_overview_and_keeps_the_open_section():
     state = WindowState()
     assert not state.open
     assert state.show() == OVERVIEW and state.open
-    state.select(DELETED)
-    assert state.show() == DELETED  # started again while open: stays where it is
+    state.select(COURSES)
+    assert state.show() == COURSES  # started again while open: stays where it is
     assert state.show(GENERAL) == GENERAL  # "Ayarlar…"
     state.closed()
     assert not state.open

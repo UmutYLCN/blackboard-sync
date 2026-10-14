@@ -45,12 +45,6 @@ def test_sync_runs_the_cli_json_mode():
     assert result.status == "ok" and result.finished_at == NOW
 
 
-def test_refetch_job_passes_refetch_missing():
-    runner = fake_runner(stdout=json.dumps({"status": "ok", "courses": []}))
-    jobs.run_sync("refetch", SETTINGS, runner=runner, now=lambda: NOW)
-    assert runner.calls[0][0][-1] == "--refetch-missing"
-
-
 def test_sync_respects_cli_exit_codes():
     assert jobs.run_sync("sync", SETTINGS, fake_runner(returncode=3), lambda: NOW).status == "login_required"
     assert jobs.run_sync("sync", SETTINGS, fake_runner(returncode=4), lambda: NOW).status == "locked"
@@ -362,27 +356,3 @@ def test_unexpected_exception_in_a_login_worker_still_clears_busy(monkeypatch):
     assert not ok and "unexpected" in message
     model.finish_login(ok, message, NOW)
     assert model.busy is None
-
-
-def test_selected_refetch_uses_selection_file_and_cleans_it_up():
-    selections = []
-    paths = []
-    def runner(cmd, **kwargs):
-        path = Path(cmd[cmd.index('--refetch-selection') + 1])
-        paths.append(path)
-        selections.append(json.loads(path.read_text()))
-        assert '--refetch-missing' in cmd
-        return subprocess.CompletedProcess(cmd, 0, '{"status": "ok"}', '')
-    assert jobs.run_sync('refetch', SETTINGS, runner=runner,
-                         refetch_keys=['attachment:course:one', 'note:course:two']).status == 'ok'
-    assert selections == [['attachment:course:one', 'note:course:two']]
-    assert not paths[0].exists()
-
-
-def test_selected_refetch_removes_selection_file_after_timeout():
-    paths = []
-    def runner(cmd, **kwargs):
-        paths.append(Path(cmd[cmd.index('--refetch-selection') + 1]))
-        raise subprocess.TimeoutExpired(cmd, 1)
-    assert jobs.run_sync('refetch', SETTINGS, runner=runner, refetch_keys=['key']).status == 'error'
-    assert not paths[0].exists()

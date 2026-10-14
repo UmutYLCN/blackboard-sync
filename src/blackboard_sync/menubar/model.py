@@ -59,8 +59,6 @@ STATUS_BY_EXIT = {EXIT_OK: "ok", EXIT_LOGIN_REQUIRED: "login_required", EXIT_LOC
 # Menu text
 T_SYNC_NOW = "Şimdi senkronize et"
 T_SYNCING = "Senkronize ediliyor…"
-T_REFETCH = "Silinenleri tekrar indir"
-T_REFETCHING = "Silinenler indiriliyor…"
 T_PAST_LOADING = "Eski dönemler yükleniyor…"
 T_LOGIN = "Giriş yap"
 T_LOGGING_IN = "Giriş bekleniyor…"
@@ -90,19 +88,18 @@ def open_folder_title(root: Path) -> str:
 UPDATE_ACTIONS = ("check_updates", "update")
 
 
-# Sync and discovery jobs; "refetch" also brings back files the
-# student deleted locally. Scheduled runs and "Şimdi senkronize et" are plain
-# "sync" runs, so they keep respecting deletions.
-SYNC_JOBS = ("sync", "refetch", "past_term", "past_terms")
+# Sync and discovery jobs. Every "sync" mirrors Blackboard: files that were
+# deleted or broke are downloaded again (``sync.Syncer.present``).
+SYNC_JOBS = ("sync", "past_term", "past_terms")
 # Moves the downloaded files into a new destination folder (``relocate.py``); with
 # ``move_from`` equal to ``dest`` it only moves the files of an older version
 # from the chosen folder into its University folder (``relocate.migrate_to_root``).
 MOVE_JOB = "move"
 
 # What happens to the downloaded files when the destination folder changes:
-# move them over, download them again into the new folder (the old one is left
-# alone), or leave them where they are and only sync new content into the new one.
-DEST_MOVE, DEST_REFETCH, DEST_KEEP = "move", "refetch", "keep"
+# move them over, or download them again into the new folder (the old one is
+# left alone; a sync fills the new folder as soon as the student is signed in).
+DEST_MOVE, DEST_REFETCH = "move", "refetch"
 
 
 def sync_arguments(job: str, settings: Settings, term_name: str = "", term_id: str = "") -> list[str]:
@@ -112,8 +109,6 @@ def sync_arguments(job: str, settings: Settings, term_name: str = "", term_id: s
     can be shared by another term or change with Blackboard's language.
     """
     args = ["--base-url", settings.base_url, "sync", "--json", "--dest", str(settings.dest)]
-    if job == "refetch":
-        args.append("--refetch-missing")
     if job == "past_term":
         if term_id:
             args.extend(["--term-id", term_id])
@@ -610,9 +605,11 @@ class AppModel:
         self.last = last
         self.recent = list(recent or [])
         self.recent_seen = recent_seen or RecentSeen()
+        # The folders of the courses unticked in Dersler; their files stay out of view.
+        self.hidden_folders: tuple[str, ...] = ()
         self.login_prompted = login_prompted
         self.autostart = autostart
-        self.busy: str | None = None  # "sync" | "refetch" | "login" | "move"
+        self.busy: str | None = None  # "sync" | "login" | "move" | ...
         self.past_term = ""  # only for the active one-time job; never saved as a default
         self.past_term_id = ""  # ...and the Blackboard id of that term
         self.past_terms: list[str] = []  # what the list shows
@@ -624,7 +621,7 @@ class AppModel:
         self.past_message = ""
         self.past_lookup_stale = False  # the school changed while the lookup ran
         # A job asked for by a destination change, started as soon as the slot is free:
-        # MOVE_JOB (from ``move_from``) or "refetch".
+        # MOVE_JOB (from ``move_from``) or "sync" (download into the new folder).
         self.pending: str | None = None
         self.move_from: Path | None = None
         self.login_method = ""  # while signing in: a browser's name, INAPP, or "" if unknown
@@ -683,12 +680,12 @@ class AppModel:
     def pending_job(self) -> str | None:
         """The job a destination change asked for, if it can start now.
 
-        It goes before any scheduled sync. A refetch waits until the student is
+        It goes before any scheduled sync. A sync waits until the student is
         signed in (it would only fail otherwise); a move needs no session.
         """
         if not self.configured or self.busy is not None or self.pending is None:
             return None
-        if self.pending == "refetch" and self.session is None:
+        if self.pending == "sync" and self.session is None:
             return None
         return self.pending
 
@@ -798,13 +795,8 @@ class AppModel:
             return notes
         if outcome.status == "locked":
             # Another sync (e.g. from the terminal) is running; keep what we
-            # knew and look again soon. A retry is a normal sync, so a
-            # refetch request has to be repeated by the student.
-            self.note = (
-                "Başka bir senkron sürüyor; birazdan tekrar deneyin."
-                if job == "refetch"
-                else "Başka bir senkron sürüyor; birazdan tekrar denenecek."
-            )
+            # knew and look again soon.
+            self.note = "Başka bir senkron sürüyor; birazdan tekrar denenecek."
             self.next_run_at = self.schedule(now, self.retry_delay)
             return notes
         self.last = outcome
@@ -871,16 +863,16 @@ class AppModel:
         check_updates: bool | None = None,
         sync_interval_minutes: int | None = None,
         now: datetime | None = None,
-        dest_choice: str = DEST_KEEP,
+        dest_choice: str | None = None,
     ) -> None:
         """The settings window was saved.
 
         A new sync interval moves the next run (see ``reschedule``).
 
         A new folder gets what the student chose for the files already
-        downloaded (``dest_choice``): DEST_MOVE queues moving them over, so
-        "Son indirilenler" stays valid; DEST_REFETCH queues downloading them
-        again; DEST_KEEP leaves them alone. Without a move the recent list
+        downloaded (``dest_choice``, None when there were none): DEST_MOVE
+        queues moving them over, so "Son indirilenler" stays valid; DEST_REFETCH
+        queues a sync that downloads them again. Without a move the recent list
         (paths in the old folder) starts over. A new school makes the last
         result and the old session meaningless: the student has to sign in again.
         """
@@ -904,7 +896,7 @@ class AppModel:
                     self.recent_seen.snapshot.clear()
                 self.recent_seen.reset_exposure()
                 if dest_choice == DEST_REFETCH:
-                    self.pending = "refetch"
+                    self.pending = "sync"
         self.dest = dest
         if school_changed:
             self.past_terms = []
@@ -937,6 +929,11 @@ class AppModel:
         delay = self.retry_delay if self.last.status == "error" else self.sync_interval
         next_run = self.last.finished_at + delay
         self.next_run_at = next_run if next_run > now else now + FIRST_SYNC_DELAY
+
+    def visible_recent(self) -> list[RecentItem]:
+        """Son indirilenler without the files of the courses unticked in Dersler."""
+        return [item for item in self.recent
+                if not any(item.path == folder or item.path.startswith(folder + "/") for folder in self.hidden_folders)]
 
     def remember(self, outcome: RunOutcome) -> None:
         at = (outcome.finished_at or datetime.now(timezone.utc)).isoformat(timespec="seconds")
@@ -979,8 +976,6 @@ class AppModel:
         """What is going on instead of the usual schedule ("" when nothing special)."""
         if self.busy == "sync":
             return "Yeni içerik kontrol ediliyor…"
-        if self.busy == "refetch":
-            return "Silinen dosyalar tekrar indiriliyor…"
         if self.busy == "past_terms":
             return T_PAST_LOADING
         if self.busy == "past_term":
@@ -1037,7 +1032,8 @@ class AppModel:
             status_lines=self.status_lines(now),
             sync_title=T_SYNCING if self.busy == "sync" else T_SYNC_NOW,
             sync_enabled=self.busy is None,
-            recent=unique_labels([(f"{(parse_iso(item.at) or now).astimezone():%d.%m %H:%M} · {item.label}", item.path) for item in self.recent]),
+            recent=unique_labels([(f"{(parse_iso(item.at) or now).astimezone():%d.%m %H:%M} · {item.label}", item.path)
+                                  for item in self.visible_recent()]),
         )
         name, expired = self.account()
         if name is None:

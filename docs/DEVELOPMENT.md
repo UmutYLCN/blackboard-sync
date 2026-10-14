@@ -35,6 +35,10 @@ finds your courses for the current term, and copies everything in them to
   hidden file (`.Intro - Asymptotic Notation.md`) for tools that read notes.
 - Runs are **incremental**: only new or changed items are fetched. Nothing
   local is ever deleted.
+- The folder **mirrors Blackboard**: a downloaded file you delete, or one that
+  is left empty or cut short, is downloaded again by the next sync. Files you
+  edited are never overwritten (see
+  [How the incremental state works](#how-the-incremental-state-works)).
 - New term? It switches automatically; no course URLs to configure.
 
 Day to day you do not need the terminal at all: the [menu bar app](#menu-bar-app)
@@ -211,7 +215,17 @@ A sidebar switches between four sections:
 - **Genel**: the [settings](#settings).
 - **Takvim**: due dates grouped by local day, upcoming first and elapsed dates
   separately. Clicking opens an existing downloaded note or Blackboard.
-- **Silinenler**: deleted files to bring back (see [Settings](#settings)).
+- **Dersler**: one check box per current-term course (code, title and term),
+  with a line explaining that the folder mirrors Blackboard. Every course is
+  ticked by default, also one that appears later. An unticked course is not
+  synced at all: no request for its contents, attachments, announcements or due
+  dates, and it disappears from **Takvim**, **Duyurular** and Son indirilenler
+  at once; its files stay on disk. Ticking it again starts a sync that fills in
+  what is missing. The choice is saved as the unticked Blackboard course
+  primary keys (`_13004_1`) in `courses.json` in the data folder; every sync,
+  also one from the terminal, reads it before each course. The list is what
+  the last normal sync found (`courses` in `state.json`); past terms are not in
+  it. The sidebar shows `1/3` while some course is unticked.
 
 Under the sections, at the bottom of the sidebar, the account card shows who
 is signed in and when the last sync finished (also while the next one runs),
@@ -224,8 +238,8 @@ does not fit scrolls.
 
 ### Settings
 
-The settings are the **Genel** and **Silinenler** sections of the
-[main window](#the-main-window). **Genel** has five parts:
+The settings are the **Genel** section of the [main window](#the-main-window)
+(which courses sync is chosen on **Dersler**). **Genel** has five parts:
 
 - **Hesap** — **Okulunuzun Blackboard adresi**, prefilled with
   `https://blackboard.istun.edu.tr`; students of another university type their
@@ -257,28 +271,13 @@ The settings are the **Genel** and **Silinenler** sections of the
   **Uygulamayı kaldır…**, which asks first and removes the app and its data
   (downloaded course files are kept unless you tick the box).
 
-**Silinenler** lists downloaded files whose recorded path is missing under the
-saved destination, each with its name and its term, course and folder.
-Check the files to recover, then **Seçilenleri indir**; **Tümünü seç** checks
-all listed files. **Listeden kaldır** permanently dismisses checked entries
-from the list and future refetches. Unchecked deletions stay respected during
-normal syncs. An empty list says **Silinmiş dosya yok.** These actions use the
-saved destination; save a folder change on **Genel** first.
-
-The CLI still accepts `sync --refetch-missing` for all missing, undismissed
-outputs. To recover selected outputs only (including past terms), add
-`--refetch-selection selection.json`, where the file is a JSON array of keys
-from `state.json`'s `outputs`. Selection jobs only restore those outputs and
-leave unrelated new or changed content for normal sync.
-
 A bar with **Vazgeç** and **Kaydet** appears under **Genel** once a field or
 check box was changed (**Kaydedilmemiş değişiklikler**). **Kaydet** saves them
 and the window stays open; **Vazgeç** (or Escape) puts back what is saved, and
 closing the window drops unsaved changes. **Giriş yap**, **Hesaptan çıkış
-yap**, **Eski dönemi indir**, **Seçilenleri indir**, **Listeden kaldır**, **Şimdi denetle** and
+yap**, **Eski dönemi indir**, **Şimdi denetle** and
 **Uygulamayı kaldır…** act right away. The buttons that need the app's single job
-slot (sign in, sign out, download a past term, bring back deleted files,
-uninstall) are greyed out while a sync or sign-in runs. Nothing is synced
+slot (sign in, sign out, download a past term, uninstall) are greyed out while a sync or sign-in runs. Nothing is synced
 on a schedule until the settings have been saved once (on **Başlangıç** with
 **Giriş yap**, or with **Kaydet**). When you save later:
 
@@ -298,10 +297,9 @@ on a schedule until the settings have been saved once (on **Başlangıç** with
     are verified before the original is removed.
     A destination link that only points back to the original file also leaves
     the original in place and is reported.
-  - **Yeniden indir** downloads undismissed files again into the new folder;
-    the old folder is left untouched.
-  - **Sadece yeni dosyalar** leaves the old files where they are; only content
-    that appears from now on lands in the new folder.
+  - **Yeniden indir** leaves the old folder untouched and starts a sync
+    (once you are signed in) that downloads everything again into the new
+    folder.
 
   **Vazgeç** (or closing the question) keeps the old folder and saves nothing.
   While a sync runs the folder cannot be changed; wait for it to finish.
@@ -395,8 +393,7 @@ The icon tells you the state at a glance:
   senkron** interval (every hour by default). After the Mac wakes up, an
   overdue sync runs within half a minute. Changing the interval moves the next
   run; one that would already be overdue starts 30 seconds later.
-- Never two at once: the app runs one sync (normal or **Silinenleri tekrar
-  indir**) or sign-in at a time, and if a
+- Never two at once: the app runs one sync or sign-in at a time, and if a
   `blackboard-sync sync` from the terminal is already running (the lock file),
   it waits and tries again in 10 minutes (or after the interval, if that is
   shorter; never in manual mode).
@@ -420,7 +417,7 @@ downloads the same files into the same folders as the command does.
 blackboard-sync [--base-url URL] [--data-dir DIR] [-v] login [--browser auto|chrome|edge|brave|vivaldi|opera|operagx|chromium|arc|inapp] [--timeout S]
 blackboard-sync [...] check [--term NAME | --term-id ID | --all-terms] [--course CODE ...]
 blackboard-sync [...] sync  [--term NAME | --term-id ID | --all-terms] [--course CODE ...]
-                            [--dest DIR] [--json] [--dry-run] [--refetch-missing]
+                            [--dest DIR] [--json] [--dry-run]
 ```
 
 | Option | Meaning |
@@ -431,7 +428,6 @@ blackboard-sync [...] sync  [--term NAME | --term-id ID | --all-terms] [--course
 | `--all-terms` | Sync every term, including past ones and courses without a term. |
 | `--course CODE` | Only this course (`CSE303`, or the course id); repeatable. Case and Turkish dots do not matter: `bil101` finds `BİL101`. |
 | `--dry-run` | Show what would be fetched; write and download nothing. |
-| `--refetch-missing` | Download again files you deleted locally (normally deletions are respected). |
 | `--json` | Print the run summary as JSON (see below). |
 | `--base-url URL` | Another Blackboard site (default: the saved school address, else İSTÜN; env `BBSYNC_BASE_URL`). |
 | `--data-dir DIR` | Where the session and state live (env `BBSYNC_DATA_DIR`). |
@@ -492,15 +488,17 @@ On Windows a few more rules apply there only (see
 
 - every content item and announcement, with the `modified` timestamp seen last
   time — an unchanged item is skipped without any download;
-- every local file written (attachment, embedded file or note), with its path
-  and SHA-256.
+- every local file written (attachment, embedded file or note), with its path,
+  SHA-256, size and the modification time it had right after it was written.
 - `deadline_courses`: complete student-visible grade-column metadata for each
   synced course. The normal sync reads the paginated public v2
   `/courses/{courseId}/gradebook/columns` endpoint and uses only `grading.due`.
   Dates update independently of content `modified`. Removed dates disappear
   on the next successful fetch; a failed fetch keeps the prior list and marks
   the calendar incomplete. Opening **Takvim** only reads this local cache.
-  Archive downloads and selected-file restores leave the calendar alone.
+  Archive downloads leave the calendar alone.
+- `courses`: the current-term courses the last normal sync found (code, title,
+  term, folder), the unticked ones too, for **Dersler**.
 
 The source is documented in [Anthology's REST schema](https://developer.anthology.com/assets/lib/swagger-ui/swagger-index.html).
 Enrolled students can read `grading.due` when the course's My Grades tool and
@@ -525,8 +523,29 @@ Two items with the same name in one folder get `name (2)`, `name (3)`, …
 An identical file already sitting at the target path is adopted, not
 duplicated. Files that disappear from Blackboard, or that Blackboard renames or
 moves, stay where they are locally — the tool never deletes or moves your
-files. If you delete a downloaded file it is not downloaded again unless you
-pass `--refetch-missing`.
+files.
+
+Every sync also checks that each recorded file is still there and intact,
+using only the file's size and modification time (hashing every file on each
+run would be slow and would download every file iCloud or OneDrive keeps
+online only):
+
+- **missing** — downloaded again into its recorded place (an iCloud
+  `.name.icloud` placeholder counts as present);
+- **empty** where more was recorded, or **another size while the modification
+  time is still the one recorded** (nobody saved it since) — damaged, so it is
+  downloaded again and replaced;
+- **changed later** (a newer modification time) — your edit; it is left alone,
+  and a newer Blackboard version lands beside it as `name (2).pdf`.
+
+When Blackboard changes an item, its local copies are also compared by
+SHA-256: other bytes under the recorded modification time are damage and are
+replaced. Records written before modification times were kept only treat empty
+files as damaged. Videos and audio an older version downloaded are not brought
+back (they are links in the note now). Older versions had a Silinenler page
+whose **Listeden kaldır** marked files `dismissed`; those flags are dropped,
+so such files come back once. `sync --refetch-missing` is still accepted and
+does nothing extra.
 
 To start over completely, delete `state.json`: the next run re-checks
 everything, adopts files that are already present and identical, and fetches

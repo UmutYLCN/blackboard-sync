@@ -149,7 +149,7 @@ def test_partial_failure_downloads_other_files_and_retries_only_failed_instructi
     assert not State.load(config.state_file).items["content:_13004_1:_instructions_1"].get("partial")
 
 
-def test_dry_run_and_selective_missing_file_recovery(config, client, fake_bb):
+def test_dry_run_and_missing_file_recovery(config, client, fake_bb):
     add_assessment(fake_bb)
     report = sync(config, client, dry_run=True)
     assert f"{CSE}/Assignment 1/homework.docx" in next(c for c in report.courses if c.code == "CSE303").new_files
@@ -157,18 +157,11 @@ def test_dry_run_and_selective_missing_file_recovery(config, client, fake_bb):
     sync(config, client)
     path = config.root / CSE / "Assignment 1" / "homework.docx"
     path.unlink()
+    report = sync(config, client, dry_run=True)
+    assert f"{CSE}/Assignment 1/homework.docx" in next(c for c in report.courses if c.code == "CSE303").new_files
     fake_bb.calls.clear()
     sync(config, client)
-    assert fake_bb.downloads() == [] and not path.exists()
-    key = "xid:_13004_1:_instructions_1:901_1"
-    sync(config, client, refetch_missing=True, refetch_keys={key})
-    assert path.exists()
-    path.unlink()
-    state = State.load(config.state_file)
-    state.dismiss_outputs([key])
-    state.save()
-    sync(config, client, refetch_missing=True)
-    assert not path.exists()
+    assert len(fake_bb.downloads()) == 1 and path.exists()
 
 
 @pytest.mark.parametrize("status", [400, 403, 404, 500])
@@ -344,17 +337,16 @@ def test_flat_migration_dry_run_does_not_move_files_or_state(config, client, fak
     assert config.state_file.read_bytes() == before
 
 
-def test_deleted_flat_instruction_stays_deleted_until_refetched_at_new_path(config, client, fake_bb):
+def test_deleted_flat_instruction_comes_back_at_the_new_path(config, client, fake_bb):
     add_assessment(fake_bb)
     sync(config, client)
     flatten_recorded_assignment(config)
     (config.root / CSE / "homework.docx").unlink()
     fake_bb.calls.clear()
     assert not warnings(sync(config, client))
-    assert not (config.root / CSE / "Assignment 1" / "homework.docx").exists()
-    assert fake_bb.downloads() == []
-    assert not warnings(sync(config, client, refetch_missing=True))
     assert (config.root / CSE / "Assignment 1" / "homework.docx").exists()
+    assert not (config.root / CSE / "homework.docx").exists()
+    assert len(fake_bb.downloads()) == 1
 
 
 def test_instruction_folder_uses_normal_windows_sanitization_and_length_limits(config, client, fake_bb, monkeypatch):

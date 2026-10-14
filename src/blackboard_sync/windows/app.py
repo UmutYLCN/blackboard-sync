@@ -11,12 +11,12 @@ import time
 import webbrowser
 from pathlib import Path
 
-from blackboard_sync import announcements, deadlines, deleted, relocate, runtime, updater, uninstall
+from blackboard_sync import announcements, courses, deadlines, relocate, runtime, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.menubar import jobs, settings_form
 from blackboard_sync.menubar.main_window_model import GENERAL, main_status, shows_window_at_launch
-from blackboard_sync.menubar.model import DEST_KEEP, MOVE_JOB, open_target, RunOutcome, UPDATE_ACTIONS
+from blackboard_sync.menubar.model import MOVE_JOB, open_target, RunOutcome, UPDATE_ACTIONS
 from blackboard_sync.settings import SettingsError, save_settings
 from blackboard_sync.system import sync_root
 from . import activation, autostart, notifications, package
@@ -153,14 +153,14 @@ class TrayApp:
 
     def start_next(self):
         """A job a folder change asked for goes first, then the scheduled sync."""
-        jobs.refresh_session(self.config, self.model, self.settings)  # a refetch waits for it
+        jobs.refresh_session(self.config, self.model, self.settings)  # a queued sync waits for it
         job = self.model.pending_job()
         if job is not None:
             self.start_job(job)
         elif self.model.due(jobs.utcnow()):
             self.start_job("sync")
 
-    def start_job(self, job, refetch_keys=None):
+    def start_job(self, job):
         old, new = self.model.move_from, self.model.dest
         if job == MOVE_JOB and old is None:
             return
@@ -178,8 +178,7 @@ class TrayApp:
                 elif job == MOVE_JOB:
                     result = jobs.run_move_guarded(config, old, new)
                 else:
-                    result = jobs.run_sync(job, settings, runner=cli_runner, refetch_keys=refetch_keys,
-                                           term_name=term_name, term_id=term_id)
+                    result = jobs.run_sync(job, settings, runner=cli_runner, term_name=term_name, term_id=term_id)
             except Exception as exc:
                 log.exception("CLI job failed")
                 result = ((False, str(exc)) if job == "login"
@@ -198,6 +197,7 @@ class TrayApp:
         else:
             for note in self.model.finish_sync(result, jobs.utcnow()):
                 threading.Thread(target=self.notify, args=(note,), daemon=True).start()
+            jobs.refresh_hidden_folders(self.config, self.model)  # the sync may have found new courses
         self.save()
         if self.login_after_job:
             self.login_after_job = False
@@ -316,7 +316,7 @@ class TrayApp:
 
         if self.uninstalling:
             return
-        if action in ("sync", "refetch", "login"):
+        if action in ("sync", "login"):
             self.start_job(action)
         elif action == "check_updates":
             self.start_update_check()
@@ -485,8 +485,8 @@ class TrayApp:
                                      on_deadline=lambda target: self.dispatch("deadline", target),
                                      on_announcements=lambda: announcements.load_rows(self.config),
                                      on_open_announcement=lambda row: self.dispatch("announcement", row),
-                                     on_missing=lambda: deleted.load_missing(self.config, self.settings.dest),
-                                     on_deleted_action=self.deleted_action,
+                                     on_courses=lambda: courses.load_rows(self.config),
+                                     on_course_toggle=self.course_toggled,
                                      on_past_term=self.download_past_term,
                                      on_section=lambda _section: self.refresh(),
                                      recent_seen=self.model.recent_seen, on_seen=self.save)
@@ -495,18 +495,17 @@ class TrayApp:
         self.window.show(section)
         self.refresh()  # on Genel, starts looking up the past terms
 
-    def deleted_action(self, action, keys):
-        if self.uninstalling or self.model.busy is not None or self.model.updates.busy == "download":
-            return settings_form.T_BUSY
+    def course_toggled(self, course_id, enabled):
+        """A Dersler checkbox: save the choice; a course ticked again syncs right away."""
         try:
-            if action == "dismiss":
-                deleted.dismiss_missing(self.config, self.settings.dest, keys)
-            elif keys:
-                self.start_job("refetch", refetch_keys=keys)
-        except Exception as exc:
-            log.warning("Deleted-file action failed: %s", exc)
-            return "İşlem tamamlanamadı; çalışan senkron varsa bitmesini bekleyin."
-        return None
+            courses.set_enabled(self.config, course_id, enabled)
+        except OSError as exc:
+            log.warning("Could not save the course choice: %s", exc)
+            self.model.note = f"Ders seçimi kaydedilemedi: {exc.strerror or exc}"
+        jobs.refresh_hidden_folders(self.config, self.model)
+        if enabled and not self.uninstalling and self.model.account()[0] is not None:
+            self.start_job("sync")  # does nothing while another job runs
+        self.refresh()
 
     def window_closed(self):
         """Only the window went: the tray icon, timers and jobs go on."""
@@ -533,7 +532,7 @@ class TrayApp:
             submission = settings_form.submit(values, self.settings)
         except SettingsError as exc:
             return str(exc), exc.field
-        choice = DEST_KEEP
+        choice = None
         files = jobs.synced_file_count(self.config, self.settings.dest) if submission.dest_changed else 0
         if files:
             choice = self.ask_dest_choice(self.settings.dest, submission.settings.dest, files)
