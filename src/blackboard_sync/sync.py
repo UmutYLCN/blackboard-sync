@@ -303,13 +303,15 @@ def remove_stale_partials(dest: Path, now: float | None = None, max_age: timedel
 
     Under the run lock no other sync is writing, so every one is leftover: pass
     ``max_age=timedelta(0)``. Without the lock the age check keeps a concurrent
-    run's live temp file safe.
+    run's live temp file safe. With no age at all the clock is not consulted: on
+    Windows a file written a moment ago can carry a time just after ``time.time()``.
     """
     cutoff = (time.time() if now is None else now) - max_age.total_seconds()
+    every = max_age <= timedelta(0)
     removed = 0
     for path in dest.rglob(f"{PARTIAL_PREFIX}*{PARTIAL_SUFFIX}"):
         try:
-            if path.is_file() and not path.is_symlink() and path.stat().st_mtime <= cutoff:
+            if path.is_file() and not path.is_symlink() and (every or path.stat().st_mtime <= cutoff):
                 path.unlink()
                 removed += 1
         except OSError as exc:
