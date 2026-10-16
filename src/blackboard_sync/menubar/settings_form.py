@@ -70,6 +70,7 @@ T_DEST_HINT = (
     "yeniden indirmeyi seçebilirsiniz."
 )
 T_PAST_DOWNLOAD = "Eski dönemi indir"
+T_PAST_DOWNLOADING = "İndiriliyor…"
 T_PAST_NOTE = "Eski dönem bir kez indirilir, güncellenmez."
 T_PAST_EMPTY = "İndirilebilecek eski dönem yok."
 T_PAST_SIGN_IN = "Eski dönemleri görmek için giriş yapın."
@@ -171,6 +172,9 @@ class WindowStatus:
     past_terms: tuple[str, ...] = ()
     past_message: str = ""
     past_enabled: bool = False
+    # A past term is downloading: the button says so, the list is locked and the illustration moves
+    # until the download is complete.
+    past_running: bool = False
     uninstall_enabled: bool = False
 
 
@@ -178,8 +182,10 @@ def past_term_status(model: AppModel) -> tuple[tuple[str, ...], str, bool]:
     """(terms, message, download enabled) for the Eski dönemler section."""
     if not model.configured or model.account()[0] is None:
         return (), T_PAST_SIGN_IN, False
-    if model.busy == "past_terms" or not model.past_terms_loaded:
+    if model.busy == "past_terms" or (not model.past_terms_loaded and model.past_terms_retry_at is None):
         return (), T_PAST_LOADING, False
+    if not model.past_terms_loaded:  # the last lookup met a running sync or failed; it repeats by itself
+        return (), model.past_message or T_PAST_LOADING, False
     terms = tuple(model.past_terms)
     if model.busy == "past_term":
         message = model.activity()
@@ -222,6 +228,7 @@ def window_status(model: AppModel) -> WindowStatus:
         past_terms=past_terms,
         past_message=past_message,
         past_enabled=past_enabled,
+        past_running=model.busy == "past_term",
         uninstall_enabled=idle and updates.busy is None,
     )
 

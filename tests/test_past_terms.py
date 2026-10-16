@@ -290,7 +290,7 @@ def test_settings_section_shows_lookup_failures_and_empty_list(tmp_path):
     model.finish_past_terms([], RunOutcome("error", message="Blackboard yanıt vermedi"))
     status = window_status(model)
     assert status.past_message == model.note == "Blackboard yanıt vermedi" and not status.past_enabled
-    assert not model.past_terms_due()  # no retry loop; reopening the window looks again
+    assert not model.past_terms_due()  # it is tried again by itself, after a short wait (test_past_term_retry)
     model.reload_past_terms()
     model.begin("past_terms")
     model.finish_past_terms([], RunOutcome("ok"))

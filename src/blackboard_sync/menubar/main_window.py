@@ -107,6 +107,7 @@ from blackboard_sync.menubar.settings_form import (
     T_DEST_ROOT_NOTE,
     T_INTERVAL_LABEL,
     T_PAST_DOWNLOAD,
+    T_PAST_DOWNLOADING,
     T_PAST_NOTE,
     T_SAVE,
     T_SECTION_ACCOUNT,
@@ -141,6 +142,9 @@ COLUMN = (INNER - GAP) // 2
 FIELD_HEIGHT = 24
 BUTTON_HEIGHT = 32
 ROW_HEIGHT = 52
+# Genel, Eski dönemler: the button row is this tall and the illustration beside it this wide while a term downloads.
+PAST_ROW = 56
+PAST_SCENE_WIDTH = 96
 # Takvim, month view: a day's height, and the due dates listed in it before "+N daha".
 MONTH_CELL_HEIGHT = 84
 MONTH_CELL_ROWS = 2
@@ -771,6 +775,10 @@ class MainWindow:
                 view.start()
             else:
                 view.stop()
+        if self.status.form.past_running and self.state.open and self.state.section == GENERAL:
+            self.past_scene.start()
+        else:
+            self.past_scene.stop()
 
     def _build_announcements(self, page) -> None:
         self._header(page, announcements.T_TAB)
@@ -867,9 +875,14 @@ class MainWindow:
             y += 25 + 8
             self.past_button = NSButton.buttonWithTitle_target_action_(T_PAST_DOWNLOAD, self.target, "pastTerm:")
             button_width = max(self.past_button.fittingSize().width + 16, 140)
-            self.past_button.setFrame_(NSMakeRect(16, y, button_width, BUTTON_HEIGHT))
+            self.past_button.setFrame_(NSMakeRect(16, y + (PAST_ROW - BUTTON_HEIGHT) / 2, button_width, BUTTON_HEIGHT))
             content.addSubview_(self.past_button)
-            y += BUTTON_HEIGHT + 6
+            # The papers fly into the folder beside the button for as long as the term is downloading.
+            self.past_scene = SyncSceneView.alloc().initWithFrame_(
+                NSMakeRect(16 + button_width + 12, y, PAST_SCENE_WIDTH, PAST_ROW))
+            self.past_scene.setHidden_(True)
+            content.addSubview_(self.past_scene)
+            y += PAST_ROW + 4
             _, height = text(content, T_PAST_NOTE, y, width, small=True, secondary=True)
             y += height + 4
             self.past_label, _ = text(content, "", y, width, small=True, secondary=True)
@@ -1206,6 +1219,7 @@ class MainWindow:
     def select(self, section: str) -> None:
         self.state.select(section)
         self._show_section()
+        self._animate()  # the past-term illustration only moves while Genel is in view
         self.on_section(section)
 
     @property
@@ -1368,8 +1382,11 @@ class MainWindow:
             if selected in form.past_terms:
                 self.past_popup.selectItemWithTitle_(selected)
             self._past_terms = form.past_terms
-        self.past_popup.setEnabled_(bool(form.past_terms))
+        self.past_popup.setEnabled_(bool(form.past_terms) and not form.past_running)
         self.past_button.setEnabled_(form.past_enabled)
+        self.past_button.setTitle_(T_PAST_DOWNLOADING if form.past_running else T_PAST_DOWNLOAD)
+        self.past_scene.setHidden_(not form.past_running)
+        self._animate()
         self.past_label.setStringValue_(form.past_message)
         self.past_label.setToolTip_(form.past_message or None)
         self.refresh_announcements()
