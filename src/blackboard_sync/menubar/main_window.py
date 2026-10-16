@@ -37,6 +37,7 @@ from AppKit import (
     NSPopUpButton,
     NSScreen,
     NSScrollView,
+    NSSegmentedControl,
     NSTextAlignmentCenter,
     NSTextAlignmentRight,
     NSTextField,
@@ -140,6 +141,9 @@ COLUMN = (INNER - GAP) // 2
 FIELD_HEIGHT = 24
 BUTTON_HEIGHT = 32
 ROW_HEIGHT = 52
+# Takvim, month view: a day's height, and the due dates listed in it before "+N daha".
+MONTH_CELL_HEIGHT = 84
+MONTH_CELL_ROWS = 2
 AVATAR = 34  # the sidebar's account card
 SCENE_HEIGHT = 84  # the small illustration above Son indirilenler while a sync runs
 UPDATE_BANNER_HEIGHT = 86
@@ -184,6 +188,18 @@ class _Target(NSObject):
 
     def openDeadline_(self, sender):
         self.owner.on_deadline(self.owner.deadline_targets[int(sender.tag())])
+
+    def calendarMode_(self, sender):
+        self.owner.set_calendar_mode(deadlines.VIEWS[int(sender.selectedSegment())][0])
+
+    def calendarStep_(self, sender):
+        self.owner.calendar_step(int(sender.tag()))
+
+    def calendarToday_(self, _sender):
+        self.owner.calendar_today()
+
+    def openWeek_(self, sender):
+        self.owner.calendar_open_week(self.owner.calendar_days[int(sender.tag())])
 
     def sync_(self, _sender):
         self.owner.on_action("sync")
@@ -280,6 +296,12 @@ def _wrapping(text: str, width: float, size: float | None = None, secondary: boo
     return field, field.fittingSize().height
 
 
+def _today():
+    from datetime import datetime
+
+    return datetime.now().astimezone().date()
+
+
 def _small() -> float:
     return NSFont.smallSystemFontSize()
 
@@ -373,6 +395,9 @@ class MainWindow:
         self.on_deadlines, self.on_deadline = on_deadlines, on_deadline
         self._drawn_deadlines = None
         self.deadline_targets = []
+        self.calendar_mode = deadlines.VIEW_LIST
+        self.calendar_anchor = None  # the day a week or month view is around; None: today
+        self.calendar_days = []  # the days a month cell's buttons stand for
         self.recent_seen, self.on_seen = recent_seen, on_seen
         self._recent_timer = None
         self.on_values = on_values or (lambda: self.saved)
@@ -914,18 +939,86 @@ class MainWindow:
         hint, height = _wrapping(deadlines.T_HINT, INNER, secondary=True)
         hint.setFrame_(NSMakeRect(PAD, 62, INNER, height))
         page.addSubview_(hint)
-        y = 62 + height + 16
+        bar_y = 62 + height + 12
+        self.calendar_switch = NSSegmentedControl.segmentedControlWithLabels_trackingMode_target_action_(
+            [title for _mode, title in deadlines.VIEWS], 0, self.target, "calendarMode:")
+        self.calendar_switch.setSelectedSegment_(0)
+        self.calendar_switch.setFrame_(NSMakeRect(PAD, bar_y, 210, 26))
+        page.addSubview_(self.calendar_switch)
+        self.calendar_nav = []
+        x = PAD + 226
+        for title, width, action, step in (("‹", 32, "calendarStep:", -1), (deadlines.T_TODAY, 70, "calendarToday:", 0),
+                                           ("›", 32, "calendarStep:", 1)):
+            button = NSButton.buttonWithTitle_target_action_(title, self.target, action)
+            button.setBezelStyle_(1)
+            button.setTag_(step)
+            button.setFrame_(NSMakeRect(x, bar_y - 1, width, 28))
+            page.addSubview_(button)
+            self.calendar_nav.append(button)
+            x += width + 6
+        self.calendar_title = _label("", 15, bold=True)
+        self.calendar_title.setFrame_(NSMakeRect(x + 10, bar_y + 3, PAD + INNER - x - 10, 20))
+        page.addSubview_(self.calendar_title)
+        y = bar_y + 26 + 16
         self.calendar_scroll, _ = _scroll(NSMakeRect(PAD, y, INNER, HEIGHT - y - PAD), 1)
         self.calendar_scroll.setAutoresizingMask_(NSViewHeightSizable)
         page.addSubview_(self.calendar_scroll)
 
+    def set_calendar_mode(self, mode: str) -> None:
+        self.calendar_mode = mode
+        self.refresh_calendar()
+
+    def calendar_step(self, step: int) -> None:
+        self.calendar_anchor = deadlines.shift_anchor(self.calendar_anchor or _today(), self.calendar_mode, step)
+        self.refresh_calendar()
+
+    def calendar_today(self) -> None:
+        self.calendar_anchor = None
+        self.refresh_calendar()
+
+    def calendar_open_week(self, day) -> None:
+        self.calendar_anchor, self.calendar_mode = day, deadlines.VIEW_WEEK
+        self.refresh_calendar()
+
     def refresh_calendar(self) -> None:
         data = self.on_deadlines()
-        if data == self._drawn_deadlines:
+        mode, today = self.calendar_mode, _today()
+        anchor = self.calendar_anchor or today
+        key = (data, mode, anchor, today)
+        if key == self._drawn_deadlines:
             return
-        self._drawn_deadlines = data
+        self._drawn_deadlines = key
         self.deadline_targets = []
+        self.calendar_days = []
+        modes = [m for m, _title in deadlines.VIEWS]
+        self.calendar_switch.setSelectedSegment_(modes.index(mode))
+        for button in self.calendar_nav:
+            button.setHidden_(mode == deadlines.VIEW_LIST)
+        grid = None if mode == deadlines.VIEW_LIST else deadlines.grid_page(data, mode, anchor, today)
+        self.calendar_title.setStringValue_(grid.title if grid else "")
         document = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, INNER, 1))
+        if grid is None:
+            y = self._draw_calendar_list(document, data)
+        elif mode == deadlines.VIEW_WEEK:
+            y = self._draw_calendar_week(document, grid)
+        else:
+            y = self._draw_calendar_month(document, grid)
+        document.setFrame_(NSMakeRect(0, 0, INNER, y))
+        self.calendar_scroll.setDocumentView_(document)
+
+    def _deadline_button(self, content, row, frame):
+        """A see-through button over a due date; it opens the note or the page in Blackboard."""
+        button = NSButton.buttonWithTitle_target_action_("", self.target, "openDeadline:")
+        button.setBordered_(False)
+        button.setTransparent_(True)
+        button.setTag_(len(self.deadline_targets))
+        self.deadline_targets.append(row.target)
+        button.setAccessibilityLabel_(f"{row.title}, {row.course}, {row.time}")
+        button.setToolTip_("İndirilen notu aç" if not row.target.startswith("https://") else "Blackboard'da aç")
+        button.setFrame_(frame)
+        content.addSubview_(button)
+
+    def _draw_calendar_list(self, document, data) -> float:
         y = 8
         if data.message:
             message, height = _wrapping(data.message, INNER - 16, secondary=True)
@@ -950,38 +1043,108 @@ class MainWindow:
                     hint.setFrame_(NSMakeRect(8, y, INNER - 16, height))
                     document.addSubview_(hint)
                     y += height + 12
-            height = 42 + len(day.rows) * ROW_HEIGHT
-            card = _card(NSMakeRect(0, y, INNER, height), warning=day.past)
-            document.addSubview_(card)
-            content = card.contentView()
-            title = _label(day.title, 13, bold=True)
-            title.setFrame_(NSMakeRect(16, 12, INNER - 32, 18))
-            content.addSubview_(title)
-            for index, row in enumerate(day.rows):
-                top = 42 + index * ROW_HEIGHT
-                time_label = _label(row.time, 13, bold=True)
-                time_label.setFrame_(NSMakeRect(16, top + 10, 58, 20))
-                content.addSubview_(time_label)
-                name = _label(row.title, 13)
-                name.setFrame_(NSMakeRect(86, top + 7, INNER - 102, 18))
-                name.setToolTip_(row.title)
-                content.addSubview_(name)
-                course = _label(row.course, _small(), secondary=True)
-                course.setFrame_(NSMakeRect(86, top + 27, INNER - 102, 18))
-                course.setToolTip_(row.course)
-                content.addSubview_(course)
-                button = NSButton.buttonWithTitle_target_action_("", self.target, "openDeadline:")
-                button.setBordered_(False)
-                button.setTransparent_(True)
-                button.setTag_(len(self.deadline_targets))
-                self.deadline_targets.append(row.target)
-                button.setAccessibilityLabel_(f"{row.title}, {row.course}, {row.time}")
-                button.setToolTip_("İndirilen notu aç" if not row.target.startswith("https://") else "Blackboard'da aç")
-                button.setFrame_(NSMakeRect(0, top, INNER, ROW_HEIGHT))
-                content.addSubview_(button)
+            y = self._draw_day_card(document, y, day.title, day.rows, day.past)
+        return y
+
+    def _draw_day_card(self, document, y: float, title_text: str, rows, past: bool = False, empty: str = "") -> float:
+        height = 42 + (len(rows) * ROW_HEIGHT if rows or not empty else 30)
+        card = _card(NSMakeRect(0, y, INNER, height), warning=past)
+        document.addSubview_(card)
+        content = card.contentView()
+        title = _label(title_text, 13, bold=True)
+        title.setFrame_(NSMakeRect(16, 12, INNER - 32, 18))
+        content.addSubview_(title)
+        if not rows and empty:
+            none = _label(empty, 13, secondary=True)
+            none.setFrame_(NSMakeRect(16, 38, INNER - 32, 18))
+            content.addSubview_(none)
+        for index, row in enumerate(rows):
+            top = 42 + index * ROW_HEIGHT
+            time_label = _label(row.time, 13, bold=True)
+            time_label.setFrame_(NSMakeRect(16, top + 10, 58, 20))
+            content.addSubview_(time_label)
+            name = _label(row.title, 13)
+            name.setFrame_(NSMakeRect(86, top + 7, INNER - 102, 18))
+            name.setToolTip_(row.title)
+            content.addSubview_(name)
+            course = _label(row.course, _small(), secondary=True)
+            course.setFrame_(NSMakeRect(86, top + 27, INNER - 102, 18))
+            course.setToolTip_(row.course)
+            content.addSubview_(course)
+            self._deadline_button(content, row, NSMakeRect(0, top, INNER, ROW_HEIGHT))
+        return y + height + 16
+
+    def _draw_calendar_week(self, document, grid) -> float:
+        y = 8
+        if grid.message:
+            message, height = _wrapping(grid.message, INNER - 16, secondary=True)
+            message.setFrame_(NSMakeRect(8, y, INNER - 16, height))
+            document.addSubview_(message)
             y += height + 16
-        document.setFrame_(NSMakeRect(0, 0, INNER, y))
-        self.calendar_scroll.setDocumentView_(document)
+        for day in grid.weeks[0]:
+            y = self._draw_day_card(document, y, day.title, day.rows, empty=deadlines.T_NO_DEADLINE)
+        return y
+
+    def _draw_calendar_month(self, document, grid) -> float:
+        y = 8
+        if grid.message:
+            message, height = _wrapping(grid.message, INNER - 16, secondary=True)
+            message.setFrame_(NSMakeRect(8, y, INNER - 16, height))
+            document.addSubview_(message)
+            y += height + 16
+        gap = 4
+        width = (INNER - 6 * gap) / 7
+        for column, name in enumerate(grid.weekdays):
+            head = _label(name, _small(), bold=True, secondary=True)
+            head.setAlignment_(NSTextAlignmentCenter)
+            head.setFrame_(NSMakeRect(column * (width + gap), y, width, 16))
+            document.addSubview_(head)
+        y += 22
+        for days in grid.weeks:
+            for column, day in enumerate(days):
+                card = _card(NSMakeRect(column * (width + gap), y, width, MONTH_CELL_HEIGHT), warning=False)
+                document.addSubview_(card)
+                content = card.contentView()
+                if day.today:
+                    card.setBorderColor_(NSColor.controlAccentColor())
+                    card.setBorderWidth_(2)
+                number = _label(day.number, 12, bold=True)
+                if day.today:
+                    number.setTextColor_(NSColor.controlAccentColor())
+                elif day.outside:
+                    number.setTextColor_(NSColor.tertiaryLabelColor())
+                number.setFrame_(NSMakeRect(8, 5, width - 16, 16))
+                content.addSubview_(number)
+                week_button = NSButton.buttonWithTitle_target_action_("", self.target, "openWeek:")
+                week_button.setBordered_(False)
+                week_button.setTransparent_(True)
+                week_button.setTag_(len(self.calendar_days))
+                self.calendar_days.append(day.day)
+                week_button.setToolTip_("Haftayı göster")
+                week_button.setFrame_(NSMakeRect(0, 0, width, 24))
+                content.addSubview_(week_button)
+                top = 26
+                for row in day.rows[:MONTH_CELL_ROWS]:
+                    text = _label(f"{row.time} {row.title}", _small() - 1)
+                    text.setFrame_(NSMakeRect(8, top, width - 14, 14))
+                    text.setToolTip_(f"{row.title} · {row.course}")
+                    content.addSubview_(text)
+                    self._deadline_button(content, row, NSMakeRect(0, top - 1, width, 16))
+                    top += 17
+                if len(day.rows) > MONTH_CELL_ROWS:
+                    more = _label(deadlines.T_MORE.format(count=len(day.rows) - MONTH_CELL_ROWS), _small() - 1,
+                                  secondary=True)
+                    more.setFrame_(NSMakeRect(8, top, width - 14, 14))
+                    content.addSubview_(more)
+                    more_button = NSButton.buttonWithTitle_target_action_("", self.target, "openWeek:")
+                    more_button.setBordered_(False)
+                    more_button.setTransparent_(True)
+                    more_button.setTag_(len(self.calendar_days))
+                    self.calendar_days.append(day.day)
+                    more_button.setFrame_(NSMakeRect(0, top - 1, width, 16))
+                    content.addSubview_(more_button)
+            y += MONTH_CELL_HEIGHT + gap
+        return y + 8
 
     def _build_courses(self, page) -> None:
         self._header(page, T_NAV_COURSES)

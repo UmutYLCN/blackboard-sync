@@ -190,15 +190,34 @@ class _Converter(HTMLParser):
         return text.strip()
 
 
+_MARKED_SECTION = re.compile(r"<!\[[^>]*>")
+_ANY_TAG = re.compile(r"<[^>]*>")
+
+
+def feed_html(make_parser, html: str):
+    """Parse ``html`` with a fresh ``make_parser()``; markup the parser rejects never raises.
+
+    Before Python's parser was fixed, a marked section such as ``<![foo[`` raised
+    ``AssertionError``, which would have stopped a whole sync over one pasted page. The
+    section is dropped and, failing that, all tags are, so the text still comes through.
+    """
+    for text in (html, _MARKED_SECTION.sub("", html), _ANY_TAG.sub(" ", html)):
+        parser = make_parser()
+        try:
+            parser.feed(text)
+            parser.close()
+        except AssertionError:
+            continue
+        return parser
+    return make_parser()
+
+
 def html_to_markdown(html: str) -> str:
     if not html:
         return ""
     if "<" not in html:
         return html.strip()
-    parser = _Converter()
-    parser.feed(html)
-    parser.close()
-    return parser.result()
+    return feed_html(_Converter, html).result()
 
 
 class _EmbedFinder(HTMLParser):
@@ -256,9 +275,7 @@ def find_embedded_files(html: str) -> list[EmbeddedFile]:
     """Content-collection files and explicit uploads linked from instructor HTML."""
     if not html or ("bbcswebdav" not in html and "/sessions/" not in html):
         return []
-    finder = _EmbedFinder()
-    finder.feed(html)
-    finder.close()
+    finder = feed_html(_EmbedFinder, html)
     for link in finder._open:  # unclosed anchors
         finder._add(link["url"], link["name"] or "".join(link["text"]), link["file_id"], link["mime"])
     return finder.found

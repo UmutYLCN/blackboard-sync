@@ -13,17 +13,18 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, IO
 
-from blackboard_sync import courses, relocate, runtime, signout
+from blackboard_sync import courses, deadlines, relocate, runtime, signout
 from blackboard_sync.config import Config
 from blackboard_sync.errors import EXIT_ERROR, LoginRequired
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     AppModel,
     CourseChange,
+    Notification,
     RecentSeen,
     RunOutcome,
     UpdateState,
@@ -36,7 +37,8 @@ from blackboard_sync.menubar.model import (
 )
 from blackboard_sync.session import write_private_json, load_session
 from blackboard_sync.settings import Settings, load_settings
-from blackboard_sync.system import try_lock
+from blackboard_sync.state import State
+from blackboard_sync.system import sync_root, try_lock
 
 log = logging.getLogger("blackboard_sync.menubar")
 
@@ -249,12 +251,49 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
         # Files of a version before the University folder: move them in first, so the
         # folder and "Son indirilenler" find them before the next sync.
         model.pending, model.move_from = MOVE_JOB, settings.dest
+    sent = (saved or {}).get("reminders")
+    model.reminders_sent = sent if isinstance(sent, dict) else {}
+    model.restore_pending((saved or {}).get("pending"))  # a move or download the last run never got to
     refresh_hidden_folders(config, model)
     refresh_session(config, model, settings)
     if saved is None and last is not None and last.status == "ok":
         # First start: show what the last terminal sync brought in.
         model.remember(last)
     return model
+
+
+REMINDER_CHECK_EVERY = timedelta(minutes=5)
+# More reminders than this at once (say after a day away) become one notification.
+REMINDER_GROUP_FROM = 4
+
+
+def check_reminders(config: Config, model: AppModel, now: datetime) -> list[Notification]:
+    """Notifications for due dates 24 hours and 1 hour away; looks at most every few minutes.
+
+    Reads the due dates the last sync stored. Courses unticked in Dersler are left out.
+    The record of what was shown is kept in ``model.reminders_sent`` (saved with the model).
+    """
+    if not model.configured:
+        return []
+    if model.reminders_checked_at is not None and now - model.reminders_checked_at < REMINDER_CHECK_EVERY:
+        return []
+    model.reminders_checked_at = now
+    try:
+        state = State.load(config.state_file, backup=False)
+        reminders, sent = deadlines.due_reminders(
+            state, sync_root(model.dest), now, model.reminders_sent, courses.load_disabled(config))
+    except OSError as exc:
+        log.warning("could not look for due dates: %s", exc)
+        return []
+    model.reminders_sent = sent
+    if len(reminders) >= REMINDER_GROUP_FROM:
+        lines = [f"{r.course}: {r.title}" for r in reminders]
+        return [Notification("Yaklaşan teslim tarihleri", "\n".join(lines), {})]
+    notes = []
+    for reminder in reminders:
+        title, message = deadlines.reminder_text(reminder, now)
+        notes.append(Notification(title, message, {"deadline": reminder.target}))
+    return notes
 
 
 def save_model(config: Config, model: AppModel) -> None:

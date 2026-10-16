@@ -628,6 +628,9 @@ class AppModel:
         # MOVE_JOB (from ``move_from``) or "sync" (download into the new folder).
         self.pending: str | None = None
         self.move_from: Path | None = None
+        # Teslim tarihi hatırlatmaları already shown (``deadlines.due_reminders``) and when they were last looked for.
+        self.reminders_sent: dict[str, dict] = {}
+        self.reminders_checked_at: datetime | None = None
         self.login_method = ""  # while signing in: a browser's name, INAPP, or "" if unknown
         self.note = ""  # a transient extra line (lock held, sign-in failed, ...)
         self.sync_interval = sync_interval(sync_interval_minutes)  # None: only by hand
@@ -1078,7 +1081,30 @@ class AppModel:
             "recent": [vars(item) for item in self.recent],
             "recent_seen": self.recent_seen.saved_state(self.recent),
             "updates": self.updates.saved_state(),
+            "pending": self.saved_pending(),
+            "reminders": self.reminders_sent,
         }
+
+    def saved_pending(self) -> dict | None:
+        """The job a folder change asked for, so a restart does not forget it.
+
+        A move that is running counts as pending until it is done: if the app quits in the
+        middle, the next start moves what is left (moving is safe to repeat).
+        """
+        job = MOVE_JOB if self.busy == MOVE_JOB else self.pending
+        if job is None:
+            return None
+        return {"job": job, "move_from": str(self.move_from) if self.move_from is not None else None}
+
+    def restore_pending(self, data: object) -> None:
+        """Take back what ``saved_pending`` wrote; anything unreadable is ignored."""
+        if self.pending is not None or not isinstance(data, dict):
+            return
+        job, move_from = data.get("job"), data.get("move_from")
+        if job == MOVE_JOB and isinstance(move_from, str) and move_from:
+            self.pending, self.move_from = MOVE_JOB, Path(move_from)
+        elif job == "sync":
+            self.pending = "sync"
 
 
 def load_saved_state(data: dict | None) -> tuple[list[RecentItem], bool]:

@@ -294,7 +294,16 @@ def build_app(config: Config, show_window: bool = False):
             self.start_next()
             if self.model.update_due(jobs.utcnow()):
                 self.start_update_check(manual=False)
+            self.remind()
             self.refresh()
+
+        def remind(self) -> None:
+            """Notify about due dates 24 hours and 1 hour away (not while a window question is open)."""
+            notes = jobs.check_reminders(self.config, self.model, jobs.utcnow())
+            for note in notes:
+                self.notify(note)
+            if notes:
+                self._save()  # what was shown must not be shown again after a restart
 
         def start_next(self) -> None:
             """A job a folder change asked for goes first, then the scheduled sync."""
@@ -671,6 +680,8 @@ def build_app(config: Config, show_window: bool = False):
                 self.start_login()
             elif data.get("action") == "update":
                 self.start_update()
+            elif data.get("deadline"):
+                self.open_deadline(data["deadline"])
             elif data.get("open"):
                 path = Path(data["open"])
                 open_path(path if path.exists() else self.model.root)

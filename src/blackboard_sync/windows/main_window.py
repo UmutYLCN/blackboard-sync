@@ -32,6 +32,13 @@ CHROME = 40
 TITLE_FONT = ("Segoe UI", 16, "bold")
 HEADING_FONT = ("Segoe UI", 11, "bold")
 BOLD_FONT = ("Segoe UI", 10, "bold")
+SMALL_FONT = ("Segoe UI", 8)
+ACCENT = "#1f6fb2"
+BORDER = "#c8d0da"
+# Takvim, month view: titles shown per day before "+N daha", their width in characters, a cell's least height.
+MONTH_CELL_ROWS = 2
+MONTH_TITLE_CHARS = 16
+MONTH_CELL_MIN = 40
 WARNING = "#b00020"
 MUTED = "#5f6b7a"
 RUNNING = "#1f6fb2"
@@ -631,22 +638,126 @@ class MainWindow:
         self.refresh_announcements()
 
     def _build_calendar(self, page):
+        import tkinter as tk
         from tkinter import ttk
 
+        self.calendar_mode = tk.StringVar(value=deadlines.VIEW_LIST)
+        self.calendar_anchor = None  # the day the week or month view is around; None: today
         self._header(page, deadlines.T_TAB)
-        ttk.Label(page, text=deadlines.T_HINT, wraplength=WRAP).grid(row=1, column=0, sticky="w", pady=(0, 16))
-        self.calendar_canvas, self.calendar_body = self._scroll_area(page, 2)
+        ttk.Label(page, text=deadlines.T_HINT, wraplength=WRAP).grid(row=1, column=0, sticky="w", pady=(0, 12))
+        bar = ttk.Frame(page)
+        bar.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        for mode, title in deadlines.VIEWS:
+            ttk.Radiobutton(bar, text=title, value=mode, variable=self.calendar_mode, style="Toolbutton",
+                            command=self.refresh_calendar).pack(side="left", padx=(0, 4))
+        self.calendar_nav = ttk.Frame(bar)
+        self.calendar_nav.pack(side="left", padx=(16, 0))
+        ttk.Button(self.calendar_nav, text="‹", width=3, command=lambda: self._calendar_step(-1)).pack(side="left")
+        ttk.Button(self.calendar_nav, text=deadlines.T_TODAY, command=self._calendar_today).pack(
+            side="left", padx=4)
+        ttk.Button(self.calendar_nav, text="›", width=3, command=lambda: self._calendar_step(1)).pack(side="left")
+        self.calendar_title = ttk.Label(bar, font=HEADING_FONT)
+        self.calendar_title.pack(side="left", padx=(16, 0))
+        self.calendar_canvas, self.calendar_body = self._scroll_area(page, 3)
         self.calendar_canvas.configure(background=background_of(page))
+
+    @staticmethod
+    def _today():
+        from datetime import datetime
+
+        return datetime.now().astimezone().date()
+
+    def _calendar_step(self, step):
+        mode = self.calendar_mode.get()
+        self.calendar_anchor = deadlines.shift_anchor(self.calendar_anchor or self._today(), mode, step)
+        self.refresh_calendar()
+
+    def _calendar_today(self):
+        self.calendar_anchor = None
+        self.refresh_calendar()
+
+    def _calendar_open_week(self, day):
+        self.calendar_anchor = day
+        self.calendar_mode.set(deadlines.VIEW_WEEK)
+        self.refresh_calendar()
 
     def refresh_calendar(self):
         from tkinter import ttk
 
         data = self.on_deadlines()
-        if data == self._drawn_deadlines:
+        mode, today = self.calendar_mode.get(), self._today()
+        anchor = self.calendar_anchor or today
+        key = (data, mode, anchor, today)
+        if key == self._drawn_deadlines:
             return
-        self._drawn_deadlines = data
+        self._drawn_deadlines = key
         for child in self.calendar_body.winfo_children():
             child.destroy()
+        if mode == deadlines.VIEW_LIST:
+            self.calendar_nav.pack_forget()
+            self.calendar_title.configure(text="")
+            self._draw_calendar_list(data)
+            return
+        self.calendar_nav.pack(side="left", padx=(16, 0), before=self.calendar_title)
+        grid = deadlines.grid_page(data, mode, anchor, today)
+        self.calendar_title.configure(text=grid.title)
+        if grid.message:
+            ttk.Label(self.calendar_body, text=grid.message, wraplength=WRAP).pack(anchor="w", pady=(0, 12))
+        if mode == deadlines.VIEW_WEEK:
+            self._draw_calendar_week(grid)
+        else:
+            self._draw_calendar_month(grid)
+
+    def _draw_calendar_week(self, grid):
+        from tkinter import ttk
+
+        for day in grid.weeks[0]:
+            card = ttk.LabelFrame(self.calendar_body, text=day.title, padding=(16, 10))
+            card.pack(fill="x", pady=(0, 10))
+            card.columnconfigure(1, weight=1)
+            if not day.rows:
+                ttk.Label(card, text=deadlines.T_NO_DEADLINE, foreground=MUTED).grid(row=0, column=0, sticky="w")
+            for index, row in enumerate(day.rows):
+                ttk.Label(card, text=row.time, font=BOLD_FONT, width=7).grid(
+                    row=index * 2, column=0, rowspan=2, sticky="nw", padx=(0, 12), pady=(4, 8))
+                ttk.Button(card, text=row.title, command=lambda target=row.target: self.on_deadline(target)).grid(
+                    row=index * 2, column=1, sticky="ew", pady=(2, 0))
+                ttk.Label(card, text=row.course, wraplength=WRAP).grid(
+                    row=index * 2 + 1, column=1, sticky="w", pady=(2, 8))
+
+    def _draw_calendar_month(self, grid):
+        import tkinter as tk
+        from tkinter import ttk
+
+        table = ttk.Frame(self.calendar_body)
+        table.pack(fill="x")
+        for column, name in enumerate(grid.weekdays):
+            table.columnconfigure(column, weight=1, uniform="day")
+            ttk.Label(table, text=name, font=BOLD_FONT, anchor="center").grid(row=0, column=column, pady=(0, 4))
+        for week, days in enumerate(grid.weeks, start=1):
+            for column, day in enumerate(days):
+                cell = tk.Frame(table, highlightthickness=2 if day.today else 1, highlightbackground=ACCENT
+                                if day.today else BORDER, background=background_of(table))
+                cell.grid(row=week, column=column, sticky="nsew", padx=1, pady=1)
+                number = ttk.Label(cell, text=day.number, font=BOLD_FONT,
+                                   foreground=MUTED if day.outside else "", cursor="hand2")
+                number.pack(anchor="w", padx=4, pady=(2, 0))
+                number.bind("<Button-1>", lambda _e, d=day.day: self._calendar_open_week(d))
+                for row in day.rows[:MONTH_CELL_ROWS]:
+                    item = ttk.Label(cell, text=f"{row.time} {row.title}"[:MONTH_TITLE_CHARS],
+                                     cursor="hand2", font=SMALL_FONT)
+                    item.pack(anchor="w", padx=4)
+                    item.bind("<Button-1>", lambda _e, t=row.target: self.on_deadline(t))
+                if len(day.rows) > MONTH_CELL_ROWS:
+                    more = ttk.Label(cell, text=deadlines.T_MORE.format(count=len(day.rows) - MONTH_CELL_ROWS),
+                                     foreground=MUTED, font=SMALL_FONT, cursor="hand2")
+                    more.pack(anchor="w", padx=4)
+                    more.bind("<Button-1>", lambda _e, d=day.day: self._calendar_open_week(d))
+                ttk.Frame(cell, height=MONTH_CELL_MIN).pack()
+
+    def _draw_calendar_list(self, data):
+        from tkinter import ttk
+
         if data.message:
             ttk.Label(self.calendar_body, text=data.message, wraplength=WRAP).pack(anchor="w", pady=(0, 12))
         if not data.days:
