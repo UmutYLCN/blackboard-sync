@@ -9,7 +9,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
 from blackboard_sync.config import Config
-from blackboard_sync.htmltext import body_text
+from blackboard_sync.htmltext import body_text, feed_html
 from blackboard_sync.state import State
 
 T_TAB = "Duyurular"
@@ -44,8 +44,7 @@ class _PlainText(HTMLParser):
 
 
 def metadata(ann: dict, course_id: str, course_name: str, source_path: str, output_key: str) -> dict:
-    parser = _PlainText()
-    parser.feed(body_text(ann.get("body")))
+    parser = feed_html(_PlainText, body_text(ann.get("body")))
     preview = " ".join("".join(parser.parts).split())
     if len(preview) > PREVIEW_LIMIT:
         preview = preview[:PREVIEW_LIMIT - 1].rstrip() + "…"

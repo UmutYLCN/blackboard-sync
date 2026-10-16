@@ -344,6 +344,7 @@ class Syncer:
         self.client = client
         self.config = config
         self.state = state
+        self._attachment_owners: dict[str, str] | None = None
         self.dest = config.root  # every path below is relative to the University folder
         self.dry_run = dry_run
         self.windows = is_windows() if windows is None else windows
@@ -765,7 +766,7 @@ class Syncer:
                     failure = exc
                 attachments = []
             for att in attachments:
-                out_key = f"attachment:{course.id}:{att['id']}"
+                out_key = self.attachment_key(course, item, att, previous_item)
                 if out_key in kept:
                     outputs.append(out_key)
                     saved.append(PurePosixPath(self.state.outputs[out_key]["path"]).name)
@@ -859,6 +860,32 @@ class Syncer:
 
         if not self.dry_run:
             self.state.record_item(key, modified, outputs, title, media=media_keys, large_files=large_files)
+
+    def attachment_key(self, course: Course, item: dict, att: dict, previous_item: dict) -> str:
+        """The state key of one attachment: ``attachment:<course>:<file id>``.
+
+        A file id shared by two items (a copied item) must still give each its own file,
+        so an item that finds the key recorded for another item uses a key with its own
+        id too. An item keeps whichever key it recorded before.
+        """
+        plain = f"attachment:{course.id}:{att['id']}"
+        own = f"attachment:{course.id}:{item['id']}:{att['id']}"
+        recorded = previous_item.get("outputs", [])
+        if plain in recorded or own in recorded:
+            return plain if plain in recorded else own
+        owner = self.attachment_owners().setdefault(plain, f"content:{course.id}:{item['id']}")
+        return plain if owner == f"content:{course.id}:{item['id']}" else own
+
+    def attachment_owners(self) -> dict[str, str]:
+        """Which item recorded each ``attachment:<course>:<file id>`` key (read once per run)."""
+        if self._attachment_owners is None:
+            self._attachment_owners = {
+                out_key: item_key
+                for item_key, entry in self.state.items.items()
+                for out_key in entry.get("outputs", [])
+                if out_key.startswith("attachment:") and out_key.count(":") == 2
+            }
+        return self._attachment_owners
 
     def kept_attachments(self, previous_item: dict, modified: str | None) -> Container[str]:
         """The files of this item that are on disk from an earlier run and need no download.
