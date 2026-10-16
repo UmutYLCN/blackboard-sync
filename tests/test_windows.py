@@ -412,7 +412,7 @@ def fake_tk(monkeypatch, tmp_path):
     names = ('Frame', 'Label', 'Entry', 'Button', 'Checkbutton', 'Radiobutton', 'Separator', 'Combobox',
              'LabelFrame', 'Scrollbar')
     ttk = SimpleNamespace(**{name: Widget for name in names})
-    fake = SimpleNamespace(Toplevel=Widget, Canvas=Widget, StringVar=Variable, BooleanVar=Variable, ttk=ttk,
+    fake = SimpleNamespace(Toplevel=Widget, Canvas=Widget, Frame=Widget, StringVar=Variable, BooleanVar=Variable, ttk=ttk,
                            filedialog=SimpleNamespace(askdirectory=lambda **kw: str(tmp_path / 'picked')))
     monkeypatch.setitem(sys.modules, 'tkinter', fake)
     return widgets

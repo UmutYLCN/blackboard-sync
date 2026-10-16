@@ -148,8 +148,16 @@ class TrayApp:
         self.start_next()
         if updater.enabled() and self.model.update_due(jobs.utcnow()):
             self.start_update_check(manual=False)
+        self.remind()
         self.refresh()
         self.root.after(30000, self.tick)
+
+    def remind(self):
+        """Toasts for due dates 24 hours and 1 hour away."""
+        notes = jobs.check_reminders(self.config, self.model, jobs.utcnow())
+        self.post_notifications(notes)
+        if notes:
+            self.save()
 
     def start_next(self):
         """A job a folder change asked for goes first, then the scheduled sync."""

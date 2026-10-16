@@ -218,7 +218,14 @@ A sidebar switches between four sections:
   (macOS) or animations turned off (Windows).
 - **Genel**: the [settings](#settings).
 - **Takvim**: due dates grouped by local day, upcoming first and elapsed dates
-  separately. Clicking opens an existing downloaded note or Blackboard.
+  separately. Clicking opens an existing downloaded note or Blackboard. A
+  Liste / Hafta / Ay switch lays the same cached rows out as a list, a Monday-first
+  week or a month grid (`deadlines.grid_page`; ‹ › step by week or month, Bugün
+  returns, a month day opens its week). The app also notifies 24 hours and 1 hour
+  before a due date (`deadlines.due_reminders`, `menubar.jobs.check_reminders`,
+  looked up every 5 minutes); what was shown is kept in `menubar.json` under
+  `reminders`, so a restart never repeats it. A job a folder change queued
+  (`pending`, `move_from`) is kept there too and runs again after a restart.
 - **Dersler**: one check box per current-term course (code, title and term),
   with a line explaining that the folder mirrors Blackboard. Every course is
   ticked by default, also one that appears later. An unticked course is not
