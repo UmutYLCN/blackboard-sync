@@ -504,12 +504,10 @@ def test_home_update_banner_visibility_action_and_layout(tmp_path, appearance):
         model.note = 'Yeni içerik kontrol ediliyor…'
         window.window.setContentSize_((960, 378))  # 400-point window including its title bar
         window.update_status(main_status(model, NOW))
-        frame = window.recent_card.frame()
-        assert frame.size.height >= 52  # the smallest window still lists some files
         assert box.frame().origin.y + box.frame().size.height < window.status_card.frame().origin.y
         window.window.setContentSize_((960, 560))
         window.update_status(main_status(model, NOW))
-        frame = window.recent_card.frame()
+        frame = window.status_card.frame()
         assert frame.origin.y + frame.size.height <= window.pages[OVERVIEW].frame().size.height - PAD
         model.busy = None
         model.updates.begin('download')

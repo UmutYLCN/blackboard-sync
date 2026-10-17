@@ -114,6 +114,8 @@ T_STATE_TITLES = {
     STATE_ERROR: "Senkron tamamlanamadı",
 }
 T_VIEW_ALL = "Tümünü gör"
+T_OPEN_FILE = "Open"
+T_SHOW_IN_FOLDER = "Show in folder"
 T_HOME_RECENT = "Son indirilenler"
 T_HOME_ANNOUNCEMENTS = announcements.T_TAB
 T_HOME_CALENDAR = "Yaklaşan teslimler"

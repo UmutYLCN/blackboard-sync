@@ -85,7 +85,8 @@ class MainWindow:
                  on_course_toggle=lambda course_id, enabled: None, on_past_term=lambda name: None,
                  on_section=lambda section: None, on_deadlines=deadlines.DeadlinePage,
                  on_deadline=lambda target: None, recent_seen=None, on_seen=lambda: None,
-                 on_announcements=lambda: (), on_open_announcement=lambda row: None):
+                 on_announcements=lambda: (), on_open_announcement=lambda row: None,
+                 on_reveal=lambda path: None):
         import tkinter as tk
         from tkinter import ttk
 
@@ -100,6 +101,7 @@ class MainWindow:
         self.on_open, self.on_courses = on_open, on_courses
         self.on_course_toggle, self.on_past_term = on_course_toggle, on_past_term
         self.on_announcements, self.on_open_announcement = on_announcements, on_open_announcement
+        self.on_reveal = on_reveal
         self.state = main.WindowState()
         self.status = status
         self.saved = values
@@ -301,39 +303,39 @@ class MainWindow:
         self.overview_update_banner = self._build_update_banner(page, 1)
         background = background_of(page)
 
-        # Left: the status card (an illustration while a sync runs), then the last files.
+        # Left: Drive's status card: the state in words, the last files and "View all".
         status = ttk.LabelFrame(page, padding=(14, 12))
-        status.grid(row=2, column=0, sticky="new", padx=(0, 12), pady=(0, 12))
+        status.grid(row=2, column=0, rowspan=2, sticky="new", padx=(0, 12))
         status.columnconfigure(1, weight=1)
-        self.state_icon = ttk.Label(status, font=("Segoe UI", 28), width=3, anchor="center")
-        self.state_icon.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 12))
+        self.state_icon = ttk.Label(status, font=("Segoe UI", 20), width=2, anchor="center")
+        self.state_icon.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 10))
         self.scene = SyncScene(status, *COMPACT_SCENE, background=background)
-        self.scene.canvas.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 12))
-        self.state_title = ttk.Label(status, font=("Segoe UI", 16))
+        self.scene.canvas.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 10))
+        self.state_title = ttk.Label(status, font=("Segoe UI Light", 20))
         self.state_title.grid(row=0, column=1, sticky="sw")
-        self.state_detail = ttk.Label(status, foreground=MUTED, wraplength=360)
+        self.state_detail = ttk.Label(status, foreground=MUTED, wraplength=320)
         self.state_detail.grid(row=1, column=1, sticky="nw")
-        # A note or the last error, the one thing the title and its line have no room for.
-        self.account_message = ttk.Label(status, wraplength=420)
-        self.account_message.grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
         buttons = ttk.Frame(status)
-        buttons.grid(row=3, column=0, columnspan=2, sticky="w", pady=(12, 0))
-        self.sync_button = ttk.Button(buttons, width=ACTION_WIDTH, command=lambda: self.on_action("sync"))
+        buttons.grid(row=0, column=2, rowspan=2, sticky="ne")
+        self.sync_button = ttk.Button(buttons, command=lambda: self.on_action("sync"))
         self.sync_button.pack(side="left")
         self.home_action = ttk.Button(buttons, command=lambda: self.on_action(self.status.home.action))
         self.home_action.pack(side="left", padx=(8, 0))
-
-        recent = ttk.LabelFrame(page, text=main.T_HOME_RECENT, padding=(14, 8))
-        recent.grid(row=3, column=0, sticky="nsew", padx=(0, 12))
-        recent.columnconfigure(0, weight=1)
-        recent.rowconfigure(1, weight=1)
-        self.recent_count = ttk.Label(recent, foreground=MUTED)
-        self.recent_count.grid(row=0, column=0, sticky="e")
-        self.recent_body = ttk.Frame(recent)
-        self.recent_body.grid(row=1, column=0, sticky="nsew")
+        # A note or the last error, the one thing the title and its line have no room for.
+        self.account_message = ttk.Label(status, wraplength=420)
+        self.account_message.grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        # The last files: a click opens one, "⋮" offers to show it in its folder.
+        self.recent_body = ttk.Frame(status)
+        self.recent_body.grid(row=3, column=0, columnspan=3, sticky="nsew", pady=(10, 0))
         self.recent_canvas, self.recent_frame = self._scroll_area(self.recent_body, 0)
-        ttk.Button(recent, text=main.T_VIEW_ALL, command=lambda: self.select(main.ACTIVITY)).grid(
-            row=2, column=0, sticky="w", pady=(8, 0))
+        self.recent_canvas.configure(height=main.HOME_RECENT_ROWS * 52)
+        footer = ttk.Frame(status)
+        footer.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+        footer.columnconfigure(1, weight=1)
+        ttk.Button(footer, text=main.T_VIEW_ALL, command=lambda: self.select(main.ACTIVITY)).grid(
+            row=0, column=0, sticky="w", ipadx=10, ipady=4)
+        self.recent_count = ttk.Label(footer, foreground=MUTED)
+        self.recent_count.grid(row=0, column=1, sticky="e")
 
         # Right: what needs attention, then the next due dates.
         self.notify_frame = ttk.LabelFrame(page, text=main.T_HOME_ANNOUNCEMENTS, padding=(14, 8))
@@ -399,8 +401,32 @@ class MainWindow:
                 anchor="w", pady=(4, 0))
 
     def _build_activity(self, page):
+        from tkinter import ttk
+
         self._header(page, main.T_NAV_ACTIVITY)
-        self.activity_canvas, self.activity_frame = self._scroll_area(page, 1)
+        card = ttk.LabelFrame(page, padding=(14, 12))
+        card.grid(row=1, column=0, sticky="nsew")
+        page.rowconfigure(1, weight=1)
+        page.columnconfigure(0, weight=1)
+        card.columnconfigure(1, weight=1)
+        card.rowconfigure(3, weight=1)
+        # Drive's header: the state in words over the table.
+        self.activity_icon = ttk.Label(card, font=("Segoe UI", 20), width=2, anchor="center")
+        self.activity_icon.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 10))
+        self.activity_title = ttk.Label(card, font=("Segoe UI Light", 20))
+        self.activity_title.grid(row=0, column=1, sticky="sw")
+        self.activity_detail = ttk.Label(card, foreground=MUTED)
+        self.activity_detail.grid(row=1, column=1, sticky="nw")
+        head = ttk.Frame(card)
+        head.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(14, 4))
+        head.columnconfigure(0, weight=1)
+        for column, (title, width) in enumerate(((main.T_NAME, None), (main.T_SIZE, 10), (main.T_STATUS, 6))):
+            ttk.Label(head, text=title, foreground=MUTED, font=BOLD_FONT, width=width or 1).grid(
+                row=0, column=column, sticky="w" if column == 0 else "e", padx=(8, 0))
+        ttk.Label(head, text="", width=3).grid(row=0, column=3)
+        body = ttk.Frame(card)
+        body.grid(row=3, column=0, columnspan=2, sticky="nsew")
+        self.activity_canvas, self.activity_frame = self._scroll_area(body, 0)
         self.activity_frame.columnconfigure(0, weight=1)
 
     def refresh_activity(self):
@@ -412,26 +438,10 @@ class MainWindow:
         self._drawn_activity = rows
         for child in self.activity_frame.winfo_children():
             child.destroy()
-        head = ttk.Frame(self.activity_frame)
-        head.pack(fill="x", pady=(0, 6))
-        head.columnconfigure(0, weight=1)
-        for column, (title, width) in enumerate(((main.T_NAME, None), (main.T_SIZE, 10), (main.T_STATUS, 6))):
-            ttk.Label(head, text=title, foreground=MUTED, font=BOLD_FONT, width=width or 1).grid(
-                row=0, column=column, sticky="w" if column == 0 else "e", padx=(8, 0))
         if not rows:
             ttk.Label(self.activity_frame, text=main.T_ACTIVITY_EMPTY, foreground=MUTED).pack(anchor="w", pady=8)
         for row in rows:
-            line = ttk.Frame(self.activity_frame, padding=(0, 6))
-            line.pack(fill="x")
-            line.columnconfigure(0, weight=1)
-            text = ttk.Frame(line)
-            text.grid(row=0, column=0, sticky="w")
-            ttk.Button(text, text=row.name, style="Toolbutton",
-                       command=lambda path=row.path: self.on_open(path)).pack(anchor="w")
-            ttk.Label(text, text=f"{row.status} · {row.detail}", foreground=MUTED).pack(anchor="w", padx=(4, 0))
-            ttk.Label(line, text=row.size, foreground=MUTED, width=10, anchor="e").grid(row=0, column=1, padx=(8, 0))
-            ttk.Label(line, text="✓", foreground="#236b45", font=BOLD_FONT, width=6, anchor="e").grid(
-                row=0, column=2, padx=(8, 0))
+            self._file_row(self.activity_frame, row.name, row.kind, row.status, row.size, row.path)
 
     def _build_announcements(self, page):
         from tkinter import ttk
@@ -711,21 +721,26 @@ class MainWindow:
         self.overview_title.configure(text=status.overview_title)
         self.sync_button.configure(text=status.sync_title, state="normal" if status.sync_enabled else "disabled")
         home = status.home
-        self.state_title.configure(text=home.title)
-        self.state_detail.configure(text=home.detail)
         symbol, color = HOME_SYMBOLS.get(home.kind, HOME_SYMBOLS[main.STATE_SYNCED])
-        self.state_icon.configure(text=symbol, foreground=color)
+        for icon, title, detail in ((self.state_icon, self.state_title, self.state_detail),
+                                    (self.activity_icon, self.activity_title, self.activity_detail)):
+            title.configure(text=home.title)
+            detail.configure(text=home.detail)
+            icon.configure(text=symbol, foreground=color)
         if status.scene:
             self.state_icon.grid_remove()
             self.scene.canvas.grid()
         else:
             self.scene.canvas.grid_remove()
             self.state_icon.grid()
+        # One button: what the state asks for (Sürdür, Giriş yap), else "Şimdi senkronize et".
         if home.action:
             self.home_action.configure(text=home.action_title)
-            self.home_action.pack(side="left", padx=(8, 0))
+            self.home_action.pack(side="left")
+            self.sync_button.pack_forget()
         else:
             self.home_action.pack_forget()
+            self.sync_button.pack(side="left")
         self.account_message.configure(text=card.message, foreground=WARNING if card.warning else MUTED)
         if card.message:
             self.account_message.grid()
@@ -833,9 +848,6 @@ class MainWindow:
             self.past_scene.stop()
 
     def _draw_recent(self):
-        import tkinter as tk
-        from tkinter import ttk
-
         rows = self.status.recent
         self.recent_count.configure(text=main.recent_count(rows))
         if rows == self._drawn_recent:
@@ -844,28 +856,60 @@ class MainWindow:
         self._recent_entries = []
         for widget in self.recent_frame.winfo_children():
             widget.destroy()
+        from tkinter import ttk
+
         if not rows:
             ttk.Label(self.recent_frame, text=T_RECENT_EMPTY, foreground=MUTED).pack(anchor="w", pady=8)
-        for row in rows:
-            entry = ttk.Frame(self.recent_frame, padding=(0, 6))
+        for row in rows[:main.HOME_RECENT_ROWS]:
+            entry = self._file_row(self.recent_frame, row.name, row.kind, row.detail, None, row.path, is_new=row.is_new)
             self._recent_entries.append((entry, row))
-            entry.pack(anchor="w", fill="x")
-            if row.is_new:
-                pill = tk.Canvas(entry, width=52, height=22, highlightthickness=0,
-                                 background=self.recent_canvas.cget("background") or "#f0f0f0")
-                pill.pack(side="right", padx=(8, 0))
-                pill.create_oval(0, 0, 22, 22, fill="#2563eb", outline="")
-                pill.create_oval(30, 0, 52, 22, fill="#2563eb", outline="")
-                pill.create_rectangle(11, 0, 41, 22, fill="#2563eb", outline="")
-                pill.create_text(26, 11, text=main.T_NEW, fill="#ffffff", font=("Segoe UI", 9, "bold"))
-            ttk.Label(entry, text=row.kind or "•", width=5, anchor="center", font=BOLD_FONT,
-                      foreground=MUTED).pack(side="left", padx=(0, 10))
-            text = ttk.Frame(entry)
-            text.pack(side="left", fill="x", expand=True)
-            # A click opens the file in its own application.
-            ttk.Button(text, text=row.name, style="Toolbutton",
-                       command=lambda path=row.path: self.on_open(path)).pack(anchor="w")
-            ttk.Label(text, text=row.detail, foreground=MUTED).pack(anchor="w", padx=(4, 0))
+
+    def _file_row(self, parent, name, kind, detail, size, path, is_new=False):
+        """Drive's file row: kind, name with a line under it, (size), ✓ (or YENİ) and "⋮"."""
+        import tkinter as tk
+        from tkinter import ttk
+
+        entry = ttk.Frame(parent, padding=(0, 6))
+        entry.pack(anchor="w", fill="x")
+        entry.columnconfigure(1, weight=1)
+        ttk.Label(entry, text=kind or "•", width=5, anchor="center", font=BOLD_FONT,
+                  foreground=MUTED).grid(row=0, column=0, rowspan=2, padx=(0, 10))
+        # A click opens the file in its own application.
+        ttk.Button(entry, text=name, style="Toolbutton", command=lambda: self.on_open(path)).grid(
+            row=0, column=1, sticky="w")
+        ttk.Label(entry, text=detail, foreground=MUTED).grid(row=1, column=1, sticky="w", padx=(4, 0))
+        column = 2
+        if size is not None:
+            ttk.Label(entry, text=size, foreground=MUTED, width=10, anchor="e").grid(
+                row=0, column=column, rowspan=2, padx=(8, 0))
+            column += 1
+        if is_new:
+            pill = tk.Canvas(entry, width=52, height=22, highlightthickness=0,
+                             background=background_of(entry))
+            pill.grid(row=0, column=column, rowspan=2, padx=(8, 0))
+            pill.create_oval(0, 0, 22, 22, fill="#2563eb", outline="")
+            pill.create_oval(30, 0, 52, 22, fill="#2563eb", outline="")
+            pill.create_rectangle(11, 0, 41, 22, fill="#2563eb", outline="")
+            pill.create_text(26, 11, text=main.T_NEW, fill="#ffffff", font=("Segoe UI", 9, "bold"))
+        else:
+            ttk.Label(entry, text="✓", foreground="#236b45", font=BOLD_FONT, width=4, anchor="center").grid(
+                row=0, column=column, rowspan=2, padx=(8, 0))
+        more = ttk.Button(entry, text="⋮", width=2, style="Toolbutton")
+        more.configure(command=lambda: self.show_file_menu(more, path))
+        more.grid(row=0, column=column + 1, rowspan=2, padx=(4, 0))
+        return entry
+
+    def show_file_menu(self, widget, path):
+        """The "⋮" of a file row: open it, or show it in its folder."""
+        import tkinter as tk
+
+        menu = tk.Menu(self.window, tearoff=0)
+        menu.add_command(label=main.T_OPEN_FILE, command=lambda: self.on_open(path))
+        menu.add_command(label=main.T_SHOW_IN_FOLDER, command=lambda: self.on_reveal(path))
+        try:
+            menu.tk_popup(widget.winfo_rootx(), widget.winfo_rooty() + widget.winfo_height())
+        finally:
+            menu.grab_release()
 
     def _recent_unmapped(self, event):
         if event.widget == self.window:

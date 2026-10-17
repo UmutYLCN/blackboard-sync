@@ -443,8 +443,7 @@ def test_windows_recent_badges_track_viewport_and_return_visit(monkeypatch, tmp_
     window.show()
     pills = [(widget, options) for widget, options in drawings if options.get('text') == 'YENİ']
     assert len(pills) == 2
-    assert all(widget.pack_options['side'] == 'right' and options['fill'] == '#ffffff'
-               for widget, options in pills)
+    assert all(options['fill'] == '#ffffff' for widget, options in pills)
     window.window.focus_displayof = lambda: window.window
     window.window.winfo_toplevel = lambda: window.window
     window.window.state = lambda: 'normal'

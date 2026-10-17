@@ -363,6 +363,12 @@ class TrayApp:
                     self.model.note = "Duyuru açılamadı."
             elif target:
                 webbrowser.open(target)
+        elif action == "reveal":
+            target = open_target(self.model.root, value)
+            if target is not None and target.is_file():
+                subprocess.Popen(["explorer", "/select,", str(target)], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            elif target is not None:
+                os.startfile(str(target))
         elif action in ("folder", "open"):
             target = self.model.root if action == "folder" else open_target(self.model.root, value)
             if target and target.exists():
@@ -503,6 +509,7 @@ class TrayApp:
                                      self.settings_submitted, self.dispatch, self.window_closed,
                                      on_values=self.form_values,
                                      on_open=lambda path: self.dispatch("open", path),
+                                     on_reveal=lambda path: self.dispatch("reveal", path),
                                      on_deadlines=lambda: deadlines.load_calendar(self.config, self.settings.dest),
                                      on_deadline=lambda target: self.dispatch("deadline", target),
                                      on_announcements=lambda: announcements.load_rows(self.config),

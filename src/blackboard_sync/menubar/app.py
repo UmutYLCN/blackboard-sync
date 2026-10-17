@@ -504,6 +504,17 @@ def build_app(config: Config, show_window: bool = False):
                 self.model.note = f"{self.model.root.name or self.model.root} klasörü henüz yok; önce senkronize edin."
                 self.refresh()
 
+        def reveal_file(self, rel_path: str) -> None:
+            """The "⋮" of a file row: show it selected in Finder (its folder when the file is gone)."""
+            target = open_target(self.model.root, rel_path)
+            if target is None:
+                self.model.note = "Dosya bulunamadı."
+                self.refresh()
+            elif target.is_file():
+                subprocess.Popen(["open", "-R", str(target)], stdin=subprocess.DEVNULL)
+            else:
+                open_path(target)
+
         def open_recent(self, rel_path: str) -> None:
             target = open_target(self.model.root, rel_path)
             if target is None:
@@ -583,6 +594,7 @@ def build_app(config: Config, show_window: bool = False):
                     on_close=self._window_closed,
                     on_values=self.form_values,
                     on_open=self.open_recent,
+                    on_reveal=self.reveal_file,
                     on_deadlines=lambda: deadlines.load_calendar(self.config, self.settings.dest),
                     on_deadline=self.open_deadline,
                     on_announcements=lambda: announcements.load_rows(self.config),
