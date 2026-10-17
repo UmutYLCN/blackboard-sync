@@ -27,7 +27,7 @@ leaves with the window. The start at login stays quiet (no window).
 
 The GUI layers (``main_window.py`` on macOS, ``windows/main_window.py``) draw
 ``MainStatus`` and report clicks. The page names Home, Sync activity and Announcements
-follow Google Drive's; the rest of the window is Turkish on purpose.
+follow Google Drive's. Every text goes through ``i18n.tr`` (English or Turkish).
 """
 
 from __future__ import annotations
@@ -37,6 +37,7 @@ from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
 
 from blackboard_sync import __version__, announcements, courses, deadlines, updater
+from blackboard_sync.i18n import tr
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     T_LOGGING_IN,
@@ -61,75 +62,75 @@ ACTIVITY = "activity"
 NAV_SECTIONS = (OVERVIEW, ACTIVITY, ANNOUNCEMENTS, COURSES, CALENDAR)
 SECTIONS = (*NAV_SECTIONS, GENERAL)
 
-T_WINDOW_TITLE = "Blackboard Sync"
-T_NAV_START = "Get started"
-T_NAV_OVERVIEW = "Home"
-T_NAV_ACTIVITY = "Sync activity"
-T_NAV_GENERAL = "Settings"
+T_WINDOW_TITLE = tr("Blackboard Sync")
+T_NAV_START = tr("Get started")
+T_NAV_OVERVIEW = tr("Home")
+T_NAV_ACTIVITY = tr("Sync activity")
+T_NAV_GENERAL = tr("Settings")
 T_NAV_COURSES = courses.T_TAB
 T_NAV_CALENDAR = deadlines.T_TAB
 
 # Başlangıç
-T_START_TITLE = "Your course files start here."
+T_START_TITLE = tr("Your course files start here.")
 T_START_INTRO = (
-    "Connect your Blackboard account and your course files come to this computer by themselves; "
-    "no more checking the site every time."
+    tr("Connect your Blackboard account and your course files come to this computer by themselves; "
+    "no more checking the site every time.")
 )
 START_STEPS = (
-    ("Choose your school and folder", "You decide where the files are saved."),
-    ("Sign in to Blackboard", "Your school's sign-in page opens. The first sync starts after you sign in."),
-    ("Your files stay up to date",
-     "Every hour by default. You can change how often in Settings."),
+    (tr("Choose your school and folder"), tr("You decide where the files are saved.")),
+    (tr("Sign in to Blackboard"), tr("Your school's sign-in page opens. The first sync starts after you sign in.")),
+    (tr("Your files stay up to date"),
+     tr("Every hour by default. You can change how often in Settings.")),
 )
-T_START_FORM = "Let's get started"
+T_START_FORM = tr("Let's get started")
 
 
 def reopen_hint(where: str) -> str:
     """How to find the window again: ``where`` is "Applications or Launchpad" or "the Start menu"."""
-    return f"You can close this window. To see it again, open Blackboard Sync from {where}."
+    return tr("You can close this window. To see it again, open Blackboard Sync from {where}.").format(where=where)
 
 
 # Genel bakış
-T_OPEN_FOLDER = "Open folder"
-T_NEW = "NEW"
-T_UPDATE = "Update"
-T_UPDATE_INTRO = "Update to get the latest version."
-T_SYNC_RUNNING = "Syncing"
-T_EXPIRED = "Session expired"
-T_SIGNED_OUT = "Not signed in"
-T_WAITING = "Waiting for sign-in"
-T_NEVER_SYNCED = "Not synced yet"
+T_OPEN_FOLDER = tr("Open folder")
+T_NEW = tr("NEW")
+T_UPDATE = tr("Update")
+T_UPDATE_INTRO = tr("Update to get the latest version.")
+T_SYNC_RUNNING = tr("Syncing")
+T_EXPIRED = tr("Session expired")
+T_SIGNED_OUT = tr("Not signed in")
+T_WAITING = tr("Waiting for sign-in")
+T_NEVER_SYNCED = tr("Not synced yet")
 # The one line under the illustration on the very first sync.
-T_FIRST_SYNC = "Downloading your files for the first time…"
+T_FIRST_SYNC = tr("Downloading your files for the first time…")
 # The sidebar's account card; Tk cuts long names itself (AppKit truncates).
 SIDEBAR_NAME_LIMIT = 20
 # Genel: the bar with Vazgeç / Kaydet, only while something is not saved.
-T_UNSAVED = "Unsaved changes"
+T_UNSAVED = tr("Unsaved changes")
 
 # Home's status card, the headline and what it stands for.
 STATE_SYNCED, STATE_SYNCING, STATE_PAUSED, STATE_ATTENTION, STATE_ERROR = (
     "synced", "syncing", "paused", "attention", "error")
 T_STATE_TITLES = {
-    STATE_SYNCED: "Up to date",
-    STATE_SYNCING: "Syncing…",
-    STATE_PAUSED: "Paused",
-    STATE_ATTENTION: "Sign-in needed",
-    STATE_ERROR: "Sync did not finish",
+    STATE_SYNCED: tr("Up to date"),
+    STATE_SYNCING: tr("Syncing…"),
+    STATE_PAUSED: tr("Paused"),
+    STATE_ATTENTION: tr("Sign-in needed"),
+    STATE_ERROR: tr("Sync did not finish"),
 }
-T_VIEW_ALL = "View all"
-T_OPEN_FILE = "Open"
-T_SHOW_IN_FOLDER = "Show in folder"
-T_HOME_RECENT = "Recent downloads"
+T_VIEW_ALL = tr("View all")
+T_OPEN_FILE = tr("Open")
+T_SHOW_IN_FOLDER = tr("Show in folder")
+T_HOME_RECENT = tr("Recent downloads")
 T_HOME_ANNOUNCEMENTS = announcements.T_TAB
-T_HOME_CALENDAR = "Upcoming deadlines"
-T_OPEN_CALENDAR = "Open calendar"
-T_ALL_GOOD = "You're all caught up!"
-T_ALL_GOOD_DETAIL = "Things that need your attention will show up here."
-T_NO_DEADLINES = "No upcoming deadlines."
-T_ACTIVITY_EMPTY = "Nothing downloaded yet."
-T_NEEDS_ATTENTION = "Needs your attention"
-T_NAME, T_SIZE, T_STATUS = "Name", "File size", "Status"
-T_PAUSE_SHORT = "Pause"
+T_HOME_CALENDAR = tr("Upcoming deadlines")
+T_OPEN_CALENDAR = tr("Open calendar")
+T_ALL_GOOD = tr("You're all caught up!")
+T_ALL_GOOD_DETAIL = tr("Things that need your attention will show up here.")
+T_NO_DEADLINES = tr("No upcoming deadlines.")
+T_ACTIVITY_EMPTY = tr("Nothing downloaded yet.")
+T_NEEDS_ATTENTION = tr("Needs your attention")
+T_NAME, T_SIZE, T_STATUS = tr("Name"), tr("File size"), tr("Status")
+T_PAUSE_SHORT = tr("Pause")
 HOME_RECENT_ROWS = 4  # files listed on Home before "View all"
 HOME_ANNOUNCEMENT_ROWS = 3  # attention items first, then the newest announcements
 HOME_DEADLINE_ROWS = 4
@@ -145,9 +146,9 @@ def day_time(when: datetime, now: datetime) -> str:
     """Local "today 14:05", "yesterday 18:20" or "03.10.2026 09:15"."""
     local, today = when.astimezone(), now.astimezone().date()
     if local.date() == today:
-        return f"today {local:%H:%M}"
+        return tr("today {time}").format(time=f"{local:%H:%M}")
     if local.date() == today - timedelta(days=1):
-        return f"yesterday {local:%H:%M}"
+        return tr("yesterday {time}").format(time=f"{local:%H:%M}")
     return f"{local:%d.%m.%Y %H:%M}"
 
 
@@ -157,7 +158,7 @@ def last_sync_text(model: AppModel, now: datetime) -> str:
     if last is None:
         return T_NEVER_SYNCED
     when = day_time(last.finished_at or now, now)
-    return f"Last synced: {when}" if last.status == "ok" else f"Last attempt: {when}"
+    return (tr("Last synced: {time}") if last.status == "ok" else tr("Last attempt: {time}")).format(time=when)
 
 
 def initials(name: str) -> str:
@@ -255,8 +256,8 @@ def update_banner(model: AppModel) -> UpdateBanner | None:
     if not updater.enabled() or release is None or not updater.is_newer(release.version, __version__):
         return None
     return UpdateBanner(
-        title=f"Blackboard Sync {release.version} is ready",
-        button_title="Downloading…" if updates.busy == "download" else T_UPDATE,
+        title=tr("Blackboard Sync {version} is ready").format(version=release.version),
+        button_title=tr("Downloading…") if updates.busy == "download" else T_UPDATE,
         enabled=updates.busy is None,
     )
 
@@ -307,7 +308,7 @@ def account_card(model: AppModel, now: datetime) -> AccountCard:
     message = model.note
     warning = False
     if not message and model.last is not None and model.last.status == "error" and model.busy is None:
-        message, warning = shorten(f"Sync did not finish: {model.last.message}", 120), True
+        message, warning = shorten(tr("Sync did not finish: {error}").format(error=model.last.message), 120), True
     if model.busy == "login":
         return AccountCard("…", T_WAITING, login_waiting_line(model.login_method), message=message)
     if name is None:
@@ -351,7 +352,7 @@ def attention_items(model: AppModel) -> tuple[AttentionItem, ...]:
     name, expired = model.account()
     if name is None and model.busy != "login":
         items.append(AttentionItem(T_EXPIRED if expired else T_SIGNED_OUT,
-                                   "Sign in to get new files.", "login", T_LOGIN))
+                                   tr("Sign in to get new files."), "login", T_LOGIN))
     banner = update_banner(model)
     if banner is not None:
         items.append(AttentionItem(banner.title, T_UPDATE_INTRO, "update", banner.button_title, warning=False))
@@ -360,13 +361,13 @@ def attention_items(model: AppModel) -> tuple[AttentionItem, ...]:
         items.append(AttentionItem(T_STATE_TITLES[STATE_ERROR], shorten(last.message, 160)))
     elif last is not None and last.status == "ok":
         if last.unreadable_courses:
-            items.append(AttentionItem(f"Could not read {courses_text(last.unreadable_courses)}",
-                                       "Blackboard did not return the content; the next sync tries again."))
+            items.append(AttentionItem(tr("Could not read {courses}").format(courses=courses_text(last.unreadable_courses)),
+                                       tr("Blackboard did not return the content; the next sync tries again.")))
         elif last.warning_count:
             items.append(AttentionItem(warnings_text(last.warning_count).capitalize(),
-                                       "Some files could not be downloaded; the next sync tries again."))
+                                       tr("Some files could not be downloaded; the next sync tries again.")))
     if model.note and model.busy is None:
-        items.append(AttentionItem("Note", model.note, warning=False))
+        items.append(AttentionItem(tr("Note"), model.note, warning=False))
     return tuple(items)
 
 
@@ -439,7 +440,7 @@ def course_title(row: courses.CourseRow) -> str:
 
 def course_detail(row: courses.CourseRow) -> str:
     """The line under it: the term, and whether the course syncs."""
-    return " · ".join(part for part in (row.term, "syncing" if row.enabled else "not syncing") if part)
+    return " · ".join(part for part in (row.term, tr("syncing") if row.enabled else tr("not syncing")) if part)
 
 
 def enabled_count(rows: tuple[courses.CourseRow, ...]) -> str:

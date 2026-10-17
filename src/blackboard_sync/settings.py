@@ -4,8 +4,8 @@ The file lives in the data directory beside ``state.json``. Both the menu bar
 app and the command line read it, so a student never needs command-line flags:
 the window decides which Blackboard to talk to and where files go.
 
-Validation messages are Turkish on purpose: the settings window shows them to
-the student.
+Validation messages go through ``i18n.tr``: the settings window shows them to
+the student. ``language`` is read by ``i18n`` itself when the app starts.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from blackboard_sync.i18n import DEFAULT_LANGUAGE, normalize_language, tr
 from blackboard_sync.session import write_private_json
 from blackboard_sync.system import make_private_dir
 
@@ -49,6 +50,7 @@ class Settings:
     # "Güncellemeleri otomatik denetle": look for a new app version once a day.
     check_updates: bool = True
     sync_interval_minutes: int = DEFAULT_SYNC_INTERVAL_MINUTES
+    language: str = DEFAULT_LANGUAGE  # i18n.LANGUAGES; applies after a restart
 
     def to_dict(self) -> dict:
         return {
@@ -56,6 +58,7 @@ class Settings:
             "dest": str(self.dest),
             "check_updates": self.check_updates,
             "sync_interval_minutes": self.sync_interval_minutes,
+            "language": self.language,
         }
 
     @classmethod
@@ -65,6 +68,7 @@ class Settings:
             dest=normalize_dest(data["dest"]),
             check_updates=data.get("check_updates", True) is not False,
             sync_interval_minutes=normalize_sync_interval(data.get("sync_interval_minutes")),
+            language=normalize_language(data.get("language")),
         )
 
 
@@ -97,17 +101,17 @@ def normalize_base_url(text: str) -> str:
     """
     text = (text or "").strip()
     if not text:
-        raise SettingsError("Enter your school's Blackboard address.", "base_url")
+        raise SettingsError(tr("Enter your school's Blackboard address."), "base_url")
     if "://" not in text:
         text = "https://" + text
-    example = "Enter a valid address, for example https://blackboard.school.edu"
+    example = tr("Enter a valid address, for example https://blackboard.school.edu")
     try:
         parts = urlsplit(text)
         host, port = parts.hostname, parts.port
     except ValueError:
         raise SettingsError(example, "base_url") from None
     if parts.scheme.lower() != "https":
-        raise SettingsError("The address must start with https://.", "base_url")
+        raise SettingsError(tr("The address must start with https://."), "base_url")
     if (
         not host
         or "." not in host.strip(".")
@@ -122,13 +126,13 @@ def normalize_dest(text: str | os.PathLike) -> Path:
     """An absolute folder path; ``~`` is expanded. The folder may not exist yet."""
     text = str(text or "").strip()
     if not text:
-        raise SettingsError("Choose the folder to save the files in.", "dest")
+        raise SettingsError(tr("Choose the folder to save the files in."), "dest")
     path = Path(text).expanduser()
     if not path.is_absolute():
-        raise SettingsError("Enter the folder's full path, for example ~/Documents/University", "dest")
+        raise SettingsError(tr("Enter the folder's full path, for example ~/Documents/University"), "dest")
     path = Path(os.path.normpath(path))
     if path.exists() and not path.is_dir():
-        raise SettingsError("This path is not a folder.", "dest")
+        raise SettingsError(tr("This path is not a folder."), "dest")
     return path
 
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
+from blackboard_sync.i18n import tr
+
 
 @dataclass
 class CourseReport:
@@ -37,19 +39,18 @@ class CourseReport:
     def summary_line(self) -> str:
         """e.g. "CSE303: 2 new files, 1 new announcement"."""
         parts = []
-        for count, singular in (
-            (len(self.new_files), "new file"),
-            (len(self.updated_files), "updated file"),
-            (len(self.new_notes), "new note"),
-            (len(self.updated_notes), "updated note"),
-            (len(self.new_announcements), "new announcement"),
-            (len(self.updated_announcements), "updated announcement"),
+        for count, one, many in (
+            (len(self.new_files), tr("new file"), tr("new files")),
+            (len(self.updated_files), tr("updated file"), tr("updated files")),
+            (len(self.new_notes), tr("new note"), tr("new notes")),
+            (len(self.updated_notes), tr("updated note"), tr("updated notes")),
+            (len(self.new_announcements), tr("new announcement"), tr("new announcements")),
+            (len(self.updated_announcements), tr("updated announcement"), tr("updated announcements")),
+            (self.skipped_large_files, tr("large file not downloaded"), tr("large files not downloaded")),
         ):
             if count:
-                parts.append(f"{count} {singular}{'' if count == 1 else 's'}")
-        if self.skipped_large_files:
-            parts.append(f"{self.skipped_large_files} large file{'' if self.skipped_large_files == 1 else 's'} not downloaded")
-        return f"{self.code}: {', '.join(parts) if parts else 'no changes'}"
+                parts.append(f"{count} {one if count == 1 else many}")
+        return f"{self.code}: {', '.join(parts) if parts else tr('no changes')}"
 
 
 @dataclass
@@ -97,20 +98,22 @@ class SyncReport:
     def migration_lines(self) -> list[str]:
         if not self.moved_into_root and not self.left_outside_root:
             return []
-        lines = [f"Moved {self.moved_into_root} file(s) into {self.dest}"]
+        lines = [tr("Moved {n} file(s) into {folder}").format(n=self.moved_into_root, folder=self.dest)]
         if self.left_outside_root:
-            lines.append(f"{len(self.left_outside_root)} file(s) could not be moved and stayed where they were:")
+            lines.append(tr("{n} file(s) could not be moved and stayed where they were:").format(
+                n=len(self.left_outside_root)))
             lines += [f"  ! {rel}" for rel in self.left_outside_root]
         return lines
 
     def render_text(self) -> str:
         if self.status != "ok":
             return "\n".join([*self.migration_lines(), self.message])
-        verb = "Would sync" if self.dry_run else "Synced"
+        line = tr("Would sync {n} course(s) for {terms} into {folder}") if self.dry_run else tr(
+            "Synced {n} course(s) for {terms} into {folder}")
         lines = self.migration_lines()
-        lines.append(f"{verb} {len(self.courses)} course(s) for {', '.join(self.terms) or 'no term'} into {self.dest}")
+        lines.append(line.format(n=len(self.courses), terms=", ".join(self.terms) or tr("no term"), folder=self.dest))
         if self.past_term:
-            lines.append("Past term: downloaded once, not updated automatically.")
+            lines.append(tr("Past term: downloaded once, not updated automatically."))
         for course in self.courses:
             lines.append(f"  {course.summary_line()}")
             for label, paths in (
@@ -121,5 +124,5 @@ class SyncReport:
             lines += [f"      ! {w}" for w in course.warnings]
         lines += [f"  ! {w}" for w in self.warnings]
         changed = sum(1 for c in self.courses if c.change_count)
-        lines.append("Nothing new." if not changed else f"{changed} course(s) had changes.")
+        lines.append(tr("Nothing new.") if not changed else tr("{n} course(s) had changes.").format(n=changed))
         return "\n".join(lines)

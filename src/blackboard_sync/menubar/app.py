@@ -19,6 +19,7 @@ from pathlib import Path
 from blackboard_sync import announcements, courses, deadlines, runtime, update_macos, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
+from blackboard_sync.i18n import tr
 from blackboard_sync.menubar import jobs, launchagent, settings_form
 from blackboard_sync.menubar.main_window_model import GENERAL, main_status, shows_window_at_launch
 from blackboard_sync.menubar.model import (
@@ -50,18 +51,18 @@ SYMBOLS = {
 FALLBACK_TITLES = {Icon.IDLE: "BB", Icon.SYNCING: "BB ↻", Icon.EXPIRED: "BB ⛔", Icon.ERROR: "BB ⚠", Icon.PAUSED: "BB ⏸"}
 DESCRIPTIONS = {
     Icon.IDLE: "Blackboard Sync",
-    Icon.SYNCING: "Blackboard Sync: syncing",
-    Icon.EXPIRED: "Blackboard Sync: session expired",
-    Icon.ERROR: "Blackboard Sync: error",
-    Icon.PAUSED: "Blackboard Sync: paused",
+    Icon.SYNCING: tr("Blackboard Sync: syncing"),
+    Icon.EXPIRED: tr("Blackboard Sync: session expired"),
+    Icon.ERROR: tr("Blackboard Sync: error"),
+    Icon.PAUSED: tr("Blackboard Sync: paused"),
 }
-T_UPDATE_READY = "Blackboard Sync {version} downloaded"
+T_UPDATE_READY = tr("Blackboard Sync {version} downloaded")
 # The manual update, where the app cannot replace itself (``update_macos.ManualUpdate``).
 T_UPDATE_STEPS = (
-    "In the window that opened, drag “Blackboard Sync” onto the “Applications” folder "
+    tr("In the window that opened, drag “Blackboard Sync” onto the “Applications” folder "
     "and choose “Replace” to put it in place of the old version. Quit Blackboard Sync "
     "first, then open the app again from the Applications folder. Your settings and "
-    "downloaded course files are kept."
+    "downloaded course files are kept.")
 )
 
 
@@ -193,24 +194,24 @@ def build_main_menu():
 
     main = NSMenu.alloc().initWithTitle_("")
     app_item, _ = menu("Blackboard Sync", [
-        ("Hide Blackboard Sync", "hide:", "h"),
-        ("Hide Others", "hideOtherApplications:", "h", NSEventModifierFlagCommand | NSEventModifierFlagOption),
-        ("Show All", "unhideAllApplications:", ""),
+        (tr("Hide Blackboard Sync"), "hide:", "h"),
+        (tr("Hide Others"), "hideOtherApplications:", "h", NSEventModifierFlagCommand | NSEventModifierFlagOption),
+        (tr("Show All"), "unhideAllApplications:", ""),
         None,
-        ("Quit Blackboard Sync", "terminate:", "q"),
+        (tr("Quit Blackboard Sync"), "terminate:", "q"),
     ])
-    edit_item, _ = menu("Edit", [
-        ("Undo", "undo:", "z"),
-        ("Redo", "redo:", "z", NSEventModifierFlagCommand | NSEventModifierFlagShift),
+    edit_item, _ = menu(tr("Edit"), [
+        (tr("Undo"), "undo:", "z"),
+        (tr("Redo"), "redo:", "z", NSEventModifierFlagCommand | NSEventModifierFlagShift),
         None,
-        ("Cut", "cut:", "x"),
-        ("Copy", "copy:", "c"),
-        ("Paste", "paste:", "v"),
-        ("Select All", "selectAll:", "a"),
+        (tr("Cut"), "cut:", "x"),
+        (tr("Copy"), "copy:", "c"),
+        (tr("Paste"), "paste:", "v"),
+        (tr("Select All"), "selectAll:", "a"),
     ])
-    window_item, window_menu = menu("Window", [
-        ("Minimize", "performMiniaturize:", "m"),
-        ("Close", "performClose:", "w"),
+    window_item, window_menu = menu(tr("Window"), [
+        (tr("Minimize"), "performMiniaturize:", "m"),
+        (tr("Close"), "performClose:", "w"),
     ])
     for item in (app_item, edit_item, window_item):
         main.addItem_(item)
@@ -443,7 +444,7 @@ def build_app(config: Config, show_window: bool = False):
                 return
             if self.model.busy is not None:
                 # The app quits to install; a running sync or move would be cut off.
-                self.notify(Notification("The update cannot be installed now", T_UPDATE_WAIT, {}))
+                self.notify(Notification(tr("The update cannot be installed now"), T_UPDATE_WAIT, {}))
                 return
             if not self.model.updates.begin("download"):
                 return
@@ -464,10 +465,10 @@ def build_app(config: Config, show_window: bool = False):
             except UpdateError as exc:
                 error = str(exc)
             except OSError as exc:
-                error = f"Could not save the update: {exc.strerror or exc}"
+                error = tr("Could not save the update: {error}").format(error=exc.strerror or exc)
             except Exception:  # keep the menu usable whatever went wrong
                 log.exception("update failed")
-                error = "Could not install the update."
+                error = tr("Could not install the update.")
             AppHelper.callAfter(self._update_finished, release, path, manual, error)
 
         def _update_finished(self, release: Release, path: Path | None, manual: str, error: str) -> None:
@@ -486,7 +487,7 @@ def build_app(config: Config, show_window: bool = False):
             self.refresh()
             updater.open_disk_image(path)
             if rumps.alert(T_UPDATE_READY.format(version=release.version), f"{manual}\n\n{T_UPDATE_STEPS}",
-                           ok="Quit Blackboard Sync", cancel="Later") == 1:
+                           ok=tr("Quit Blackboard Sync"), cancel=tr("Later")) == 1:
                 self.quit()
 
         def _report_installed(self, timer) -> None:
@@ -501,14 +502,15 @@ def build_app(config: Config, show_window: bool = False):
             if self.model.root.is_dir():
                 open_path(self.model.root)
             else:
-                self.model.note = f"The {self.model.root.name or self.model.root} folder does not exist yet; sync first."
+                self.model.note = tr("The {folder} folder does not exist yet; sync first.").format(
+                    folder=self.model.root.name or self.model.root)
                 self.refresh()
 
         def reveal_file(self, rel_path: str) -> None:
             """The "⋮" of a file row: show it selected in Finder (its folder when the file is gone)."""
             target = open_target(self.model.root, rel_path)
             if target is None:
-                self.model.note = "File not found."
+                self.model.note = tr("File not found.")
                 self.refresh()
             elif target.is_file():
                 subprocess.Popen(["open", "-R", str(target)], stdin=subprocess.DEVNULL)
@@ -518,7 +520,7 @@ def build_app(config: Config, show_window: bool = False):
         def open_recent(self, rel_path: str) -> None:
             target = open_target(self.model.root, rel_path)
             if target is None:
-                self.model.note = "File not found."
+                self.model.note = tr("File not found.")
                 self.refresh()
             else:
                 open_path(target)
@@ -550,7 +552,7 @@ def build_app(config: Config, show_window: bool = False):
                     launchagent.install(jobs.log_file(self.config))
             except OSError as exc:
                 log.warning("could not change the login item: %s", exc)
-                self.model.note = "Could not change the start-at-login setting."
+                self.model.note = tr("Could not change the start-at-login setting.")
             self.refresh()
 
         def _first_run(self, timer) -> None:
@@ -618,7 +620,7 @@ def build_app(config: Config, show_window: bool = False):
                 courses.set_enabled(self.config, course_id, enabled)
             except OSError as exc:
                 log.warning("Could not save the course choice: %s", exc)
-                self.model.note = f"Could not save the course choice: {exc.strerror or exc}"
+                self.model.note = tr("Could not save the course choice: {error}").format(error=exc.strerror or exc)
             jobs.refresh_hidden_folders(self.config, self.model)
             if enabled and not self._uninstalling and self.model.account()[0] is not None:
                 self.start_sync()  # does nothing while another job runs
@@ -657,7 +659,7 @@ def build_app(config: Config, show_window: bool = False):
                 save_settings(self.config.data_dir, submission.settings)
             except OSError as exc:
                 log.warning("could not save the settings: %s", exc)
-                return f"Could not save the settings: {exc.strerror or exc}", "dest"
+                return tr("Could not save the settings: {error}").format(error=exc.strerror or exc), "dest"
             log.info(
                 "settings saved: %s, dest %s", submission.settings.base_url, submission.settings.dest
             )
@@ -679,7 +681,27 @@ def build_app(config: Config, show_window: bool = False):
                 elif self.model.busy != "login" or submission.school_changed:
                     self._login_after_job = True
             self.refresh()
+            if submission.language_changed:
+                # After the window has taken the saved values back.
+                AppHelper.callAfter(self.offer_language_restart)
             return None
+
+        def offer_language_restart(self) -> None:
+            """The language is read when the app starts: offer to start again in the new one now."""
+            if rumps.alert(settings_form.T_LANGUAGE_RESTART_TITLE, settings_form.T_LANGUAGE_RESTART,
+                           ok=settings_form.T_RESTART_NOW, cancel=settings_form.T_LATER) == 1:
+                self.restart()
+
+        def restart(self) -> None:
+            """Start a new copy that takes over once this one has quit, then quit."""
+            try:
+                jobs.relaunch(self.config)
+            except OSError as exc:
+                log.warning("could not restart: %s", exc)
+                self.model.note = tr("Could not restart Blackboard Sync; quit it and open it again.")
+                self.refresh()
+                return
+            self.quit()
 
         def ask_dest_choice(self, old: Path, new: Path, files: int) -> str | None:
             from blackboard_sync.menubar.main_window import ask_dest_choice
@@ -807,17 +829,17 @@ def build_app(config: Config, show_window: bool = False):
         def logout(self, _sender=None) -> None:
             if self.model.busy is not None:
                 return
-            if rumps.alert("Sign out?",
-                           "All sign-in data is removed; you will need to enter your school details "
-                           "again to sign in. Your downloaded files are kept.",
-                           ok="Sign out", cancel="Cancel") != 1:
+            if rumps.alert(tr("Sign out?"),
+                           tr("All sign-in data is removed; you will need to enter your school details "
+                              "again to sign in. Your downloaded files are kept."),
+                           ok=tr("Sign out"), cancel=tr("Cancel")) != 1:
                 return
             try:
                 warnings = jobs.logout(self.config)
                 if warnings:
                     self.model.note = warnings[0]
             except OSError:
-                self.model.note = "Could not sign out."
+                self.model.note = tr("Could not sign out.")
             self.refresh()
 
         def _draw_icon(self, icon: Icon) -> None:
@@ -857,6 +879,8 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument("--background", action="store_true", help="start without opening the main window")
     group.add_argument("--enable-autostart", action="store_true", help="start the app at every login")
     group.add_argument("--disable-autostart", action="store_true", help="stop starting the app at login")
+    # A copy started by ``restart`` (a new language): it waits for the old one to quit.
+    parser.add_argument(jobs.RESTARTING, action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     config = Config.from_env()
 
@@ -871,7 +895,7 @@ def main(argv: list[str] | None = None) -> int:
         return jobs.detach(config)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    lock = jobs.single_instance(config)
+    lock = jobs.wait_for_instance(config) if args.restarting else jobs.single_instance(config)
     if lock is None:
         print("The Blackboard Sync menu bar app is already running.", file=sys.stderr)
         if not args.background:

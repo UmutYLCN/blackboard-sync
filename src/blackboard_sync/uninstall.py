@@ -16,21 +16,22 @@ from blackboard_sync import runtime, signout
 from blackboard_sync.windows import package
 from blackboard_sync.config import Config
 from blackboard_sync.errors import AlreadyRunning, BlackboardSyncError
+from blackboard_sync.i18n import tr
 from blackboard_sync.relocate import migration_pending
 from blackboard_sync.state import State
 from blackboard_sync.sync import run_lock
 from blackboard_sync.system import try_lock
 
-TITLE = "Uninstall Blackboard Sync?"
-BUTTON_TITLE = "Uninstall app…"  # in the settings window, under Updates
-CHECKBOX = "Also delete the downloaded course files"
+TITLE = tr("Uninstall Blackboard Sync?")
+BUTTON_TITLE = tr("Uninstall app…")  # in the settings window, under Updates
+CHECKBOX = tr("Also delete the downloaded course files")
 MESSAGE = (
-    "The app and all of its records, logs, settings and sign-in data are removed, "
+    tr("The app and all of its records, logs, settings and sign-in data are removed, "
     "and so is its start-at-login entry. Downloaded course files are kept unless "
-    "you tick this option."
+    "you tick this option.")
 )
-BUSY = "Wait for the sync or the folder move to finish before uninstalling."
-STORE_REMOVAL = "You can uninstall Blackboard Sync from Windows Settings → Apps."
+BUSY = tr("Wait for the sync or the folder move to finish before uninstalling.")
+STORE_REMOVAL = tr("You can uninstall Blackboard Sync from Windows Settings → Apps.")
 
 
 def trash(path: Path) -> None:
@@ -79,7 +80,8 @@ def remove_app() -> list[str]:
                 trash(bundle)
                 return []
             except OSError:
-                return [f"The app could not be moved to the Trash. Delete it in Finder yourself: {bundle}"]
+                return [tr("The app could not be moved to the Trash. Delete it in Finder yourself: {path}").format(
+                    path=bundle)]
     elif sys.platform == "win32":
         installer = Path(sys.executable).parent / "unins000.exe"
         if installer.is_file():
@@ -90,9 +92,9 @@ def remove_app() -> list[str]:
                 return []
             except OSError:
                 pass
-        return ["The uninstaller could not be started. Uninstall Blackboard Sync from Windows "
-                f"Settings → Apps; if needed, delete this folder yourself: {installer.parent}"]
-    return ["Remove the app's files yourself."]
+        return [tr("The uninstaller could not be started. Uninstall Blackboard Sync from Windows "
+                   "Settings → Apps; if needed, delete this folder yourself: {path}").format(path=installer.parent)]
+    return [tr("Remove the app's files yourself.")]
 
 
 def _recorded_path(root: Path, value) -> Path | None:
@@ -117,7 +119,7 @@ def trash_course_files(config: Config, send_to_trash=trash) -> list[str]:
     state = State.load(config.state_file, backup=False)
     warnings = []
     if state.recovery:
-        return ["The download records could not be read; the course files were kept to be safe."]
+        return [tr("The download records could not be read; the course files were kept to be safe.")]
     folders: set[Path] = set()
     paths = {entry.get("path") for entry in state.outputs.values() if isinstance(entry, dict)
              and isinstance(entry.get("path"), str)}
@@ -140,7 +142,7 @@ def trash_course_files(config: Config, send_to_trash=trash) -> list[str]:
                 try:
                     send_to_trash(path)
                 except OSError as exc:
-                    warnings.append(f"Could not move a file to the Trash: {path} ({exc})")
+                    warnings.append(tr("Could not move a file to the Trash: {path} ({error})").format(path=path, error=exc))
     if config.root != config.dest:
         folders.add(config.root)  # created by the app; removed only once empty
     for folder in sorted(folders, key=lambda p: len(p.parts), reverse=True):
@@ -148,7 +150,8 @@ def trash_course_files(config: Config, send_to_trash=trash) -> list[str]:
             if folder.is_dir() and not any(folder.iterdir()):
                 send_to_trash(folder)
         except OSError as exc:
-            warnings.append(f"Could not move an empty folder to the Trash: {folder} ({exc})")
+            warnings.append(tr("Could not move an empty folder to the Trash: {path} ({error})").format(
+                path=folder, error=exc))
     return warnings
 
 
@@ -161,7 +164,7 @@ def _app_lock(config: Config, owned: bool):
     handle = open(config.data_dir / "menubar.lock", "a+")
     try:
         if not try_lock(handle):
-            raise AlreadyRunning("Quit Blackboard Sync first, or use Uninstall app… in its settings.")
+            raise AlreadyRunning(tr("Quit Blackboard Sync first, or use Uninstall app… in its settings."))
         yield
     finally:
         handle.close()
@@ -181,10 +184,11 @@ def uninstall(config: Config, delete_course_files: bool = False, *,
     data = config.data_dir.resolve()
     dest = config.dest.resolve()
     if data == data.parent or data == Path.home().resolve() or data == dest or data in dest.parents:
-        raise BlackboardSyncError("The app data folder contains the download folder or the home folder; uninstall cancelled.")
+        raise BlackboardSyncError(tr("The app data folder contains the download folder or the home folder; "
+                                     "uninstall cancelled."))
     for name in ("sync.lock", "menubar.lock"):
         if (config.data_dir / name).is_symlink():
-            raise BlackboardSyncError("A lock file is a link; the app could not be removed safely.")
+            raise BlackboardSyncError(tr("A lock file is a link; the app could not be removed safely."))
     warnings: list[str] = []
     try:
         with run_lock(config.lock_file):
@@ -195,24 +199,25 @@ def uninstall(config: Config, delete_course_files: bool = False, *,
                     try:
                         warnings.extend(trash_course_files(config, send_to_trash))
                     except OSError as exc:
-                        warnings.append(f"Could not move the course files to the Trash: {exc}")
+                        warnings.append(tr("Could not move the course files to the Trash: {error}").format(error=exc))
                 try:
                     warnings.extend(signout.sign_out(config, clear_web=clear_web))
                 except OSError as exc:
-                    warnings.append(f"Could not clear the sign-in data: {exc}")
+                    warnings.append(tr("Could not clear the sign-in data: {error}").format(error=exc))
                 try:
                     startup_cleanup()
                 except OSError as exc:
-                    warnings.append(f"Could not remove the start-at-login entry: {exc}")
+                    warnings.append(tr("Could not remove the start-at-login entry: {error}").format(error=exc))
                 # Open lock files cannot be unlinked on Windows. Remove them only
                 # after both handles close; everything else is removed under lock.
                 try:
                     for path in config.data_dir.iterdir():
                         if path.name not in ("sync.lock", "menubar.lock"):
                             if not signout._remove_tree(path):
-                                warnings.append(f"Uygulama verisi silinemedi: {path}")
+                                warnings.append(tr("Could not delete app data: {path}").format(path=path))
                 except OSError as exc:
-                    warnings.append(f"Could not clear the app data folder: {config.data_dir} ({exc})")
+                    warnings.append(tr("Could not clear the app data folder: {path} ({error})").format(
+                        path=config.data_dir, error=exc))
     except AlreadyRunning as exc:
         if "Another blackboard-sync" in str(exc):
             raise AlreadyRunning(BUSY) from exc
@@ -221,11 +226,11 @@ def uninstall(config: Config, delete_course_files: bool = False, *,
         try:
             (config.data_dir / name).unlink(missing_ok=True)
         except OSError as exc:
-            warnings.append(f"Could not delete a lock file: {name} ({exc})")
+            warnings.append(tr("Could not delete a lock file: {name} ({error})").format(name=name, error=exc))
     try:
         warnings.extend(app_cleanup())
     except OSError as exc:
-        warnings.append(f"The app could not be removed; delete it yourself: {exc}")
+        warnings.append(tr("The app could not be removed; delete it yourself: {error}").format(error=exc))
     return list(dict.fromkeys(warnings))
 
 

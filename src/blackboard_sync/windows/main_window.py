@@ -16,12 +16,13 @@ from blackboard_sync import __version__, announcements, courses, deadlines, runt
 from . import package
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
+from blackboard_sync.i18n import tr
 from blackboard_sync.menubar.model import T_RECENT_EMPTY
 from blackboard_sync.windows.sync_scene_view import SyncScene, background_of
 
 log = logging.getLogger(__name__)
 
-REOPEN_WHERE = "the Start menu"
+REOPEN_WHERE = tr("the Start menu")
 WIDTH, HEIGHT = 940, 640  # what it opens with when the work area has room
 MIN_WIDTH = 760
 SIDEBAR = 200
@@ -135,6 +136,7 @@ class MainWindow:
         self.autostart = tk.BooleanVar(value=values.autostart)
         self.check_updates = tk.BooleanVar(value=values.check_updates)
         self.interval = tk.StringVar(value=form.interval_title(values.sync_interval_minutes))
+        self.language = tk.StringVar(value=form.language_title(values.language))
         self.past_term = tk.StringVar(value="")
         self.section_var = tk.StringVar(value=main.OVERVIEW)
 
@@ -150,12 +152,12 @@ class MainWindow:
             page.grid_remove()
             self.pages[name] = page
             build(page)
-        for variable in (self.url, self.dest, self.autostart, self.check_updates, self.interval):
+        for variable in (self.url, self.dest, self.autostart, self.check_updates, self.interval, self.language):
             variable.trace_add("write", lambda *_args: self.changed())
         # The wheel scrolls the section in view wherever the pointer is; over a
         # list it scrolls too instead of changing the choice.
         window.bind("<MouseWheel>", self.wheel)
-        for combobox in (self.past_dropdown, self.interval_dropdown):
+        for combobox in (self.past_dropdown, self.interval_dropdown, self.language_dropdown):
             combobox.bind("<MouseWheel>", lambda e: self.wheel(e) or "break")
         self._build_topbar(window)
         self.update_status(status)
@@ -525,7 +527,15 @@ class MainWindow:
             values=[title for _, title in form.INTERVAL_OPTIONS],
         )
         self.interval_dropdown.pack(side="left")
-        place(interval_row, pady=(0, 12))
+        place(interval_row, pady=(0, 8))
+        language_row = ttk.Frame(frame)
+        ttk.Label(language_row, text=form.T_LANGUAGE_LABEL + ":").pack(side="left", padx=(0, 8))
+        self.language_dropdown = ttk.Combobox(
+            language_row, textvariable=self.language, state="readonly", width=20,
+            values=[name for _, name in form.LANGUAGE_OPTIONS],
+        )
+        self.language_dropdown.pack(side="left")
+        place(language_row, pady=(0, 12))
 
         section(form.T_SECTION_UPDATES)
         self.update_button = self.uninstall_button = None
@@ -647,7 +657,7 @@ class MainWindow:
     def values(self):
         minutes = next((m for m, title in form.INTERVAL_OPTIONS if title == self.interval.get()), 60)
         return form.FormValues(self.url.get(), self.dest.get(), self.autostart.get(),
-                               self.check_updates.get(), minutes)
+                               self.check_updates.get(), minutes, form.language_code(self.language.get()))
 
     def set_values(self, values):
         """Show ``values`` as what is saved: the bar goes away."""
@@ -658,6 +668,7 @@ class MainWindow:
             self.autostart.set(values.autostart)
             self.check_updates.set(values.check_updates)
             self.interval.set(form.interval_title(values.sync_interval_minutes))
+            self.language.set(form.language_title(values.language))
         finally:
             self._loading = False
         self.saved = values
@@ -1132,7 +1143,7 @@ def ask_uninstall(parent, dest):
     frame = ttk.Frame(dialog, padding=20)
     frame.grid(sticky="nsew")
     ttk.Label(frame, text=uninstall.MESSAGE, wraplength=480, justify="left").grid(sticky="w", pady=(0, 16))
-    path = ttk.Label(frame, text=f"The folder whose files go to the Recycle Bin:\n{dest}",
+    path = ttk.Label(frame, text=tr("The folder whose files go to the Recycle Bin:") + f"\n{dest}",
                      wraplength=480, justify="left")
 
     def toggled():
@@ -1145,8 +1156,8 @@ def ask_uninstall(parent, dest):
                     command=toggled).grid(row=1, column=0, sticky="w")
     buttons = ttk.Frame(frame)
     buttons.grid(row=3, column=0, sticky="e", pady=(16, 0))
-    ttk.Button(buttons, text="Uninstall", command=confirm).pack(side="left", padx=4)
-    cancel = ttk.Button(buttons, text="Cancel", command=dialog.destroy)
+    ttk.Button(buttons, text=tr("Uninstall"), command=confirm).pack(side="left", padx=4)
+    cancel = ttk.Button(buttons, text=form.T_CANCEL, command=dialog.destroy)
     cancel.pack(side="left", padx=4)
     dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
     dialog.bind("<Escape>", lambda _e: dialog.destroy())

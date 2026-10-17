@@ -14,6 +14,7 @@ from pathlib import Path
 from blackboard_sync import announcements, courses, deadlines, relocate, runtime, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
+from blackboard_sync.i18n import tr
 from blackboard_sync.menubar import jobs, settings_form
 from blackboard_sync.menubar.main_window_model import GENERAL, main_status, shows_window_at_launch
 from blackboard_sync.menubar.model import MOVE_JOB, open_target, RunOutcome, UPDATE_ACTIONS
@@ -28,9 +29,9 @@ log = logging.getLogger(__name__)
 GUI_EXE = "Blackboard Sync.exe"
 CLI_EXE = "blackboard-sync-cli.exe"
 # Shown once, when the main window first closes: where the app went.
-TRAY_HINT_TITLE = "Blackboard Sync is running in the background"
-TRAY_HINT = ("Right-click the Blackboard Sync icon next to the clock for the menu. "
-             "If you don't see it, click the ^ arrow that shows hidden icons.")
+TRAY_HINT_TITLE = tr("Blackboard Sync is running in the background")
+TRAY_HINT = (tr("Right-click the Blackboard Sync icon next to the clock for the menu. "
+             "If you don't see it, click the ^ arrow that shows hidden icons."))
 TRAY_HINT_SHOWN = "tray-hint-shown"
 # Workers wake Tk with this virtual event, so the UI never polls its queue.
 WAKE_EVENT = "<<bbsync>>"
@@ -55,6 +56,16 @@ class LogThrottle:
             return False
         self.last[key] = now
         return True
+
+
+def app_command():
+    """The command line that starts this tray app (a restart in a new language)."""
+    executable = Path(sys.executable)
+    if runtime.is_frozen():
+        return [str(executable)]
+    if executable.name.lower() == "python.exe":
+        executable = executable.with_name("pythonw.exe")
+    return [str(executable), "-m", "blackboard_sync.windows"]
 
 
 def cli_runner(command, **kwargs):
@@ -252,7 +263,7 @@ class TrayApp:
             webbrowser.open(release.page_url)
             return
         if self.model.busy is not None:
-            self.model.note = "Wait for the running job to finish before updating."
+            self.model.note = tr("Wait for the running job to finish before updating.")
             self.refresh()
             return
         if not self.model.updates.begin("download"):
@@ -268,7 +279,7 @@ class TrayApp:
             error = str(exc)
         except Exception:
             log.exception("Update installation failed")
-            error = "Could not install the update; try again later."
+            error = tr("Could not install the update; try again later.")
         self.post(self.update_installed, error)
 
     def update_installed(self, error):
@@ -360,7 +371,7 @@ class TrayApp:
                 try:
                     os.startfile(str(target))
                 except OSError:
-                    self.model.note = "Could not open the announcement."
+                    self.model.note = tr("Could not open the announcement.")
             elif target:
                 webbrowser.open(target)
         elif action == "reveal":
@@ -380,16 +391,16 @@ class TrayApp:
                                 self.model.recent_seen.opened(item)
                         self.save()
                 except OSError:
-                    self.model.note = "Could not open the file or folder."
+                    self.model.note = tr("Could not open the file or folder.")
             else:
-                self.model.note = "The file or folder does not exist yet; sync first."
+                self.model.note = tr("The file or folder does not exist yet; sync first.")
         elif action == "logout" and self.model.busy is None:
             # Asked from the main window, so the question belongs in front of it.
             parent = self.window.window if self.window_open else self.root
             if messagebox.askyesno(
-                "Sign out?",
-                "All sign-in data is removed; you will need to enter your school details "
-                "again to sign in. Your downloaded files are kept.",
+                tr("Sign out?"),
+                tr("All sign-in data is removed; you will need to enter your school details "
+                   "again to sign in. Your downloaded files are kept."),
                 parent=parent,
             ):
                 try:
@@ -397,10 +408,10 @@ class TrayApp:
                     if warnings:
                         self.model.note = warnings[0]
                 except OSError:
-                    self.model.note = "Could not sign out."
+                    self.model.note = tr("Could not sign out.")
         elif action == "quit":
             if self.model.busy or self.model.updates.busy == "download":
-                messagebox.showinfo("Blackboard Sync", "Wait for the running job to finish first.", parent=self.root)
+                messagebox.showinfo("Blackboard Sync", settings_form.T_BUSY, parent=self.root)
                 return
             self.closed = True
             self.icon.stop()
@@ -530,7 +541,7 @@ class TrayApp:
             courses.set_enabled(self.config, course_id, enabled)
         except OSError as exc:
             log.warning("Could not save the course choice: %s", exc)
-            self.model.note = f"Could not save the course choice: {exc.strerror or exc}"
+            self.model.note = tr("Could not save the course choice: {error}").format(error=exc.strerror or exc)
         jobs.refresh_hidden_folders(self.config, self.model)
         if enabled and not self.uninstalling and self.model.account()[0] is not None:
             self.start_job("sync")  # does nothing while another job runs
@@ -572,7 +583,7 @@ class TrayApp:
             save_settings(self.config.data_dir, submission.settings)
         except OSError as exc:
             log.exception("Could not save settings")
-            return f"Could not save the settings: {exc}", "dest"
+            return tr("Could not save the settings: {error}").format(error=exc), "dest"
         self.settings = submission.settings
         self.model.apply_settings(
             self.settings.dest,
@@ -589,7 +600,35 @@ class TrayApp:
             else:
                 self.login_after_job = True
         self.refresh()
+        if submission.language_changed:
+            # After the window has taken the saved values back.
+            self.root.after(0, self.offer_language_restart)
         return None
+
+    def offer_language_restart(self):
+        """The language is read when the app starts: offer to start again in the new one now."""
+        from tkinter import messagebox
+
+        parent = self.window.window if self.window_open else self.root
+        if messagebox.askyesno(settings_form.T_LANGUAGE_RESTART_TITLE, settings_form.T_LANGUAGE_RESTART,
+                               parent=parent):
+            self.restart()
+
+    def restart(self):
+        """Start a new copy that takes over once this one has quit, then quit."""
+        if self.model.busy or self.model.updates.busy == "download":
+            self.model.note = tr("Could not restart Blackboard Sync; quit it and open it again.")
+            self.refresh()
+            return
+        flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        try:
+            jobs.relaunch(self.config, app_command(), creationflags=flags)
+        except OSError:
+            log.exception("Could not restart")
+            self.model.note = tr("Could not restart Blackboard Sync; quit it and open it again.")
+            self.refresh()
+            return
+        self.dispatch("quit")
 
     def ask_dest_choice(self, old, new, files):
         from .main_window import ask_dest_choice
@@ -616,6 +655,8 @@ def main(argv=None):
     # The login item and the updater's silent reinstall start the app in the
     # tray only; any other start (installer, Start Menu) shows its main window.
     parser.add_argument(autostart.BACKGROUND, action="store_true")
+    # A copy started by ``restart`` (a new language): it waits for the old one to quit.
+    parser.add_argument(jobs.RESTARTING, action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     # Logging is set up by .startup, before this module is imported.
     config = Config.from_env()
@@ -624,7 +665,7 @@ def main(argv=None):
         activation.request_update(config)
     # The packaged (MSIX) app's login item cannot pass --background.
     show_window = args.store_notification or not (args.background or args.notification or autostart.started_at_login())
-    lock = jobs.single_instance(config)
+    lock = jobs.wait_for_instance(config) if args.restarting else jobs.single_instance(config)
     if lock is None:
         log.info("Another copy is already running%s", "; asking it to show its window" if show_window else "")
         if show_window:

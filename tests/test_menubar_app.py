@@ -643,6 +643,15 @@ def test_genel_bar_appears_only_after_a_change_and_saving_keeps_the_window_open(
         window.target.cancel_(None)  # Vazgeç: back to what is saved
         assert window.button_bar.isHidden() and window.values().sync_interval_minutes == 60
 
+        # Language: English and Türkçe, each named in itself; picking one is an edit like any other.
+        assert [str(t) for t in window.language_popup.itemTitles()] == ['English', 'Türkçe']
+        assert window.values().language == 'en'
+        window.language_popup.selectItemWithTitle_('Türkçe')
+        window.target.changed_(window.language_popup)
+        assert not window.button_bar.isHidden() and window.values().language == 'tr'
+        window.target.cancel_(None)
+        assert str(window.language_popup.titleOfSelectedItem()) == 'English'
+
         # Başlangıç and Genel edit the same school address.
         window.start_url.setStringValue_('https://new.example.edu')
         window.changed(window.start_url)

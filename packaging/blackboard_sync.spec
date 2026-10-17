@@ -26,6 +26,7 @@ a = Analysis(
         "rumps",
         "playwright.sync_api",
         "blackboard_sync.inapp_macos",
+        "blackboard_sync.locale_tr",  # Turkish, loaded once the language is known
         "WebKit",
     ],
     excludes=[

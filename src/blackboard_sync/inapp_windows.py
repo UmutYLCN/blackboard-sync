@@ -15,6 +15,7 @@ from __future__ import annotations
 import threading
 
 from blackboard_sync.errors import BlackboardSyncError
+from blackboard_sync.i18n import tr
 from blackboard_sync.inapp import (
     WEBVIEW2_MISSING,
     WINDOW_SIZE,
@@ -34,11 +35,11 @@ def _load_webview2():
         import webview
         from webview.guilib import initialize
     except ImportError as exc:  # pragma: no cover - dependency is pinned
-        raise BlackboardSyncError(f"The sign-in window is unavailable: {exc}") from exc
+        raise BlackboardSyncError(tr("The sign-in window is unavailable: {error}").format(error=exc)) from exc
     try:
         backend = initialize(GUI)
     except Exception as exc:  # pythonnet / .NET could not load
-        raise BlackboardSyncError(f"The sign-in window is unavailable: {exc}") from exc
+        raise BlackboardSyncError(tr("The sign-in window is unavailable: {error}").format(error=exc)) from exc
     if getattr(backend, "renderer", None) != GUI:
         raise BlackboardSyncError(WEBVIEW2_MISSING)
     return webview

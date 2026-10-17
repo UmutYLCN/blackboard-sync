@@ -564,6 +564,13 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     assert window.error_label.options['text'] == 'Unsaved changes'
     window.window.bindings['<Escape>'](None)  # Vazgeç
     assert window.button_bar.removed and window.interval.get() == 'Every hour'
+    # Language: English and Türkçe, each named in itself; picking one is an edit like any other.
+    assert window.language_dropdown.options['values'] == ['English', 'Türkçe']
+    assert window.values().language == 'en'
+    window.language.set('Türkçe')
+    assert not window.button_bar.removed and window.values().language == 'tr'
+    window.window.bindings['<Escape>'](None)
+    assert window.language.get() == 'English'
     window.check_updates.set(False)
     save = next(w for w in widgets if w.options.get('text') == 'Save')
     save.options['command']()

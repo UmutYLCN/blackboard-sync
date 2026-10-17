@@ -8,15 +8,16 @@ from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
+from blackboard_sync.i18n import tr
 from blackboard_sync.config import Config
 from blackboard_sync.htmltext import body_text, feed_html
 from blackboard_sync.state import State
 
-T_TAB = "Announcements"
-T_HINT = "Every announcement synced from your current-term courses."
-T_EMPTY = "No announcements yet. They show up here once they are synced."
-T_NO_DATE = "No date given"
-T_OPEN = "Open announcement"
+T_TAB = tr("Announcements")
+T_HINT = tr("Every announcement synced from your current-term courses.")
+T_EMPTY = tr("No announcements yet. They show up here once they are synced.")
+T_NO_DATE = tr("No date given")
+T_OPEN = tr("Open announcement")
 PREVIEW_LIMIT = 240
 
 
@@ -51,7 +52,7 @@ def metadata(ann: dict, course_id: str, course_name: str, source_path: str, outp
     duration = (ann.get("availability") or {}).get("duration") or {}
     return {
         "course_id": course_id, "course": course_name,
-        "title": html.unescape(ann.get("title") or "Announcement"),
+        "title": html.unescape(ann.get("title") or tr("Announcement")),
         "date": duration.get("start") or ann.get("created") or ann.get("modified") or "",
         "preview": preview, "source_path": source_path, "output_key": output_key,
     }

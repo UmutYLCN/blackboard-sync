@@ -5,8 +5,8 @@ sync or sign-in, a click) and draws what this module returns: the icon state,
 the menu model and the notifications to post. That keeps scheduling, session
 expiry handling and all user-facing text testable without a GUI session.
 
-User-facing strings are Turkish on purpose: the menu and notifications are
-read by the student.
+User-facing strings go through ``i18n.tr``: English, or Turkish when the
+student chose it in Settings.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from typing import Callable
 
 from blackboard_sync import __version__
 from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
+from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.inapp import INAPP
 from blackboard_sync.settings import DEFAULT_SYNC_INTERVAL_MINUTES, Settings, normalize_sync_interval
 from blackboard_sync.system import sync_root
@@ -43,13 +44,13 @@ UPDATE_RETRY_DELAY = timedelta(hours=1)
 
 # (report key, label after one, label after more): "1 new file", "2 new files".
 CHANGE_LABELS = (
-    ("new_files", "new file", "new files"),
-    ("updated_files", "updated file", "updated files"),
-    ("new_notes", "new note", "new notes"),
-    ("updated_notes", "updated note", "updated notes"),
-    ("new_announcements", "new announcement", "new announcements"),
-    ("updated_announcements", "updated announcement", "updated announcements"),
-    ("skipped_large_files", "large file not downloaded", "large files not downloaded"),
+    ("new_files", tr("new file"), tr("new files")),
+    ("updated_files", tr("updated file"), tr("updated files")),
+    ("new_notes", tr("new note"), tr("new notes")),
+    ("updated_notes", tr("updated note"), tr("updated notes")),
+    ("new_announcements", tr("new announcement"), tr("new announcements")),
+    ("updated_announcements", tr("updated announcement"), tr("updated announcements")),
+    ("skipped_large_files", tr("large file not downloaded"), tr("large files not downloaded")),
 )
 # Report key -> what happened, for Sync activity (the same words the window shows).
 ENTRY_KINDS = {
@@ -61,12 +62,12 @@ ENTRY_KINDS = {
     "updated_announcements": "updated_announcement",
 }
 ENTRY_LABELS = {
-    "new_file": "Successfully downloaded",
-    "updated_file": "Updated",
-    "new_note": "Note saved",
-    "updated_note": "Note updated",
-    "new_announcement": "Announcement saved",
-    "updated_announcement": "Announcement updated",
+    "new_file": tr("Successfully downloaded"),
+    "updated_file": tr("Updated"),
+    "new_note": tr("Note saved"),
+    "updated_note": tr("Note updated"),
+    "new_announcement": tr("Announcement saved"),
+    "updated_announcement": tr("Announcement updated"),
 }
 ACTIVITY_LIMIT = 300
 
@@ -76,30 +77,30 @@ RECENT_KEYS = ("new_files", "updated_files", "new_notes", "new_announcements")
 STATUS_BY_EXIT = {EXIT_OK: "ok", EXIT_LOGIN_REQUIRED: "login_required", EXIT_LOCKED: "locked"}
 
 # Menu text
-T_SYNC_NOW = "Sync now"
-T_SYNCING = "Syncing…"
-T_PAST_LOADING = "Loading past terms…"
-T_LOGIN = "Sign in"
-T_LOGGING_IN = "Waiting for sign-in…"
-T_LOGOUT = "Sign out"
-T_EXPIRED = "⚠ Session expired — Sign in"
-T_RECENT = "Recent downloads"
-T_RECENT_EMPTY = "Nothing new yet"
-T_PAUSE = "Pause syncing"
-T_RESUME = "Resume syncing"
-T_PAUSED = "Paused"
-T_SETTINGS = "Settings…"
-T_QUIT = "Quit"
-T_AUTO_SYNC_OFF = "automatic sync off"
-T_CHECK_NOW = "Check now"
-T_CHECKING_UPDATES = "Checking for updates…"
-T_DOWNLOADING_UPDATE = "Downloading update…"
-T_UPDATE_WAIT = "Wait for the running job to finish before updating, then try again."
+T_SYNC_NOW = tr("Sync now")
+T_SYNCING = tr("Syncing…")
+T_PAST_LOADING = tr("Loading past terms…")
+T_LOGIN = tr("Sign in")
+T_LOGGING_IN = tr("Waiting for sign-in…")
+T_LOGOUT = tr("Sign out")
+T_EXPIRED = tr("⚠ Session expired — Sign in")
+T_RECENT = tr("Recent downloads")
+T_RECENT_EMPTY = tr("Nothing new yet")
+T_PAUSE = tr("Pause syncing")
+T_RESUME = tr("Resume syncing")
+T_PAUSED = tr("Paused")
+T_SETTINGS = tr("Settings…")
+T_QUIT = tr("Quit")
+T_AUTO_SYNC_OFF = tr("automatic sync off")
+T_CHECK_NOW = tr("Check now")
+T_CHECKING_UPDATES = tr("Checking for updates…")
+T_DOWNLOADING_UPDATE = tr("Downloading update…")
+T_UPDATE_WAIT = tr("Wait for the running job to finish before updating, then try again.")
 
 
 def open_folder_title(root: Path) -> str:
     """The menu item that opens the folder the files are in, named after it: "Open University folder"."""
-    return f"Open {root.name or root} folder"
+    return tr("Open {folder} folder").format(folder=root.name or root)
 
 
 # Update actions of the menu row and the settings window. "check_updates"
@@ -276,7 +277,7 @@ def course_line(course: CourseChange) -> str:
 def counts_text(counts: dict[str, int]) -> str:
     parts = [f"{counts[key]} {one if counts[key] == 1 else many}"
              for key, one, many in CHANGE_LABELS if counts.get(key)]
-    return ", ".join(parts) if parts else "nothing new"
+    return ", ".join(parts) if parts else tr("nothing new")
 
 
 def format_time(when: datetime, now: datetime) -> str:
@@ -285,7 +286,7 @@ def format_time(when: datetime, now: datetime) -> str:
     if local.date() == local_now.date():
         return local.strftime("%H:%M")
     if local.date() == (local_now - timedelta(days=1)).date():
-        return f"yesterday {local.strftime('%H:%M')}"
+        return tr("yesterday {time}").format(time=local.strftime("%H:%M"))
     return local.strftime("%d.%m %H:%M")
 
 
@@ -328,7 +329,7 @@ def changes_notification(outcome: RunOutcome, dest: Path) -> Notification | None
     folders = [str(dest / c.folder) for c in changed]
     target = folders[0] if len(folders) == 1 else os.path.commonpath(folders)
     return Notification(
-        title="Blackboard: new content",
+        title=tr("Blackboard: new content"),
         message="\n".join(course_line(c) for c in changed),
         data={"open": target},
     )
@@ -336,8 +337,8 @@ def changes_notification(outcome: RunOutcome, dest: Path) -> Notification | None
 
 def update_notification(release: Release) -> Notification:
     return Notification(
-        title=f"Blackboard Sync {release.version} is ready — Update",
-        message="Click to download the new version.",
+        title=tr("Blackboard Sync {version} is ready — Update").format(version=release.version),
+        message=tr("Click to download the new version."),
         data={"action": "update"},
     )
 
@@ -345,46 +346,47 @@ def update_notification(release: Release) -> Notification:
 def login_waiting_line(method: str) -> str:
     """The status line while signing in, naming where: a browser or the app's window."""
     if method == INAPP:
-        return "Waiting for you to sign in in the window that opened…"
+        return tr("Waiting for you to sign in in the window that opened…")
     if method:
-        return f"Waiting for you to sign in in {method}…"
-    return "Waiting for you to sign in in the browser…"
+        return tr("Waiting for you to sign in in {browser}…").format(browser=method)
+    return tr("Waiting for you to sign in in the browser…")
 
 
 def files(count: int) -> str:
     """ "1 file", "12 files"."""
-    return f"{count} file" if count == 1 else f"{count} files"
+    return ntr("{n} file", "{n} files", count).format(n=count)
 
 
 def courses_text(count: int) -> str:
-    return f"{count} course" if count == 1 else f"{count} courses"
+    return ntr("{n} course", "{n} courses", count).format(n=count)
 
 
 def warnings_text(count: int) -> str:
-    return f"{count} warning" if count == 1 else f"{count} warnings"
+    return ntr("{n} warning", "{n} warnings", count).format(n=count)
 
 
 def move_summary(moved: int, kept: int) -> str:
     """ "12 files moved to the new folder." plus what stayed behind, if anything."""
-    text = f"{files(moved)} moved to the new folder." if moved else "No files were moved."
+    text = tr("{files} moved to the new folder.").format(files=files(moved)) if moved else tr("No files were moved.")
     if kept:
-        text += f" {files(kept)} could not be moved and stayed in the old folder."
+        text += " " + tr("{files} could not be moved and stayed in the old folder.").format(files=files(kept))
     return text
 
 
 def root_move_summary(moved: int, kept: int, root: Path) -> str:
     """ "12 files moved to the University folder." plus what stayed behind, if anything."""
     name = root.name or str(root)
-    text = f"{files(moved)} moved to the {name} folder." if moved else "No files were moved."
+    text = (tr("{files} moved to the {folder} folder.").format(files=files(moved), folder=name) if moved
+            else tr("No files were moved."))
     if kept:
-        text += f" {files(kept)} could not be moved and stayed where they were."
+        text += " " + tr("{files} could not be moved and stayed where they were.").format(files=files(kept))
     return text
 
 
 def login_notification() -> Notification:
     return Notification(
-        title="Blackboard session expired",
-        message="Choose “Sign in” in the menu to get new files.",
+        title=tr("Blackboard session expired"),
+        message=tr("Choose “Sign in” in the menu to get new files."),
         data={"action": "login"},
     )
 
@@ -428,8 +430,8 @@ class UpdateState:
             self.not_before = now + UPDATE_RETRY_DELAY
             if manual:
                 return [Notification(
-                    "Could not check for updates",
-                    "Check your internet connection and try again later.",
+                    tr("Could not check for updates"),
+                    tr("Check your internet connection and try again later."),
                     {},
                 )]
             return []
@@ -441,13 +443,14 @@ class UpdateState:
             self.notified = release.version
             return [update_notification(release)]
         if manual and release is None:
-            return [Notification("Blackboard Sync is up to date", f"You have the latest version ({__version__}).", {})]
+            return [Notification(tr("Blackboard Sync is up to date"),
+                                 tr("You have the latest version ({version}).").format(version=__version__), {})]
         return []
 
     def finish_download(self, error: str = "") -> list[Notification]:
         self.busy = None
         if error:
-            return [Notification("Could not install the update", error, {})]
+            return [Notification(tr("Could not install the update"), error, {})]
         return []
 
     def finish_install(self, current: str = __version__) -> list[Notification]:
@@ -457,13 +460,14 @@ class UpdateState:
             return []
         if version == current:
             return [Notification(
-                f"Blackboard Sync was updated to {version}",
-                "Your settings and downloaded course files were kept.",
+                tr("Blackboard Sync was updated to {version}").format(version=version),
+                tr("Your settings and downloaded course files were kept."),
                 {},
             )]
         return [Notification(
-            "Could not install the update",
-            f"Blackboard Sync {version} could not be put in place; version {current} is still in use.",
+            tr("Could not install the update"),
+            tr("Blackboard Sync {version} could not be put in place; version {current} is still in use.").format(
+                version=version, current=current),
             {},
         )]
 
@@ -472,7 +476,7 @@ class UpdateState:
         if self.busy == "download":
             return MenuEntry(T_DOWNLOADING_UPDATE, enabled=False)
         if self.available is not None:
-            return MenuEntry(f"Update available: {self.available.version} — Update", "update")
+            return MenuEntry(tr("Update available: {version} — Update").format(version=self.available.version), "update")
         return None
 
     def saved_state(self) -> dict:
@@ -830,9 +834,9 @@ class AppModel:
         self.past_term_ids = dict(names) if outcome.status == "ok" and isinstance(names, dict) else {}
         if outcome.status == "login_required":
             self.auth_failed_at = outcome.finished_at or now
-            self.note = "Sign in and try again to see past terms."
+            self.note = tr("Sign in and try again to see past terms.")
         elif outcome.status == "locked":
-            self.note = "Another sync is running; past terms will load again shortly."
+            self.note = tr("Another sync is running; past terms will load again shortly.")
         else:
             # The lookup runs by itself when Genel is shown: it keeps
             # another job's note.
@@ -861,7 +865,8 @@ class AppModel:
         summary = root_move_summary(moved, kept, self.root)
         if kept and not self.note:
             self.note = shorten(summary, 80)
-        title = f"Files moved to the {self.root.name or self.root} folder" if not kept else "Some files could not be moved"
+        title = (tr("Files moved to the {folder} folder").format(folder=self.root.name or self.root) if not kept
+                 else tr("Some files could not be moved"))
         return [Notification(title, summary, {"open": str(self.root)})]
 
     def _finish_sync(self, outcome: RunOutcome, now: datetime) -> list[Notification]:
@@ -872,7 +877,7 @@ class AppModel:
             # Duraklat stopped the run: nothing it had not finished counts, and the schedule waits.
             if job == "past_term":
                 self.past_term = self.past_term_id = ""
-                self.past_message = "The past term download was paused; download it again."
+                self.past_message = tr("The past term download was paused; download it again.")
             return notes
         if job == "past_term":
             term = outcome.past_term or self.past_term
@@ -880,31 +885,32 @@ class AppModel:
             if outcome.status == "ok":
                 count = sum(c.counts.get(key, 0) for c in outcome.courses
                             for key in ("new_files", "new_notes", "new_announcements"))
-                self.note = f"{term} · {files(count)} downloaded (past term)."
+                self.note = tr("{term} · {files} downloaded (past term).").format(term=term, files=files(count))
                 if outcome.unreadable_courses:
                     # Not "nothing new": Blackboard refused the content, so the term is not complete.
-                    self.note += (f" Could not read the content of {courses_text(outcome.unreadable_courses)};"
-                                  " the past term is not complete, try again.")
+                    self.note += " " + tr("Could not read the content of {courses}; the past term is not complete, "
+                                          "try again.").format(courses=courses_text(outcome.unreadable_courses))
                 elif outcome.warning_count:
-                    self.note += f" {warnings_text(outcome.warning_count)}; try again for what is missing."
+                    self.note += " " + tr("{warnings}; try again for what is missing.").format(
+                        warnings=warnings_text(outcome.warning_count))
                 self.remember(outcome)
-                notes.append(Notification("Blackboard: past term", self.note,
+                notes.append(Notification(tr("Blackboard: past term"), self.note,
                                           {"open": str(self.root / Path(outcome.courses[0].folder).parent)
                                            if outcome.courses else str(self.root)}))
             elif outcome.status == "locked":
-                self.note = "Another sync is running; try again to download the past term."
+                self.note = tr("Another sync is running; try again to download the past term.")
             elif outcome.status == "login_required":
                 self.auth_failed_at = outcome.finished_at or now
-                self.note = "Sign in and try again to download the past term."
+                self.note = tr("Sign in and try again to download the past term.")
                 notes.append(login_notification())
             else:
-                self.note = shorten(f"Could not download the past term: {outcome.message}", 100)
+                self.note = shorten(tr("Could not download the past term: {error}").format(error=outcome.message), 100)
             self.past_message = self.note
             return notes
         if outcome.status == "locked":
             # Another sync (e.g. from the terminal) is running; keep what we
             # knew and look again soon.
-            self.note = "Another sync is running; trying again shortly."
+            self.note = tr("Another sync is running; trying again shortly.")
             self.next_run_at = self.schedule(now, self.retry_delay)
             return notes
         self.last = outcome
@@ -936,11 +942,11 @@ class AppModel:
             # A sync from the terminal holds the folders; move once it is done,
             # still before any sync into the new folder.
             self.pending = MOVE_JOB
-            self.note = "Another sync is running; the files will be moved shortly."
+            self.note = tr("Another sync is running; the files will be moved shortly.")
             return []
         self.move_from = None
         if status != "ok":
-            self.note = shorten(f"Could not move the files: {message}", 80)
+            self.note = shorten(tr("Could not move the files: {error}").format(error=message), 80)
             return []
         if migrating:
             self.note = ""
@@ -949,7 +955,7 @@ class AppModel:
         self.note = shorten(summary, 80) if kept else ""
         if not moved and not kept:
             return []
-        return [Notification("Files moved" if not kept else "Some files could not be moved",
+        return [Notification(tr("Files moved") if not kept else tr("Some files could not be moved"),
                              summary, {"open": str(self.root)})]
 
     def finish_login(self, ok: bool, message: str, now: datetime) -> None:
@@ -962,7 +968,7 @@ class AppModel:
             self.note = ""
             self.next_run_at = self.schedule(now, timedelta(0))  # fetch what was missed right away
         else:
-            self.note = shorten(f"Sign-in did not finish: {message}", 80)
+            self.note = shorten(tr("Sign-in did not finish: {error}").format(error=message), 80)
 
     def apply_settings(
         self,
@@ -1018,7 +1024,7 @@ class AppModel:
             self.courses = []
             self.last = None
             self.login_prompted = False
-            self.note = "Sign in for the new school."
+            self.note = tr("Sign in for the new school.")
 
     def reschedule(self, now: datetime) -> None:
         """Recompute the next run after the interval changed.
@@ -1086,30 +1092,30 @@ class AppModel:
         until something really happens; a relative label rebuilt the menu every minute.
         """
         if self.last is None:
-            return "not synced yet"
+            return tr("not synced yet")
         when = format_time(self.last.finished_at or now, now)
         if self.last.status == "ok":
-            return f"synced at {when}"
+            return tr("synced at {time}").format(time=when)
         if self.last.status == "login_required":
-            return f"tried at {when}"
-        return f"tried at {when} · error"
+            return tr("tried at {time}").format(time=when)
+        return tr("tried at {time} · error").format(time=when)
 
     def activity(self) -> str:
         """What is going on instead of the usual schedule ("" when nothing special)."""
         if self.busy == "sync":
-            return "Checking for new content…"
+            return tr("Checking for new content…")
         if self.busy == "past_terms":
             return T_PAST_LOADING
         if self.busy == "past_term":
-            return f"Downloading {self.past_term} (past term)…"
+            return tr("Downloading {term} (past term)…").format(term=self.past_term)
         if self.busy == "login":
             return login_waiting_line(self.login_method)
         if self.busy == MOVE_JOB:
             if self.migrating:
-                return f"Moving files to the {self.root.name or self.root} folder…"
-            return "Moving files to the new folder…"
+                return tr("Moving files to the {folder} folder…").format(folder=self.root.name or self.root)
+            return tr("Moving files to the new folder…")
         if not self.configured:
-            return f"Choose “{T_SETTINGS}” to finish setting up"
+            return tr("Choose “{settings}” to finish setting up").format(settings=T_SETTINGS)
         if self.paused:
             return T_PAUSED
         return ""
@@ -1129,7 +1135,8 @@ class AppModel:
         if self.next_run_at is None:
             parts.append(T_AUTO_SYNC_OFF)
         else:
-            parts.append(f"next: {format_time(self.next_run_at, now) if self.next_run_at > now else 'soon'}")
+            parts.append(tr("next: {time}").format(
+                time=format_time(self.next_run_at, now) if self.next_run_at > now else tr("soon")))
         return parts
 
     def status_lines(self, now: datetime) -> list[str]:
@@ -1170,7 +1177,7 @@ class AppModel:
             label = course.name if course.name.startswith(course.code) else f"{course.code} {course.name}".strip()
             count = sum(course.counts.get(key, 0) for key in ("new_files", "new_notes", "new_announcements"))
             if count:
-                label += f" ({count} new)"
+                label += " " + tr("({n} new)").format(n=count)
             course_items.append((label, course.folder))
         update = self.updates.menu_entry()
         sync = MenuEntry(menu.sync_title, "sync", enabled=menu.sync_enabled)
@@ -1181,7 +1188,7 @@ class AppModel:
                 else [*top, *status, MenuEntry(), sync, pause])
         menu.entries = [
             *head,
-            MenuEntry("Courses", children=[MenuEntry(label, "open", value=path) for label, path in unique_labels(course_items)] or [MenuEntry("No courses yet", enabled=False)]),
+            MenuEntry(tr("Courses"), children=[MenuEntry(label, "open", value=path) for label, path in unique_labels(course_items)] or [MenuEntry(tr("No courses yet"), enabled=False)]),
             MenuEntry(T_RECENT, children=[MenuEntry(label, "open", value=path) for label, path in menu.recent] or [MenuEntry(T_RECENT_EMPTY, enabled=False)]),
             MenuEntry(open_folder_title(self.root), "folder"),
             MenuEntry(),

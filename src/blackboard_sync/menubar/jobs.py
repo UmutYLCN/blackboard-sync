@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, IO
@@ -21,6 +22,7 @@ from typing import Callable, IO
 from blackboard_sync import courses, deadlines, relocate, runtime, signout
 from blackboard_sync.config import Config
 from blackboard_sync.errors import EXIT_ERROR, LoginRequired
+from blackboard_sync.i18n import tr
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     AppModel,
@@ -131,7 +133,7 @@ def run_sync(
     except SyncStopped:
         return RunOutcome(status="paused", finished_at=now())
     except subprocess.TimeoutExpired:
-        return RunOutcome(status="error", message="The sync took too long and was stopped.", finished_at=now())
+        return RunOutcome(status="error", message=tr("The sync took too long and was stopped."), finished_at=now())
     except OSError as exc:
         return RunOutcome(status="error", message=str(exc), finished_at=now())
     return parse_sync_output(proc.stdout, proc.returncode, proc.stderr, now())
@@ -148,13 +150,13 @@ def run_login(settings: Settings, runner: Runner = subprocess.run) -> tuple[bool
             stdin=subprocess.DEVNULL,
         )
     except subprocess.TimeoutExpired:
-        return False, "timed out"
+        return False, tr("timed out")
     except OSError as exc:
         return False, str(exc)
     if proc.returncode == 0:
         return True, ""
     lines = [line for line in (proc.stderr or proc.stdout or "").strip().splitlines() if line.strip()]
-    return False, lines[-1] if lines else f"exit status {proc.returncode}"
+    return False, lines[-1] if lines else tr("exit status {code}").format(code=proc.returncode)
 
 
 def run_sync_guarded(job: str, settings: Settings, term_name: str = "", term_id: str = "") -> RunOutcome:
@@ -194,15 +196,15 @@ def run_past_terms(settings: Settings, runner: Runner = subprocess.run) -> tuple
         if options is None:
             names = data["terms"]
             if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
-                raise ValueError("Could not read the list of past terms.")
+                raise ValueError(tr("Could not read the list of past terms."))
             options = [{"label": name, "id": ""} for name in names]
         terms = {option["label"]: option["id"] for option in options}
         if len(terms) != len(options) or not all(isinstance(k, str) and k and isinstance(v, str)
                                                  for k, v in terms.items()):
-            raise ValueError("Could not read the list of past terms.")
+            raise ValueError(tr("Could not read the list of past terms."))
         return terms, RunOutcome(status="ok")
     except Exception as exc:
-        return {}, RunOutcome(status="error", message=f"Could not load past terms: {exc}")
+        return {}, RunOutcome(status="error", message=tr("Could not load past terms: {error}").format(error=exc))
 
 
 def refresh_hidden_folders(config: Config, model: AppModel) -> None:
@@ -346,7 +348,7 @@ def check_reminders(config: Config, model: AppModel, now: datetime) -> list[Noti
     model.reminders_sent = sent
     if len(reminders) >= REMINDER_GROUP_FROM:
         lines = [f"{r.course}: {r.title}" for r in reminders]
-        return [Notification("Upcoming deadlines", "\n".join(lines), {})]
+        return [Notification(tr("Upcoming deadlines"), "\n".join(lines), {})]
     notes = []
     for reminder in reminders:
         title, message = deadlines.reminder_text(reminder, now)
@@ -369,6 +371,38 @@ def single_instance(config: Config) -> IO | None:
     return fh
 
 
+# Started by a restart (a new language): wait for the quitting copy's lock.
+RESTARTING = "--restarting"
+RESTART_TIMEOUT = 30.0  # seconds; a copy still running after that keeps the app
+
+
+def wait_for_instance(config: Config, timeout: float = RESTART_TIMEOUT,
+                      sleep: Callable[[float], None] = time.sleep,
+                      clock: Callable[[], float] = time.monotonic) -> IO | None:
+    """``single_instance``, tried again while the copy that restarts us is still quitting."""
+    deadline = clock() + timeout
+    while True:
+        lock = single_instance(config)
+        if lock is not None or clock() >= deadline:
+            return lock
+        sleep(0.25)
+
+
+def relaunch(config: Config, command: list[str] | None = None, popen: Callable[..., object] = subprocess.Popen,
+             **options) -> None:
+    """Start a new copy of the app that takes over once this one quits; raises OSError.
+
+    ``command`` defaults to the menu bar app; ``options`` go to ``Popen`` (Windows
+    passes its detached-process flags, macOS a new session).
+    """
+    config.ensure_data_dir()
+    if not options:
+        options = {"start_new_session": True}
+    with open(log_file(config), "a") as out:
+        popen([*(command or runtime.menubar_command()), RESTARTING], stdin=subprocess.DEVNULL, stdout=out,
+              stderr=out, cwd=str(Path.home()), env=os.environ.copy(), **options)
+
+
 def detach(config: Config, python: str | None = None) -> int:
     """Start the app in the background, detached from the terminal, and return."""
     config.ensure_data_dir()
@@ -384,7 +418,7 @@ def detach(config: Config, python: str | None = None) -> int:
             env=os.environ.copy(),
         )
     except OSError as exc:
-        print(shorten(f"Could not start the menu bar app: {exc}", 200), file=sys.stderr)
+        print(shorten(tr("Could not start the menu bar app: {error}").format(error=exc), 200), file=sys.stderr)
         return EXIT_ERROR
     finally:
         log.close()

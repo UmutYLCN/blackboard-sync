@@ -11,20 +11,28 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import urlencode
 
 from blackboard_sync.config import Config
+from blackboard_sync.i18n import tr
 from blackboard_sync.state import State
 from blackboard_sync.system import sync_root
 
-T_TAB = "Calendar"
-T_HINT = "Due dates are updated during a sync. Times are in this computer's local time."
-T_UPCOMING = "Upcoming"
-T_PAST = "Past due"
-T_PAST_HINT = "Submissions are not checked; work you already handed in may show here too."
-T_EMPTY = "No due dates saved."
-T_NOT_SYNCED = "Sync to see due dates."
-T_INCOMPLETE = "Some courses' due dates could not be updated. Earlier ones are shown where there are any."
-MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
-          "November", "December")
-WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+T_TAB = tr("Calendar")
+T_HINT = tr("Due dates are updated during a sync. Times are in this computer's local time.")
+T_UPCOMING = tr("Upcoming")
+T_PAST = tr("Past due")
+T_PAST_HINT = tr("Submissions are not checked; work you already handed in may show here too.")
+T_EMPTY = tr("No due dates saved.")
+T_NOT_SYNCED = tr("Sync to see due dates.")
+T_INCOMPLETE = tr("Some courses' due dates could not be updated. Earlier ones are shown where there are any.")
+MONTHS = (tr("January"), tr("February"), tr("March"), tr("April"), tr("May"), tr("June"), tr("July"),
+          tr("August"), tr("September"), tr("October"), tr("November"), tr("December"))
+WEEKDAYS = (tr("Monday"), tr("Tuesday"), tr("Wednesday"), tr("Thursday"), tr("Friday"), tr("Saturday"),
+            tr("Sunday"))
+
+
+def month_day(day: date, time: str = "") -> str:
+    """ "October 15" / "October 15 09:00" (Turkish: "15 Ekim 09:00")."""
+    text = tr("{month} {day}").format(month=MONTHS[day.month - 1], day=day.day)
+    return f"{text} {time}" if time else text
 
 
 def parse_due(value: object) -> datetime | None:
@@ -49,7 +57,7 @@ def column_deadline(column: dict, course_id: str, base_url: str,
         url = f"{base_url.rstrip('/')}/ultra/redirect?" + urlencode({
             "redirectType": "nautilus", "courseId": course_id, "contentId": content_id,
         })
-    return {"id": column["id"], "title": column.get("displayName") or column.get("name") or "Untitled work",
+    return {"id": column["id"], "title": column.get("displayName") or column.get("name") or tr("Untitled work"),
             "due": due.isoformat(), "content_id": content_id, "url": url}
 
 
@@ -97,7 +105,7 @@ def due_reminders(state: State, root: Path, now: datetime, sent: dict,
             fresh = reached - done
             if fresh:
                 stage = next(name for name, _ in reversed(REMINDER_STAGES) if name in fresh)
-                reminders.append(Reminder(key, stage, due, item.get("title") or "Untitled work",
+                reminders.append(Reminder(key, stage, due, item.get("title") or tr("Untitled work"),
                                           course.get("name") or "", note_target(state, root, course_id, item)))
             if done | reached or record:
                 updated[key] = {"due": due.isoformat(), "stages": sorted(done | reached)}
@@ -109,12 +117,12 @@ def reminder_text(reminder: Reminder, now: datetime, zone: tzinfo | None = None)
     """(title, message) of a reminder's notification."""
     local = reminder.due.astimezone(zone)
     when = local.strftime("%H:%M") if local.date() == now.astimezone(zone).date() else (
-        f"{MONTHS[local.month - 1]} {local.day} {local.strftime('%H:%M')}")
+        month_day(local.date(), local.strftime("%H:%M")))
     if reminder.stage == "1h":
-        title = "Due in 1 hour"
+        title = tr("Due in 1 hour")
     else:
-        title = "Deadline coming up"
-    return title, f"{reminder.course}: {reminder.title}\nDue: {when}"
+        title = tr("Deadline coming up")
+    return title, f"{reminder.course}: {reminder.title}\n" + tr("Due: {time}").format(time=when)
 
 
 @dataclass(frozen=True)
@@ -144,8 +152,8 @@ class DeadlinePage:
 
 
 def day_title(day: date, today: date) -> str:
-    prefix = "Today" if day == today else "Tomorrow" if day == today + timedelta(days=1) else WEEKDAYS[day.weekday()]
-    return f"{prefix} · {MONTHS[day.month - 1]} {day.day}, {day.year}"
+    prefix = tr("Today") if day == today else tr("Tomorrow") if day == today + timedelta(days=1) else WEEKDAYS[day.weekday()]
+    return f"{prefix} · " + tr("{month} {day}, {year}").format(month=MONTHS[day.month - 1], day=day.day, year=day.year)
 
 
 def note_target(state: State, root: Path, course_id: str, item: dict) -> str:
@@ -212,7 +220,7 @@ def when_text(row: DeadlineRow, today: date) -> str:
     """"today 14:30", "tomorrow 09:00" or "October 15 09:00": when a due date is, for a small row."""
     day = row.due.date()
     if day == today:
-        return f"today {row.time}"
+        return tr("today {time}").format(time=row.time)
     if day == today + timedelta(days=1):
-        return f"tomorrow {row.time}"
-    return f"{MONTHS[day.month - 1]} {day.day} {row.time}"
+        return tr("tomorrow {time}").format(time=row.time)
+    return month_day(day, row.time)

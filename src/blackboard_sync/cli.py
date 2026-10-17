@@ -23,6 +23,7 @@ from blackboard_sync.errors import (
     BlackboardSyncError,
     LoginRequired,
 )
+from blackboard_sync.i18n import tr
 from blackboard_sync.inapp import INAPP
 from blackboard_sync.login import BROWSER_LABELS
 from blackboard_sync.report import SyncReport
@@ -119,21 +120,21 @@ def cmd_login(args, config: Config) -> int:
     from blackboard_sync.login import login
 
     login(config, browser=args.browser, timeout=args.timeout)
-    print("Next: run `blackboard-sync sync` to download your courses.")
+    print(tr("Next: run `blackboard-sync sync` to download your courses."))
     return EXIT_OK
 
 
 def cmd_check(args, config: Config) -> int:
     client, session_data = open_client(config)
     me = client.me()
-    print(f"Session OK: signed in as {me.get('userName') or me.get('id')}.")
+    print(tr("Session OK: signed in as {name}.").format(name=me.get("userName") or me.get("id")))
     # The recorded files decide the folders, as in a real sync; nothing is written.
     syncer = Syncer(client, config, State.load(config.state_file, backup=False), dry_run=True)
     warnings: list[str] = []
     terms, courses = syncer.discover(
         me["id"], args.term, args.all_terms, args.course, warnings=warnings, term_id=args.term_id
     )
-    print(f"Term(s): {', '.join(t.name for t in terms) or 'none found'}")
+    print(tr("Term(s): {terms}").format(terms=", ".join(t.name for t in terms) or tr("none found")))
     for course in courses:
         print(f"  {config.root / course.rel_dir}")
     for warning in warnings:
@@ -175,10 +176,11 @@ def cmd_sync(args, config: Config) -> int:
     except BlackboardSyncError as exc:
         report.status, report.message = "error", str(exc)
     except requests.RequestException as exc:
-        report.status, report.message = "error", f"Network error talking to Blackboard: {exc}"
+        report.status, report.message = "error", tr("Network error talking to Blackboard: {error}").format(error=exc)
     except Exception as exc:  # last resort: the report and last-run.json must always be written
         logging.getLogger(__name__).exception("Unexpected error during sync")
-        report.status, report.message = "error", f"Unexpected error: {type(exc).__name__}: {exc}"
+        report.status, report.message = "error", tr("Unexpected error: {error}").format(
+            error=f"{type(exc).__name__}: {exc}")
     if not report.finished_at:
         report.finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     if migrated is not None:
@@ -214,7 +216,7 @@ def cmd_past_terms(args, config: Config) -> int:
         print(json.dumps({"terms": [o["label"] for o in options], "options": options, "warnings": warnings},
                          ensure_ascii=False))
     else:
-        print("\n".join(f"{o['label']}  (--term-id {o['id']})" for o in options) or "No past terms to download.")
+        print("\n".join(f"{o['label']}  (--term-id {o['id']})" for o in options) or tr("No past terms to download."))
     return EXIT_OK
 
 
@@ -240,7 +242,7 @@ def cmd_uninstall(args, config: Config) -> int:
     warnings = uninstall(config, delete_course_files=args.delete_course_files)
     for warning in warnings:
         print(warning, file=sys.stderr)
-    print("Blackboard Sync's app data was removed.")
+    print(tr("Blackboard Sync's app data was removed."))
     return EXIT_ERROR if warnings else EXIT_OK
 
 
@@ -273,10 +275,10 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return EXIT_LOGIN_REQUIRED
     except BlackboardSyncError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        print(tr("Error: {error}").format(error=exc), file=sys.stderr)
         return exc.exit_code
     except requests.RequestException as exc:
-        print(f"Network error talking to Blackboard: {exc}", file=sys.stderr)
+        print(tr("Network error talking to Blackboard: {error}").format(error=exc), file=sys.stderr)
         return EXIT_ERROR
     except KeyboardInterrupt:
         return 130

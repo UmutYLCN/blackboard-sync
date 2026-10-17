@@ -113,11 +113,13 @@ from blackboard_sync.menubar.main_window_model import (
     reopen_hint,
 )
 from blackboard_sync.menubar.model import T_RECENT_EMPTY
+from blackboard_sync.i18n import tr
 from blackboard_sync import announcements
 from blackboard_sync.menubar.main_window_model import ANNOUNCEMENTS
 from blackboard_sync.menubar.settings_form import (
     DEST_CHOICES,
     INTERVAL_OPTIONS,
+    LANGUAGE_OPTIONS,
     MIN_WINDOW_HEIGHT,
     T_AUTOSTART,
     T_CANCEL,
@@ -130,6 +132,7 @@ from blackboard_sync.menubar.settings_form import (
     T_DEST_LABEL,
     T_DEST_ROOT_NOTE,
     T_INTERVAL_LABEL,
+    T_LANGUAGE_LABEL,
     T_PAST_DOWNLOAD,
     T_PAST_DOWNLOADING,
     T_PAST_NOTE,
@@ -146,6 +149,8 @@ from blackboard_sync.menubar.settings_form import (
     FormValues,
     dest_change_message,
     interval_title,
+    language_code,
+    language_title,
     window_height,
 )
 from blackboard_sync.menubar.sync_scene_view import SyncSceneView
@@ -472,7 +477,7 @@ class MainWindow:
         on_course_toggle: Callable[[str, bool], None] = lambda course_id, enabled: None,
         on_past_term: Callable[[str], object] = lambda name: None,
         on_section: Callable[[str], None] = lambda section: None,
-        reopen_where: str = "Applications or Launchpad",
+        reopen_where: str = tr("Applications or Launchpad"),
         on_deadlines=deadlines.DeadlinePage,
         on_deadline: Callable[[str], None] = lambda target: None,
         recent_seen=None,
@@ -853,9 +858,9 @@ class MainWindow:
         scene.setHidden_(not syncing)
         icon.setHidden_(syncing)
         x = 14 + SCENE_SMALL[0] + 10 if syncing else 22 + ICON_SIZE + 14
-        text_width = width - x - 20 - right
-        title.setFrame_(NSMakeRect(x, 20, text_width, 36))
-        detail.setFrame_(NSMakeRect(x, 58, text_width, 17))
+        # Only the title shares its row with the card's button; the line under it runs below the button.
+        title.setFrame_(NSMakeRect(x, 20, width - x - 20 - right, 36))
+        detail.setFrame_(NSMakeRect(x, 58, width - x - 20, 17))
         home = status.home
         symbol, tint = STATE_SYMBOLS.get(home.kind, STATE_SYMBOLS[STATE_SYNCED])
         icon.setImage_(_symbol_image(symbol, 22))
@@ -1221,6 +1226,14 @@ class MainWindow:
             self.interval_popup.setTarget_(self.target)
             self.interval_popup.setAction_("changed:")
             content.addSubview_(self.interval_popup)
+            y += 25 + 14
+            text(content, T_LANGUAGE_LABEL, y, width)
+            y += 22
+            self.language_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(18, y, width + 4, 25), False)
+            self.language_popup.addItemsWithTitles_([name for _, name in LANGUAGE_OPTIONS])
+            self.language_popup.setTarget_(self.target)
+            self.language_popup.setAction_("changed:")
+            content.addSubview_(self.language_popup)
             return y + 25 + 18
 
         def past_terms(content, width):
@@ -1369,7 +1382,8 @@ class MainWindow:
                 button.setTag_(len(self.deadline_targets))
                 self.deadline_targets.append(row.target)
                 button.setAccessibilityLabel_(f"{row.title}, {row.course}, {row.time}")
-                button.setToolTip_("Open the downloaded note" if not row.target.startswith("https://") else "Open in Blackboard")
+                button.setToolTip_(tr("Open the downloaded note") if not row.target.startswith("https://")
+                                   else tr("Open in Blackboard"))
                 button.setFrame_(NSMakeRect(0, top, INNER, ROW_HEIGHT))
                 content.addSubview_(button)
             y += height + 16
@@ -1478,6 +1492,7 @@ class MainWindow:
             sync_interval_minutes=next(
                 (m for m, title in INTERVAL_OPTIONS if title == str(self.interval_popup.titleOfSelectedItem())), 60
             ),
+            language=language_code(str(self.language_popup.titleOfSelectedItem())),
         )
 
     def set_values(self, values: FormValues) -> None:
@@ -1491,6 +1506,7 @@ class MainWindow:
             box.setState_(1 if values.autostart else 0)
         self.check_updates.setState_(1 if values.check_updates else 0)
         self.interval_popup.selectItemWithTitle_(interval_title(values.sync_interval_minutes))
+        self.language_popup.selectItemWithTitle_(language_title(values.language))
         self.show_error("")
 
     def changed(self, control) -> None:
@@ -1875,15 +1891,15 @@ def ask_uninstall(dest: Path) -> bool | None:
     alert = NSAlert.alloc().init()
     alert.setMessageText_(uninstall.TITLE)
     alert.setInformativeText_(uninstall.MESSAGE)
-    alert.addButtonWithTitle_("Uninstall")
-    cancel = alert.addButtonWithTitle_("Cancel")
+    alert.addButtonWithTitle_(tr("Uninstall"))
+    cancel = alert.addButtonWithTitle_(tr("Cancel"))
     cancel.setKeyEquivalent_("\x1b")
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 440, 110))
     target = _UninstallChoice.alloc().init()
     checkbox = NSButton.checkboxWithTitle_target_action_(uninstall.CHECKBOX, target, "changed:")
     checkbox.setState_(0)
     checkbox.setFrame_(NSMakeRect(0, 80, 440, 24))
-    label = NSTextField.wrappingLabelWithString_(f"The folder whose files go to the Trash:\n{dest}")
+    label = NSTextField.wrappingLabelWithString_(tr("The folder whose files go to the Trash:") + f"\n{dest}")
     label.setFrame_(NSMakeRect(0, 0, 440, 72))
     label.setHidden_(True)
     target.path_label = label

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import sys
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -11,8 +12,11 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 import requests
 
-from blackboard_sync.api import BlackboardClient
-from blackboard_sync.config import Config
+# The tests read English text; a language saved on this computer must not change them.
+os.environ["BBSYNC_LANGUAGE"] = "en"
+
+from blackboard_sync.api import BlackboardClient  # noqa: E402
+from blackboard_sync.config import Config  # noqa: E402
 
 FIXTURES = Path(__file__).parent / "fixtures"
 # POSIX permission bits exist only off Windows (there the data folder's ACL applies).
