@@ -129,7 +129,6 @@ T_NO_DEADLINES = "No upcoming deadlines."
 T_ACTIVITY_EMPTY = "Nothing downloaded yet."
 T_NEEDS_ATTENTION = "Needs your attention"
 T_NAME, T_SIZE, T_STATUS = "Name", "File size", "Status"
-T_RESUME_SHORT = "Resume"
 T_PAUSE_SHORT = "Pause"
 HOME_RECENT_ROWS = 4  # files listed on Home before "View all"
 HOME_ANNOUNCEMENT_ROWS = 3  # attention items first, then the newest announcements
@@ -199,8 +198,13 @@ class HomeState:
     kind: str  # one of the STATE_* values
     title: str
     detail: str  # "Last synced: today 14:05", or the running job's line
-    action: str = ""  # a window action the card offers: "login" or "pause" (Devam et)
+    action: str = ""  # a window action the card offers: "login"
     action_title: str = ""
+
+    @property
+    def shows_sync(self) -> bool:
+        """"Sync now" when the card offers nothing else; a pause is lifted from the top bar, like Drive."""
+        return not self.action and self.kind != STATE_PAUSED
 
 
 @dataclass(frozen=True)
@@ -331,7 +335,7 @@ def home_state(model: AppModel, now: datetime) -> HomeState:
         return HomeState(STATE_SYNCING, T_STATE_TITLES[STATE_SYNCING],
                          sync_scene(model)[1] or model.activity() or detail)
     if model.paused:
-        return HomeState(STATE_PAUSED, T_STATE_TITLES[STATE_PAUSED], detail, "pause", T_RESUME_SHORT)
+        return HomeState(STATE_PAUSED, T_STATE_TITLES[STATE_PAUSED], detail)
     if name is None:
         return HomeState(STATE_ATTENTION, T_STATE_TITLES[STATE_ATTENTION], detail, "login", T_LOGIN)
     if model.last is not None and model.last.status == "error":

@@ -733,13 +733,14 @@ class MainWindow:
         else:
             self.scene.canvas.grid_remove()
             self.state_icon.grid()
-        # One button: what the state asks for (Sürdür, Giriş yap), else "Şimdi senkronize et".
+        # At most one button: what the state asks for (Sign in), else "Sync now". Paused has none:
+        # the top bar's play button resumes, as in Drive.
+        self.home_action.pack_forget()
+        self.sync_button.pack_forget()
         if home.action:
             self.home_action.configure(text=home.action_title)
             self.home_action.pack(side="left")
-            self.sync_button.pack_forget()
-        else:
-            self.home_action.pack_forget()
+        elif home.shows_sync:
             self.sync_button.pack(side="left")
         self.account_message.configure(text=card.message, foreground=WARNING if card.warning else MUTED)
         if card.message:

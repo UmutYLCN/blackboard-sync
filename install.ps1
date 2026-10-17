@@ -11,7 +11,7 @@
     New-Item -ItemType Directory -Path $tmp | Out-Null
 
     $base = "https://github.com/$repo/releases/latest/download"
-    Write-Host '==> Son sürüm aranıyor...'
+    Write-Host '==> Looking for the latest version...'
     $sumsFile = Join-Path $tmp 'SHA256SUMS.txt'
     Invoke-WebRequest -UseBasicParsing -Uri "$base/SHA256SUMS.txt" -OutFile $sumsFile
     $expected = $null
@@ -20,26 +20,26 @@
       $parts = $line.Trim() -split '\s+', 2
       if ($parts.Count -eq 2 -and $parts[1].TrimStart('*') -like 'Blackboard-Sync-*-Setup.exe') { $expected = $parts[0]; $name = $parts[1].TrimStart('*'); break }
     }
-    if (-not $name) { throw 'Son sürümde Setup.exe bulunamadı.' }
+    if (-not $name) { throw 'The latest release has no Setup.exe.' }
 
-    Write-Host "==> $name indiriliyor..."
+    Write-Host "==> Downloading $name..."
     $exe = Join-Path $tmp $name
     Invoke-WebRequest -UseBasicParsing -Uri "$base/$name" -OutFile $exe
 
-    Write-Host '==> Sağlama toplamı doğrulanıyor...'
+    Write-Host '==> Verifying the checksum...'
     $actual = (Get-FileHash -Algorithm SHA256 -Path $exe).Hash
-    if ($actual -ne $expected) { throw 'Sağlama toplamı uyuşmuyor, kurulum iptal edildi.' }
-    Write-Host '    Doğrulandı.'
+    if ($actual -ne $expected) { throw 'The checksum does not match; installation cancelled.' }
+    Write-Host '    Verified.'
 
-    Write-Host '==> Kuruluyor (uygulama kurulumdan sonra kendiliğinden açılır)...'
+    Write-Host '==> Installing (the app opens by itself afterwards)...'
     $p = Start-Process -FilePath $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -PassThru
     # Wait for the installer only: -Wait would also wait for the app it starts.
     $null = $p.Handle
     $p.WaitForExit()
-    if ($p.ExitCode -ne 0) { throw "Kurulum başarısız oldu (çıkış kodu $($p.ExitCode))." }
-    Write-Host 'Kurulum tamamlandı.'
+    if ($p.ExitCode -ne 0) { throw "The installation failed (exit code $($p.ExitCode))." }
+    Write-Host 'Installation complete.'
   } catch {
-    Write-Host "Hata: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
   } finally {
     Remove-Item -Recurse -Force -Path $tmp -ErrorAction SilentlyContinue
   }

@@ -352,9 +352,10 @@ def test_pause_button_and_menu(tmp_path):
         window.update_status(main_status(model, NOW))
         assert window.pause_button.toolTip() == 'Resume syncing'
         assert str(window.state_title.stringValue()) == 'Paused'
-        assert str(window.home_action.title()) == 'Resume' and not window.sync_button.isEnabled()
-        window.target.homeAction_(None)
-        assert actions[-1] == 'pause'
+        # Like Drive, the Paused card has no button of its own; the top bar's play button resumes.
+        assert window.home_action.isHidden() and window.sync_button.isHidden()
+        window.target.pause_(None)
+        assert actions == ['pause', 'pause']
     finally:
         window.window.close()
 

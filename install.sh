@@ -16,9 +16,9 @@ BUNDLE_ID="io.github.umutylcn.blackboard-sync"
 REQUIREMENT="anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = \"$TEAM_ID\" and identifier \"$BUNDLE_ID\""
 
 say() { printf '%s\n' "$*"; }
-die() { printf 'Hata: %s\n' "$*" >&2; exit 1; }
+die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 
-[ "$(uname -s)" = "Darwin" ] || die "Bu komut yalnızca macOS içindir. Windows için README'ye bak."
+[ "$(uname -s)" = "Darwin" ] || die "This command is for macOS only. For Windows, see the README."
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/blackboard-sync.XXXXXX")"
 MNT="$TMP/mnt"
@@ -31,23 +31,23 @@ trap cleanup EXIT INT TERM HUP
 
 BASE="https://github.com/$REPO/releases/latest/download"
 
-say "==> Son sürüm aranıyor..."
-curl -fsSL -o "$TMP/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt" || die "SHA256SUMS.txt indirilemedi. İnternet bağlantını kontrol et."
+say "==> Looking for the latest version..."
+curl -fsSL -o "$TMP/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt" || die "Could not download SHA256SUMS.txt. Check your internet connection."
 dmg_name="$(awk '{n=$2; sub(/^\*/, "", n)} n ~ /^Blackboard-Sync-.*\.dmg$/ {print n; exit}' "$TMP/SHA256SUMS.txt")"
-[ -n "$dmg_name" ] || die "Son sürümde .dmg bulunamadı."
+[ -n "$dmg_name" ] || die "The latest release has no .dmg."
 
-say "==> $dmg_name indiriliyor..."
-curl -fSL --progress-bar -o "$TMP/$dmg_name" "$BASE/$dmg_name" || die "İndirme başarısız oldu."
+say "==> Downloading $dmg_name..."
+curl -fSL --progress-bar -o "$TMP/$dmg_name" "$BASE/$dmg_name" || die "The download failed."
 
-say "==> Sağlama toplamı doğrulanıyor..."
+say "==> Verifying the checksum..."
 expected="$(awk -v f="$dmg_name" '{n=$2; sub(/^\*/, "", n)} n == f {print $1; exit}' "$TMP/SHA256SUMS.txt")"
-[ -n "$expected" ] || die "SHA256SUMS.txt içinde $dmg_name bulunamadı."
+[ -n "$expected" ] || die "$dmg_name is not listed in SHA256SUMS.txt."
 actual="$(shasum -a 256 "$TMP/$dmg_name" | awk '{print $1}')"
-[ "$expected" = "$actual" ] || die "Sağlama toplamı uyuşmuyor, kurulum iptal edildi."
-say "    Doğrulandı."
+[ "$expected" = "$actual" ] || die "The checksum does not match; installation cancelled."
+say "    Verified."
 
 if pgrep -x "Blackboard Sync" >/dev/null 2>&1; then
-  say "==> Çalışan Blackboard Sync kapatılıyor..."
+  say "==> Quitting the running Blackboard Sync..."
   osascript -e 'tell application "Blackboard Sync" to quit' >/dev/null 2>&1 || true
   i=0
   while pgrep -x "Blackboard Sync" >/dev/null 2>&1 && [ "$i" -lt 10 ]; do sleep 1; i=$((i + 1)); done
@@ -55,31 +55,31 @@ if pgrep -x "Blackboard Sync" >/dev/null 2>&1; then
   sleep 1
 fi
 
-say "==> Kuruluyor..."
+say "==> Installing..."
 mkdir -p "$MNT"
 hdiutil attach -readonly -nobrowse -noverify -noautoopen -mountpoint "$MNT" -quiet "$TMP/$dmg_name" \
-  || die "Disk görüntüsü açılamadı."
+  || die "Could not open the disk image."
 MOUNTED=1
-[ -d "$MNT/$APP" ] || die "Disk görüntüsünde $APP bulunamadı."
+[ -d "$MNT/$APP" ] || die "$APP was not found in the disk image."
 
 # Releases signed with the Developer ID must pass every check, or nothing is installed. Older
 # releases are unsigned (ad-hoc signed only) and are installed as before.
 SIGNED=0
 if codesign -dv --verbose=2 "$MNT/$APP" 2>&1 | grep -q '^Authority=Developer ID Application:'; then
   SIGNED=1
-  say "==> İmza ve Apple onayı (notarization) doğrulanıyor..."
+  say "==> Verifying the signature and Apple notarization..."
   codesign --verify --deep --strict "$MNT/$APP" >/dev/null 2>&1 \
-    || die "Uygulamanın imzası geçersiz, kurulum iptal edildi."
+    || die "The app's signature is not valid; installation cancelled."
   codesign --verify --test-requirement="=$REQUIREMENT" "$MNT/$APP" >/dev/null 2>&1 \
-    || die "Uygulama Blackboard Sync geliştiricisi tarafından imzalanmamış, kurulum iptal edildi."
+    || die "The app is not signed by the Blackboard Sync developer; installation cancelled."
   if spctl --status 2>/dev/null | grep -q 'assessments disabled'; then
-    say "    Uyarı: Gatekeeper bu Mac'te kapalı; Apple onayı denetlenemedi, imza doğrulandı."
+    say "    Warning: Gatekeeper is off on this Mac; notarization could not be checked, the signature was verified."
   else
     gatekeeper="$(spctl --assess --type execute --verbose=2 "$MNT/$APP" 2>&1)" || gatekeeper=""
     printf '%s\n' "$gatekeeper" | grep -q '^source=Notarized Developer ID$' \
-      || die "Uygulama Apple tarafından onaylanmamış (notarization), kurulum iptal edildi."
+      || die "The app is not notarized by Apple; installation cancelled."
   fi
-  say "    Doğrulandı."
+  say "    Verified."
 fi
 
 # BBSYNC_SYSTEM_APPLICATIONS only exists so the tests do not touch the real /Applications.
@@ -94,7 +94,7 @@ fi
 if [ ! -w "$dest_dir" ]; then
   dest_dir="$USER_APPS"
   mkdir -p "$dest_dir"
-  say "    $SYSTEM_APPS yazılabilir değil, $dest_dir kullanılıyor."
+  say "    $SYSTEM_APPS is not writable; using $dest_dir."
 fi
 
 # The new copy is built next to the old app and swapped in only once it is complete, so a failed
@@ -103,23 +103,23 @@ fi
 new_app="$dest_dir/.$APP.new.$$"
 old_app="$dest_dir/.$APP.old.$$"
 rm -rf "$new_app" "$old_app" 2>/dev/null || true
-ditto "$MNT/$APP" "$new_app" || { rm -rf "$new_app"; die "Uygulama $dest_dir klasörüne kopyalanamadı; mevcut sürüm değiştirilmedi."; }
+ditto "$MNT/$APP" "$new_app" || { rm -rf "$new_app"; die "Could not copy the app to $dest_dir; the current version was not changed."; }
 if [ -e "$dest_dir/$APP" ]; then
-  mv "$dest_dir/$APP" "$old_app" || { rm -rf "$new_app"; die "Eski sürüm kenara alınamadı: $dest_dir/$APP; mevcut sürüm değiştirilmedi."; }
+  mv "$dest_dir/$APP" "$old_app" || { rm -rf "$new_app"; die "Could not set the old version aside: $dest_dir/$APP; the current version was not changed."; }
 fi
 if ! mv "$new_app" "$dest_dir/$APP"; then
   [ ! -e "$old_app" ] || mv "$old_app" "$dest_dir/$APP" || true
   rm -rf "$new_app"
-  die "Yeni sürüm yerine konamadı; eski sürüm geri yüklendi."
+  die "Could not put the new version in place; the old version was restored."
 fi
-rm -rf "$old_app" 2>/dev/null || say "    Uyarı: Eski sürümün geçici kopyası silinemedi: $old_app"
+rm -rf "$old_app" 2>/dev/null || say "    Warning: could not delete the temporary copy of the old version: $old_app"
 
 # An app in the other standard folder is not touched, but it may be the one that gets opened.
 for other_dir in "$SYSTEM_APPS" "$USER_APPS"; do
   [ "$other_dir" != "$dest_dir" ] || continue
   if [ -e "$other_dir/$APP" ]; then
-    say "    Uyarı: $other_dir/$APP içinde başka bir kopya var ve güncellenmedi; güncel sürüm $dest_dir/$APP içinde."
-    say "    Karışıklığı önlemek için eski kopyayı kendin silebilirsin: $other_dir/$APP"
+    say "    Warning: there is another copy in $other_dir/$APP and it was not updated; the current version is in $dest_dir/$APP."
+    say "    To avoid confusion you can delete the old copy yourself: $other_dir/$APP"
   fi
 done
 
@@ -128,11 +128,11 @@ hdiutil detach "$MNT" -quiet >/dev/null 2>&1 && MOUNTED=0
 if [ "$SIGNED" = 0 ]; then
   # An unsigned release. Only the quarantine flag of the copy we just installed is
   # removed, so macOS does not ask for the right-click > Open step.
-  say "==> Not: Bu sürüm imzasız olduğu için yalnızca bu uygulamanın karantina işareti (com.apple.quarantine) kaldırılıyor;"
-  say "    böylece sağ tık → Aç adımı gerekmez. Başka hiçbir şeye dokunulmuyor."
+  say "==> Note: this version is unsigned, so only this app's quarantine flag (com.apple.quarantine) is removed;"
+  say "    that way the right-click → Open step is not needed. Nothing else is touched."
   xattr -dr com.apple.quarantine "$dest_dir/$APP" 2>/dev/null || true
 fi
 
-say "==> Blackboard Sync açılıyor..."
+say "==> Opening Blackboard Sync..."
 open "$dest_dir/$APP"
-say "Kurulum tamamlandı: $dest_dir/$APP"
+say "Installation complete: $dest_dir/$APP"

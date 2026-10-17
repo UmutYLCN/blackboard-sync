@@ -1047,15 +1047,17 @@ class MainWindow:
         """The header, a note if any, the last files and "View all"; returns the card's height."""
         status = self.status
         home = status.home
-        # One button at the top right of the card: what the state asks for, else "Sync now".
-        button = self.home_action if home.action else self.sync_button
-        other = self.sync_button if home.action else self.home_action
-        other.setHidden_(True)
-        button.setHidden_(False)
+        # At most one button at the top right of the card: what the state asks for, else "Sync now".
+        # Paused has none: the top bar's play button resumes, as in Drive.
+        self.home_action.setHidden_(not home.action)
+        self.sync_button.setHidden_(not home.shows_sync)
+        button = self.home_action if home.action else self.sync_button if home.shows_sync else None
         if home.action:
             self.home_action.setTitle_(home.action_title)
-        width = max(button.fittingSize().width + 16, 96)
-        button.setFrame_(NSMakeRect(LEFT_W - 20 - width, 24, width, 30))
+        width = 0
+        if button is not None:
+            width = max(button.fittingSize().width + 16, 96)
+            button.setFrame_(NSMakeRect(LEFT_W - 20 - width, 24, width, 30))
         self._place_state_header(self.state_icon, self.state_title, self.state_detail, self.scene_view,
                                  LEFT_W, right=width + 8)
         y = 92

@@ -350,6 +350,12 @@ def fake_tk(monkeypatch, tmp_path):
         def grid_remove(self):
             self.removed = True
 
+        def pack(self, **kwargs):
+            self.packed = True
+
+        def pack_forget(self):
+            self.packed = False
+
         def configure(self, **kwargs):
             self.options.update(kwargs)
 
@@ -598,16 +604,16 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     window.update_status(main_status(model, now))
     assert not window.scene.running
 
-    # Duraklat: the button at the top right pauses and the same button resumes.
+    # Pause: the button at the top right pauses and the same button resumes; the card offers no button.
     window.pause_button.options['command']()
     assert actions == ['sync', 'pause']
     model.pause()
     window.update_status(main_status(model, now))
     assert window.pause_button.options['text'] == '▶' and window.state_title.options['text'] == 'Paused'
-    assert window.sync_button.options['state'] == 'disabled' and window.home_action.options['text'] == 'Resume'
+    assert not window.sync_button.packed and not window.home_action.packed
     model.resume(now)
     window.update_status(main_status(model, now))
-    assert window.pause_button.options['text'] == '⏸'
+    assert window.pause_button.options['text'] == '⏸' and window.sync_button.packed
 
     # Dersler: the mirror explained, one checkbox per course; ticking one saves it.
     from blackboard_sync import courses

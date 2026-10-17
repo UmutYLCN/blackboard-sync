@@ -177,12 +177,15 @@ def test_home_states(tmp_path):
     model = signed_in(tmp_path)
     home = main_status(model, NOW).home
     assert (home.kind, home.title) == (STATE_SYNCED, "Up to date") and home.detail.startswith("Last synced: ")
+    assert home.shows_sync
     model.begin("sync")
     assert main_status(model, NOW).home.kind == STATE_SYNCING
     model.busy = None
     model.pause()
     home = main_status(model, NOW).home
-    assert (home.kind, home.action, home.action_title) == (STATE_PAUSED, "pause", "Resume")
+    # Like Drive, the card only says "Paused"; the top bar's play button resumes.
+    assert (home.kind, home.title, home.action, home.shows_sync) == (STATE_PAUSED, "Paused", "", False)
+    assert main_status(model, NOW).home.shows_sync is False
     model.resume(NOW)
     model.session = None
     home = main_status(model, NOW).home
