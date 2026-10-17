@@ -24,11 +24,6 @@ saatidir. Bir çalışmaya tıklayınca indirilmiş notu varsa açılır; yoksa
 Blackboard açılır. İçerik bağlantısı olmayan not sütunlarında dersin notlar
 sayfası açılır.
 
-Üstteki **Liste / Hafta / Ay** düğmeleriyle görünümü değiştirirsin. **Hafta**
-pazartesiden pazara yedi günü, **Ay** tüm ayı gösterir; ‹ › ile önceki ve sonraki
-haftaya ya da aya geçersin, **Bugün** bugüne döner. Ay görünümünde bir günün
-numarasına tıklarsan o günün haftası açılır.
-
 **Hatırlatma:** bir çalışmanın son teslim tarihine 24 saat ve 1 saat kala
 bildirim gelir (her biri bir kez). Bilgisayar o sırada kapalıysa açıldığında
 yalnızca en yakın hatırlatma gösterilir. Dersler'de işaretini kaldırdığın

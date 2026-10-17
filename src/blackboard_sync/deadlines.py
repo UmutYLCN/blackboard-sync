@@ -21,13 +21,8 @@ T_PAST = "Tarihi geçenler"
 T_PAST_HINT = "Teslim durumu kontrol edilmez; tamamladığınız çalışmalar da burada görünebilir."
 T_EMPTY = "Kayıtlı son teslim tarihi yok."
 T_NOT_SYNCED = "Tarihleri görmek için senkronize edin."
-T_VIEW_LIST, T_VIEW_WEEK, T_VIEW_MONTH, T_TODAY = "Liste", "Hafta", "Ay", "Bugün"
-T_NO_DEADLINE = "Teslim tarihi yok"
-T_MORE = "+{count} daha"
 T_INCOMPLETE = "Bazı derslerin tarihleri güncellenemedi. Varsa önceki kayıtlar gösteriliyor."
 MONTHS = ("Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık")
-MONTHS_SHORT = ("Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara")
-WEEKDAYS_SHORT = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
 WEEKDAYS = ("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
 
 
@@ -203,81 +198,3 @@ def load_calendar(config: Config, dest: Path) -> DeadlinePage:
     return calendar_page(State.load(config.state_file, backup=False), sync_root(dest), datetime.now(timezone.utc),
                          hidden=load_disabled(config))
 
-
-# -- week and month views ------------------------------------------------
-# Same cached due dates as the list, laid out on a calendar. Pure functions: the windows only draw.
-VIEW_LIST, VIEW_WEEK, VIEW_MONTH = "list", "week", "month"
-VIEWS = ((VIEW_LIST, T_VIEW_LIST), (VIEW_WEEK, T_VIEW_WEEK), (VIEW_MONTH, T_VIEW_MONTH))
-
-
-@dataclass(frozen=True)
-class GridDay:
-    day: date
-    title: str  # "Bugün · 13 Ekim 2026", as in the list
-    number: str  # "13"
-    today: bool
-    outside: bool  # a day of the neighbouring month, shown to fill the week
-    rows: tuple[DeadlineRow, ...]
-
-
-@dataclass(frozen=True)
-class GridPage:
-    title: str  # "Ekim 2026" or "12 – 18 Ekim 2026"
-    weekdays: tuple[str, ...]
-    weeks: tuple[tuple[GridDay, ...], ...]  # a week view has one
-    message: str = ""
-
-
-def week_start(day: date) -> date:
-    """The Monday of the week holding ``day``."""
-    return day - timedelta(days=day.weekday())
-
-
-def shift_anchor(anchor: date, mode: str, step: int) -> date:
-    """Move a week view by ``step`` weeks or a month view by ``step`` months."""
-    if mode == VIEW_MONTH:
-        index = anchor.year * 12 + anchor.month - 1 + step
-        return date(index // 12, index % 12 + 1, 1)
-    return anchor + timedelta(weeks=step)
-
-
-def rows_by_day(page: DeadlinePage) -> dict[date, tuple[DeadlineRow, ...]]:
-    """Every due date of the list, upcoming and elapsed, under its local day; earliest first."""
-    grouped: dict[date, list[DeadlineRow]] = {}
-    for day in page.days:
-        for row in day.rows:
-            grouped.setdefault(row.due.date(), []).append(row)
-    return {day: tuple(sorted(rows, key=lambda r: (r.due.astimezone(timezone.utc), r.course, r.title)))
-            for day, rows in grouped.items()}
-
-
-def week_title(first: date, last: date) -> str:
-    if first.month == last.month:
-        return f"{first.day} – {last.day} {MONTHS[last.month - 1]} {last.year}"
-    if first.year == last.year:
-        return f"{first.day} {MONTHS_SHORT[first.month - 1]} – {last.day} {MONTHS_SHORT[last.month - 1]} {last.year}"
-    return (f"{first.day} {MONTHS_SHORT[first.month - 1]} {first.year} – "
-            f"{last.day} {MONTHS_SHORT[last.month - 1]} {last.year}")
-
-
-def grid_page(page: DeadlinePage, mode: str, anchor: date, today: date) -> GridPage:
-    """The week (``VIEW_WEEK``) or month (``VIEW_MONTH``) around ``anchor``, Monday first."""
-    by_day = rows_by_day(page)
-
-    def cell(day: date, month: int | None) -> GridDay:
-        return GridDay(day, day_title(day, today), str(day.day), day == today,
-                       month is not None and day.month != month, by_day.get(day, ()))
-
-    if mode == VIEW_MONTH:
-        first = date(anchor.year, anchor.month, 1)
-        start = week_start(first)
-        last = date(anchor.year + (anchor.month == 12), anchor.month % 12 + 1, 1) - timedelta(days=1)
-        count = (week_start(last) - start).days // 7 + 1
-        weeks = tuple(tuple(cell(start + timedelta(days=7 * w + d), anchor.month) for d in range(7))
-                      for w in range(count))
-        title = f"{MONTHS[anchor.month - 1]} {anchor.year}"
-    else:
-        start = week_start(anchor)
-        weeks = (tuple(cell(start + timedelta(days=d), None) for d in range(7)),)
-        title = week_title(start, start + timedelta(days=6))
-    return GridPage(title, WEEKDAYS_SHORT, weeks, page.message)
