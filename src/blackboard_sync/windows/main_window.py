@@ -381,6 +381,11 @@ class MainWindow:
                                       command=self.download_past_term, state="disabled")
         self.past_button.grid(row=row, column=1, sticky="e", padx=(8, 0))
         row += 1
+        # The papers fly into the folder for as long as the term is downloading.
+        self.past_scene = SyncScene(frame, *COMPACT_SCENE, background=background_of(frame))
+        self.past_scene.canvas.grid(row=row, column=0, columnspan=2, sticky="w", pady=(4, 4))
+        self.past_scene.canvas.grid_remove()
+        row += 1
         place(ttk.Label(frame, text=form.T_PAST_NOTE, foreground=MUTED, wraplength=WRAP))
         self.past_label = ttk.Label(frame, wraplength=WRAP)
         place(self.past_label, pady=(0, 8))
@@ -483,6 +488,7 @@ class MainWindow:
     def select(self, section):
         self.state.select(section)
         self._show_section()
+        self._animate()  # the past-term illustration only moves while Genel is in view
         self.on_section(section)
 
     def visible_page(self):
@@ -630,10 +636,17 @@ class MainWindow:
         if self.uninstall_button is not None:
             self.uninstall_button.configure(state="normal" if form_status.uninstall_enabled else "disabled")
         terms = list(form_status.past_terms)
-        self.past_dropdown.configure(values=terms, state="readonly" if terms else "disabled")
+        self.past_dropdown.configure(values=terms,
+                                     state="readonly" if terms and not form_status.past_running else "disabled")
         if self.past_term.get() not in terms:
             self.past_term.set(terms[0] if terms else "")
-        self.past_button.configure(state="normal" if form_status.past_enabled else "disabled")
+        self.past_button.configure(state="normal" if form_status.past_enabled else "disabled",
+                                   text=form.T_PAST_DOWNLOADING if form_status.past_running else form.T_PAST_DOWNLOAD)
+        if form_status.past_running:
+            self.past_scene.canvas.grid()
+        else:
+            self.past_scene.canvas.grid_remove()
+        self._animate()
         self.past_label.configure(text=form_status.past_message)
         self.refresh_announcements()
 
@@ -806,6 +819,10 @@ class MainWindow:
                 view.start()
             else:
                 view.stop()
+        if self.status.form.past_running and self.state.open and self.state.section == main.GENERAL:
+            self.past_scene.start()
+        else:
+            self.past_scene.stop()
 
     def _draw_recent(self):
         import tkinter as tk

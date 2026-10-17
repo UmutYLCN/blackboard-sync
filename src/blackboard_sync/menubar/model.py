@@ -97,6 +97,9 @@ SYNC_JOBS = ("sync", "past_term", "past_terms")
 # from the chosen folder into its University folder (``relocate.migrate_to_root``).
 MOVE_JOB = "move"
 
+# After a past-term lookup that met a running sync or failed, when to try again (Genel in view).
+PAST_RETRY_DELAYS = {"locked": timedelta(seconds=15), "error": timedelta(seconds=60)}
+
 # What happens to the downloaded files when the destination folder changes:
 # move them over, or download them again into the new folder (the old one is
 # left alone; a sync fills the new folder as soon as the student is signed in).
@@ -624,6 +627,8 @@ class AppModel:
         self.past_terms_loaded = False
         self.past_message = ""
         self.past_lookup_stale = False  # the school changed while the lookup ran
+        # A lookup that found the lock taken or failed is repeated by itself, not only when the window reopens.
+        self.past_terms_retry_at: datetime | None = None
         # A job asked for by a destination change, started as soon as the slot is free:
         # MOVE_JOB (from ``move_from``) or "sync" (download into the new folder).
         self.pending: str | None = None
@@ -708,10 +713,12 @@ class AppModel:
             self.pending = None
         return True
 
-    def past_terms_due(self) -> bool:
+    def past_terms_due(self, now: datetime | None = None) -> bool:
         """The past-term list still has to be looked up (once Genel is in view)."""
+        now = now or datetime.now(timezone.utc)
         return (
             not self.past_terms_loaded
+            and (self.past_terms_retry_at is None or now >= self.past_terms_retry_at)
             and self.configured
             and self.account()[0] is not None
             and self.busy is None
@@ -722,22 +729,31 @@ class AppModel:
         """Look the past terms up again the next time Genel is shown."""
         if self.busy != "past_terms":
             self.past_terms_loaded = False
+            self.past_terms_retry_at = None
             self.past_message = ""
 
-    def finish_past_terms(self, names: list[str] | dict[str, str], outcome: RunOutcome) -> None:
-        """``names`` are the list's entries, or a dict of each entry to its term id."""
+    def finish_past_terms(self, names: list[str] | dict[str, str], outcome: RunOutcome,
+                          now: datetime | None = None) -> None:
+        """``names`` are the list's entries, or a dict of each entry to its term id.
+
+        A lookup that met a running sync (the lock) or failed is not the answer "no past
+        terms": the list stays unloaded and is looked up again after a short wait.
+        """
+        now = now or datetime.now(timezone.utc)
         self.busy = None
         if self.past_lookup_stale:  # the old school's terms: look again
             self.past_lookup_stale = False
             return
-        self.past_terms_loaded = True
+        retry = PAST_RETRY_DELAYS.get(outcome.status)
+        self.past_terms_loaded = retry is None
+        self.past_terms_retry_at = now + retry if retry is not None else None
         self.past_terms = list(names) if outcome.status == "ok" else []
         self.past_term_ids = dict(names) if outcome.status == "ok" and isinstance(names, dict) else {}
         if outcome.status == "login_required":
-            self.auth_failed_at = outcome.finished_at or datetime.now(timezone.utc)
+            self.auth_failed_at = outcome.finished_at or now
             self.note = "Eski dönemleri görmek için giriş yapın ve tekrar deneyin."
         elif outcome.status == "locked":
-            self.note = "Başka bir senkron sürüyor; birazdan tekrar deneyin."
+            self.note = "Başka bir senkron sürüyor; eski dönemler birazdan yeniden yüklenecek."
         else:
             # The lookup runs by itself when Genel is shown: it keeps
             # another job's note.
