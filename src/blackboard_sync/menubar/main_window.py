@@ -1,5 +1,5 @@
-"""The main window (AppKit), laid out like Google Drive's: Başlangıç / Home, Sync activity, Notifications,
-Dersler, Takvim, Duyurular and Ayarlar.
+"""The main window (AppKit), laid out like Google Drive's: Başlangıç / Home, Sync activity, Announcements,
+Dersler, Takvim and Ayarlar.
 
 What the window shows and means lives in ``main_window_model.py`` (sections,
 Home, the unsaved-changes bar) and ``settings_form.py`` (the Ayarlar
@@ -10,6 +10,7 @@ illustration is drawn by ``sync_scene_view.py``.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Callable
 
@@ -68,9 +69,8 @@ from blackboard_sync.menubar.main_window_model import (
     CALENDAR,
     GENERAL,
     HOME_DEADLINE_ROWS,
-    HOME_NOTIFICATION_ROWS,
+    HOME_ANNOUNCEMENT_ROWS,
     NAV_SECTIONS,
-    NOTIFICATIONS,
     OVERVIEW,
     START_STEPS,
     STATE_ATTENTION,
@@ -81,17 +81,14 @@ from blackboard_sync.menubar.main_window_model import (
     T_ALL_GOOD,
     T_ALL_GOOD_DETAIL,
     T_HOME_CALENDAR,
-    T_HOME_NOTIFICATIONS,
+    T_HOME_ANNOUNCEMENTS,
     T_HOME_RECENT,
     T_NAME,
     T_NAV_ACTIVITY,
     T_NAV_GENERAL,
-    T_NAV_NOTIFICATIONS,
     T_NEEDS_ATTENTION,
     T_NEW,
     T_NO_DEADLINES,
-    T_NOTICES,
-    T_NOTICES_EMPTY,
     T_OPEN_CALENDAR,
     T_SIZE,
     T_STATUS,
@@ -185,8 +182,10 @@ CTRL_Y = 20
 # Buttons whose title changes with the app's state ("Giriş yap" / "Hesaptan
 # çıkış yap") keep one width so the row does not jump.
 ACTION_WIDTH = 160
-NAV_SYMBOLS = {OVERVIEW: "house", ACTIVITY: "arrow.triangle.2.circlepath", NOTIFICATIONS: "info.circle",
-               COURSES: "books.vertical", CALENDAR: "calendar", ANNOUNCEMENTS: "megaphone"}
+NAV_SYMBOLS = {OVERVIEW: "house", ACTIVITY: "arrow.triangle.2.circlepath", ANNOUNCEMENTS: "megaphone",
+               COURSES: "books.vertical", CALENDAR: "calendar"}
+# The logo beside the name, without the app icon's background; the frozen app carries it in its bundle.
+LOGO = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3])) / "assets" / "icon" / "logo.png"
 # Home's state symbol and its tint.
 STATE_SYMBOLS = {
     STATE_SYNCED: ("checkmark.icloud", "systemGreenColor"),
@@ -242,8 +241,14 @@ class _Target(NSObject):
     def showActivity_(self, _sender):
         self.owner.select(ACTIVITY)
 
-    def showNotifications_(self, _sender):
-        self.owner.select(NOTIFICATIONS)
+    def showAnnouncements_(self, _sender):
+        self.owner.select(ANNOUNCEMENTS)
+
+    def openHomeAnnouncement_(self, sender):
+        rows = self.owner.home_announcements
+        index = int(sender.tag())
+        if 0 <= index < len(rows):
+            self.owner.on_open_announcement(rows[index])
 
     def showCalendar_(self, _sender):
         self.owner.select(CALENDAR)
@@ -461,9 +466,9 @@ class MainWindow:
         self._drawn_deadlines = None
         self.deadline_targets = []
         self.home_deadline_targets = []
+        self.home_announcements = ()
         self._drawn_home = None
         self._drawn_activity = None
-        self._drawn_notifications = None
         self.recent_seen, self.on_seen = recent_seen, on_seen
         self._recent_timer = None
         self.on_values = on_values or (lambda: self.saved)
@@ -477,6 +482,7 @@ class MainWindow:
         self._past_terms: tuple[str, ...] | None = None
         self._drawn_recent = None
         self._drawn_announcements = None
+        self._drawn_attention = None
         self._drawn_courses = None
         self.course_ids: list[str] = []
         self.target = _Target.alloc().init()
@@ -497,7 +503,7 @@ class MainWindow:
         self._build_sidebar(root)
         self.pages = {}
         for name, build in (("start", self._build_start), (OVERVIEW, self._build_overview),
-                            (ACTIVITY, self._build_activity), (NOTIFICATIONS, self._build_notifications),
+                            (ACTIVITY, self._build_activity),
                             (CALENDAR, self._build_calendar),
                             (ANNOUNCEMENTS, self._build_announcements),
                             (GENERAL, self._build_general), (COURSES, self._build_courses)):
@@ -534,7 +540,8 @@ class MainWindow:
         sidebar.addSubview_(view)
 
         logo = NSImageView.alloc().initWithFrame_(NSMakeRect(16, 18, 36, 36))
-        logo.setImage_(NSApp.applicationIconImage())
+        image = NSImage.alloc().initWithContentsOfFile_(str(LOGO))
+        logo.setImage_(image if image is not None and image.isValid() else NSApp.applicationIconImage())
         logo.setImageScaling_(NSImageScaleProportionallyUpOrDown)
         view.addSubview_(logo)
         name = _label(T_WINDOW_TITLE, 13, bold=True)
@@ -545,12 +552,27 @@ class MainWindow:
         view.addSubview_(version)
 
         # Drive's "Open Drive folder": the one big button above the sections.
-        self.folder_button = NSButton.buttonWithTitle_target_action_(T_OPEN_FOLDER, self.target, "folder:")
-        self.folder_button.setBezelStyle_(1)
-        self.folder_button.setImage_(NSImage.imageWithSystemSymbolName_accessibilityDescription_("folder", None))
-        self.folder_button.setImagePosition_(2)  # NSImageLeft
-        self.folder_button.setFrame_(NSMakeRect(14, 70, SIDEBAR - 28, 44))
-        view.addSubview_(self.folder_button)
+        # A rounded, filled pill with a folder symbol, like Drive's.
+        pill = _card(NSMakeRect(14, 70, SIDEBAR - 28, 48))
+        pill.setCornerRadius_(16)
+        pill.setFillColor_(NSColor.quaternaryLabelColor())
+        pill.setBorderWidth_(0)
+        content = pill.contentView()
+        folder_icon = NSImageView.alloc().initWithFrame_(NSMakeRect(16, 13, 22, 22))
+        folder_icon.setImage_(_symbol_image("folder", 17))
+        folder_icon.setContentTintColor_(NSColor.labelColor())
+        content.addSubview_(folder_icon)
+        folder_title = _label(T_OPEN_FOLDER, 14)
+        folder_title.setFrame_(NSMakeRect(48, 14, SIDEBAR - 28 - 60, 20))
+        content.addSubview_(folder_title)
+        self.folder_button = NSButton.buttonWithTitle_target_action_("", self.target, "folder:")
+        self.folder_button.setBordered_(False)
+        self.folder_button.setTransparent_(True)
+        self.folder_button.setAccessibilityLabel_(T_OPEN_FOLDER)
+        self.folder_button.setToolTip_(T_OPEN_FOLDER)
+        self.folder_button.setFrame_(NSMakeRect(0, 0, SIDEBAR - 28, 48))
+        content.addSubview_(self.folder_button)
+        view.addSubview_(pill)
 
         self.nav_items = {}
         y = 134
@@ -562,11 +584,11 @@ class MainWindow:
             icon.setImage_(NSImage.imageWithSystemSymbolName_accessibilityDescription_(NAV_SYMBOLS[section], None))
             view.addSubview_(icon)
             title = _label("", 13)
-            title.setFrame_(NSMakeRect(46, y + 7, SIDEBAR - 110, 18))
+            title.setFrame_(NSMakeRect(46, y + 7, SIDEBAR - 46 - 50, 18))
             view.addSubview_(title)
             count = _label("", _small(), secondary=True)
             count.setAlignment_(NSTextAlignmentRight)
-            count.setFrame_(NSMakeRect(SIDEBAR - 70, y + 8, 46, 16))
+            count.setFrame_(NSMakeRect(SIDEBAR - 58, y + 8, 34, 16))
             view.addSubview_(count)
             # One transparent button over the row takes the click.
             button = NSButton.buttonWithTitle_target_action_("", self.target, "nav:")
@@ -578,7 +600,6 @@ class MainWindow:
             self.nav_items[section] = (highlight, icon, title, count, button)
             y += 36
         self.nav_items[ACTIVITY][2].setStringValue_(T_NAV_ACTIVITY)
-        self.nav_items[NOTIFICATIONS][2].setStringValue_(T_NAV_NOTIFICATIONS)
         self.nav_items[ANNOUNCEMENTS][2].setStringValue_(announcements.T_TAB)
         self.nav_items[COURSES][2].setStringValue_(T_NAV_COURSES)
         self.nav_items[CALENDAR][2].setStringValue_(deadlines.T_TAB)
@@ -826,18 +847,20 @@ class MainWindow:
         return y + 30 + 12
 
     def _draw_home_notifications(self) -> float:
-        """Home's Bildirimler card: up to three things needing attention, or "Her şey yolunda!"."""
-        items = self.status.attention
-        key = ("notifications", items)
+        """Home's Announcements card: what needs attention, then the newest announcements."""
+        items = self.status.attention[:HOME_ANNOUNCEMENT_ROWS]
+        rows = tuple(self.on_announcements()[:max(HOME_ANNOUNCEMENT_ROWS - len(items), 0)])
+        key = ("announcements", items, rows)
         if key == getattr(self, "_drawn_home_notifications", None):
             return self._home_heights[0]
         self._drawn_home_notifications = key
+        self.home_announcements = rows
         body = self.notify_body
         for view in list(body.subviews()):
             view.removeFromSuperview()
-        self._card_heading(body, T_HOME_NOTIFICATIONS)
+        self._card_heading(body, T_HOME_ANNOUNCEMENTS)
         y = 46
-        if not items:
+        if not items and not rows:
             icon = NSImageView.alloc().initWithFrame_(NSMakeRect(18, y + 2, 30, 30))
             icon.setImage_(_symbol_image("checkmark.circle", 24))
             icon.setContentTintColor_(NSColor.systemGreenColor())
@@ -848,17 +871,27 @@ class MainWindow:
             detail, height = _wrapping(T_ALL_GOOD_DETAIL, RIGHT_W - 74, _small(), secondary=True)
             detail.setFrame_(NSMakeRect(56, y + 20, RIGHT_W - 74, height))
             body.addSubview_(detail)
-            y += max(36, 22 + height) + 8
-        for index, item in enumerate(items[:HOME_NOTIFICATION_ROWS]):
+            return max(y + max(36, 22 + height) + 12, 120)
+        for index, item in enumerate(items):
             self._attention_row(body, y, item, index, RIGHT_W, compact=True)
             y += HOME_ROW
-        if items:
-            y = self._card_footer(body, y + 2, T_VIEW_ALL, "showNotifications:")
-        else:
-            y += 4
-        height = max(y, 120)
-        self._notify_height = height
-        return height
+        for index, row in enumerate(rows):
+            title = _label(row.title, 12, bold=True)
+            title.setFrame_(NSMakeRect(18, y, RIGHT_W - 36, 17))
+            title.setToolTip_(row.title)
+            body.addSubview_(title)
+            detail = _label(row.detail, _small(), secondary=True)
+            detail.setFrame_(NSMakeRect(18, y + 18, RIGHT_W - 36, 15))
+            detail.setToolTip_(row.detail)
+            body.addSubview_(detail)
+            button = NSButton.buttonWithTitle_target_action_("", self.target, "openHomeAnnouncement:")
+            button.setBordered_(False)
+            button.setTransparent_(True)
+            button.setTag_(index)
+            button.setFrame_(NSMakeRect(0, y - 4, RIGHT_W, HOME_ROW - 8))
+            body.addSubview_(button)
+            y += HOME_ROW - 8
+        return max(self._card_footer(body, y + 2, T_VIEW_ALL, "showAnnouncements:"), 120)
 
     def _attention_row(self, body, y: float, item, index: int, width: float, compact: bool) -> None:
         tint = NSColor.systemOrangeColor() if item.warning else NSColor.secondaryLabelColor()
@@ -1059,74 +1092,6 @@ class MainWindow:
             button.setFrame_(NSMakeRect(0, y, width, row_height))
             document.addSubview_(button)
         self.activity_scroll.setDocumentView_(document)
-
-    def _build_notifications(self, page) -> None:
-        self._header(page, T_NAV_NOTIFICATIONS)
-        self.notifications_scroll, _ = _scroll(NSMakeRect(PAD, HEADER, INNER, HEIGHT - HEADER - PAD), 1)
-        page.addSubview_(self.notifications_scroll)
-
-    def refresh_notifications(self) -> None:
-        attention, notices = self.status.attention, self.status.notices
-        key = (attention, notices)
-        if key == self._drawn_notifications:
-            return
-        self._drawn_notifications = key
-        document = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, INNER, 1))
-        y = 4
-        if not attention and not notices:
-            # Drive's "You're all caught up!": a symbol, one line and what will show up here.
-            icon = NSImageView.alloc().initWithFrame_(NSMakeRect((INNER - 64) / 2, 90, 64, 64))
-            icon.setImage_(_symbol_image("checkmark.circle", 52))
-            icon.setContentTintColor_(NSColor.systemGreenColor())
-            document.addSubview_(icon)
-            for text, top, bold, secondary in ((T_ALL_GOOD, 170, True, False), (T_ALL_GOOD_DETAIL, 196, False, True)):
-                label = _label(text, 15 if bold else 13, bold=bold, secondary=secondary)
-                label.setAlignment_(NSTextAlignmentCenter)
-                label.setFrame_(NSMakeRect(0, top, INNER, 20))
-                document.addSubview_(label)
-            y = 240
-        if attention:
-            heading = _label(T_NEEDS_ATTENTION, 15, bold=True)
-            heading.setFrame_(NSMakeRect(4, y, INNER - 8, 22))
-            document.addSubview_(heading)
-            y += 32
-            for index, item in enumerate(attention):
-                height = 74
-                card = _card(NSMakeRect(0, y, INNER, height), warning=item.warning)
-                document.addSubview_(card)
-                self._attention_row(card.contentView(), 16, item, index, INNER, compact=False)
-                y += height + 12
-            y += 8
-        if notices:
-            heading = _label(T_NOTICES, 15, bold=True)
-            heading.setFrame_(NSMakeRect(4, y, INNER - 8, 22))
-            document.addSubview_(heading)
-            y += 32
-            for notice in notices:
-                text_width = INNER - 40
-                title = _label(notice.title, 13, bold=True)
-                title.setFrame_(NSMakeRect(20, 14, text_width - 120, 17))
-                when = _label(notice.when, _small(), secondary=True)
-                when.setAlignment_(NSTextAlignmentRight)
-                when.setFrame_(NSMakeRect(INNER - 20 - 140, 15, 140, 15))
-                message, message_height = _wrapping(notice.message, text_width, _small(), secondary=True)
-                message.setFrame_(NSMakeRect(20, 36, text_width, message_height))
-                height = 36 + message_height + 14
-                card = _card(NSMakeRect(0, y, INNER, height))
-                content = card.contentView()
-                for view in (title, when, message):
-                    content.addSubview_(view)
-                document.addSubview_(card)
-                y += height + 10
-        elif not attention:
-            pass
-        else:
-            empty = _label(T_NOTICES_EMPTY, secondary=True)
-            empty.setFrame_(NSMakeRect(4, y, INNER - 8, 17))
-            document.addSubview_(empty)
-            y += 28
-        document.setFrame_(NSMakeRect(0, 0, INNER, y + 12))
-        self.notifications_scroll.setDocumentView_(document)
 
     def _build_announcements(self, page) -> None:
         self._header(page, announcements.T_TAB)
@@ -1457,8 +1422,6 @@ class MainWindow:
             self.refresh_courses()
         elif section == ACTIVITY:
             self.refresh_activity()
-        elif section == NOTIFICATIONS:
-            self.refresh_notifications()
         elif section == CALENDAR:
             self.refresh_calendar()
         elif section == ANNOUNCEMENTS:
@@ -1566,7 +1529,7 @@ class MainWindow:
         self._draw_recent()
         self.refresh_calendar()
         self.refresh_activity()
-        self.refresh_notifications()
+        self.refresh_announcements()
         if self.state.section == COURSES:
             self.refresh_courses()  # a sync may have found another course
         # The buttons at the top right: Duraklat / Devam et, Ayarlar and the account.
@@ -1586,7 +1549,7 @@ class MainWindow:
         self.avatar_button.setToolTip_(card.title)
         self.avatar_button.setAccessibilityLabel_(card.title)
         count = len(status.attention)
-        self.nav_items[NOTIFICATIONS][3].setStringValue_(str(count) if count else "")
+        self.nav_items[ANNOUNCEMENTS][3].setStringValue_(str(count) if count else "")
         # Genel
         form = status.form
         self.account_label.setStringValue_(form.account)
@@ -1679,16 +1642,29 @@ class MainWindow:
             self.on_seen()
     def refresh_announcements(self) -> None:
         rows = self.on_announcements()
-        if rows == self._drawn_announcements:
+        attention = self.status.attention
+        if rows == self._drawn_announcements and attention == self._drawn_attention:
             return
-        self._drawn_announcements = rows
+        self._drawn_announcements, self._drawn_attention = rows, attention
         document = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, INNER, 1))
         y = 0
+        # Drive's notifications on top: what needs the student (sign in again, an update, a failed sync).
+        if attention:
+            heading = _label(T_NEEDS_ATTENTION, 15, bold=True)
+            heading.setFrame_(NSMakeRect(4, y, INNER - 8, 22))
+            document.addSubview_(heading)
+            y += 32
+            for index, item in enumerate(attention):
+                card = _card(NSMakeRect(0, y, INNER, 74), warning=item.warning)
+                document.addSubview_(card)
+                self._attention_row(card.contentView(), 16, item, index, INNER, compact=False)
+                y += 74 + 12
+            y += 8
         if not rows:
             empty, height = _wrapping(announcements.T_EMPTY, INNER - 40, secondary=True)
-            empty.setFrame_(NSMakeRect(20, 16, INNER - 40, height))
+            empty.setFrame_(NSMakeRect(20, y + 16, INNER - 40, height))
             document.addSubview_(empty)
-            y = height + 32
+            y += height + 32
         for index, row in enumerate(rows):
             width = INNER - 40
             detail = _label(row.detail, _small(), secondary=True)

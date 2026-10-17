@@ -141,14 +141,15 @@ def test_windows_page_empty_rows_click_and_refresh_with_fakes(monkeypatch, tmp_p
                         on_announcements=lambda: tuple(rows), on_open_announcement=opened.append)
     window.select(ANNOUNCEMENTS)
     assert window.visible_page() == ANNOUNCEMENTS
-    assert window.nav[ANNOUNCEMENTS].options["text"] == "Duyurular"
+    assert window.nav[ANNOUNCEMENTS].options["text"] == "Announcements"
     assert any(w.options.get("text") == announcements.T_EMPTY for w in widgets)
     rows.append(announcements.AnnouncementRow("one", "CSE303", "Sınav", "01.10.2026", "Odalar", "note.pdf", "https://bb.example"))
     window.update_status(main_status(model, NOW))
     button = next(w for w in widgets if w.options.get("text") == announcements.T_OPEN)
     button.options["command"]()
     assert opened == rows
-    title = next(w for w in widgets if w.options.get("text") == "Sınav")
+    # The page's card (Home's Announcements card lists the same title as a button).
+    title = next(w for w in widgets if w.options.get("text") == "Sınav" and "<Button-1>" in w.bindings)
     title.bindings["<Button-1>"](None)
     assert opened == rows * 2
     window.announcements_canvas.view = (0, 0.5)
@@ -168,7 +169,7 @@ def test_macos_page_cards_click_and_empty_state(tmp_path):
     try:
         window.select(ANNOUNCEMENTS)
         assert visible_page(window) == ANNOUNCEMENTS
-        assert window.nav_items[ANNOUNCEMENTS][2].stringValue() == "Duyurular"
+        assert window.nav_items[ANNOUNCEMENTS][2].stringValue() == "Announcements"
         document = window.announcements_scroll.documentView()
         assert document.subviews()[0].stringValue() == announcements.T_EMPTY
         rows.append(announcements.AnnouncementRow("one", "CSE303", "Sınav", "01.10.2026", "Odalar", "note.pdf", "https://bb.example"))

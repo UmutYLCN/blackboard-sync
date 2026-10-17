@@ -15,6 +15,8 @@ a = Analysis(
         (str(ROOT / "assets" / "menubar" / "idle@2x.png"), "assets/menubar"),
         # Fonts of the PDF notes (blackboard_sync.notepdf), with their license.
         (str(ROOT / "assets" / "fonts"), "assets/fonts"),
+        # The main window's sidebar logo (transparent; the .icns has a background).
+        (str(ROOT / "assets" / "icon" / "logo.png"), "assets/icon"),
     ],
     # The sync child run and the menu bar app are imported lazily by app_entry,
     # the in-app sign-in window (WKWebView) lazily by login.

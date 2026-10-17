@@ -747,7 +747,6 @@ def build_app(config: Config, show_window: bool = False):
             self.refresh()
 
         def notify(self, note: Notification) -> None:
-            self.model.log_notice(note, jobs.utcnow())
             try:
                 rumps.notification(note.title, None, note.message, data=note.data)
             except RuntimeError:

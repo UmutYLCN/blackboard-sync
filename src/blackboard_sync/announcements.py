@@ -12,7 +12,7 @@ from blackboard_sync.config import Config
 from blackboard_sync.htmltext import body_text, feed_html
 from blackboard_sync.state import State
 
-T_TAB = "Duyurular"
+T_TAB = "Announcements"
 T_HINT = "Güncel dönem derslerinizden senkronize edilen tüm duyurular."
 T_EMPTY = "Henüz duyuru yok. Duyurular senkronize edildiğinde burada görünecek."
 T_NO_DATE = "Tarih belirtilmedi"

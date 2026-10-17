@@ -248,15 +248,16 @@ def visible_page(window):
 
 def test_sidebar_switches_sections_and_baslangic_becomes_home(tmp_path):
     from blackboard_sync.courses import CourseRow
-    from blackboard_sync.menubar.main_window_model import (ACTIVITY, COURSES, GENERAL, NOTIFICATIONS, OVERVIEW,
+    from blackboard_sync.menubar.main_window_model import (ACTIVITY, ANNOUNCEMENTS, CALENDAR, COURSES, GENERAL, OVERVIEW,
                                                            main_status)
     from blackboard_sync.menubar.model import AppModel
 
     rows = [CourseRow('_1_1', 'CSE301', 'Algorithms', 'T', True), CourseRow('_2_1', 'MTH201', 'Linear', 'T', False)]
     window, model, _ = make_window(tmp_path, AppModel(tmp_path, NOW, configured=False), rows=rows)
     try:
-        titles = [str(window.nav_items[s][2].stringValue()) for s in (OVERVIEW, ACTIVITY, NOTIFICATIONS, COURSES)]
-        assert titles == ['Başlangıç', 'Sync activity', 'Notifications', 'Dersler']
+        titles = [str(window.nav_items[s][2].stringValue()) for s in (OVERVIEW, ACTIVITY, ANNOUNCEMENTS, COURSES)]
+        assert titles == ['Başlangıç', 'Sync activity', 'Announcements', 'Dersler']
+        assert list(window.nav_items) == [OVERVIEW, ACTIVITY, ANNOUNCEMENTS, COURSES, CALENDAR]
         assert GENERAL not in window.nav_items  # Ayarlar is the gear at the top right
         assert str(window.nav_items[COURSES][3].stringValue()) == '1/2'
         assert visible_page(window) == 'start' and window.section == OVERVIEW
@@ -278,8 +279,8 @@ def test_sidebar_switches_sections_and_baslangic_becomes_home(tmp_path):
         assert str(window.nav_items[OVERVIEW][2].stringValue()) == 'Home'
         window.target.nav_(window.nav_items[ACTIVITY][4])
         assert visible_page(window) == ACTIVITY
-        window.target.nav_(window.nav_items[NOTIFICATIONS][4])
-        assert visible_page(window) == NOTIFICATIONS
+        window.target.nav_(window.nav_items[ANNOUNCEMENTS][4])
+        assert visible_page(window) == ANNOUNCEMENTS
         window.select(OVERVIEW)
         # Duraklat / Devam et, Ayarlar and the account sit at the top right, the status in Home's card.
         assert not any(view.isHidden() for view in window.topbar)
@@ -320,7 +321,7 @@ def test_home_buttons_recent_files_and_sign_in(tmp_path):
         window.target.showActivity_(None)
         assert window.section == 'activity'
         window.select('overview')
-        # Expired: the card says so and offers signing in; Notifications lists it too.
+        # Expired: the card says so and offers signing in; Announcements lists it on top too.
         model.session = None
         model.session_expired = True
         window.update_status(main_status(model, NOW))
@@ -386,23 +387,30 @@ def test_sync_activity_lists_files_with_size_and_status(tmp_path):
         window.window.close()
 
 
-def test_notifications_page_lists_attention_and_the_notifications_shown(tmp_path):
-    from blackboard_sync.menubar.main_window_model import NOTIFICATIONS, main_status
-    from blackboard_sync.menubar.model import Notification
+def test_announcements_page_puts_what_needs_attention_above_the_announcements(tmp_path):
+    from blackboard_sync.announcements import AnnouncementRow
+    from blackboard_sync.menubar.main_window_model import ANNOUNCEMENTS, main_status
 
-    window, model, _ = make_window(tmp_path)
+    rows = (AnnouncementRow('k1', 'CSE301', 'Sınav tarihi', '17.10.2026 10:00', 'Vize 3 Kasım.', 'C/a.md', 'https://x'),)
+    opened = []
+    window, model, _ = make_window(tmp_path, on_announcements=lambda: rows, on_open_announcement=opened.append)
     try:
         signed_in(model)
         window.update_status(main_status(model, NOW))
-        window.select(NOTIFICATIONS)
-        assert window.status.attention == () and window.status.notices == ()
-        model.log_notice(Notification('Teslime 1 saat kaldı', 'CSE301: Ödev 1', {}), NOW)
-        window.update_status(main_status(model, NOW))
-        assert [n.title for n in window.status.notices] == ['Teslime 1 saat kaldı']
-        assert str(window.nav_items[NOTIFICATIONS][3].stringValue()) == ''  # history is not "attention"
+        window.select(ANNOUNCEMENTS)
+        assert str(window.nav_items[ANNOUNCEMENTS][3].stringValue()) == ''
+        # Home's card lists the newest announcement; a click opens it.
+        assert window.home_announcements == rows
+        window.target.openHomeAnnouncement_(type('B', (), {'tag': lambda self: 0})())
+        assert opened == [rows[0]]
         model.session = None
         window.update_status(main_status(model, NOW))
-        assert str(window.nav_items[NOTIFICATIONS][3].stringValue()) == '1'
+        assert str(window.nav_items[ANNOUNCEMENTS][3].stringValue()) == '1'
+        texts = [str(v.stringValue()) for v in window.announcements_scroll.documentView().subviews()
+                 if hasattr(v, 'stringValue')]
+        assert texts[0] == 'Dikkat gerektirenler'
+        window.target.showAnnouncements_(None)
+        assert window.section == ANNOUNCEMENTS
     finally:
         window.window.close()
 
@@ -962,13 +970,3 @@ def test_pause_stops_a_running_sync_and_resume_syncs_again(menu_app, monkeypatch
     assert menu_app.model.begin('sync')
     menu_app.toggle_pause()  # a running sync is ended
     assert menu_app.model.paused and stopped == [True]
-
-
-def test_every_notification_shown_is_kept_for_the_notifications_page(menu_app, monkeypatch):
-    from blackboard_sync.menubar.model import Notification
-
-    shown = []
-    monkeypatch.setattr(rumps, 'notification', lambda title, sub, message, data=None: shown.append(title))
-    menu_app.notify(Notification('Teslim tarihi yaklaşıyor', 'CSE301: Ödev 1', {}))
-    assert shown == ['Teslim tarihi yaklaşıyor']
-    assert [n.title for n in menu_app.model.notices] == ['Teslim tarihi yaklaşıyor']

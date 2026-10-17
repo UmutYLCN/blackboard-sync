@@ -1,4 +1,4 @@
-"""Duraklat, Sync activity and the Notifications page: the model and the sync child process behind them."""
+"""Duraklat, Sync activity and what needs attention: the model and the sync child process behind them."""
 
 import subprocess
 import sys
@@ -15,7 +15,7 @@ from blackboard_sync.menubar.main_window_model import (
     STATE_ATTENTION, STATE_ERROR, STATE_PAUSED, STATE_SYNCED, STATE_SYNCING, attention_items, format_size, main_status,
 )
 from blackboard_sync.menubar.model import (
-    ACTIVITY_LIMIT, NOTICE_LIMIT, AppModel, Icon, Notification, RunOutcome, T_PAUSE, T_RESUME,
+    ACTIVITY_LIMIT, AppModel, Icon, RunOutcome, T_PAUSE, T_RESUME,
 )
 from blackboard_sync.settings import Settings, save_settings
 
@@ -152,29 +152,17 @@ def test_activity_is_newest_first_capped_and_hides_unticked_courses(tmp_path):
     assert len(model.activity_log) == ACTIVITY_LIMIT and model.activity_log[0].label == "Güncellendi"
 
 
-def test_activity_and_notices_survive_a_restart_and_bad_entries_are_dropped(tmp_path):
+def test_activity_survives_a_restart_and_bad_entries_are_dropped(tmp_path):
     config = Config(base_url="https://school.edu", dest=tmp_path / "University", data_dir=tmp_path / "data")
     save_settings(config.data_dir, Settings("https://school.edu", config.dest))
     model = signed_in(tmp_path)
     model.begin("sync")
     model.finish_sync(outcome_with(("C", "C/a.pdf", "new_file")), NOW)
-    model.log_notice(Notification("Başlık", "İleti", {}), NOW)
     saved = model.saved_state()
     saved["activity"].append({"path": "broken"})
-    saved["notices"].append("junk")
     jobs.write_private_json(jobs.menubar_state_file(config), saved)
     restored = jobs.load_model(config, NOW, False)
     assert [i.path for i in restored.activity_log] == ["C/a.pdf"]
-    assert [(n.title, n.message) for n in restored.notices] == [("Başlık", "İleti")]
-
-
-def test_the_notification_history_keeps_the_newest(tmp_path):
-    model = signed_in(tmp_path)
-    for n in range(NOTICE_LIMIT + 5):
-        model.log_notice(Notification(f"t{n}", "m", {}), NOW)
-    assert len(model.notices) == NOTICE_LIMIT and model.notices[0].title == f"t{NOTICE_LIMIT + 4}"
-    model.log_notice(Notification("", "", {}), NOW)  # nothing to show: nothing to keep
-    assert len(model.notices) == NOTICE_LIMIT
 
 
 @pytest.mark.parametrize("size, text", [(None, "—"), (0, "0 B"), (900, "900 B"), (1024, "1.0 KB"), (14 * 1024, "14 KB"),
@@ -183,7 +171,7 @@ def test_sizes_read_like_drives(size, text):
     assert format_size(size) == text
 
 
-# -- Home and Notifications -----------------------------------------------------------
+# -- Home and Announcements -----------------------------------------------------------
 
 def test_home_states(tmp_path):
     model = signed_in(tmp_path)

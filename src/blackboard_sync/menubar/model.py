@@ -70,7 +70,6 @@ ENTRY_LABELS = {
     "updated_announcement": "Duyuru güncellendi",
 }
 ACTIVITY_LIMIT = 300
-NOTICE_LIMIT = 50
 
 # What "Son indirilenler" lists: things that appeared or changed locally.
 RECENT_KEYS = ("new_files", "updated_files", "new_notes", "new_announcements")
@@ -519,15 +518,6 @@ class ActivityItem:
         return ENTRY_LABELS.get(self.kind, ENTRY_LABELS["new_file"])
 
 
-@dataclass
-class Notice:
-    """A notification the app showed, kept for the Notifications page."""
-
-    title: str
-    message: str
-    at: str
-
-
 def file_size(path: Path) -> int | None:
     try:
         return path.stat().st_size if path.is_file() else None
@@ -698,7 +688,6 @@ class AppModel:
         self.reminders_sent: dict[str, dict] = {}
         self.paused = False  # Duraklat: nothing syncs by itself, a running sync was stopped
         self.activity_log: list[ActivityItem] = []  # Sync activity, newest first (ACTIVITY_LIMIT)
-        self.notices: list[Notice] = []  # shown notifications, newest first (NOTICE_LIMIT)
         self.reminders_checked_at: datetime | None = None
         self.login_method = ""  # while signing in: a browser's name, INAPP, or "" if unknown
         self.note = ""  # a transient extra line (lock held, sign-in failed, ...)
@@ -1064,11 +1053,6 @@ class AppModel:
                 if not any(item.path == folder or item.path.startswith(folder + "/")
                            for folder in self.hidden_folders)]
 
-    def log_notice(self, note: "Notification", now: datetime) -> None:
-        """Keep a notification the app showed, for the Notifications page."""
-        if note.title or note.message:
-            self.notices = [Notice(note.title, note.message, now.isoformat(timespec="seconds")),
-                            *self.notices][:NOTICE_LIMIT]
 
     # -- presentation ---------------------------------------------------
     def account(self) -> tuple[str | None, bool]:
@@ -1207,7 +1191,6 @@ class AppModel:
             "reminders": self.reminders_sent,
             "paused": self.paused,
             "activity": [vars(item) for item in self.activity_log],
-            "notices": [vars(item) for item in self.notices],
         }
 
     def saved_pending(self) -> dict | None:
@@ -1243,16 +1226,6 @@ def load_activity(data: object) -> list[ActivityItem]:
         except (KeyError, TypeError, AttributeError):
             continue
     return items[:ACTIVITY_LIMIT]
-
-
-def load_notices(data: object) -> list[Notice]:
-    items = []
-    for item in data if isinstance(data, list) else []:
-        try:
-            items.append(Notice(title=str(item["title"]), message=str(item["message"]), at=str(item["at"])))
-        except (KeyError, TypeError):
-            continue
-    return items[:NOTICE_LIMIT]
 
 
 def load_saved_state(data: dict | None) -> tuple[list[RecentItem], bool]:

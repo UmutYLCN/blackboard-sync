@@ -297,7 +297,6 @@ class TrayApp:
         self.save()
 
     def notify(self, note):
-        self.model.log_notice(note, jobs.utcnow())
         try:
             notifications.show(note)
         except (OSError, subprocess.SubprocessError):

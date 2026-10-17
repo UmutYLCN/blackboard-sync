@@ -200,7 +200,7 @@ window. The menu bar icon's menu is the same as before; **Ayarlar…** in it
 opens the main window on **Ayarlar**.
 
 The window is laid out like Google Drive's desktop window (the names Home, Sync
-activity and Notifications are Drive's own). **Klasörü aç** sits above the sidebar. Three
+activity and Announcements follow Drive's). **Klasörü aç** sits above the sidebar. Three
 round buttons at the top right of every page: **Duraklat / Devam et**, **Ayarlar** (the
 gear) and the account (initials; a small menu with who is signed in, sign out or in, and
 Ayarlar). A sidebar switches between the sections:
@@ -222,14 +222,14 @@ Ayarlar). A sidebar switches between the sections:
   animation of papers flying from a cloud into a folder takes the place of the status
   symbol in the card. It is drawn natively (AppKit / Tk canvas), moves only while Home is
   in view and stands still with reduce motion (macOS) or animations turned off
-  (Windows). On the right, **Bildirimler** (up to three things needing attention, or "Her
-  şey yolunda!") and **Yaklaşan teslimler** (the next four due dates).
+  (Windows). On the right, **Announcements** (what needs attention, then the newest announcements, three
+  in all, or "Her şey yolunda!") and **Yaklaşan teslimler** (the next four due dates).
 - **Sync activity**: what each sync brought (files, notes, announcements), newest first,
   up to 300, with size and status like Drive's table (`menubar.json` `activity`); a click
   opens the file.
-- **Notifications**: what needs attention (signed out, an update, a failed sync, warnings or
-  unreadable courses; `main_window_model.attention_items`) above the notifications the app
-  showed (`menubar.json` `notices`, the last 50).
+- **Announcements**: Drive's notifications and the course announcements in one page — what
+  needs attention (signed out, an update, a failed sync, warnings or unreadable courses;
+  `main_window_model.attention_items`) on top, then every synced current-term announcement.
 - **Ayarlar** (the gear, not in the sidebar): the [settings](#settings).
 - **Takvim**: due dates grouped by local day, upcoming first and elapsed dates
   separately. Clicking opens an existing downloaded note or Blackboard. The
@@ -242,7 +242,7 @@ Ayarlar). A sidebar switches between the sections:
   with a line explaining that the folder mirrors Blackboard. Every course is
   ticked by default, also one that appears later. An unticked course is not
   synced at all: no request for its contents, attachments, announcements or due
-  dates, and it disappears from **Takvim**, **Duyurular** and Son indirilenler
+  dates, and it disappears from **Takvim**, **Announcements** and Son indirilenler
   at once; its files stay on disk. Ticking it again starts a sync that fills in
   what is missing. The choice is saved as the unticked Blackboard course
   primary keys (`_13004_1`) in `courses.json` in the data folder; every sync,

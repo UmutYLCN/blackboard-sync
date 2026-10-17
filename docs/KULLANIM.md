@@ -7,18 +7,18 @@ Kurulum için [README](../README.md)'ye bak. Bu sayfa uygulamanın ayrıntılı 
 Blackboard Sync'i **Applications** veya **Launchpad**'den (Windows'ta **Başlat** menüsünden)
 açınca ana pencere açılır; uygulama zaten çalışıyorsa aynı pencere öne gelir. Pencere Google
 Drive'ın masaüstü uygulaması gibi düzenlenmiştir. Solda üstte **Klasörü aç** düğmesi, altında
-bölümler durur: ilk girişe kadar **Başlangıç**, sonra **Home**, **Sync activity**, **Notifications**,
-**Dersler**, **Takvim** ve **Duyurular**. Sağ üstte üç yuvarlak düğme vardır: **Duraklat / Devam et**,
+bölümler durur: ilk girişe kadar **Başlangıç**, sonra **Home**, **Sync activity**, **Announcements**,
+**Dersler** ve **Takvim**. Sağ üstte üç yuvarlak düğme vardır: **Duraklat / Devam et**,
 **Ayarlar** (dişli) ve hesabın (baş harfler; tıklayınca hesap menüsü). Menüdeki **Ayarlar…** aynı
 pencereyi **Ayarlar** sayfasında açar.
 
 - **Home** özet bir sayfadır: senkronun durumu (**Güncel**, **Senkronize ediliyor…**, **Duraklatıldı**,
   **Giriş gerekli**; senkron sürerken bulut → klasör animasyonu), son indirilenler,
-  dikkat gerektiren bildirimler ve yaklaşan teslim tarihleri.
+  dikkat gerektirenler ile en yeni duyurular ve yaklaşan teslim tarihleri.
 - **Sync activity** senkronun getirdiği her dosyayı, notu ve duyuruyu yeniden eskiye doğru boyutu
   ve durumuyla listeler; satıra tıklayınca dosya kendi uygulamasında açılır.
-- **Notifications** dikkat gerektirenleri (oturum sona erdi, güncelleme, tamamlanamayan senkron,
-  uyarılar) ve uygulamanın gösterdiği son bildirimleri toplar.
+- **Announcements** (duyurular) en üstte dikkat gerektirenleri (oturum sona erdi, güncelleme,
+  tamamlanamayan senkron, uyarılar), altında derslerin tüm duyurularını gösterir.
 
 **Duraklat** düğmesi çalışan senkronu hemen durdurur ve siz **Devam et**'e basana kadar
 otomatik senkron yapılmaz; durum yeniden başlatmada da korunur. Devam edince bir senkron hemen
@@ -82,7 +82,7 @@ ise eski klasöre dokunmadan dosyaları yeni klasöre yeniden indirir.
 Ana pencerenin **Dersler** bölümü güncel dönemdeki derslerini birer onay kutusuyla
 listeler. İşaretli dersler senkronize edilir; yeni bir ders çıkınca o da kendiliğinden
 işaretli gelir. İstemediğin bir dersin işaretini kaldır: o ders artık hiç senkronize
-edilmez (Blackboard'a o ders için istek gönderilmez), **Takvim**, **Duyurular** ve son
+edilmez (Blackboard'a o ders için istek gönderilmez), **Takvim**, **Announcements** ve son
 indirilenler listesinde görünmez. Daha önce indirilmiş dosyaları silinmez. Tekrar
 işaretlersen eksik dosyaları hemen başlayan senkronda iner.
 
@@ -91,7 +91,7 @@ Liste ilk senkrondan sonra dolar. Eski dönemler bu listede yer almaz; onları
 
 ## Duyurular
 
-Ana pencerenin **Duyurular** bölümü, güncel dönem derslerinden senkronize edilen tüm
+Ana pencerenin **Announcements** (duyurular) bölümü, güncel dönem derslerinden senkronize edilen tüm
 duyuruları en yeniden başlayarak listeler. Her kartta ders adı, başlık, tarih ve kısa
 bir önizleme bulunur. Kartı seçince kayıtlı not açılır; not bilgisayarda yoksa
 Blackboard'daki dersin duyurular sayfası açılır.

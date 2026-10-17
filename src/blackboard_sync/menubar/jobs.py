@@ -30,7 +30,6 @@ from blackboard_sync.menubar.model import (
     RunOutcome,
     UpdateState,
     load_activity,
-    load_notices,
     load_saved_state,
     login_arguments,
     parse_sync_output,
@@ -312,7 +311,6 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
     model.reminders_sent = sent if isinstance(sent, dict) else {}
     model.paused = bool((saved or {}).get("paused"))
     model.activity_log = load_activity((saved or {}).get("activity"))
-    model.notices = load_notices((saved or {}).get("notices"))
     model.restore_pending((saved or {}).get("pending"))  # a move or download the last run never got to
     refresh_hidden_folders(config, model)
     refresh_session(config, model, settings)

@@ -1,5 +1,5 @@
-"""The main window (Tk), laid out like Google Drive's: Başlangıç / Home, Sync activity, Notifications,
-Dersler, Takvim, Duyurular and Ayarlar.
+"""The main window (Tk), laid out like Google Drive's: Başlangıç / Home, Sync activity, Announcements,
+Dersler, Takvim and Ayarlar.
 
 What the window shows and means lives in ``menubar/main_window_model.py`` and
 ``menubar/settings_form.py``, shared with macOS; this module only lays out Tk
@@ -109,7 +109,6 @@ class MainWindow:
         self._drawn_home_notifications = None
         self._drawn_home_calendar = None
         self._drawn_activity = None
-        self._drawn_notifications = None
         self._drawn_announcements = None
         self._loading = False
 
@@ -141,7 +140,6 @@ class MainWindow:
         self.pages = {}
         for name, build in (("start", self._build_start), (main.OVERVIEW, self._build_overview),
                             (main.ACTIVITY, self._build_activity),
-                            (main.NOTIFICATIONS, self._build_notifications),
                             (main.CALENDAR, self._build_calendar),
                             (main.ANNOUNCEMENTS, self._build_announcements),
                             (main.GENERAL, self._build_general), (main.COURSES, self._build_courses)):
@@ -338,31 +336,37 @@ class MainWindow:
             row=2, column=0, sticky="w", pady=(8, 0))
 
         # Right: what needs attention, then the next due dates.
-        self.notify_frame = ttk.LabelFrame(page, text=main.T_HOME_NOTIFICATIONS, padding=(14, 8))
+        self.notify_frame = ttk.LabelFrame(page, text=main.T_HOME_ANNOUNCEMENTS, padding=(14, 8))
         self.notify_frame.grid(row=2, column=1, sticky="new", pady=(0, 12))
         self.calendar_frame = ttk.LabelFrame(page, text=main.T_HOME_CALENDAR, padding=(14, 8))
         self.calendar_frame.grid(row=3, column=1, sticky="new")
 
     def _draw_home_cards(self):
-        """Home's Bildirimler and Yaklaşan teslimler cards."""
+        """Home's Announcements (what needs attention, then the newest) and Yaklaşan teslimler cards."""
         from datetime import datetime
         from tkinter import ttk
 
-        items = self.status.attention[:main.HOME_NOTIFICATION_ROWS]
-        key = ("notifications", self.status.attention)
+        items = self.status.attention[:main.HOME_ANNOUNCEMENT_ROWS]
+        rows = tuple(self.on_announcements()[:max(main.HOME_ANNOUNCEMENT_ROWS - len(items), 0)])
+        key = ("announcements", items, rows)
         if key != self._drawn_home_notifications:
             self._drawn_home_notifications = key
             for child in self.notify_frame.winfo_children():
                 child.destroy()
-            if not self.status.attention:
+            if not items and not rows:
                 ttk.Label(self.notify_frame, text="✓ " + main.T_ALL_GOOD, font=BOLD_FONT).pack(anchor="w")
                 ttk.Label(self.notify_frame, text=main.T_ALL_GOOD_DETAIL, foreground=MUTED, wraplength=240).pack(
                     anchor="w", pady=(2, 4))
             for item in items:
                 self._attention_row(self.notify_frame, item, 240)
-            if self.status.attention:
+            for row in rows:
+                ttk.Button(self.notify_frame, text=row.title, style="Toolbutton",
+                           command=lambda item=row: self.on_open_announcement(item)).pack(anchor="w")
+                ttk.Label(self.notify_frame, text=row.detail, foreground=MUTED, wraplength=240).pack(
+                    anchor="w", padx=(4, 0), pady=(0, 6))
+            if items or rows:
                 ttk.Button(self.notify_frame, text=main.T_VIEW_ALL,
-                           command=lambda: self.select(main.NOTIFICATIONS)).pack(anchor="w", pady=(6, 0))
+                           command=lambda: self.select(main.ANNOUNCEMENTS)).pack(anchor="w", pady=(6, 0))
         page = self.on_deadlines()
         today = datetime.now().astimezone().date()
         rows = deadlines.upcoming_rows(page, main.HOME_DEADLINE_ROWS)
@@ -428,38 +432,6 @@ class MainWindow:
             ttk.Label(line, text=row.size, foreground=MUTED, width=10, anchor="e").grid(row=0, column=1, padx=(8, 0))
             ttk.Label(line, text="✓", foreground="#236b45", font=BOLD_FONT, width=6, anchor="e").grid(
                 row=0, column=2, padx=(8, 0))
-
-    def _build_notifications(self, page):
-        self._header(page, main.T_NAV_NOTIFICATIONS)
-        self.notifications_canvas, self.notifications_frame = self._scroll_area(page, 1)
-
-    def refresh_notifications(self):
-        from tkinter import ttk
-
-        key = (self.status.attention, self.status.notices)
-        if key == self._drawn_notifications:
-            return
-        self._drawn_notifications = key
-        frame = self.notifications_frame
-        for child in frame.winfo_children():
-            child.destroy()
-        if not self.status.attention and not self.status.notices:
-            ttk.Label(frame, text="✓", font=("Segoe UI", 36), foreground="#236b45").pack(pady=(40, 0))
-            ttk.Label(frame, text=main.T_ALL_GOOD, font=HEADING_FONT).pack()
-            ttk.Label(frame, text=main.T_ALL_GOOD_DETAIL, foreground=MUTED).pack()
-        if self.status.attention:
-            ttk.Label(frame, text=main.T_NEEDS_ATTENTION, font=HEADING_FONT).pack(anchor="w", pady=(0, 8))
-            for item in self.status.attention:
-                card = ttk.LabelFrame(frame, padding=(12, 8))
-                card.pack(fill="x", pady=(0, 8))
-                self._attention_row(card, item, WRAP - 60)
-        if self.status.notices:
-            ttk.Label(frame, text=main.T_NOTICES, font=HEADING_FONT).pack(anchor="w", pady=(10, 8))
-            for notice in self.status.notices:
-                card = ttk.LabelFrame(frame, padding=(12, 8))
-                card.pack(fill="x", pady=(0, 8))
-                ttk.Label(card, text=f"{notice.title}   ·   {notice.when}", font=BOLD_FONT).pack(anchor="w")
-                ttk.Label(card, text=notice.message, foreground=MUTED, wraplength=WRAP - 60).pack(anchor="w")
 
     def _build_announcements(self, page):
         from tkinter import ttk
@@ -595,7 +567,7 @@ class MainWindow:
 
     def wheel(self, event):
         canvas = {"start": self.start_canvas, main.OVERVIEW: self.recent_canvas,
-                  main.ACTIVITY: self.activity_canvas, main.NOTIFICATIONS: self.notifications_canvas,
+                  main.ACTIVITY: self.activity_canvas,
                   main.CALENDAR: self.calendar_canvas,
                   main.ANNOUNCEMENTS: self.announcements_canvas,
                   main.GENERAL: self.form_canvas, main.COURSES: self.courses_canvas}[self.visible_page()]
@@ -657,8 +629,6 @@ class MainWindow:
             self.refresh_courses()
         elif self.state.section == main.ACTIVITY:
             self.refresh_activity()
-        elif self.state.section == main.NOTIFICATIONS:
-            self.refresh_notifications()
         elif self.state.section == main.CALENDAR:
             self.refresh_calendar()
         elif self.state.section == main.ANNOUNCEMENTS:
@@ -719,10 +689,8 @@ class MainWindow:
         self.nav[main.OVERVIEW].configure(text=status.overview_title)
         self.nav[main.ACTIVITY].configure(text=main.T_NAV_ACTIVITY)
         count = len(status.attention)
-        self.nav[main.NOTIFICATIONS].configure(
-            text=main.T_NAV_NOTIFICATIONS + (f" ({count})" if count else ""))
+        self.nav[main.ANNOUNCEMENTS].configure(text=announcements.T_TAB + (f" ({count})" if count else ""))
         self.nav[main.CALENDAR].configure(text=deadlines.T_TAB)
-        self.nav[main.ANNOUNCEMENTS].configure(text=announcements.T_TAB)
         self.nav[main.COURSES].configure(text=self.courses_nav_title(self._drawn_courses or ()))
         if first_run_changed:
             self._show_section()
@@ -768,7 +736,7 @@ class MainWindow:
         self._draw_home_cards()
         self.refresh_calendar()
         self.refresh_activity()
-        self.refresh_notifications()
+        self.refresh_announcements()
         if self.state.section == main.COURSES:
             self.refresh_courses()  # a sync may have found another course
         # The buttons at the top right: Duraklat / Devam et, Ayarlar and the account.
@@ -944,11 +912,20 @@ class MainWindow:
         from tkinter import ttk
 
         rows = self.on_announcements()
-        if rows == self._drawn_announcements:
+        attention = self.status.attention
+        if (rows, attention) == self._drawn_announcements:
             return
-        self._drawn_announcements = rows
+        self._drawn_announcements = (rows, attention)
         for widget in self.announcements_frame.winfo_children():
             widget.destroy()
+        # Drive's notifications on top: what needs the student (sign in again, an update, a failed sync).
+        if attention:
+            ttk.Label(self.announcements_frame, text=main.T_NEEDS_ATTENTION, font=HEADING_FONT).pack(
+                anchor="w", pady=(0, 8))
+            for item in attention:
+                card = ttk.LabelFrame(self.announcements_frame, padding=(12, 8))
+                card.pack(fill="x", pady=(0, 8))
+                self._attention_row(card, item, WRAP - 60)
         if not rows:
             ttk.Label(self.announcements_frame, text=announcements.T_EMPTY,
                       foreground=MUTED, wraplength=WRAP).pack(anchor="w", pady=12)

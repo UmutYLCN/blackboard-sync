@@ -477,7 +477,7 @@ def test_windows_recent_badges_track_viewport_and_return_visit(monkeypatch, tmp_
 
 def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_path):
     from blackboard_sync.courses import CourseRow
-    from blackboard_sync.menubar.main_window_model import (ACTIVITY, COURSES, GENERAL, NOTIFICATIONS, OVERVIEW,
+    from blackboard_sync.menubar.main_window_model import (ACTIVITY, ANNOUNCEMENTS, COURSES, GENERAL, OVERVIEW,
                                                            main_status)
     from blackboard_sync.menubar.model import RecentItem
     from blackboard_sync.menubar.settings_form import SCREEN_MARGIN
@@ -530,8 +530,8 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     window.window.later()
     assert window.window.topmost is False
     assert visible() == ['start'] and window.state.open
-    assert [window.nav[s].options['text'] for s in (OVERVIEW, ACTIVITY, NOTIFICATIONS, COURSES)] == [
-        'Başlangıç', 'Sync activity', 'Notifications', 'Dersler (1/2)']
+    assert [window.nav[s].options['text'] for s in (OVERVIEW, ACTIVITY, ANNOUNCEMENTS, COURSES)] == [
+        'Başlangıç', 'Sync activity', 'Announcements', 'Dersler (1/2)']
     assert GENERAL not in window.nav  # Ayarlar is the gear at the top right
     assert window.start_button.options['text'] == 'Giriş yap'
     for text in ('Ders dosyalarınız burada başlayacak.', 'Okulunuzu ve klasörünüzü seçin',

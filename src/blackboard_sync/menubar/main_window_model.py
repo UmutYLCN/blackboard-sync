@@ -9,15 +9,15 @@ right (Duraklat / Devam et, Ayarlar and the account). The sidebar switches betwe
 - Başlangıç, until the student first signs in: three steps and the sign-in form
   (school address, folder, start at login, "Giriş yap").
 - Home afterwards, a compact summary: the sync state (an illustration while a sync runs),
-  the last files, the notifications needing attention and the next due dates.
+  the last files, what needs attention with the newest announcements, and the next due dates.
 - Sync activity: every file, note and announcement a sync brought, newest first, with its
   size and status.
-- Notifications: what needs attention (sign in again, an update, a failed sync, a pause) and
-  the notifications the app showed.
 - Dersler: one checkbox per current course; an unticked course is not synced
   and stays out of view (``courses``). The folder mirrors Blackboard.
 - Takvim: cached grade-column due dates, grouped by local day (``deadlines``).
-- Duyurular: all synced current-term announcements (``announcements``).
+- Announcements: what needs attention (sign in again, an update, a failed sync) above all
+  synced current-term announcements (``announcements``); Drive's notifications page and
+  Duyurular in one.
 - Ayarlar (the gear, not in the sidebar): the settings form (``settings_form``). Its
   Vazgeç/Kaydet bar appears only once something was changed, and saving keeps the window open.
 
@@ -26,8 +26,8 @@ and a running job go on, and the Dock icon (macOS) or taskbar button (Windows)
 leaves with the window. The start at login stays quiet (no window).
 
 The GUI layers (``main_window.py`` on macOS, ``windows/main_window.py``) draw
-``MainStatus`` and report clicks. The page names Home, Sync activity and Notifications
-are Google Drive's own; the rest of the window is Turkish on purpose.
+``MainStatus`` and report clicks. The page names Home, Sync activity and Announcements
+follow Google Drive's; the rest of the window is Turkish on purpose.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
 
-from blackboard_sync import __version__, courses, deadlines, updater
+from blackboard_sync import __version__, announcements, courses, deadlines, updater
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     T_LOGGING_IN,
@@ -53,16 +53,15 @@ from blackboard_sync.menubar.model import (
 from blackboard_sync.menubar.settings_form import T_SAVE, FormValues, WindowStatus, window_status
 
 OVERVIEW, GENERAL, COURSES, CALENDAR, ANNOUNCEMENTS = "overview", "general", "courses", "calendar", "announcements"
-ACTIVITY, NOTIFICATIONS = "activity", "notifications"
+ACTIVITY = "activity"
 # The sidebar, top to bottom; Ayarlar (GENERAL) is the gear at the top right instead.
-NAV_SECTIONS = (OVERVIEW, ACTIVITY, NOTIFICATIONS, COURSES, CALENDAR, ANNOUNCEMENTS)
+NAV_SECTIONS = (OVERVIEW, ACTIVITY, ANNOUNCEMENTS, COURSES, CALENDAR)
 SECTIONS = (*NAV_SECTIONS, GENERAL)
 
 T_WINDOW_TITLE = "Blackboard Sync"
 T_NAV_START = "Başlangıç"
 T_NAV_OVERVIEW = "Home"
 T_NAV_ACTIVITY = "Sync activity"
-T_NAV_NOTIFICATIONS = "Notifications"
 T_NAV_GENERAL = "Ayarlar"
 T_NAV_COURSES = courses.T_TAB
 T_NAV_CALENDAR = deadlines.T_TAB
@@ -116,21 +115,19 @@ T_STATE_TITLES = {
 }
 T_VIEW_ALL = "Tümünü gör"
 T_HOME_RECENT = "Son indirilenler"
-T_HOME_NOTIFICATIONS = "Bildirimler"
+T_HOME_ANNOUNCEMENTS = announcements.T_TAB
 T_HOME_CALENDAR = "Yaklaşan teslimler"
 T_OPEN_CALENDAR = "Takvimi aç"
 T_ALL_GOOD = "Her şey yolunda!"
 T_ALL_GOOD_DETAIL = "Dikkatinizi gerektiren bir şey burada görünecek."
 T_NO_DEADLINES = "Yaklaşan teslim yok."
 T_ACTIVITY_EMPTY = "Henüz indirilen bir şey yok."
-T_NOTICES_EMPTY = "Henüz gösterilen bildirim yok."
 T_NEEDS_ATTENTION = "Dikkat gerektirenler"
-T_NOTICES = "Son bildirimler"
 T_NAME, T_SIZE, T_STATUS = "Ad", "Boyut", "Durum"
 T_RESUME_SHORT = "Sürdür"
 T_PAUSE_SHORT = "Duraklat"
 HOME_RECENT_ROWS = 4  # files listed on Home before "Tümünü gör"
-HOME_NOTIFICATION_ROWS = 3
+HOME_ANNOUNCEMENT_ROWS = 3  # attention items first, then the newest announcements
 HOME_DEADLINE_ROWS = 4
 
 # Jobs that change files: the account card says a sync is running.
@@ -223,13 +220,6 @@ class AttentionItem:
     warning: bool = True
 
 
-@dataclass(frozen=True)
-class NoticeRow:
-    title: str
-    message: str
-    when: str
-
-
 def format_size(size: int | None) -> str:
     """Drive's style: "14 KB", "1.2 MB"; "—" when there is no size."""
     if size is None:
@@ -285,7 +275,6 @@ class MainStatus:
     pause_enabled: bool = False
     activity: tuple[ActivityRow, ...] = ()
     attention: tuple[AttentionItem, ...] = ()
-    notices: tuple[NoticeRow, ...] = ()
 
     @property
     def overview_title(self) -> str:
@@ -383,14 +372,6 @@ def activity_rows(model: AppModel, now: datetime) -> tuple[ActivityRow, ...]:
     return tuple(rows)
 
 
-def notice_rows(model: AppModel, now: datetime) -> tuple[NoticeRow, ...]:
-    rows = []
-    for notice in model.notices:
-        when = parse_iso(notice.at)
-        rows.append(NoticeRow(notice.title, notice.message, day_time(when, now) if when else ""))
-    return tuple(rows)
-
-
 def sidebar_name(card: AccountCard) -> str:
     return shorten(card.title, SIDEBAR_NAME_LIMIT)
 
@@ -434,7 +415,6 @@ def main_status(model: AppModel, now: datetime) -> MainStatus:
         pause_enabled=model.configured and not is_first_run(model),
         activity=activity_rows(model, now),
         attention=attention_items(model),
-        notices=notice_rows(model, now),
     )
 
 
