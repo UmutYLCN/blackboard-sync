@@ -93,7 +93,7 @@ def test_frozen_cli_runs_as_the_console_twin(monkeypatch):
     seen = []
     monkeypatch.setattr(tray, 'Path', PureWindowsPath)
     monkeypatch.setattr(tray.runtime, 'is_frozen', lambda: True)
-    monkeypatch.setattr(tray.subprocess, 'run', lambda command, **kw: seen.append(command))
+    monkeypatch.setattr(tray.jobs, 'run_cancellable', lambda command, **kw: seen.append(command))
     tray.cli_runner([r'C:\App\Blackboard Sync.exe', '--version'])
     assert seen == [[r'C:\App\blackboard-sync-cli.exe', '--version']]
 
@@ -117,7 +117,7 @@ def test_notification_keeps_course_lines_and_safe_click_target(tmp_path):
 
 def test_utf8_runner(monkeypatch):
     calls = []
-    monkeypatch.setattr('blackboard_sync.windows.app.subprocess.run', lambda *a, **kw: calls.append(kw))
+    monkeypatch.setattr('blackboard_sync.windows.app.jobs.run_cancellable', lambda *a, **kw: calls.append(kw))
     cli_runner(['python'], text=True)
     assert calls[0]['encoding'] == 'utf-8'
     assert calls[0]['text'] is True
@@ -318,7 +318,7 @@ def test_pythonw_parent_runs_hidden_console_child(monkeypatch):
     import blackboard_sync.windows.app as app_module
     calls = []
     monkeypatch.setattr(app_module, 'Path', PureWindowsPath)
-    monkeypatch.setattr(app_module.subprocess, 'run', lambda cmd, **kw: calls.append(cmd))
+    monkeypatch.setattr(app_module.jobs, 'run_cancellable', lambda cmd, **kw: calls.append(cmd))
     cli_runner([r'C:\App\.venv\Scripts\pythonw.exe', '-m', 'blackboard_sync'])
     assert calls == [[r'C:\App\.venv\Scripts\python.exe', '-m', 'blackboard_sync']]
 
@@ -477,7 +477,8 @@ def test_windows_recent_badges_track_viewport_and_return_visit(monkeypatch, tmp_
 
 def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_path):
     from blackboard_sync.courses import CourseRow
-    from blackboard_sync.menubar.main_window_model import COURSES, GENERAL, OVERVIEW, main_status
+    from blackboard_sync.menubar.main_window_model import (ACTIVITY, COURSES, GENERAL, NOTIFICATIONS, OVERVIEW,
+                                                           main_status)
     from blackboard_sync.menubar.model import RecentItem
     from blackboard_sync.menubar.settings_form import SCREEN_MARGIN
     from blackboard_sync.windows import main_window as module
@@ -529,15 +530,16 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     window.window.later()
     assert window.window.topmost is False
     assert visible() == ['start'] and window.state.open
-    assert [window.nav[s].options['text'] for s in (OVERVIEW, GENERAL, COURSES)] == [
-        'Başlangıç', 'Genel', 'Dersler (1/2)']
+    assert [window.nav[s].options['text'] for s in (OVERVIEW, ACTIVITY, NOTIFICATIONS, COURSES)] == [
+        'Başlangıç', 'Sync activity', 'Notifications', 'Dersler (1/2)']
+    assert GENERAL not in window.nav  # Ayarlar is the gear at the top right
     assert window.start_button.options['text'] == 'Giriş yap'
     for text in ('Ders dosyalarınız burada başlayacak.', 'Okulunuzu ve klasörünüzü seçin',
                  'Bu pencereyi kapatabilirsiniz. Tekrar görmek için Başlat menüsünden Blackboard Sync\'i açmanız yeterli.'):
         assert text in labels()
     assert 'Dosyalarınız University klasörüne kaydedilir.' not in labels()
     assert window.button_bar.removed  # nothing changed yet
-    assert window.account_card.removed  # Başlangıç signs in with its own form
+    assert not window.status.shows_account  # Başlangıç signs in with its own form: no buttons at the top right
 
     # Başlangıç signs in with the form; a bad address stays, with the reason.
     window.url.set('school.edu')
@@ -549,8 +551,8 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     window.start_button.options['command']()
     assert submitted[-1][1] is True and window.start_message.options['text'] == ''
 
-    # Genel: the bar appears with a change and leaves with Vazgeç or Kaydet; the window stays.
-    window.nav[GENERAL].options['command']()
+    # Ayarlar: the bar appears with a change and leaves with Vazgeç or Kaydet; the window stays.
+    window.gear_button.options['command']()
     assert visible() == [GENERAL] and window.button_bar.removed
     window.interval.set('Yalnızca elle')
     assert not window.button_bar.removed
@@ -563,7 +565,7 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     assert submitted[-1] == (window.values(), False) and submitted[-1][0].check_updates is False
     assert window.button_bar.removed and window.state.open and closed == []
 
-    # Signed in: Genel bakış with the account, the last sync and the recent files.
+    # Signed in: Home with the sync state, the last files and the buttons at the top right.
     model.configured = True
     model.session = {'saved_at': now.timestamp(), 'user': {'displayName': 'Ada Student'}}
     model.last = RunOutcome('ok', finished_at=now)
@@ -571,33 +573,42 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     model.begin('sync')
     window.update_status(main_status(model, now))
     window.nav[OVERVIEW].options['command']()
-    assert visible() == [OVERVIEW] and window.nav[OVERVIEW].options['text'] == 'Genel bakış'
-    assert window.account_title.options['text'] == 'Ada Student'
-    assert window.account_title.parent is window.account_card and not window.account_card.removed
-    assert window.account_detail.options['text'].startswith('Son senkron: bugün ')
-    assert window.badge.options['text'] == 'Senkron sürüyor' and window.login_button.removed
-    # Files listed already: the small illustration above them, animating while the window is open.
-    assert not window.scene_frame.removed and window.first_frame.removed and not window.recent_body.removed
-    assert window.scene_line.options['text'] == 'Yeni içerik kontrol ediliyor…'
-    assert window.scene.running and not window.first_scene.running
+    assert visible() == [OVERVIEW] and window.nav[OVERVIEW].options['text'] == 'Home'
+    assert window.state_title.options['text'] == 'Senkronize ediliyor…'
+    assert window.state_detail.options['text'] == 'Yeni içerik kontrol ediliyor…'
+    # The illustration takes the symbol's place and animates while the window is open.
+    assert window.scene.running and window.status.shows_account
     assert window.sync_button.options['state'] == 'disabled'
     file_button = next(w for w in widgets if w.options.get('text') == 'Homework1.docx' and not w.destroyed)
     file_button.options['command']()
     assert opened == ['term/SWE305/Homework1.docx']
     model.busy = None
     window.update_status(main_status(model, now))
-    assert window.scene_frame.removed and not window.scene.running  # gone with the sync
+    assert not window.scene.running  # gone with the sync
+    assert window.state_title.options['text'] == 'Güncel'
+    assert window.state_detail.options['text'].startswith('Son senkron: bugün ')
+    assert window.state_icon.options['text'] == '✓'
     window.sync_button.options['command']()
     assert actions == ['sync']
-    # The first sync, nothing listed yet: the large illustration in place of the empty list.
+    # The first sync, nothing listed yet: the same illustration, and the empty list stays.
     model.recent = []
     model.begin('sync')
     window.update_status(main_status(model, now))
-    assert not window.first_frame.removed and window.recent_body.removed and window.scene_frame.removed
-    assert window.first_scene.running and window.first_scene.canvas.later == window.first_scene.tick
+    assert window.scene.running and window.scene.canvas.later == window.scene.tick
     model.busy = None
     window.update_status(main_status(model, now))
-    assert window.first_frame.removed and not window.recent_body.removed and not window.first_scene.running
+    assert not window.scene.running
+
+    # Duraklat: the button at the top right pauses and the same button resumes.
+    window.pause_button.options['command']()
+    assert actions == ['sync', 'pause']
+    model.pause()
+    window.update_status(main_status(model, now))
+    assert window.pause_button.options['text'] == '▶' and window.state_title.options['text'] == 'Duraklatıldı'
+    assert window.sync_button.options['state'] == 'disabled' and window.home_action.options['text'] == 'Sürdür'
+    model.resume(now)
+    window.update_status(main_status(model, now))
+    assert window.pause_button.options['text'] == '⏸'
 
     # Dersler: the mirror explained, one checkbox per course; ticking one saves it.
     from blackboard_sync import courses
@@ -624,7 +635,7 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     assert window.interval_dropdown.bindings['<MouseWheel>'](SimpleNamespace(delta=120)) == 'break'
 
     # Closing hides the window and drops unsaved edits; nothing else stops.
-    window.nav[GENERAL].options['command']()
+    window.gear_button.options['command']()
     window.url.set('https://other.edu')
     window.close()
     assert closed == [True] and window.window.shown is False and not window.window.destroyed
@@ -658,8 +669,8 @@ def test_windows_home_update_banners_show_hide_and_use_existing_action(monkeypat
         button.options['command']()
     window.update_button.options['command']()
     assert actions == ['update', 'update', 'update']
-    # The overview card sits immediately above the recently downloaded list.
-    assert window.overview_update_banner[0].grid_options['row'] + 1 == window.recent_body.parent.grid_options['row']
+    # The overview card sits right under the title, above Home's cards.
+    assert window.overview_update_banner[0].grid_options['row'] == 1
     model.updates.begin('download')
     window.update_status(main_status(model, now))
     assert all(button.options['text'] == 'İndiriliyor…' and button.options['state'] == 'disabled'

@@ -13,6 +13,7 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, IO
@@ -28,6 +29,8 @@ from blackboard_sync.menubar.model import (
     RecentSeen,
     RunOutcome,
     UpdateState,
+    load_activity,
+    load_notices,
     load_saved_state,
     login_arguments,
     parse_sync_output,
@@ -57,10 +60,62 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class SyncStopped(Exception):
+    """The student pressed Duraklat while the sync child process ran."""
+
+
+_running_lock = threading.Lock()
+_running: subprocess.Popen | None = None
+_stop_asked = False
+
+
+def run_cancellable(command, *, timeout: float | None = None, capture_output: bool = True,
+                    **kwargs) -> subprocess.CompletedProcess:
+    """``subprocess.run`` that ``stop_sync`` can end; raises ``SyncStopped`` when it did.
+
+    Only one sync child runs at a time (the app has one job slot), so one handle is enough.
+    """
+    global _running, _stop_asked
+    if capture_output:
+        kwargs.setdefault("stdout", subprocess.PIPE)
+        kwargs.setdefault("stderr", subprocess.PIPE)
+    proc = subprocess.Popen(command, **kwargs)
+    with _running_lock:
+        _running, _stop_asked = proc, False
+    try:
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
+            raise
+    finally:
+        with _running_lock:
+            stopped, _running, _stop_asked = _stop_asked, None, False
+    if stopped:
+        raise SyncStopped()
+    return subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
+
+
+def stop_sync() -> bool:
+    """End the running sync child (Duraklat); False when none runs.
+
+    It is safe to interrupt: every finished course is already saved, and a half-written
+    download is a hidden temp file the next sync removes.
+    """
+    global _stop_asked
+    with _running_lock:
+        if _running is None or _running.poll() is not None:
+            return False
+        _stop_asked = True
+        _running.terminate()
+        return True
+
+
 def run_sync(
     job: str,
     settings: Settings,
-    runner: Runner = subprocess.run,
+    runner: Runner = run_cancellable,
     now: Callable[[], datetime] = utcnow,
     term_name: str = "",
     term_id: str = "",
@@ -74,6 +129,8 @@ def run_sync(
             timeout=SYNC_TIMEOUT,
             stdin=subprocess.DEVNULL,
         )
+    except SyncStopped:
+        return RunOutcome(status="paused", finished_at=now())
     except subprocess.TimeoutExpired:
         return RunOutcome(status="error", message="Senkron çok uzun sürdü ve durduruldu.", finished_at=now())
     except OSError as exc:
@@ -253,6 +310,9 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
         model.pending, model.move_from = MOVE_JOB, settings.dest
     sent = (saved or {}).get("reminders")
     model.reminders_sent = sent if isinstance(sent, dict) else {}
+    model.paused = bool((saved or {}).get("paused"))
+    model.activity_log = load_activity((saved or {}).get("activity"))
+    model.notices = load_notices((saved or {}).get("notices"))
     model.restore_pending((saved or {}).get("pending"))  # a move or download the last run never got to
     refresh_hidden_folders(config, model)
     refresh_session(config, model, settings)

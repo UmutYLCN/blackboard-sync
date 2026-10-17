@@ -2,30 +2,32 @@
 
 The main window is what a student sees when they open Blackboard Sync from
 Applications, Launchpad or the Start menu, also while the app already runs; the
-"Ayarlar…" menu item opens it on Genel. A sidebar switches between:
+"Ayarlar…" menu item opens it on Ayarlar. It is laid out like Google Drive's desktop
+window: "Klasörü aç" and a sidebar on the left, and a row of round buttons at the top
+right (Duraklat / Devam et, Ayarlar and the account). The sidebar switches between:
 
 - Başlangıç, until the student first signs in: three steps and the sign-in form
   (school address, folder, start at login, "Giriş yap").
-- Genel bakış afterwards: "Şimdi senkronize et", "Klasörü aç" and the
-  recently downloaded files. While a sync runs an illustration (``sync_scene``)
-  shows that files are on their way: on the first sync it fills the empty list,
-  later it sits above the list.
-- Genel: the settings form (``settings_form``). Its Vazgeç/Kaydet bar appears
-  only once something was changed, and saving keeps the window open.
+- Home afterwards, a compact summary: the sync state (an illustration while a sync runs),
+  the last files, the notifications needing attention and the next due dates.
+- Sync activity: every file, note and announcement a sync brought, newest first, with its
+  size and status.
+- Notifications: what needs attention (sign in again, an update, a failed sync, a pause) and
+  the notifications the app showed.
 - Dersler: one checkbox per current course; an unticked course is not synced
   and stays out of view (``courses``). The folder mirrors Blackboard.
 - Takvim: cached grade-column due dates, grouped by local day (``deadlines``).
 - Duyurular: all synced current-term announcements (``announcements``).
-
-The account (initials, name, the last sync, a status badge or "Giriş yap")
-sits at the bottom of the sidebar, under the sections, once Başlangıç is done.
+- Ayarlar (the gear, not in the sidebar): the settings form (``settings_form``). Its
+  Vazgeç/Kaydet bar appears only once something was changed, and saving keeps the window open.
 
 Closing the window never stops the app: the menu bar / tray icon, the timers
 and a running job go on, and the Dock icon (macOS) or taskbar button (Windows)
 leaves with the window. The start at login stays quiet (no window).
 
 The GUI layers (``main_window.py`` on macOS, ``windows/main_window.py``) draw
-``MainStatus`` and report clicks. User-facing strings are Turkish on purpose.
+``MainStatus`` and report clicks. The page names Home, Sync activity and Notifications
+are Google Drive's own; the rest of the window is Turkish on purpose.
 """
 
 from __future__ import annotations
@@ -39,6 +41,8 @@ from blackboard_sync.menubar.model import (
     MOVE_JOB,
     T_LOGGING_IN,
     T_LOGIN,
+    T_PAUSE,
+    T_RESUME,
     T_SYNC_NOW,
     T_SYNCING,
     AppModel,
@@ -49,12 +53,17 @@ from blackboard_sync.menubar.model import (
 from blackboard_sync.menubar.settings_form import T_SAVE, FormValues, WindowStatus, window_status
 
 OVERVIEW, GENERAL, COURSES, CALENDAR, ANNOUNCEMENTS = "overview", "general", "courses", "calendar", "announcements"
-SECTIONS = (OVERVIEW, COURSES, CALENDAR, ANNOUNCEMENTS, GENERAL)
+ACTIVITY, NOTIFICATIONS = "activity", "notifications"
+# The sidebar, top to bottom; Ayarlar (GENERAL) is the gear at the top right instead.
+NAV_SECTIONS = (OVERVIEW, ACTIVITY, NOTIFICATIONS, COURSES, CALENDAR, ANNOUNCEMENTS)
+SECTIONS = (*NAV_SECTIONS, GENERAL)
 
 T_WINDOW_TITLE = "Blackboard Sync"
 T_NAV_START = "Başlangıç"
-T_NAV_OVERVIEW = "Genel bakış"
-T_NAV_GENERAL = "Genel"
+T_NAV_OVERVIEW = "Home"
+T_NAV_ACTIVITY = "Sync activity"
+T_NAV_NOTIFICATIONS = "Notifications"
+T_NAV_GENERAL = "Ayarlar"
 T_NAV_COURSES = courses.T_TAB
 T_NAV_CALENDAR = deadlines.T_TAB
 
@@ -68,7 +77,7 @@ START_STEPS = (
     ("Okulunuzu ve klasörünüzü seçin", "Dosyaların nereye kaydedileceğini siz belirleyin."),
     ("Blackboard'a giriş yapın", "Okulunuzun giriş ekranı açılır. Girişten sonra ilk senkron başlar."),
     ("Dosyalarınız kendiliğinden güncellensin",
-     "Varsayılan olarak her saat. Sıklığı Genel bölümünden değiştirebilirsiniz."),
+     "Varsayılan olarak her saat. Sıklığı Ayarlar'dan değiştirebilirsiniz."),
 )
 T_START_FORM = "Başlayalım"
 
@@ -94,6 +103,35 @@ T_FIRST_SYNC = "Dosyalarınız ilk kez indiriliyor…"
 SIDEBAR_NAME_LIMIT = 20
 # Genel: the bar with Vazgeç / Kaydet, only while something is not saved.
 T_UNSAVED = "Kaydedilmemiş değişiklikler"
+
+# Home's status card, the headline and what it stands for.
+STATE_SYNCED, STATE_SYNCING, STATE_PAUSED, STATE_ATTENTION, STATE_ERROR = (
+    "synced", "syncing", "paused", "attention", "error")
+T_STATE_TITLES = {
+    STATE_SYNCED: "Güncel",
+    STATE_SYNCING: "Senkronize ediliyor…",
+    STATE_PAUSED: "Duraklatıldı",
+    STATE_ATTENTION: "Giriş gerekli",
+    STATE_ERROR: "Senkron tamamlanamadı",
+}
+T_VIEW_ALL = "Tümünü gör"
+T_HOME_RECENT = "Son indirilenler"
+T_HOME_NOTIFICATIONS = "Bildirimler"
+T_HOME_CALENDAR = "Yaklaşan teslimler"
+T_OPEN_CALENDAR = "Takvimi aç"
+T_ALL_GOOD = "Her şey yolunda!"
+T_ALL_GOOD_DETAIL = "Dikkatinizi gerektiren bir şey burada görünecek."
+T_NO_DEADLINES = "Yaklaşan teslim yok."
+T_ACTIVITY_EMPTY = "Henüz indirilen bir şey yok."
+T_NOTICES_EMPTY = "Henüz gösterilen bildirim yok."
+T_NEEDS_ATTENTION = "Dikkat gerektirenler"
+T_NOTICES = "Son bildirimler"
+T_NAME, T_SIZE, T_STATUS = "Ad", "Boyut", "Durum"
+T_RESUME_SHORT = "Sürdür"
+T_PAUSE_SHORT = "Duraklat"
+HOME_RECENT_ROWS = 4  # files listed on Home before "Tümünü gör"
+HOME_NOTIFICATION_ROWS = 3
+HOME_DEADLINE_ROWS = 4
 
 # Jobs that change files: the account card says a sync is running.
 SYNC_RUNNING_JOBS = ("sync", "past_term", MOVE_JOB)
@@ -153,6 +191,58 @@ class RecentRow:
 
 
 @dataclass(frozen=True)
+class HomeState:
+    """Home's status card: what the sync is doing, in a word, and when it last finished."""
+
+    kind: str  # one of the STATE_* values
+    title: str
+    detail: str  # "Son senkron: bugün 14:05", or the running job's line
+    action: str = ""  # a window action the card offers: "login" or "pause" (Devam et)
+    action_title: str = ""
+
+
+@dataclass(frozen=True)
+class ActivityRow:
+    name: str
+    course: str
+    detail: str  # "CSE303 · bugün 14:05"
+    status: str  # "Başarıyla indirildi"
+    size: str  # "14 KB", "—" for a note without a measurable file
+    path: str  # relative to the University folder, for ``open_target``
+    kind: str  # "PDF", "MD", ...
+
+
+@dataclass(frozen=True)
+class AttentionItem:
+    """Something Notifications lists above the history; ``action`` is a window action."""
+
+    title: str
+    detail: str
+    action: str = ""
+    action_title: str = ""
+    warning: bool = True
+
+
+@dataclass(frozen=True)
+class NoticeRow:
+    title: str
+    message: str
+    when: str
+
+
+def format_size(size: int | None) -> str:
+    """Drive's style: "14 KB", "1.2 MB"; "—" when there is no size."""
+    if size is None:
+        return "—"
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            return f"{value:.0f} {unit}" if unit == "B" or value >= 10 else f"{value:.1f} {unit}"
+        value /= 1024
+    return "—"  # not reached
+
+
+@dataclass(frozen=True)
 class UpdateBanner:
     title: str
     button_title: str
@@ -189,6 +279,13 @@ class MainStatus:
     scene: str = ""
     scene_line: str = ""
     update_banner: UpdateBanner | None = None
+    home: HomeState = HomeState(STATE_SYNCED, T_STATE_TITLES[STATE_SYNCED], "")
+    paused: bool = False
+    pause_title: str = T_PAUSE  # the button at the top right
+    pause_enabled: bool = False
+    activity: tuple[ActivityRow, ...] = ()
+    attention: tuple[AttentionItem, ...] = ()
+    notices: tuple[NoticeRow, ...] = ()
 
     @property
     def overview_title(self) -> str:
@@ -232,6 +329,68 @@ def sync_scene(model: AppModel) -> tuple[str, str]:
     return (SCENE_COMPACT if model.recent else SCENE_FIRST), line
 
 
+def home_state(model: AppModel, now: datetime) -> HomeState:
+    """The one word on Home's status card: syncing, paused, signed out, failed, or up to date."""
+    detail = last_sync_text(model, now)
+    name, _expired = model.account()
+    if model.busy in SYNC_RUNNING_JOBS:
+        return HomeState(STATE_SYNCING, T_STATE_TITLES[STATE_SYNCING],
+                         sync_scene(model)[1] or model.activity() or detail)
+    if model.paused:
+        return HomeState(STATE_PAUSED, T_STATE_TITLES[STATE_PAUSED], detail, "pause", T_RESUME_SHORT)
+    if name is None:
+        return HomeState(STATE_ATTENTION, T_STATE_TITLES[STATE_ATTENTION], detail, "login", T_LOGIN)
+    if model.last is not None and model.last.status == "error":
+        return HomeState(STATE_ERROR, T_STATE_TITLES[STATE_ERROR], shorten(model.last.message, 100) or detail)
+    return HomeState(STATE_SYNCED, T_STATE_TITLES[STATE_SYNCED], detail)
+
+
+def attention_items(model: AppModel) -> tuple[AttentionItem, ...]:
+    """What needs the student, most pressing first; empty is "Her şey yolunda!". (A pause is shown on Home's card.)"""
+    if is_first_run(model):
+        return ()
+    items: list[AttentionItem] = []
+    name, expired = model.account()
+    if name is None and model.busy != "login":
+        items.append(AttentionItem(T_EXPIRED if expired else T_SIGNED_OUT,
+                                   "Yeni dosyaları almak için giriş yapın.", "login", T_LOGIN))
+    banner = update_banner(model)
+    if banner is not None:
+        items.append(AttentionItem(banner.title, T_UPDATE_INTRO, "update", banner.button_title, warning=False))
+    last = model.last
+    if last is not None and last.status == "error" and last.message:
+        items.append(AttentionItem(T_STATE_TITLES[STATE_ERROR], shorten(last.message, 160)))
+    elif last is not None and last.status == "ok":
+        if last.unreadable_courses:
+            items.append(AttentionItem(f"{last.unreadable_courses} dersin içeriği okunamadı",
+                                       "Blackboard içeriği vermedi; sonraki senkronda yeniden denenecek."))
+        elif last.warning_count:
+            items.append(AttentionItem(f"{last.warning_count} uyarı",
+                                       "Bazı dosyalar indirilemedi; sonraki senkronda yeniden denenecek."))
+    if model.note and model.busy is None:
+        items.append(AttentionItem("Not", model.note, warning=False))
+    return tuple(items)
+
+
+def activity_rows(model: AppModel, now: datetime) -> tuple[ActivityRow, ...]:
+    rows = []
+    for item in model.visible_activity():
+        name = PurePosixPath(item.path).name
+        when = parse_iso(item.at)
+        detail = f"{item.course} · {day_time(when, now)}" if when else item.course
+        rows.append(ActivityRow(name, item.course, detail, item.label, format_size(item.size), item.path,
+                                Path(name).suffix[1:].upper()[:4]))
+    return tuple(rows)
+
+
+def notice_rows(model: AppModel, now: datetime) -> tuple[NoticeRow, ...]:
+    rows = []
+    for notice in model.notices:
+        when = parse_iso(notice.at)
+        rows.append(NoticeRow(notice.title, notice.message, day_time(when, now) if when else ""))
+    return tuple(rows)
+
+
 def sidebar_name(card: AccountCard) -> str:
     return shorten(card.title, SIDEBAR_NAME_LIMIT)
 
@@ -259,7 +418,7 @@ def main_status(model: AppModel, now: datetime) -> MainStatus:
         first_run=is_first_run(model),
         account=account_card(model, now),
         sync_title=T_SYNCING if model.busy == "sync" else T_SYNC_NOW,
-        sync_enabled=idle and model.configured and name is not None,
+        sync_enabled=idle and model.configured and name is not None and not model.paused,
         recent=recent_rows(model, now),
         form=window_status(model),
         start_title=T_LOGGING_IN if model.busy == "login" else T_LOGIN if name is None else T_SAVE,
@@ -269,6 +428,13 @@ def main_status(model: AppModel, now: datetime) -> MainStatus:
         scene=scene,
         scene_line=scene_line,
         update_banner=update_banner(model),
+        home=home_state(model, now),
+        paused=model.paused,
+        pause_title=T_RESUME if model.paused else T_PAUSE,
+        pause_enabled=model.configured and not is_first_run(model),
+        activity=activity_rows(model, now),
+        attention=attention_items(model),
+        notices=notice_rows(model, now),
     )
 
 

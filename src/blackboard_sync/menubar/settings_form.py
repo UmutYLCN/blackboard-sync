@@ -1,8 +1,8 @@
 """What the settings show and what saving them means, without any GUI code.
 
-The settings live in the main window (``main_window_model``). Its Genel section
+The settings live in the main window (``main_window_model``). Its Ayarlar page
 has five parts: Hesap (school address, who is signed in, sign in or out),
-Klasör (destination), Eski dönemler (download a past term once), Genel (start
+Klasör (destination), Eski dönemler (download a past term once), Senkron (start
 at login, sync interval) and Güncellemeler (automatic checks, check now,
 version, uninstall). Dersler (``courses.py``) picks the courses that sync. The GUI layers (``main_window.py`` on macOS,
 ``windows/main_window.py``) only draw ``FormValues`` and ``WindowStatus`` and
@@ -56,7 +56,7 @@ def interval_title(minutes: int) -> str:
 T_SECTION_ACCOUNT = "Hesap"
 T_SECTION_FOLDER = "Klasör"
 T_SECTION_PAST_TERMS = "Eski dönemler"
-T_SECTION_GENERAL = "Genel"
+T_SECTION_GENERAL = "Senkron"
 T_SECTION_UPDATES = "Güncellemeler"
 T_URL_LABEL = "Okulunuzun Blackboard adresi"
 T_URL_PLACEHOLDER = "https://blackboard.okul.edu.tr"

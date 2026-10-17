@@ -181,7 +181,6 @@ def test_windows_calendar_navigation_scrolling_and_clicks_use_cached_rows(monkey
     window.select(CALENDAR)
     assert window.visible_page() == CALENDAR
     assert window.nav[CALENDAR].options["text"] == "Takvim"
-    assert window.account_card.grid_options["row"] == 8
     buttons = [w for w in widgets if w.options.get("text") == "Ödev 1" and "command" in w.options]
     buttons[0].options["command"]()
     assert opened == [page[0].days[0].rows[0].target]

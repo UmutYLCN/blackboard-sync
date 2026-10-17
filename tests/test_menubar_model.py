@@ -334,7 +334,7 @@ def test_signed_in_menu_structure():
         f"✓ Ada Student · {format_time(NOW, NOW)} senkronize edildi",
         f"2 yeni dosya, 1 yeni duyuru · sonraki: {format_time(m.next_run_at, NOW)}",
         "",
-        "Şimdi senkronize et", "Dersler", "Son indirilenler", "University klasörünü aç",
+        "Şimdi senkronize et", "Senkronu duraklat", "Dersler", "Son indirilenler", "University klasörünü aç",
         "",
         "Ayarlar…", "Çık",
     ]

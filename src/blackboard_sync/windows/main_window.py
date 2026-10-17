@@ -1,4 +1,5 @@
-"""The main window (Tk): Başlangıç / Genel bakış, Dersler, Takvim, Duyurular and Genel.
+"""The main window (Tk), laid out like Google Drive's: Başlangıç / Home, Sync activity, Notifications,
+Dersler, Takvim, Duyurular and Ayarlar.
 
 What the window shows and means lives in ``menubar/main_window_model.py`` and
 ``menubar/settings_form.py``, shared with macOS; this module only lays out Tk
@@ -15,7 +16,7 @@ from blackboard_sync import __version__, announcements, courses, deadlines, runt
 from . import package
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
-from blackboard_sync.menubar.model import T_RECENT, T_RECENT_EMPTY
+from blackboard_sync.menubar.model import T_RECENT_EMPTY
 from blackboard_sync.windows.sync_scene_view import SyncScene, background_of
 
 log = logging.getLogger(__name__)
@@ -32,13 +33,19 @@ CHROME = 40
 TITLE_FONT = ("Segoe UI", 16, "bold")
 HEADING_FONT = ("Segoe UI", 11, "bold")
 BOLD_FONT = ("Segoe UI", 10, "bold")
+# Home's state symbol and its colour.
+HOME_SYMBOLS = {
+    main.STATE_SYNCED: ("✓", "#236b45"),
+    main.STATE_PAUSED: ("⏸", "#6b7280"),
+    main.STATE_ATTENTION: ("!", "#d98200"),
+    main.STATE_ERROR: ("!", "#d98200"),
+}
 WARNING = "#b00020"
 MUTED = "#5f6b7a"
 RUNNING = "#1f6fb2"
-AVATAR = 34  # the sidebar's account card
+AVATAR = 34  # the account button at the top right
 AVATAR_FILL, AVATAR_WARNING_FILL, AVATAR_TEXT = "#dce7f5", "#fbe3cf", "#1b2a44"
-COMPACT_SCENE = (120, 70)  # above Son indirilenler while a sync runs
-FIRST_SCENE = (320, 187)  # in place of the empty list on the first sync
+COMPACT_SCENE = (120, 70)  # in Home's status card while a sync runs
 
 
 def work_area(window):
@@ -99,6 +106,10 @@ class MainWindow:
         self.error = ""
         self._drawn_courses = None
         self._drawn_recent = None
+        self._drawn_home_notifications = None
+        self._drawn_home_calendar = None
+        self._drawn_activity = None
+        self._drawn_notifications = None
         self._drawn_announcements = None
         self._loading = False
 
@@ -129,6 +140,8 @@ class MainWindow:
         self._build_sidebar(window)
         self.pages = {}
         for name, build in (("start", self._build_start), (main.OVERVIEW, self._build_overview),
+                            (main.ACTIVITY, self._build_activity),
+                            (main.NOTIFICATIONS, self._build_notifications),
                             (main.CALENDAR, self._build_calendar),
                             (main.ANNOUNCEMENTS, self._build_announcements),
                             (main.GENERAL, self._build_general), (main.COURSES, self._build_courses)):
@@ -144,6 +157,7 @@ class MainWindow:
         window.bind("<MouseWheel>", self.wheel)
         for combobox in (self.past_dropdown, self.interval_dropdown):
             combobox.bind("<MouseWheel>", lambda e: self.wheel(e) or "break")
+        self._build_topbar(window)
         self.update_status(status)
         self.set_values(values)
         self._show_section()
@@ -154,33 +168,52 @@ class MainWindow:
 
         bar = ttk.Frame(window, padding=(14, 18, 14, 16), width=SIDEBAR)
         bar.grid(row=0, column=0, sticky="ns")
-        bar.rowconfigure(2 + len(main.SECTIONS), weight=1)
+        bar.rowconfigure(3 + len(main.NAV_SECTIONS), weight=1)
         ttk.Label(bar, text=main.T_WINDOW_TITLE, font=HEADING_FONT).grid(row=0, column=0, sticky="w")
-        ttk.Label(bar, text=__version__, foreground=MUTED).grid(row=1, column=0, sticky="w", pady=(0, 18))
+        ttk.Label(bar, text=__version__, foreground=MUTED).grid(row=1, column=0, sticky="w", pady=(0, 14))
+        # Drive's "Open Drive folder": the one big button above the sections.
+        ttk.Button(bar, text=main.T_OPEN_FOLDER, command=lambda: self.on_action("folder")).grid(
+            row=2, column=0, sticky="ew", ipady=6, pady=(0, 14))
         self.nav = {}
-        for row, section in enumerate(main.SECTIONS, start=2):
+        for row, section in enumerate(main.NAV_SECTIONS, start=3):
             button = ttk.Radiobutton(bar, style="Toolbutton", variable=self.section_var, value=section,
                                      width=22, command=lambda s=section: self.select(s))
             button.grid(row=row, column=0, sticky="ew", pady=2)
             self.nav[section] = button
-        # The account at the bottom: who is signed in, the last sync and a badge or "Giriş yap".
+
+    def _build_topbar(self, window):
+        """Duraklat / Devam et, Ayarlar and the account: buttons at the top right of every page."""
+        import tkinter as tk
+        from tkinter import ttk
+
+        bar = ttk.Frame(window)
+        self.topbar = bar
+        self.pause_button = ttk.Button(bar, text="⏸", width=3, command=lambda: self.on_action("pause"))
+        self.pause_button.pack(side="left", padx=(0, 6))
+        self.gear_button = ttk.Button(bar, text="⚙", width=3, command=lambda: self.select(main.GENERAL))
+        self.gear_button.pack(side="left", padx=(0, 6))
+        # The account (initials) opens a small menu: who is signed in, sign out or in, Ayarlar.
+        self.avatar = tk.Canvas(bar, width=AVATAR, height=AVATAR, highlightthickness=0, borderwidth=0,
+                                background=background_of(window), cursor="hand2")
+        self.avatar.pack(side="left")
+        self.avatar.bind("<Button-1>", self.show_account_menu)
+        bar.place(relx=1.0, x=-24, y=14, anchor="ne")
+        bar.lift()
+
+    def show_account_menu(self, event=None):
         import tkinter as tk
 
-        card = ttk.LabelFrame(bar, padding=(10, 8))
-        card.grid(row=3 + len(main.SECTIONS), column=0, sticky="sew")
-        card.columnconfigure(1, weight=1)
-        self.account_card = card
-        self.avatar = tk.Canvas(card, width=AVATAR, height=AVATAR, highlightthickness=0, borderwidth=0,
-                                background=background_of(window))
-        self.avatar.grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 8))
-        self.account_title = ttk.Label(card, font=BOLD_FONT)
-        self.account_title.grid(row=0, column=1, sticky="sw")
-        self.badge = ttk.Label(card, font=("Segoe UI", 8, "bold"))
-        self.badge.grid(row=1, column=1, sticky="nw")
-        self.account_detail = ttk.Label(card, foreground=MUTED, font=("Segoe UI", 9))
-        self.account_detail.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
-        self.login_button = ttk.Button(card, command=lambda: self.on_action("login"))
-        self.login_button.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        status = self.status.form
+        menu = tk.Menu(self.window, tearoff=0)
+        menu.add_command(label=status.account, state="disabled")
+        menu.add_separator()
+        menu.add_command(label=status.account_title, command=self.account_pressed,
+                         state="normal" if status.account_enabled else "disabled")
+        menu.add_command(label=main.T_NAV_GENERAL, command=lambda: self.select(main.GENERAL))
+        try:
+            menu.tk_popup(self.avatar.winfo_rootx(), self.avatar.winfo_rooty() + AVATAR)
+        finally:
+            menu.grab_release()
 
     def _header(self, page, title, row=0):
         from tkinter import ttk
@@ -263,35 +296,37 @@ class MainWindow:
     def _build_overview(self, page):
         from tkinter import ttk
 
-        page.columnconfigure(0, weight=1)
-        page.rowconfigure(4, weight=1)
-        header = ttk.Frame(page)
-        header.grid(row=0, column=0, columnspan=2, sticky="ew")
-        header.columnconfigure(0, weight=1)
-        self.overview_title = self._header(header, "")
-        ttk.Button(header, text=main.T_OPEN_FOLDER, command=lambda: self.on_action("folder")).grid(
-            row=0, column=1, padx=(8, 0), pady=(0, 12))
-        self.sync_button = ttk.Button(header, width=ACTION_WIDTH, command=lambda: self.on_action("sync"))
-        self.sync_button.grid(row=0, column=2, padx=(8, 0), pady=(0, 12))
-
-        # A note or the last error, the one thing the sidebar's account card has no room for.
-        self.account_message = ttk.Label(page, wraplength=WRAP)
-        self.account_message.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        page.columnconfigure(0, weight=3, uniform="home")
+        page.columnconfigure(1, weight=2, uniform="home")
+        page.rowconfigure(3, weight=1)
+        self.overview_title = self._header(page, "")
+        self.overview_update_banner = self._build_update_banner(page, 1)
         background = background_of(page)
 
-        # While a sync runs and files are listed already: a small illustration above them.
-        self.scene_frame = ttk.LabelFrame(page, padding=(10, 6))
-        self.scene_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 14))
-        self.scene_frame.columnconfigure(1, weight=1)
-        self.scene = SyncScene(self.scene_frame, *COMPACT_SCENE, background=background)
-        self.scene.canvas.grid(row=0, column=0, padx=(0, 14))
-        self.scene_line = ttk.Label(self.scene_frame, font=("Segoe UI", 10))
-        self.scene_line.grid(row=0, column=1, sticky="w")
+        # Left: the status card (an illustration while a sync runs), then the last files.
+        status = ttk.LabelFrame(page, padding=(14, 12))
+        status.grid(row=2, column=0, sticky="new", padx=(0, 12), pady=(0, 12))
+        status.columnconfigure(1, weight=1)
+        self.state_icon = ttk.Label(status, font=("Segoe UI", 28), width=3, anchor="center")
+        self.state_icon.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 12))
+        self.scene = SyncScene(status, *COMPACT_SCENE, background=background)
+        self.scene.canvas.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 12))
+        self.state_title = ttk.Label(status, font=("Segoe UI", 16))
+        self.state_title.grid(row=0, column=1, sticky="sw")
+        self.state_detail = ttk.Label(status, foreground=MUTED, wraplength=360)
+        self.state_detail.grid(row=1, column=1, sticky="nw")
+        # A note or the last error, the one thing the title and its line have no room for.
+        self.account_message = ttk.Label(status, wraplength=420)
+        self.account_message.grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        buttons = ttk.Frame(status)
+        buttons.grid(row=3, column=0, columnspan=2, sticky="w", pady=(12, 0))
+        self.sync_button = ttk.Button(buttons, width=ACTION_WIDTH, command=lambda: self.on_action("sync"))
+        self.sync_button.pack(side="left")
+        self.home_action = ttk.Button(buttons, command=lambda: self.on_action(self.status.home.action))
+        self.home_action.pack(side="left", padx=(8, 0))
 
-        self.overview_update_banner = self._build_update_banner(page, 3)
-
-        recent = ttk.LabelFrame(page, text=T_RECENT, padding=(14, 8))
-        recent.grid(row=4, column=0, columnspan=2, sticky="nsew")
+        recent = ttk.LabelFrame(page, text=main.T_HOME_RECENT, padding=(14, 8))
+        recent.grid(row=3, column=0, sticky="nsew", padx=(0, 12))
         recent.columnconfigure(0, weight=1)
         recent.rowconfigure(1, weight=1)
         self.recent_count = ttk.Label(recent, foreground=MUTED)
@@ -299,16 +334,132 @@ class MainWindow:
         self.recent_body = ttk.Frame(recent)
         self.recent_body.grid(row=1, column=0, sticky="nsew")
         self.recent_canvas, self.recent_frame = self._scroll_area(self.recent_body, 0)
-        # The first sync, before anything is listed: a large illustration in place of the empty list.
-        self.first_frame = ttk.Frame(recent)
-        self.first_frame.grid(row=1, column=0, sticky="nsew")
-        self.first_frame.columnconfigure(0, weight=1)
-        self.first_frame.rowconfigure(0, weight=1)
-        self.first_frame.rowconfigure(3, weight=1)
-        self.first_scene = SyncScene(self.first_frame, *FIRST_SCENE, background=background)
-        self.first_scene.canvas.grid(row=1, column=0)
-        self.first_line = ttk.Label(self.first_frame, foreground=MUTED, font=("Segoe UI", 10))
-        self.first_line.grid(row=2, column=0, pady=(10, 0))
+        ttk.Button(recent, text=main.T_VIEW_ALL, command=lambda: self.select(main.ACTIVITY)).grid(
+            row=2, column=0, sticky="w", pady=(8, 0))
+
+        # Right: what needs attention, then the next due dates.
+        self.notify_frame = ttk.LabelFrame(page, text=main.T_HOME_NOTIFICATIONS, padding=(14, 8))
+        self.notify_frame.grid(row=2, column=1, sticky="new", pady=(0, 12))
+        self.calendar_frame = ttk.LabelFrame(page, text=main.T_HOME_CALENDAR, padding=(14, 8))
+        self.calendar_frame.grid(row=3, column=1, sticky="new")
+
+    def _draw_home_cards(self):
+        """Home's Bildirimler and Yaklaşan teslimler cards."""
+        from datetime import datetime
+        from tkinter import ttk
+
+        items = self.status.attention[:main.HOME_NOTIFICATION_ROWS]
+        key = ("notifications", self.status.attention)
+        if key != self._drawn_home_notifications:
+            self._drawn_home_notifications = key
+            for child in self.notify_frame.winfo_children():
+                child.destroy()
+            if not self.status.attention:
+                ttk.Label(self.notify_frame, text="✓ " + main.T_ALL_GOOD, font=BOLD_FONT).pack(anchor="w")
+                ttk.Label(self.notify_frame, text=main.T_ALL_GOOD_DETAIL, foreground=MUTED, wraplength=240).pack(
+                    anchor="w", pady=(2, 4))
+            for item in items:
+                self._attention_row(self.notify_frame, item, 240)
+            if self.status.attention:
+                ttk.Button(self.notify_frame, text=main.T_VIEW_ALL,
+                           command=lambda: self.select(main.NOTIFICATIONS)).pack(anchor="w", pady=(6, 0))
+        page = self.on_deadlines()
+        today = datetime.now().astimezone().date()
+        rows = deadlines.upcoming_rows(page, main.HOME_DEADLINE_ROWS)
+        key = ("calendar", rows, today)
+        if key != self._drawn_home_calendar:
+            self._drawn_home_calendar = key
+            for child in self.calendar_frame.winfo_children():
+                child.destroy()
+            if not rows:
+                ttk.Label(self.calendar_frame, text=page.message or main.T_NO_DEADLINES, foreground=MUTED,
+                          wraplength=240).pack(anchor="w")
+            for row in rows:
+                ttk.Button(self.calendar_frame, text=row.title, style="Toolbutton",
+                           command=lambda target=row.target: self.on_deadline(target)).pack(anchor="w")
+                ttk.Label(self.calendar_frame, text=f"{deadlines.when_text(row, today)} · {row.course}",
+                          foreground=MUTED, wraplength=240).pack(anchor="w", padx=(4, 0), pady=(0, 6))
+            ttk.Button(self.calendar_frame, text=main.T_OPEN_CALENDAR,
+                       command=lambda: self.select(main.CALENDAR)).pack(anchor="w", pady=(6, 0))
+
+    def _attention_row(self, parent, item, wrap):
+        from tkinter import ttk
+
+        row = ttk.Frame(parent)
+        row.pack(anchor="w", fill="x", pady=(0, 8))
+        ttk.Label(row, text=item.title, font=BOLD_FONT, foreground=WARNING if item.warning else "",
+                  wraplength=wrap).pack(anchor="w")
+        ttk.Label(row, text=item.detail, foreground=MUTED, wraplength=wrap).pack(anchor="w")
+        if item.action:
+            ttk.Button(row, text=item.action_title, command=lambda a=item.action: self.on_action(a)).pack(
+                anchor="w", pady=(4, 0))
+
+    def _build_activity(self, page):
+        self._header(page, main.T_NAV_ACTIVITY)
+        self.activity_canvas, self.activity_frame = self._scroll_area(page, 1)
+        self.activity_frame.columnconfigure(0, weight=1)
+
+    def refresh_activity(self):
+        from tkinter import ttk
+
+        rows = self.status.activity
+        if rows == self._drawn_activity:
+            return
+        self._drawn_activity = rows
+        for child in self.activity_frame.winfo_children():
+            child.destroy()
+        head = ttk.Frame(self.activity_frame)
+        head.pack(fill="x", pady=(0, 6))
+        head.columnconfigure(0, weight=1)
+        for column, (title, width) in enumerate(((main.T_NAME, None), (main.T_SIZE, 10), (main.T_STATUS, 6))):
+            ttk.Label(head, text=title, foreground=MUTED, font=BOLD_FONT, width=width or 1).grid(
+                row=0, column=column, sticky="w" if column == 0 else "e", padx=(8, 0))
+        if not rows:
+            ttk.Label(self.activity_frame, text=main.T_ACTIVITY_EMPTY, foreground=MUTED).pack(anchor="w", pady=8)
+        for row in rows:
+            line = ttk.Frame(self.activity_frame, padding=(0, 6))
+            line.pack(fill="x")
+            line.columnconfigure(0, weight=1)
+            text = ttk.Frame(line)
+            text.grid(row=0, column=0, sticky="w")
+            ttk.Button(text, text=row.name, style="Toolbutton",
+                       command=lambda path=row.path: self.on_open(path)).pack(anchor="w")
+            ttk.Label(text, text=f"{row.status} · {row.detail}", foreground=MUTED).pack(anchor="w", padx=(4, 0))
+            ttk.Label(line, text=row.size, foreground=MUTED, width=10, anchor="e").grid(row=0, column=1, padx=(8, 0))
+            ttk.Label(line, text="✓", foreground="#236b45", font=BOLD_FONT, width=6, anchor="e").grid(
+                row=0, column=2, padx=(8, 0))
+
+    def _build_notifications(self, page):
+        self._header(page, main.T_NAV_NOTIFICATIONS)
+        self.notifications_canvas, self.notifications_frame = self._scroll_area(page, 1)
+
+    def refresh_notifications(self):
+        from tkinter import ttk
+
+        key = (self.status.attention, self.status.notices)
+        if key == self._drawn_notifications:
+            return
+        self._drawn_notifications = key
+        frame = self.notifications_frame
+        for child in frame.winfo_children():
+            child.destroy()
+        if not self.status.attention and not self.status.notices:
+            ttk.Label(frame, text="✓", font=("Segoe UI", 36), foreground="#236b45").pack(pady=(40, 0))
+            ttk.Label(frame, text=main.T_ALL_GOOD, font=HEADING_FONT).pack()
+            ttk.Label(frame, text=main.T_ALL_GOOD_DETAIL, foreground=MUTED).pack()
+        if self.status.attention:
+            ttk.Label(frame, text=main.T_NEEDS_ATTENTION, font=HEADING_FONT).pack(anchor="w", pady=(0, 8))
+            for item in self.status.attention:
+                card = ttk.LabelFrame(frame, padding=(12, 8))
+                card.pack(fill="x", pady=(0, 8))
+                self._attention_row(card, item, WRAP - 60)
+        if self.status.notices:
+            ttk.Label(frame, text=main.T_NOTICES, font=HEADING_FONT).pack(anchor="w", pady=(10, 8))
+            for notice in self.status.notices:
+                card = ttk.LabelFrame(frame, padding=(12, 8))
+                card.pack(fill="x", pady=(0, 8))
+                ttk.Label(card, text=f"{notice.title}   ·   {notice.when}", font=BOLD_FONT).pack(anchor="w")
+                ttk.Label(card, text=notice.message, foreground=MUTED, wraplength=WRAP - 60).pack(anchor="w")
 
     def _build_announcements(self, page):
         from tkinter import ttk
@@ -444,6 +595,7 @@ class MainWindow:
 
     def wheel(self, event):
         canvas = {"start": self.start_canvas, main.OVERVIEW: self.recent_canvas,
+                  main.ACTIVITY: self.activity_canvas, main.NOTIFICATIONS: self.notifications_canvas,
                   main.CALENDAR: self.calendar_canvas,
                   main.ANNOUNCEMENTS: self.announcements_canvas,
                   main.GENERAL: self.form_canvas, main.COURSES: self.courses_canvas}[self.visible_page()]
@@ -503,6 +655,10 @@ class MainWindow:
         self.section_var.set(self.state.section)
         if self.state.section == main.COURSES:
             self.refresh_courses()
+        elif self.state.section == main.ACTIVITY:
+            self.refresh_activity()
+        elif self.state.section == main.NOTIFICATIONS:
+            self.refresh_notifications()
         elif self.state.section == main.CALENDAR:
             self.refresh_calendar()
         elif self.state.section == main.ANNOUNCEMENTS:
@@ -561,7 +717,10 @@ class MainWindow:
         first_run_changed = status.first_run != self.status.first_run
         self.status = status
         self.nav[main.OVERVIEW].configure(text=status.overview_title)
-        self.nav[main.GENERAL].configure(text=main.T_NAV_GENERAL)
+        self.nav[main.ACTIVITY].configure(text=main.T_NAV_ACTIVITY)
+        count = len(status.attention)
+        self.nav[main.NOTIFICATIONS].configure(
+            text=main.T_NAV_NOTIFICATIONS + (f" ({count})" if count else ""))
         self.nav[main.CALENDAR].configure(text=deadlines.T_TAB)
         self.nav[main.ANNOUNCEMENTS].configure(text=announcements.T_TAB)
         self.nav[main.COURSES].configure(text=self.courses_nav_title(self._drawn_courses or ()))
@@ -579,42 +738,52 @@ class MainWindow:
         # Başlangıç
         self.start_button.configure(text=status.start_title, state="normal" if status.start_enabled else "disabled")
         self._draw_start_message()
-        # Genel bakış
+        # Home
         card = status.account
         self.overview_title.configure(text=status.overview_title)
         self.sync_button.configure(text=status.sync_title, state="normal" if status.sync_enabled else "disabled")
+        home = status.home
+        self.state_title.configure(text=home.title)
+        self.state_detail.configure(text=home.detail)
+        symbol, color = HOME_SYMBOLS.get(home.kind, HOME_SYMBOLS[main.STATE_SYNCED])
+        self.state_icon.configure(text=symbol, foreground=color)
+        if status.scene:
+            self.state_icon.grid_remove()
+            self.scene.canvas.grid()
+        else:
+            self.scene.canvas.grid_remove()
+            self.state_icon.grid()
+        if home.action:
+            self.home_action.configure(text=home.action_title)
+            self.home_action.pack(side="left", padx=(8, 0))
+        else:
+            self.home_action.pack_forget()
         self.account_message.configure(text=card.message, foreground=WARNING if card.warning else MUTED)
         if card.message:
             self.account_message.grid()
         else:
             self.account_message.grid_remove()
-        self._draw_scene()
+        self._animate()
         self._draw_recent()
+        self._draw_home_cards()
         self.refresh_calendar()
+        self.refresh_activity()
+        self.refresh_notifications()
         if self.state.section == main.COURSES:
             self.refresh_courses()  # a sync may have found another course
-        # The account, at the bottom of the sidebar.
+        # The buttons at the top right: Duraklat / Devam et, Ayarlar and the account.
         if status.shows_account:
-            self.account_card.grid()
+            self.topbar.place(relx=1.0, x=-24, y=14, anchor="ne")
+            self.topbar.lift()
         else:
-            self.account_card.grid_remove()
+            self.topbar.place_forget()
+        self.pause_button.configure(text="▶" if status.paused else "⏸",
+                                    state="normal" if status.pause_enabled else "disabled")
         self.avatar.delete("all")
         self.avatar.create_oval(1, 1, AVATAR - 1, AVATAR - 1, outline="",
                                 fill=AVATAR_WARNING_FILL if card.warning else AVATAR_FILL)
         self.avatar.create_text(AVATAR / 2, AVATAR / 2, text=card.initials, font=BOLD_FONT,
                                 fill=WARNING if card.warning else AVATAR_TEXT)
-        self.account_title.configure(text=main.sidebar_name(card))
-        self.account_detail.configure(text=card.detail)
-        self.badge.configure(text=card.badge, foreground=RUNNING)
-        if card.badge:
-            self.badge.grid()
-        else:
-            self.badge.grid_remove()
-        if card.action_title:
-            self.login_button.configure(text=card.action_title, state="normal" if card.action_enabled else "disabled")
-            self.login_button.grid()
-        else:
-            self.login_button.grid_remove()
         # Genel
         form_status = status.form
         self.account_label.configure(text=form_status.account,
@@ -684,30 +853,12 @@ class MainWindow:
                 ttk.Label(card, text=row.course, wraplength=WRAP).grid(
                     row=index * 2 + 1, column=1, sticky="w", pady=(2, 12))
 
-    def _draw_scene(self):
-        """The illustration while files change: small above the list, or large in place of an empty one."""
-        scene = self.status.scene
-        self.scene_line.configure(text=self.status.scene_line)
-        self.first_line.configure(text=self.status.scene_line)
-        if scene == main.SCENE_COMPACT:
-            self.scene_frame.grid()
-        else:
-            self.scene_frame.grid_remove()
-        if scene == main.SCENE_FIRST:
-            self.recent_body.grid_remove()
-            self.first_frame.grid()
-        else:
-            self.first_frame.grid_remove()
-            self.recent_body.grid()
-        self._animate()
-
     def _animate(self):
-        """Run the illustration in view while the window is open; stop the other one."""
-        for view, scene in ((self.scene, main.SCENE_COMPACT), (self.first_scene, main.SCENE_FIRST)):
-            if self.status.scene == scene and self.state.open:
-                view.start()
-            else:
-                view.stop()
+        """Run an illustration while it is in view and the window is open; stop it otherwise."""
+        if self.status.scene and self.state.open and self.state.section == main.OVERVIEW:
+            self.scene.start()
+        else:
+            self.scene.stop()
         if self.status.form.past_running and self.state.open and self.state.section == main.GENERAL:
             self.past_scene.start()
         else:

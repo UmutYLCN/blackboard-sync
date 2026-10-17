@@ -4,7 +4,7 @@ from pathlib import Path
 from blackboard_sync.menubar.model import Icon, Notification
 
 COLORS = {Icon.IDLE: "#236b45", Icon.SYNCING: "#1675d1",
-          Icon.EXPIRED: "#d62728", Icon.ERROR: "#d98200"}
+          Icon.EXPIRED: "#d62728", Icon.ERROR: "#d98200", Icon.PAUSED: "#6b7280"}
 
 
 def render_menu(entries, dispatch, menu_type, item_type):
@@ -42,6 +42,9 @@ def icon_image(state: Icon):
     elif state == Icon.SYNCING:
         draw.arc((15, 15, 49, 49), 30, 300, fill="white", width=5)
         draw.polygon([(46, 13), (50, 29), (36, 24)], fill="white")
+    elif state == Icon.PAUSED:
+        draw.rectangle((21, 18, 28, 46), fill="white")
+        draw.rectangle((36, 18, 43, 46), fill="white")
     else:
         draw.line((32, 15, 32, 36), fill="white", width=6)
         draw.ellipse((29, 44, 35, 50), fill="white")

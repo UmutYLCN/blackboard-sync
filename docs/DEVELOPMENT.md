@@ -197,26 +197,40 @@ menu bar / tray icon, the schedule and a running sync go on, and the Dock icon
 leaves with the window. **Çık** in the menu bar icon's menu (or ⌘Q while the
 window is in front) quits. The start at login (`--background`) stays quiet: no
 window. The menu bar icon's menu is the same as before; **Ayarlar…** in it
-opens the main window on **Genel**.
+opens the main window on **Ayarlar**.
 
-A sidebar switches between four sections:
+The window is laid out like Google Drive's desktop window (the names Home, Sync
+activity and Notifications are Drive's own). **Klasörü aç** sits above the sidebar. Three
+round buttons at the top right of every page: **Duraklat / Devam et**, **Ayarlar** (the
+gear) and the account (initials; a small menu with who is signed in, sign out or in, and
+Ayarlar). A sidebar switches between the sections:
 
 - **Başlangıç** until you first sign in: three steps and a short form (school
   address, folder, **Bilgisayar açılınca başlat**) with **Giriş yap**, which
-  saves the form and opens the sign-in. Afterwards this section is **Genel
-  bakış**: **Şimdi senkronize et**, **Klasörü aç** and **Son indirilenler**,
-  the last 10 files, notes and announcements; a click opens one in its own
+  saves the form and opens the sign-in. Afterwards this section is **Home**,
+  a compact summary in two columns. On the left, a status card (**Güncel**,
+  **Senkronize ediliyor…**, **Duraklatıldı**, **Giriş gerekli** or
+  **Senkron tamamlanamadı**, with when the last sync ran, **Şimdi senkronize et** and
+  **Sürdür** / **Giriş yap** when they apply) and **Son indirilenler**, the last 10
+  files, notes and announcements; a click opens one in its own
   application. Unseen downloads have a **YENİ** pill at the right end of the
   row. A row is marked seen after three continuous seconds on screen while
   the window is active; its pill stays for that visit and disappears when you
-  return to the overview or reopen the window. Opening the file removes the
+  return to Home or reopen the window. Opening the file removes the
   pill immediately. Seen markers survive restarts, and downloads older than
-  seven days have no pill. While a sync (or another job that changes files) runs, a small
-  animation of papers flying from a cloud into a folder shows above the list;
-  on the first sync, with nothing listed yet, a large one fills the list. It is
-  drawn natively (AppKit / Tk canvas) and stands still with reduce motion
-  (macOS) or animations turned off (Windows).
-- **Genel**: the [settings](#settings).
+  seven days have no pill. While a sync (or another job that changes files) runs, an
+  animation of papers flying from a cloud into a folder takes the place of the status
+  symbol in the card. It is drawn natively (AppKit / Tk canvas), moves only while Home is
+  in view and stands still with reduce motion (macOS) or animations turned off
+  (Windows). On the right, **Bildirimler** (up to three things needing attention, or "Her
+  şey yolunda!") and **Yaklaşan teslimler** (the next four due dates).
+- **Sync activity**: what each sync brought (files, notes, announcements), newest first,
+  up to 300, with size and status like Drive's table (`menubar.json` `activity`); a click
+  opens the file.
+- **Notifications**: what needs attention (signed out, an update, a failed sync, warnings or
+  unreadable courses; `main_window_model.attention_items`) above the notifications the app
+  showed (`menubar.json` `notices`, the last 50).
+- **Ayarlar** (the gear, not in the sidebar): the [settings](#settings).
 - **Takvim**: due dates grouped by local day, upcoming first and elapsed dates
   separately. Clicking opens an existing downloaded note or Blackboard. The
   app also notifies 24 hours and 1 hour
@@ -236,19 +250,17 @@ A sidebar switches between four sections:
   the last normal sync found (`courses` in `state.json`); past terms are not in
   it. The sidebar shows `1/3` while some course is unticked.
 
-Under the sections, at the bottom of the sidebar, the account card shows who
-is signed in and when the last sync finished (also while the next one runs),
-with **Senkron sürüyor** during a sync. An expired session or a signed-out
-account shows **Giriş yap** there instead. A note or the last error appears on
-Genel bakış, above the list.
+The account (initials, name, a sign-out or sign-in item) is the round button at the top
+right; who is signed in and when the last sync finished are on Home's status card, which also
+shows a note or the last error.
 
 The window keeps its width; its height follows the screen, and a section that
 does not fit scrolls.
 
 ### Settings
 
-The settings are the **Genel** section of the [main window](#the-main-window)
-(which courses sync is chosen on **Dersler**). **Genel** has five parts:
+The settings are the **Ayarlar** page of the [main window](#the-main-window)
+(which courses sync is chosen on **Dersler**). **Ayarlar** has five parts:
 
 - **Hesap** — **Okulunuzun Blackboard adresi**, prefilled with
   `https://blackboard.istun.edu.tr`; students of another university type their
@@ -266,10 +278,10 @@ The settings are the **Genel** section of the [main window](#the-main-window)
 - **Eski dönemler** — a list of past terms (newest first, never the current
   one) and **Eski dönemi indir**, which downloads the chosen term once into
   the same folder; it is not updated afterwards. The list is looked up in the
-  background the first time **Genel** is shown after the window opens, while you
+  background the first time **Ayarlar** is shown after the window opens, while you
   are signed in; until then it
-  says it is loading, and **İndirilebilecek eski dönem yok.** when there is none.
-- **Genel** — **Bilgisayar açılınca başlat**, ticked by default (see
+  says it is loading (a lookup that met a running sync tries again by itself), and **İndirilebilecek eski dönem yok.** when there is none.
+- **Senkron** — **Bilgisayar açılınca başlat**, ticked by default (see
   [Start at login](#start-at-login)), and **Otomatik senkron**: every 30
   minutes, **every hour** (default), every 3 hours or **Yalnızca elle** (no
   automatic sync; the menu says "otomatik senkron kapalı" and no notifications
@@ -280,7 +292,7 @@ The settings are the **Genel** section of the [main window](#the-main-window)
   **Uygulamayı kaldır…**, which asks first and removes the app and its data
   (downloaded course files are kept unless you tick the box).
 
-A bar with **Vazgeç** and **Kaydet** appears under **Genel** once a field or
+A bar with **Vazgeç** and **Kaydet** appears under **Ayarlar** once a field or
 check box was changed (**Kaydedilmemiş değişiklikler**). **Kaydet** saves them
 and the window stays open; **Vazgeç** (or Escape) puts back what is saved, and
 closing the window drops unsaved changes. **Giriş yap**, **Hesaptan çıkış
@@ -325,13 +337,13 @@ Once a day the app asks GitHub whether a newer release exists (only while
 **Güncellemeleri otomatik denetle** is ticked) and posts one notification per
 new version, "Blackboard Sync 1.1.0 hazır — Güncelle". The menu then shows
 **Güncelleme var: 1.1.0 — Güncelle** above **Ayarlar…** (the row is absent
-while there is no update). **Şimdi denetle** in **Genel** checks
+while there is no update). **Şimdi denetle** in **Ayarlar** checks
 right away and answers with a notification; with an update waiting it reads
 **1.1.0 sürümüne güncelle** instead.
 
-The home page (**Başlangıç / Genel bakış**) also shows a version banner with
+The home page (**Başlangıç / Home**) also shows a version banner with
 a primary **Güncelle** button, directly above **Son indirilenler** on the overview.
-It uses the same update action as **Genel**, stays visible while downloading with
+It uses the same update action as **Ayarlar**, stays visible while downloading with
 its button disabled, and disappears when no newer release is available. The
 Microsoft Store build has no Store update detection or Store update action, so
 it keeps the existing **STORE_UPDATES** explanation without a home banner.
@@ -363,7 +375,7 @@ no update. No account data is sent; the request is an anonymous call to
 
 ### Start at login
 
-Tick **Bilgisayar açılınca başlat** in **Genel** (or run
+Tick **Bilgisayar açılınca başlat** in **Ayarlar** (or run
 `.venv/bin/blackboard-sync-menubar --enable-autostart`). This writes a per-user
 LaunchAgent, `~/Library/LaunchAgents/io.github.umutylcn.blackboard-sync.menubar.plist`,
 that starts the app with `--background` every time you log in: the menu bar
@@ -380,11 +392,12 @@ user account.
 | `✓ UMUT YALÇIN · 14:05 senkronize edildi` | Who is signed in and when the last sync ran (greyed out, information only). When the session expired, a red **⚠ Oturum sona erdi — Giriş yap** row takes its place; when nobody is signed in, **Giriş yap**. Either opens the Blackboard sign-in window (same as `blackboard-sync login`); as soon as you are in, a sync starts. |
 | `14 yeni dosya, 2 yeni not · sonraki: 14:19` | What the last sync brought (or the error) and when the next one is due. While a sync or sign-in runs it says so instead. |
 | **Şimdi senkronize et** | Sync right away instead of waiting for the next hourly run. Greyed out while a sync or sign-in is running. |
+| **Senkronu duraklat / sürdür** | Pause stops a running sync at once and no sync runs by itself until you resume (saved across restarts); resume syncs right away. Sync now is greyed out while paused. The icon shows a pause symbol. |
 | **Dersler** | The courses of the term; click one to open its folder. |
 | **Son indirilenler** | The last 10 files, notes and announcements that came in. Click one to open it (or its folder, if you moved the file). |
 | **University klasörünü aç** | Opens the University folder inside the folder chosen in **Ayarlar…** in Finder; the item carries that folder's name. |
 | **Güncelleme var: X — Güncelle** | Only when a new version is available: download and install it (see [Updates](#updates)). |
-| **Ayarlar…** | Opens the [main window](#the-main-window) on **Genel**: account, folder, start at login, updates. |
+| **Ayarlar…** | Opens the [main window](#the-main-window) on **Ayarlar**: account, folder, start at login, updates. |
 | **Çık** | Quit the app. |
 
 The icon tells you the state at a glance:

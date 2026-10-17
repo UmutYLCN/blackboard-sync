@@ -5,11 +5,24 @@ Kurulum için [README](../README.md)'ye bak. Bu sayfa uygulamanın ayrıntılı 
 ## Ana pencere
 
 Blackboard Sync'i **Applications** veya **Launchpad**'den (Windows'ta **Başlat** menüsünden)
-açınca ana pencere açılır; uygulama zaten çalışıyorsa aynı pencere öne gelir. Soldaki
-bölümler: ilk girişe kadar **Başlangıç**, sonra **Genel bakış** (**Şimdi senkronize et**,
-**Klasörü aç**, son indirilenler; senkron sürerken küçük bir animasyon), **Dersler**, **Takvim**,
-**Duyurular** ve **Genel** (ayarlar). Hesabın ve son senkronun zamanı sol altta durur; oturum sona erince orada
-**Giriş yap** çıkar. Menüdeki **Ayarlar…** aynı pencereyi **Genel** bölümünde açar.
+açınca ana pencere açılır; uygulama zaten çalışıyorsa aynı pencere öne gelir. Pencere Google
+Drive'ın masaüstü uygulaması gibi düzenlenmiştir. Solda üstte **Klasörü aç** düğmesi, altında
+bölümler durur: ilk girişe kadar **Başlangıç**, sonra **Home**, **Sync activity**, **Notifications**,
+**Dersler**, **Takvim** ve **Duyurular**. Sağ üstte üç yuvarlak düğme vardır: **Duraklat / Devam et**,
+**Ayarlar** (dişli) ve hesabın (baş harfler; tıklayınca hesap menüsü). Menüdeki **Ayarlar…** aynı
+pencereyi **Ayarlar** sayfasında açar.
+
+- **Home** özet bir sayfadır: senkronun durumu (**Güncel**, **Senkronize ediliyor…**, **Duraklatıldı**,
+  **Giriş gerekli**; senkron sürerken bulut → klasör animasyonu), son indirilenler,
+  dikkat gerektiren bildirimler ve yaklaşan teslim tarihleri.
+- **Sync activity** senkronun getirdiği her dosyayı, notu ve duyuruyu yeniden eskiye doğru boyutu
+  ve durumuyla listeler; satıra tıklayınca dosya kendi uygulamasında açılır.
+- **Notifications** dikkat gerektirenleri (oturum sona erdi, güncelleme, tamamlanamayan senkron,
+  uyarılar) ve uygulamanın gösterdiği son bildirimleri toplar.
+
+**Duraklat** düğmesi çalışan senkronu hemen durdurur ve siz **Devam et**'e basana kadar
+otomatik senkron yapılmaz; durum yeniden başlatmada da korunur. Devam edince bir senkron hemen
+başlar. Menü çubuğu menüsünde de **Senkronu duraklat / sürdür** vardır.
 
 Pencereyi kapatınca uygulama kapanmaz: menü çubuğundaki (Windows'ta saatin yanındaki)
 simgeyle çalışmaya ve senkronize etmeye devam eder. Bilgisayar açılınca kendiliğinden
@@ -74,7 +87,7 @@ indirilenler listesinde görünmez. Daha önce indirilmiş dosyaları silinmez. 
 işaretlersen eksik dosyaları hemen başlayan senkronda iner.
 
 Liste ilk senkrondan sonra dolar. Eski dönemler bu listede yer almaz; onları
-**Genel** bölümündeki **Eski dönemler** kısmından ayrıca indirirsin.
+**Ayarlar** sayfasındaki **Eski dönemler** kısmından ayrıca indirirsin.
 
 ## Duyurular
 
@@ -89,9 +102,9 @@ listelenir. Eski dönem arşivlerinin duyuruları bu listede görünmez.
 
 ## Güncelleme
 
-Yeni sürüm çıkınca bildirim gelir; ana pencerenin **Başlangıç / Genel bakış** bölümünde
+Yeni sürüm çıkınca bildirim gelir; ana pencerenin **Başlangıç / Home** sayfasında
 yeni sürümü gösteren bir kart çıkar. **Son indirilenler** listesinin üstündeki
-**Güncelle** düğmesine bas; menüden veya **Genel** bölümünden de güncelleyebilirsin.
+**Güncelle** düğmesine bas; menüden veya **Ayarlar** sayfasından da güncelleyebilirsin.
 Microsoft Store sürümünde bu kart gösterilmez; güncellemeleri Store yükler.
 
 - **macOS:** Uygulama yeni sürümü arka planda indirir, imzasını ve Apple onayını
@@ -106,8 +119,8 @@ Ayarların ve indirdiğin ders dosyaları korunur.
 
 ## Eski dönem indirme
 
-Ana pencerenin **Genel** bölümündeki **Eski dönemler** kısmında listeden
-bir dönem seç ve **Eski dönemi indir**'e bas. Liste giriş yapmışken **Genel** bölümü açılınca
+Ana pencerenin **Ayarlar** sayfasındaki **Eski dönemler** kısmında listeden
+bir dönem seç ve **Eski dönemi indir**'e bas. Liste giriş yapmışken **Ayarlar** sayfası açılınca
 yüklenir; güncel dönem listede görünmez. Dosyalar mevcut
 kayıt klasöründeki dönem/ders klasörlerine indirilir: her dönemin kendi klasörü
 güncel dönemin klasörünün yanında açılır (ör. `2026-2027 Güz` ile `2025-2026 Bahar`
@@ -124,7 +137,7 @@ dönemleri ve kimliklerini `blackboard-sync past-terms` ile listele.
 
 ## Kaldırma
 
-Ana pencerenin **Genel** bölümündeki **Güncellemeler** kısmında **Uygulamayı kaldır…** düğmesine bas.
+Ana pencerenin **Ayarlar** sayfasındaki **Güncellemeler** kısmında **Uygulamayı kaldır…** düğmesine bas.
 Uygulama kayıtları, günlükler, ayarlar, giriş verileri ve açılışta başlatma kaydı silinir.
 İndirilmiş ders dosyaları varsayılan olarak korunur. **İndirilmiş ders dosyalarını da sil**
 seçeneği yalnızca uygulamanın kayıtlı dosyalarını ve boşalan klasörlerini (boşaldıysa

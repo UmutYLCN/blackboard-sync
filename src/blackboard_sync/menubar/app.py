@@ -45,13 +45,15 @@ SYMBOLS = {
     Icon.SYNCING: ("arrow.triangle.2.circlepath", None),
     Icon.EXPIRED: ("person.crop.circle.badge.exclamationmark", "systemRedColor"),
     Icon.ERROR: ("exclamationmark.triangle", "systemOrangeColor"),
+    Icon.PAUSED: ("pause.circle", None),
 }
-FALLBACK_TITLES = {Icon.IDLE: "BB", Icon.SYNCING: "BB ↻", Icon.EXPIRED: "BB ⛔", Icon.ERROR: "BB ⚠"}
+FALLBACK_TITLES = {Icon.IDLE: "BB", Icon.SYNCING: "BB ↻", Icon.EXPIRED: "BB ⛔", Icon.ERROR: "BB ⚠", Icon.PAUSED: "BB ⏸"}
 DESCRIPTIONS = {
     Icon.IDLE: "Blackboard Sync",
     Icon.SYNCING: "Blackboard Sync: senkronize ediliyor",
     Icon.EXPIRED: "Blackboard Sync: oturum sona erdi",
     Icon.ERROR: "Blackboard Sync: hata",
+    Icon.PAUSED: "Blackboard Sync: duraklatıldı",
 }
 T_UPDATE_READY = "Blackboard Sync {version} indirildi"
 # The manual update, where the app cannot replace itself (``update_macos.ManualUpdate``).
@@ -616,7 +618,7 @@ def build_app(config: Config, show_window: bool = False):
                 "sync": self.start_sync, "folder": self.open_school_folder, "login": self.start_login,
                 "logout": self.logout,
                 "check_updates": self.start_update_check, "update": self.start_update,
-                "uninstall": self.start_uninstall,
+                "uninstall": self.start_uninstall, "pause": self.toggle_pause,
             }[action]()
 
         def _window_closed(self) -> None:
@@ -729,7 +731,23 @@ def build_app(config: Config, show_window: bool = False):
             rumps.quit_application()
 
         # -- drawing -----------------------------------------------------
+        def toggle_pause(self, _sender=None) -> None:
+            """Duraklat / Devam et: pausing also ends a sync that is running right now."""
+            if self.model.paused:
+                self.model.resume(jobs.utcnow())
+                log.info("sync resumed")
+                self._save()
+                self.tick()
+                return
+            self.model.pause()
+            log.info("sync paused")
+            if self.model.busy in ("sync", "past_term"):
+                jobs.stop_sync()  # the worker reports "paused" and frees the job slot
+            self._save()
+            self.refresh()
+
         def notify(self, note: Notification) -> None:
+            self.model.log_notice(note, jobs.utcnow())
             try:
                 rumps.notification(note.title, None, note.message, data=note.data)
             except RuntimeError:
@@ -762,7 +780,7 @@ def build_app(config: Config, show_window: bool = False):
                     "sync": self.start_sync, "login": self.start_login,
                     "folder": self.open_school_folder, "settings": self.open_settings,
                     "quit": self.quit, "open": lambda _s: self.open_recent(entry.value),
-                    "update": self.start_update,
+                    "update": self.start_update, "pause": self.toggle_pause,
                 }
                 item = rumps.MenuItem(entry.title, callback=actions.get(entry.action) if entry.enabled else None)
                 item.state = int(entry.checked)

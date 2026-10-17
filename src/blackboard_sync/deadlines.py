@@ -198,3 +198,20 @@ def load_calendar(config: Config, dest: Path) -> DeadlinePage:
     return calendar_page(State.load(config.state_file, backup=False), sync_root(dest), datetime.now(timezone.utc),
                          hidden=load_disabled(config))
 
+
+
+def upcoming_rows(page: DeadlinePage, limit: int) -> tuple[DeadlineRow, ...]:
+    """The next ``limit`` due dates that have not passed, soonest first (Home's small calendar)."""
+    rows = [row for day in page.days if not day.past for row in day.rows]
+    rows.sort(key=lambda row: (row.due.astimezone(timezone.utc), row.course, row.title))
+    return tuple(rows[:limit])
+
+
+def when_text(row: DeadlineRow, today: date) -> str:
+    """"bugün 14:30", "yarın 09:00" or "15 Ekim 09:00": when a due date is, for a small row."""
+    day = row.due.date()
+    if day == today:
+        return f"bugün {row.time}"
+    if day == today + timedelta(days=1):
+        return f"yarın {row.time}"
+    return f"{day.day} {MONTHS[day.month - 1]} {row.time}"

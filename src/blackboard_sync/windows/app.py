@@ -69,8 +69,8 @@ def cli_runner(command, **kwargs):
         # the CLI runs as the console twin installed next to it.
         command[0] = str(executable.with_name(CLI_EXE))
     # The CLI emits UTF-8 even when the Windows ANSI code page is different.
-    return subprocess.run(command, **kwargs, encoding="utf-8", errors="replace",
-                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    return jobs.run_cancellable(command, **kwargs, encoding="utf-8", errors="replace",
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 class TrayApp:
@@ -284,7 +284,20 @@ class TrayApp:
         if data.get("action") in UPDATE_ACTIONS:
             self.dispatch(data["action"])
 
+    def toggle_pause(self):
+        """Duraklat / Devam et: pausing also ends a sync that is running right now."""
+        if self.model.paused:
+            self.model.resume(jobs.utcnow())
+            self.save()
+            self.start_next()
+            return
+        self.model.pause()
+        if self.model.busy in ("sync", "past_term"):
+            jobs.stop_sync()  # the worker reports "paused" and frees the job slot
+        self.save()
+
     def notify(self, note):
+        self.model.log_notice(note, jobs.utcnow())
         try:
             notifications.show(note)
         except (OSError, subprocess.SubprocessError):
@@ -333,6 +346,8 @@ class TrayApp:
         elif action == "uninstall":
             self.start_uninstall()
             return
+        elif action == "pause":
+            self.toggle_pause()
         elif action == "settings":
             self.show_window(GENERAL)
         elif action == "deadline":

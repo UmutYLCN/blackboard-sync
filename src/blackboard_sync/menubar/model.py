@@ -52,6 +52,26 @@ CHANGE_LABELS = (
     ("updated_announcements", "güncellenen duyuru"),
     ("skipped_large_files", "büyük dosya indirilmedi"),
 )
+# Report key -> what happened, for Sync activity (the same words the window shows).
+ENTRY_KINDS = {
+    "new_files": "new_file",
+    "updated_files": "updated_file",
+    "new_notes": "new_note",
+    "updated_notes": "updated_note",
+    "new_announcements": "new_announcement",
+    "updated_announcements": "updated_announcement",
+}
+ENTRY_LABELS = {
+    "new_file": "Başarıyla indirildi",
+    "updated_file": "Güncellendi",
+    "new_note": "Not kaydedildi",
+    "updated_note": "Not güncellendi",
+    "new_announcement": "Duyuru kaydedildi",
+    "updated_announcement": "Duyuru güncellendi",
+}
+ACTIVITY_LIMIT = 300
+NOTICE_LIMIT = 50
+
 # What "Son indirilenler" lists: things that appeared or changed locally.
 RECENT_KEYS = ("new_files", "updated_files", "new_notes", "new_announcements")
 
@@ -67,6 +87,9 @@ T_LOGOUT = "Hesaptan çıkış yap"
 T_EXPIRED = "⚠ Oturum sona erdi — Giriş yap"
 T_RECENT = "Son indirilenler"
 T_RECENT_EMPTY = "Henüz yeni bir şey yok"
+T_PAUSE = "Senkronu duraklat"
+T_RESUME = "Senkronu sürdür"
+T_PAUSED = "Duraklatıldı"
 T_SETTINGS = "Ayarlar…"
 T_QUIT = "Çık"
 T_AUTO_SYNC_OFF = "otomatik senkron kapalı"
@@ -133,6 +156,7 @@ class Icon(str, Enum):
     SYNCING = "syncing"
     EXPIRED = "expired"
     ERROR = "error"
+    PAUSED = "paused"
 
 
 @dataclass
@@ -163,6 +187,8 @@ class RunOutcome:
     # The sync first moved files of an older version into the University folder.
     moved_into_root: int = 0
     left_outside_root: int = 0  # ...and these could not be moved
+    # Every file, note and announcement the run brought: (course code, path, kind) with a kind of ENTRY_KINDS.
+    entries: list[tuple[str, str, str]] = field(default_factory=list)
 
     @property
     def changed(self) -> list[CourseChange]:
@@ -171,12 +197,15 @@ class RunOutcome:
     @classmethod
     def from_report(cls, data: dict) -> "RunOutcome":
         courses = []
+        entries: list[tuple[str, str, str]] = []
         for c in data.get("courses") or []:
             counts = {
                 key: (int(c.get(key) or 0) if key == "skipped_large_files" else len(c.get(key) or []))
                 for key, _ in CHANGE_LABELS
             }
             recent = [p for key in RECENT_KEYS for p in c.get(key) or []]
+            code = c.get("code") or c.get("name") or "?"
+            entries.extend((code, p, kind) for key, kind in ENTRY_KINDS.items() for p in c.get(key) or [])
             courses.append(
                 CourseChange(
                     name=c.get("name") or "",
@@ -198,6 +227,7 @@ class RunOutcome:
             unreadable_courses=sum(1 for c in data.get("courses") or [] if c.get("content_error")),
             moved_into_root=data.get("moved_into_root") or 0,
             left_outside_root=len(data.get("left_outside_root") or []),
+            entries=entries,
         )
 
 
@@ -474,6 +504,37 @@ class RecentItem:
         return shorten(f"{self.course} · {Path(self.path).name}", 60)
 
 
+@dataclass
+class ActivityItem:
+    """One line of Sync activity: something a sync brought, newest first."""
+
+    path: str  # relative to the University folder
+    course: str
+    at: str  # ISO timestamp
+    kind: str  # a value of ENTRY_KINDS
+    size: int | None = None  # bytes, when the file was there to measure
+
+    @property
+    def label(self) -> str:
+        return ENTRY_LABELS.get(self.kind, ENTRY_LABELS["new_file"])
+
+
+@dataclass
+class Notice:
+    """A notification the app showed, kept for the Notifications page."""
+
+    title: str
+    message: str
+    at: str
+
+
+def file_size(path: Path) -> int | None:
+    try:
+        return path.stat().st_size if path.is_file() else None
+    except OSError:
+        return None
+
+
 class RecentSeen:
     """Unread download versions, with badges frozen for one overview visit.
 
@@ -635,6 +696,9 @@ class AppModel:
         self.move_from: Path | None = None
         # Teslim tarihi hatırlatmaları already shown (``deadlines.due_reminders``) and when they were last looked for.
         self.reminders_sent: dict[str, dict] = {}
+        self.paused = False  # Duraklat: nothing syncs by itself, a running sync was stopped
+        self.activity_log: list[ActivityItem] = []  # Sync activity, newest first (ACTIVITY_LIMIT)
+        self.notices: list[Notice] = []  # shown notifications, newest first (NOTICE_LIMIT)
         self.reminders_checked_at: datetime | None = None
         self.login_method = ""  # while signing in: a browser's name, INAPP, or "" if unknown
         self.note = ""  # a transient extra line (lock held, sign-in failed, ...)
@@ -665,6 +729,8 @@ class AppModel:
             return Icon.EXPIRED
         if self.health == "error":
             return Icon.ERROR
+        if self.paused:
+            return Icon.PAUSED
         return Icon.IDLE
 
     # -- scheduling -----------------------------------------------------
@@ -677,9 +743,20 @@ class AppModel:
         """The next automatic run; None (never) in manual mode."""
         return None if self.sync_interval is None or delay is None else now + delay
 
+    def pause(self) -> None:
+        """Duraklat: no scheduled sync until ``resume``. (The app also stops a running one.)"""
+        self.paused = True
+
+    def resume(self, now: datetime) -> None:
+        """Devam et: syncing goes on, and one runs right away unless sync is by hand only."""
+        self.paused = False
+        self.note = ""
+        self.next_run_at = self.schedule(now, timedelta(0))
+
     def due(self, now: datetime) -> bool:
         return (
             self.configured
+            and not self.paused
             and self.busy is None
             and self.next_run_at is not None
             and now >= self.next_run_at
@@ -697,7 +774,7 @@ class AppModel:
         """
         if not self.configured or self.busy is not None or self.pending is None:
             return None
-        if self.pending == "sync" and self.session is None:
+        if self.pending == "sync" and (self.session is None or self.paused):
             return None
         return self.pending
 
@@ -789,6 +866,12 @@ class AppModel:
         job, self.busy = self.busy, None
         self.note = ""
         notes: list[Notification] = []
+        if outcome.status == "paused":
+            # Duraklat stopped the run: nothing it had not finished counts, and the schedule waits.
+            if job == "past_term":
+                self.past_term = self.past_term_id = ""
+                self.past_message = "Eski dönem indirmesi duraklatıldı; tekrar indirin."
+            return notes
         if job == "past_term":
             term = outcome.past_term or self.past_term
             self.past_term = self.past_term_id = ""
@@ -967,6 +1050,25 @@ class AppModel:
         ]
         seen = {item.path for item in fresh}
         self.recent = (fresh + [r for r in self.recent if r.path not in seen])[:RECENT_LIMIT]
+        self.record_activity(outcome, at)
+
+    def record_activity(self, outcome: RunOutcome, at: str, size_of=file_size) -> None:
+        """Add what a run brought to Sync activity (newest first, the oldest fall off)."""
+        added = [ActivityItem(path, course, at, kind, size_of(self.root / path))
+                 for course, path, kind in outcome.entries]
+        self.activity_log = (added + self.activity_log)[:ACTIVITY_LIMIT]
+
+    def visible_activity(self) -> list[ActivityItem]:
+        """Sync activity without the files of the courses unticked in Dersler."""
+        return [item for item in self.activity_log
+                if not any(item.path == folder or item.path.startswith(folder + "/")
+                           for folder in self.hidden_folders)]
+
+    def log_notice(self, note: "Notification", now: datetime) -> None:
+        """Keep a notification the app showed, for the Notifications page."""
+        if note.title or note.message:
+            self.notices = [Notice(note.title, note.message, now.isoformat(timespec="seconds")),
+                            *self.notices][:NOTICE_LIMIT]
 
     # -- presentation ---------------------------------------------------
     def account(self) -> tuple[str | None, bool]:
@@ -1011,6 +1113,8 @@ class AppModel:
             return "Dosyalar yeni klasöre taşınıyor…"
         if not self.configured:
             return f"Kurulumu tamamlamak için “{T_SETTINGS}”ı seçin"
+        if self.paused:
+            return T_PAUSED
         return ""
 
     def detail(self, now: datetime) -> list[str]:
@@ -1054,7 +1158,7 @@ class AppModel:
         menu = MenuModel(
             status_lines=self.status_lines(now),
             sync_title=T_SYNCING if self.busy == "sync" else T_SYNC_NOW,
-            sync_enabled=self.busy is None,
+            sync_enabled=self.busy is None and not self.paused,
             recent=unique_labels([(f"{(parse_iso(item.at) or now).astimezone():%d.%m %H:%M} · {item.label}", item.path)
                                   for item in self.visible_recent()]),
         )
@@ -1073,9 +1177,11 @@ class AppModel:
             course_items.append((label, course.folder))
         update = self.updates.menu_entry()
         sync = MenuEntry(menu.sync_title, "sync", enabled=menu.sync_enabled)
+        pause = MenuEntry(T_RESUME if self.paused else T_PAUSE, "pause", enabled=self.configured)
         status = [MenuEntry(line, enabled=False) for line in menu.status_lines]
         # Nothing syncs by itself in manual mode, so the button comes first.
-        head = [*top, sync, *status, MenuEntry()] if self.sync_interval is None else [*top, *status, MenuEntry(), sync]
+        head = ([*top, sync, pause, *status, MenuEntry()] if self.sync_interval is None
+                else [*top, *status, MenuEntry(), sync, pause])
         menu.entries = [
             *head,
             MenuEntry("Dersler", children=[MenuEntry(label, "open", value=path) for label, path in unique_labels(course_items)] or [MenuEntry("Henüz ders yok", enabled=False)]),
@@ -1099,6 +1205,9 @@ class AppModel:
             "updates": self.updates.saved_state(),
             "pending": self.saved_pending(),
             "reminders": self.reminders_sent,
+            "paused": self.paused,
+            "activity": [vars(item) for item in self.activity_log],
+            "notices": [vars(item) for item in self.notices],
         }
 
     def saved_pending(self) -> dict | None:
@@ -1121,6 +1230,29 @@ class AppModel:
             self.pending, self.move_from = MOVE_JOB, Path(move_from)
         elif job == "sync":
             self.pending = "sync"
+
+
+def load_activity(data: object) -> list[ActivityItem]:
+    """The Sync activity a restart keeps; entries that do not read are dropped."""
+    items = []
+    for item in data if isinstance(data, list) else []:
+        try:
+            size = item.get("size")
+            items.append(ActivityItem(path=str(item["path"]), course=str(item["course"]), at=str(item["at"]),
+                                      kind=str(item["kind"]), size=size if isinstance(size, int) else None))
+        except (KeyError, TypeError, AttributeError):
+            continue
+    return items[:ACTIVITY_LIMIT]
+
+
+def load_notices(data: object) -> list[Notice]:
+    items = []
+    for item in data if isinstance(data, list) else []:
+        try:
+            items.append(Notice(title=str(item["title"]), message=str(item["message"]), at=str(item["at"])))
+        except (KeyError, TypeError):
+            continue
+    return items[:NOTICE_LIMIT]
 
 
 def load_saved_state(data: dict | None) -> tuple[list[RecentItem], bool]:
