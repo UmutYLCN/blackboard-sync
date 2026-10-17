@@ -48,7 +48,7 @@ class CourseReport:
             if count:
                 parts.append(f"{count} {singular}{'' if count == 1 else 's'}")
         if self.skipped_large_files:
-            parts.append(f"{self.skipped_large_files} büyük dosya indirilmedi")
+            parts.append(f"{self.skipped_large_files} large file{'' if self.skipped_large_files == 1 else 's'} not downloaded")
         return f"{self.code}: {', '.join(parts) if parts else 'no changes'}"
 
 
@@ -110,7 +110,7 @@ class SyncReport:
         lines = self.migration_lines()
         lines.append(f"{verb} {len(self.courses)} course(s) for {', '.join(self.terms) or 'no term'} into {self.dest}")
         if self.past_term:
-            lines.append("Eski dönem: bir kez indirilir, otomatik güncellenmez.")
+            lines.append("Past term: downloaded once, not updated automatically.")
         for course in self.courses:
             lines.append(f"  {course.summary_line()}")
             for label, paths in (

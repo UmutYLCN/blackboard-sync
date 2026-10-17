@@ -39,7 +39,7 @@ def test_while_waiting_the_window_says_why_instead_of_loading_forever(tmp_path):
     model = signed_in(tmp_path)
     lookup(model, {}, RunOutcome("locked"))
     status = window_status(model)
-    assert status.past_message == "Başka bir senkron sürüyor; eski dönemler birazdan yeniden yüklenecek."
+    assert status.past_message == "Another sync is running; past terms will load again shortly."
     assert not status.past_enabled and not status.past_running
 
 
@@ -76,7 +76,7 @@ def test_a_running_download_locks_the_list_and_the_button_says_so(tmp_path):
     assert model.select_past_term(PAST) and model.begin("past_term")
     running = window_status(model)
     assert running.past_running and not running.past_enabled
-    assert PAST in running.past_message and "indiriliyor" in running.past_message
+    assert PAST in running.past_message and "Downloading" in running.past_message
     assert not model.select_past_term(PAST)  # no second download on top of it
 
     model.finish_sync(RunOutcome("ok", past_term=PAST), NOW)

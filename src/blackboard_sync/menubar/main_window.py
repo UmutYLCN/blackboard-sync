@@ -472,7 +472,7 @@ class MainWindow:
         on_course_toggle: Callable[[str, bool], None] = lambda course_id, enabled: None,
         on_past_term: Callable[[str], object] = lambda name: None,
         on_section: Callable[[str], None] = lambda section: None,
-        reopen_where: str = "Applications veya Launchpad'den",
+        reopen_where: str = "Applications or Launchpad",
         on_deadlines=deadlines.DeadlinePage,
         on_deadline: Callable[[str], None] = lambda target: None,
         recent_seen=None,
@@ -1367,7 +1367,7 @@ class MainWindow:
                 button.setTag_(len(self.deadline_targets))
                 self.deadline_targets.append(row.target)
                 button.setAccessibilityLabel_(f"{row.title}, {row.course}, {row.time}")
-                button.setToolTip_("İndirilen notu aç" if not row.target.startswith("https://") else "Blackboard'da aç")
+                button.setToolTip_("Open the downloaded note" if not row.target.startswith("https://") else "Open in Blackboard")
                 button.setFrame_(NSMakeRect(0, top, INNER, ROW_HEIGHT))
                 content.addSubview_(button)
             y += height + 16
@@ -1873,15 +1873,15 @@ def ask_uninstall(dest: Path) -> bool | None:
     alert = NSAlert.alloc().init()
     alert.setMessageText_(uninstall.TITLE)
     alert.setInformativeText_(uninstall.MESSAGE)
-    alert.addButtonWithTitle_("Kaldır")
-    cancel = alert.addButtonWithTitle_("Vazgeç")
+    alert.addButtonWithTitle_("Uninstall")
+    cancel = alert.addButtonWithTitle_("Cancel")
     cancel.setKeyEquivalent_("\x1b")
     view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 440, 110))
     target = _UninstallChoice.alloc().init()
     checkbox = NSButton.checkboxWithTitle_target_action_(uninstall.CHECKBOX, target, "changed:")
     checkbox.setState_(0)
     checkbox.setFrame_(NSMakeRect(0, 80, 440, 24))
-    label = NSTextField.wrappingLabelWithString_(f"Çöp Sepeti'ne taşınacak dosyaların klasörü:\n{dest}")
+    label = NSTextField.wrappingLabelWithString_(f"The folder whose files go to the Trash:\n{dest}")
     label.setFrame_(NSMakeRect(0, 0, 440, 72))
     label.setHidden_(True)
     target.path_label = label

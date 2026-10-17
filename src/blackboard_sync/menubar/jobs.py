@@ -131,7 +131,7 @@ def run_sync(
     except SyncStopped:
         return RunOutcome(status="paused", finished_at=now())
     except subprocess.TimeoutExpired:
-        return RunOutcome(status="error", message="Senkron çok uzun sürdü ve durduruldu.", finished_at=now())
+        return RunOutcome(status="error", message="The sync took too long and was stopped.", finished_at=now())
     except OSError as exc:
         return RunOutcome(status="error", message=str(exc), finished_at=now())
     return parse_sync_output(proc.stdout, proc.returncode, proc.stderr, now())
@@ -148,7 +148,7 @@ def run_login(settings: Settings, runner: Runner = subprocess.run) -> tuple[bool
             stdin=subprocess.DEVNULL,
         )
     except subprocess.TimeoutExpired:
-        return False, "zaman aşımı"
+        return False, "timed out"
     except OSError as exc:
         return False, str(exc)
     if proc.returncode == 0:
@@ -194,15 +194,15 @@ def run_past_terms(settings: Settings, runner: Runner = subprocess.run) -> tuple
         if options is None:
             names = data["terms"]
             if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
-                raise ValueError("Eski dönem listesi okunamadı.")
+                raise ValueError("Could not read the list of past terms.")
             options = [{"label": name, "id": ""} for name in names]
         terms = {option["label"]: option["id"] for option in options}
         if len(terms) != len(options) or not all(isinstance(k, str) and k and isinstance(v, str)
                                                  for k, v in terms.items()):
-            raise ValueError("Eski dönem listesi okunamadı.")
+            raise ValueError("Could not read the list of past terms.")
         return terms, RunOutcome(status="ok")
     except Exception as exc:
-        return {}, RunOutcome(status="error", message=f"Eski dönemler yüklenemedi: {exc}")
+        return {}, RunOutcome(status="error", message=f"Could not load past terms: {exc}")
 
 
 def refresh_hidden_folders(config: Config, model: AppModel) -> None:
@@ -346,7 +346,7 @@ def check_reminders(config: Config, model: AppModel, now: datetime) -> list[Noti
     model.reminders_sent = sent
     if len(reminders) >= REMINDER_GROUP_FROM:
         lines = [f"{r.course}: {r.title}" for r in reminders]
-        return [Notification("Yaklaşan teslim tarihleri", "\n".join(lines), {})]
+        return [Notification("Upcoming deadlines", "\n".join(lines), {})]
     notes = []
     for reminder in reminders:
         title, message = deadlines.reminder_text(reminder, now)

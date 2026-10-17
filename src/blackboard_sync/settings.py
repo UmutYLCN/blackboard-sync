@@ -97,17 +97,17 @@ def normalize_base_url(text: str) -> str:
     """
     text = (text or "").strip()
     if not text:
-        raise SettingsError("Okulunuzun Blackboard adresini yazın.", "base_url")
+        raise SettingsError("Enter your school's Blackboard address.", "base_url")
     if "://" not in text:
         text = "https://" + text
-    example = "Geçerli bir adres yazın, örneğin https://blackboard.okul.edu.tr"
+    example = "Enter a valid address, for example https://blackboard.school.edu"
     try:
         parts = urlsplit(text)
         host, port = parts.hostname, parts.port
     except ValueError:
         raise SettingsError(example, "base_url") from None
     if parts.scheme.lower() != "https":
-        raise SettingsError("Adres https:// ile başlamalı.", "base_url")
+        raise SettingsError("The address must start with https://.", "base_url")
     if (
         not host
         or "." not in host.strip(".")
@@ -122,13 +122,13 @@ def normalize_dest(text: str | os.PathLike) -> Path:
     """An absolute folder path; ``~`` is expanded. The folder may not exist yet."""
     text = str(text or "").strip()
     if not text:
-        raise SettingsError("Dosyaların kaydedileceği klasörü seçin.", "dest")
+        raise SettingsError("Choose the folder to save the files in.", "dest")
     path = Path(text).expanduser()
     if not path.is_absolute():
-        raise SettingsError("Klasörü tam yoluyla yazın, örneğin ~/Documents/University", "dest")
+        raise SettingsError("Enter the folder's full path, for example ~/Documents/University", "dest")
     path = Path(os.path.normpath(path))
     if path.exists() and not path.is_dir():
-        raise SettingsError("Bu yol bir klasör değil.", "dest")
+        raise SettingsError("This path is not a folder.", "dest")
     return path
 
 

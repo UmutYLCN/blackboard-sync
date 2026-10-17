@@ -425,14 +425,14 @@ def test_trusts_the_same_team_and_bundle_as_install_sh():
 def test_restarted_app_reports_the_update_once():
     state = UpdateState(installing=VERSION)
     [note] = state.finish_install(current=VERSION)
-    assert note.title == f"Blackboard Sync {VERSION} sürümüne güncellendi"
+    assert note.title == f"Blackboard Sync was updated to {VERSION}"
     assert state.finish_install(current=VERSION) == []
 
 
 def test_restarted_old_app_says_the_update_did_not_take_effect():
     state = UpdateState(installing=VERSION)
     [note] = state.finish_install(current="1.4.0")
-    assert note.title == "Güncelleme yüklenemedi"
+    assert note.title == "Could not install the update"
     assert "1.4.0" in note.message
 
 

@@ -71,7 +71,7 @@ def test_archive_writes_term_folder_and_backward_compatible_state(config, client
     state = State.load(config.state_file)
     assert state.past_terms["_40_1"]["courses"] == ["_12001_1"]
     assert json.loads(config.state_file.read_text())["version"] == 1
-    assert "eski dönem" in report.render_text().lower()
+    assert "past term" in report.render_text().lower()
 
 
 def test_regular_sync_never_requests_or_updates_past_content(config, client, archive):
@@ -140,7 +140,7 @@ def test_archive_restores_a_file_an_older_version_dismissed(config, client, arch
     assert (config.dest / COURSE / "first.pdf").read_bytes() == b"first archive file"
 
 
-@pytest.mark.parametrize("name, message", [("2026-2027 Güz", "güncel"), ("unknown", "bulunamadı"), ("", "belirtin")])
+@pytest.mark.parametrize("name, message", [("2026-2027 Güz", "current term"), ("unknown", "No term named"), ("", "Name a single past term")])
 def test_cli_rejects_current_and_unknown_terms_without_changing_last_run(config, archive, monkeypatch, capsys, name, message):
     _save(config)
     config.last_run_file.write_text('{"current":true}')
@@ -186,13 +186,13 @@ def test_archive_job_preserves_current_courses_result_and_schedule(tmp_path, sta
     model.finish_past_terms([PAST], RunOutcome("ok"))
     assert not model.select_past_term("unknown")
     assert model.select_past_term(PAST) and model.begin("past_term")
-    assert "eski dönem" in model.activity()
+    assert "past term" in model.activity()
     notes = model.finish_sync(RunOutcome(status, message="failure", past_term=PAST), NOW)
     assert model.next_run_at == scheduled and model.last is last and model.courses is courses
     assert model.busy is None and model.past_term == ""
     assert "past_term" not in model.saved_state()
     if status == "ok":
-        assert "0 dosya indirildi (eski dönem)" in notes[0].message
+        assert "0 files downloaded (past term)" in notes[0].message
     assert "--term" not in sync_arguments("sync", Settings("https://bb.example.edu", tmp_path))
 
 
@@ -245,7 +245,7 @@ def test_archive_notification_includes_partial_failure(tmp_path):
     model.begin("past_term")
     result = RunOutcome.from_report({"status": "ok", "courses": [{"warnings": ["file failed"]}]})
     note = model.finish_sync(result, NOW)[0]
-    assert "1 uyarı" in note.message and "tekrar deneyin" in note.message
+    assert "1 warning" in note.message and "try again" in note.message
 
 
 def test_settings_section_looks_terms_up_once_per_window_and_sign_in(tmp_path):
@@ -254,11 +254,11 @@ def test_settings_section_looks_terms_up_once_per_window_and_sign_in(tmp_path):
     model = AppModel(tmp_path, NOW)
     status = window_status(model)
     assert (status.past_terms, status.past_enabled) == ((), False)
-    assert status.past_message == "Eski dönemleri görmek için giriş yapın."
+    assert status.past_message == "Sign in to see past terms."
     assert not model.past_terms_due()
     model.session = {"saved_at": NOW.timestamp(), "user": {"displayName": "Ada"}}
     assert model.past_terms_due()
-    assert window_status(model).past_message == "Eski dönemler yükleniyor…"
+    assert window_status(model).past_message == "Loading past terms…"
     model.begin("sync")  # waits for the job slot
     assert not model.past_terms_due()
     model.finish_sync(RunOutcome("ok", finished_at=NOW), NOW)
@@ -273,13 +273,13 @@ def test_settings_section_looks_terms_up_once_per_window_and_sign_in(tmp_path):
     assert status.uninstall_enabled
     assert model.select_past_term(PAST) and model.begin("past_term")
     status = window_status(model)
-    assert not status.past_enabled and not status.uninstall_enabled and "indiriliyor" in status.past_message
+    assert not status.past_enabled and not status.uninstall_enabled and "Downloading" in status.past_message
     model.finish_sync(RunOutcome("ok", past_term=PAST), NOW)
-    assert window_status(model).past_message == f"{PAST} · 0 dosya indirildi (eski dönem)."
+    assert window_status(model).past_message == f"{PAST} · 0 files downloaded (past term)."
     model.finish_login(True, "", NOW)  # another account: look again
     assert model.past_terms_due()
     model.reload_past_terms()
-    assert window_status(model).past_message == "Eski dönemler yükleniyor…"
+    assert window_status(model).past_message == "Loading past terms…"
 
 
 def test_settings_section_shows_lookup_failures_and_empty_list(tmp_path):
@@ -294,4 +294,4 @@ def test_settings_section_shows_lookup_failures_and_empty_list(tmp_path):
     model.reload_past_terms()
     model.begin("past_terms")
     model.finish_past_terms([], RunOutcome("ok"))
-    assert window_status(model).past_message == "İndirilebilecek eski dönem yok."
+    assert window_status(model).past_message == "No past terms to download."

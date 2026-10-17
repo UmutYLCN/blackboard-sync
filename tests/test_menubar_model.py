@@ -87,17 +87,17 @@ def test_exit_code_is_the_fallback_without_json():
 
 def test_course_line_is_turkish_and_singular():
     cse = outcome().courses[0]
-    assert course_line(cse) == "CSE303: 2 yeni dosya, 1 yeni duyuru"
+    assert course_line(cse) == "CSE303: 2 new files, 1 new announcement"
 
 
 def test_size_skips_are_in_the_turkish_sync_summary():
     data = report(courses=[course("CSE303", CSE, skipped_large_files=2)])
-    assert course_line(outcome(data).courses[0]) == "CSE303: 2 büyük dosya indirilmedi"
+    assert course_line(outcome(data).courses[0]) == "CSE303: 2 large files not downloaded"
 
 
 def test_notification_lists_each_changed_course_and_opens_its_folder():
     note = changes_notification(outcome(), DEST)
-    assert note.message == "CSE303: 2 yeni dosya, 1 yeni duyuru"
+    assert note.message == "CSE303: 2 new files, 1 new announcement"
     assert note.data == {"open": str(DEST / CSE)}
 
 
@@ -110,8 +110,8 @@ def test_notification_for_several_courses_opens_their_common_folder():
     )
     note = changes_notification(outcome(data), DEST)
     assert note.message.splitlines() == [
-        "CSE303: 1 yeni dosya",
-        "MTH201: 1 güncellenen dosya, 1 yeni not",
+        "CSE303: 1 new file",
+        "MTH201: 1 updated file, 1 new note",
     ]
     assert note.data == {"open": str(DEST / "2026-2027 Güz")}
 
@@ -148,7 +148,7 @@ def test_locked_run_keeps_the_last_result_and_retries_soon():
     assert notes == []
     assert m.last.status == "ok"
     assert m.next_run_at == NOW + RETRY_DELAY
-    assert "Başka bir senkron" in " ".join(m.status_lines(NOW))
+    assert "Another sync" in " ".join(m.status_lines(NOW))
 
 
 def test_error_retries_soon_and_shows_error_icon():
@@ -159,7 +159,7 @@ def test_error_retries_soon_and_shows_error_icon():
     assert m.icon() == Icon.ERROR
     assert m.next_run_at == NOW + RETRY_DELAY
     assert m.status_lines(NOW) == [
-        f"{format_time(NOW, NOW)} denendi · hata · Network error · sonraki: {format_time(NOW + RETRY_DELAY, NOW)}"
+        f"Tried at {format_time(NOW, NOW)} · error · Network error · next: {format_time(NOW + RETRY_DELAY, NOW)}"
     ]
 
 
@@ -185,7 +185,7 @@ def test_successful_login_makes_a_sync_due_now():
     m = model(last=RunOutcome(status="login_required", finished_at=NOW))
     assert m.begin("login")
     login = m.menu(NOW).entries[0]
-    assert (login.title, login.action, login.enabled) == ("Giriş bekleniyor…", "login", False)
+    assert (login.title, login.action, login.enabled) == ("Waiting for sign-in…", "login", False)
     m.finish_login(True, "", NOW + timedelta(minutes=2))
     assert m.due(NOW + timedelta(minutes=2))
 
@@ -193,11 +193,11 @@ def test_successful_login_makes_a_sync_due_now():
 def test_waiting_for_sign_in_names_the_browser_or_the_app_window():
     m = model()
     m.begin("login")
-    assert m.status_lines(NOW)[0] == "Tarayıcıda giriş yapmanız bekleniyor…"  # not known
+    assert m.status_lines(NOW)[0] == "Waiting for you to sign in in the browser…"  # not known
     m.login_method = "Opera GX"
-    assert m.status_lines(NOW)[0] == "Opera GX penceresinde giriş yapmanız bekleniyor…"
+    assert m.status_lines(NOW)[0] == "Waiting for you to sign in in Opera GX…"
     m.login_method = "inapp"
-    assert m.status_lines(NOW)[0] == "Açılan pencerede giriş yapmanız bekleniyor…"
+    assert m.status_lines(NOW)[0] == "Waiting for you to sign in in the window that opened…"
     m.finish_login(True, "", NOW)
     assert m.login_method == ""
 
@@ -207,7 +207,7 @@ def test_failed_login_is_shown():
     m.begin("login")
     m.finish_login(False, "The browser did not start.", NOW)
     assert m.busy is None
-    assert "Giriş tamamlanamadı: The browser did not start." in m.status_lines(NOW)
+    assert "Sign-in did not finish: The browser did not start." in m.status_lines(NOW)
 
 
 # -- icon and menu -----------------------------------------------------------
@@ -225,12 +225,12 @@ def test_menu_after_a_sync_with_new_files():
     m.finish_sync(outcome(), NOW)
     menu = m.menu(NOW)
     assert menu.status_lines == [
-        f"{format_time(NOW, NOW)} senkronize edildi · 2 yeni dosya, 1 yeni duyuru · sonraki: {format_time(NOW + SYNC_INTERVAL, NOW)}",
+        f"Synced at {format_time(NOW, NOW)} · 2 new files, 1 new announcement · next: {format_time(NOW + SYNC_INTERVAL, NOW)}",
     ]
     m.session = signed_session()
     assert m.menu(NOW).status_lines == [
-        f"✓ Ada Student · {format_time(NOW, NOW)} senkronize edildi",
-        f"2 yeni dosya, 1 yeni duyuru · sonraki: {format_time(NOW + SYNC_INTERVAL, NOW)}",
+        f"✓ Ada Student · synced at {format_time(NOW, NOW)}",
+        f"2 new files, 1 new announcement · next: {format_time(NOW + SYNC_INTERVAL, NOW)}",
     ]
     assert menu.sync_enabled and menu.entries[0].action == "login" and menu.entries[0].enabled
     assert [label for label, _ in menu.recent] == [
@@ -242,12 +242,12 @@ def test_menu_after_a_sync_with_new_files():
 
 def test_menu_while_syncing_and_before_any_sync():
     m = model()
-    assert m.menu(NOW).status_lines[0].startswith("Henüz senkronize edilmedi · sonraki: ")
+    assert m.menu(NOW).status_lines[0].startswith("Not synced yet · next: ")
     m.begin("sync")
     menu = m.menu(NOW)
     assert menu.sync_enabled is False
-    assert menu.sync_title == "Senkronize ediliyor…"
-    assert menu.status_lines == ["Yeni içerik kontrol ediliyor…"]
+    assert menu.sync_title == "Syncing…"
+    assert menu.status_lines == ["Checking for new content…"]
     # Every status line differs from the item titles (menu items are keyed by text).
     assert not set(menu.status_lines) & {e.title for e in menu.entries if e.enabled}
 
@@ -256,7 +256,7 @@ def test_nothing_new_line():
     m = model()
     m.begin("sync")
     m.finish_sync(outcome(report(courses=[course("MTH201", MTH)])), NOW)
-    assert "· yeni bir şey yok · sonraki: " in m.status_lines(NOW)[0]
+    assert "· nothing new · next: " in m.status_lines(NOW)[0]
 
 
 def test_recent_items_are_newest_first_deduplicated_and_capped():
@@ -283,7 +283,7 @@ def test_equal_labels_are_made_unique():
 def test_format_time():
     local_noon = datetime(2026, 10, 3, 12, 0).astimezone()
     assert format_time(local_noon, local_noon + timedelta(hours=2)) == "12:00"
-    assert format_time(local_noon, local_noon + timedelta(days=1)) == "dün 12:00"
+    assert format_time(local_noon, local_noon + timedelta(days=1)) == "yesterday 12:00"
     assert format_time(local_noon, local_noon + timedelta(days=5)) == "03.10 12:00"
 
 
@@ -331,12 +331,12 @@ def test_signed_in_menu_structure():
     m = model(session=signed_session(), last=outcome(), autostart=True)
     menu = m.menu(NOW)
     assert [e.title for e in menu.entries] == [
-        f"✓ Ada Student · {format_time(NOW, NOW)} senkronize edildi",
-        f"2 yeni dosya, 1 yeni duyuru · sonraki: {format_time(m.next_run_at, NOW)}",
+        f"✓ Ada Student · synced at {format_time(NOW, NOW)}",
+        f"2 new files, 1 new announcement · next: {format_time(m.next_run_at, NOW)}",
         "",
-        "Şimdi senkronize et", "Senkronu duraklat", "Dersler", "Son indirilenler", "University klasörünü aç",
+        "Sync now", "Pause syncing", "Courses", "Recent downloads", "Open University folder",
         "",
-        "Ayarlar…", "Çık",
+        "Settings…", "Quit",
     ]
     # Past terms and uninstalling live in the settings window.
     assert not any(e.action in ("login", "logout", "refetch", "autostart", "check_updates",
@@ -345,12 +345,12 @@ def test_signed_in_menu_structure():
 
 
 def test_folder_item_is_named_after_the_destination():
-    assert next(e.title for e in model().menu(NOW).entries if e.action == "folder") == "University klasörünü aç"
+    assert next(e.title for e in model().menu(NOW).entries if e.action == "folder") == "Open University folder"
     m = AppModel(dest=Path("/Users/student/Documents/Okul"), now=NOW)  # an existing user's folder
     folder = next(e for e in m.menu(NOW).entries if e.action == "folder")
-    assert folder.title == "University klasörünü aç"  # the files are in Okul/University
+    assert folder.title == "Open University folder"  # the files are in Okul/University
     m.apply_settings(Path("/Volumes/USB/university"), school_changed=False)
-    assert next(e for e in m.menu(NOW).entries if e.action == "folder").title == "university klasörünü aç"
+    assert next(e for e in m.menu(NOW).entries if e.action == "folder").title == "Open university folder"
 
 
 def test_update_row_only_when_a_new_version_waits():
@@ -358,7 +358,7 @@ def test_update_row_only_when_a_new_version_waits():
     m = model(session=signed_session())
     m.updates.finish_check(CheckResult("available", Release("9.9.9", "", "x.dmg", "")), NOW, manual=False)
     titles = [e.title for e in m.menu(NOW).entries]
-    assert titles[-3:] == ["Güncelleme var: 9.9.9 — Güncelle", "Ayarlar…", "Çık"]
+    assert titles[-3:] == ["Update available: 9.9.9 — Update", "Settings…", "Quit"]
 
 
 def test_expiry_overrides_saved_cookies_and_survives_network_errors():
@@ -366,29 +366,29 @@ def test_expiry_overrides_saved_cookies_and_survives_network_errors():
     m.finish_sync(RunOutcome("login_required", finished_at=NOW), NOW)
     menu = m.menu(NOW)
     row = menu.entries[0]
-    assert row.title == "⚠ Oturum sona erdi — Giriş yap" and row.warning
+    assert row.title == "⚠ Session expired — Sign in" and row.warning
     assert row.action == "login"
-    assert menu.entries[1].title == f"{format_time(NOW, NOW)} denendi · sonraki: {format_time(NOW + SYNC_INTERVAL, NOW)}"
+    assert menu.entries[1].title == f"Tried at {format_time(NOW, NOW)} · next: {format_time(NOW + SYNC_INTERVAL, NOW)}"
     assert menu.entries[2].title == ""  # still two lines at the top
     status = window_status(m)
-    assert status.account_warning and (status.account_title, status.account_action) == ("Giriş yap", "login")
+    assert status.account_warning and (status.account_title, status.account_action) == ("Sign in", "login")
     m.finish_sync(RunOutcome("error", finished_at=NOW), NOW)
     assert m.menu(NOW).entries[0].warning
     m.session = signed_session(NOW + timedelta(minutes=1))
     assert m.menu(NOW).entries[0].title.startswith("✓ Ada Student · ")
     status = window_status(m)
     assert (status.account, status.account_title, status.account_action) == (
-        "Giriş yapıldı: Ada Student", "Hesaptan çıkış yap", "logout")
+        "Signed in as Ada Student", "Sign out", "logout")
 
 
 def test_saved_session_without_sync_and_legacy_username():
     m = model(session={"user": {"userName": "student"}})
-    assert m.menu(NOW).entries[0].title == "✓ student · henüz senkronize edilmedi"
-    assert m.menu(NOW).status_lines[1].startswith("Sonraki: ")
+    assert m.menu(NOW).entries[0].title == "✓ student · not synced yet"
+    assert m.menu(NOW).status_lines[1].startswith("Next: ")
     assert model().menu(NOW).entries[0].action == "login"
     assert model(session_expired=True).menu(NOW).entries[0].warning
     status = window_status(model(configured=False))
-    assert (status.account, status.account_title, status.account_action) == ("Henüz giriş yapılmadı.", "Giriş yap", "login")
+    assert (status.account, status.account_title, status.account_action) == ("Not signed in yet.", "Sign in", "login")
     assert status.account_enabled
 
 
@@ -398,10 +398,10 @@ def test_syncing_disables_mutating_actions_but_keeps_folders():
     m.begin("sync")
     menu = m.menu(NOW)
     actions = {e.action: e for e in entries(menu) if e.action}
-    assert actions["sync"].title == "Senkronize ediliyor…"
+    assert actions["sync"].title == "Syncing…"
     assert not actions["sync"].enabled
     assert actions["folder"].enabled and actions["settings"].enabled
-    assert menu.status_lines == [f"✓ Ada Student · {format_time(NOW, NOW)} senkronize edildi", "Yeni içerik kontrol ediliyor…"]
+    assert menu.status_lines == [f"✓ Ada Student · synced at {format_time(NOW, NOW)}", "Checking for new content…"]
     status = window_status(m)
     assert not status.account_enabled
     assert status.update_enabled  # update checks do not use the job slot
@@ -410,15 +410,15 @@ def test_syncing_disables_mutating_actions_but_keeps_folders():
 def test_course_counts_reset_on_success_and_survive_errors():
     m = model(last=outcome())
     def courses():
-        return next(e.children for e in m.menu(NOW).entries if e.title == "Dersler")
-    assert courses()[0].title == "CSE303 (3 yeni)"
+        return next(e.children for e in m.menu(NOW).entries if e.title == "Courses")
+    assert courses()[0].title == "CSE303 (3 new)"
     assert courses()[0].value == CSE
     m.finish_sync(RunOutcome("error", finished_at=NOW), NOW)
-    assert courses()[0].title == "CSE303 (3 yeni)"
+    assert courses()[0].title == "CSE303 (3 new)"
     m.finish_sync(outcome(report(courses=[course("CSE303", CSE)])), NOW)
     assert courses()[0].title == "CSE303"
     m.finish_sync(outcome(report()), NOW)
-    assert courses()[0].title == "Henüz ders yok" and not courses()[0].enabled
+    assert courses()[0].title == "No courses yet" and not courses()[0].enabled
 
 
 def test_course_display_name_and_recent_dates():
@@ -426,7 +426,7 @@ def test_course_display_name_and_recent_dates():
     m = model()
     m.finish_sync(outcome(data), NOW)
     menu = m.menu(NOW)
-    assert next(e for e in menu.entries if e.title == "Dersler").children[0].title == "CSE303 Algorithm Analysis (1 yeni)"
+    assert next(e for e in menu.entries if e.title == "Courses").children[0].title == "CSE303 Algorithm Analysis (1 new)"
     assert menu.recent[0][0] == f"{NOW.astimezone():%d.%m %H:%M} · CSE303 · a.pdf"
 
 
@@ -434,10 +434,10 @@ def test_status_line_is_stable_while_time_passes():
     local = datetime(2026, 10, 3, 14, 0).astimezone()
     m = model(last=RunOutcome("ok", finished_at=local))
     first = m.menu(local + timedelta(minutes=5))
-    assert first.status_lines[0].startswith("14:00 senkronize edildi · ")
+    assert first.status_lines[0].startswith("Synced at 14:00 · ")
     assert m.menu(local + timedelta(minutes=6)) == first  # no per-minute change, so no rebuild
     m.next_run_at = local + timedelta(minutes=2)  # overdue: no ticking clock either
     overdue = m.menu(local + timedelta(minutes=5))
-    assert overdue.status_lines[0].endswith("sonraki: birazdan")
+    assert overdue.status_lines[0].endswith("next: soon")
     assert m.menu(local + timedelta(minutes=6)) == overdue
-    assert m.menu(local + timedelta(days=1)).status_lines[0].startswith("Dün 14:00 senkronize edildi · ")
+    assert m.menu(local + timedelta(days=1)).status_lines[0].startswith("Synced at yesterday 14:00 · ")

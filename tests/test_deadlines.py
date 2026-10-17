@@ -56,7 +56,7 @@ def test_groups_by_local_day_and_separates_elapsed_times_on_the_same_day(tmp_pat
     assert [(d.day.isoformat(), d.past) for d in page.days] == [
         ("2026-10-13", False), ("2026-10-14", False), ("2026-10-13", True), ("2026-10-12", True)]
     assert [r.time for r in page.days[0].rows] == ["15:00", "21:00"]
-    assert page.days[1].title == "Yarın · 14 Ekim 2026"
+    assert page.days[1].title == "Tomorrow · October 14, 2026"
     assert page.days[1].rows[0].time == "01:30"
     assert page.days[0].rows[0].course == "CSE303 Algorithms"
     us = deadlines.calendar_page(state, tmp_path, NOW, ZoneInfo("America/Los_Angeles"))
@@ -180,7 +180,7 @@ def test_windows_calendar_navigation_scrolling_and_clicks_use_cached_rows(monkey
                         on_deadlines=lambda: page[0], on_deadline=opened.append)
     window.select(CALENDAR)
     assert window.visible_page() == CALENDAR
-    assert window.nav[CALENDAR].options["text"] == "Takvim"
+    assert window.nav[CALENDAR].options["text"] == "Calendar"
     buttons = [w for w in widgets if w.options.get("text") == "Ödev 1" and "command" in w.options]
     buttons[0].options["command"]()
     assert opened == [page[0].days[0].rows[0].target]

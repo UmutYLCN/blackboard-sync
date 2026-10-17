@@ -35,7 +35,7 @@ def test_pausing_stops_the_schedule_and_resuming_syncs_at_once(tmp_path):
     model.next_run_at = NOW - timedelta(minutes=1)
     assert model.due(NOW)
     model.pause()
-    assert not model.due(NOW) and model.icon() == Icon.PAUSED and model.activity() == "Duraklatıldı"
+    assert not model.due(NOW) and model.icon() == Icon.PAUSED and model.activity() == "Paused"
     model.resume(NOW)
     assert not model.paused and model.due(NOW)
 
@@ -76,7 +76,7 @@ def test_a_stopped_past_term_download_says_so(tmp_path):
     model.past_terms_loaded = True
     assert model.select_past_term("2025-2026 Bahar") and model.begin("past_term")
     model.finish_sync(RunOutcome("paused", finished_at=NOW), NOW)
-    assert model.busy is None and model.past_term == "" and "duraklatıldı" in model.past_message
+    assert model.busy is None and model.past_term == "" and "paused" in model.past_message
 
 
 def test_the_pause_survives_a_restart(tmp_path):
@@ -133,7 +133,7 @@ def test_a_sync_adds_what_it_brought_to_the_activity_with_sizes(tmp_path):
     model.finish_sync(outcome_with(("CSE301", "CSE301/week1.pdf", "new_file"), ("CSE301", "CSE301/n.md", "new_note")), NOW)
     rows = main_status(model, NOW).activity
     assert [(r.name, r.status, r.size) for r in rows] == [
-        ("week1.pdf", "Başarıyla indirildi", "2.0 KB"), ("n.md", "Not kaydedildi", "—")]
+        ("week1.pdf", "Successfully downloaded", "2.0 KB"), ("n.md", "Note saved", "—")]
     assert rows[0].course == "CSE301" and rows[0].kind == "PDF"
 
 
@@ -149,7 +149,7 @@ def test_activity_is_newest_first_capped_and_hides_unticked_courses(tmp_path):
     model.activity_log = model.activity_log * (ACTIVITY_LIMIT // 2)
     model.begin("sync")
     model.finish_sync(outcome_with(("C", "C/new.pdf", "updated_file")), NOW)
-    assert len(model.activity_log) == ACTIVITY_LIMIT and model.activity_log[0].label == "Güncellendi"
+    assert len(model.activity_log) == ACTIVITY_LIMIT and model.activity_log[0].label == "Updated"
 
 
 def test_activity_survives_a_restart_and_bad_entries_are_dropped(tmp_path):
@@ -176,21 +176,21 @@ def test_sizes_read_like_drives(size, text):
 def test_home_states(tmp_path):
     model = signed_in(tmp_path)
     home = main_status(model, NOW).home
-    assert (home.kind, home.title) == (STATE_SYNCED, "Güncel") and home.detail.startswith("Son senkron: ")
+    assert (home.kind, home.title) == (STATE_SYNCED, "Up to date") and home.detail.startswith("Last synced: ")
     model.begin("sync")
     assert main_status(model, NOW).home.kind == STATE_SYNCING
     model.busy = None
     model.pause()
     home = main_status(model, NOW).home
-    assert (home.kind, home.action, home.action_title) == (STATE_PAUSED, "pause", "Sürdür")
+    assert (home.kind, home.action, home.action_title) == (STATE_PAUSED, "pause", "Resume")
     model.resume(NOW)
     model.session = None
     home = main_status(model, NOW).home
     assert (home.kind, home.action) == (STATE_ATTENTION, "login")
     model.session = SESSION
-    model.last = RunOutcome("error", message="Ağ yok", finished_at=NOW)
+    model.last = RunOutcome("error", message="No network", finished_at=NOW)
     home = main_status(model, NOW).home
-    assert (home.kind, home.detail) == (STATE_ERROR, "Ağ yok")
+    assert (home.kind, home.detail) == (STATE_ERROR, "No network")
 
 
 def test_attention_lists_only_what_needs_the_student(tmp_path):
@@ -199,14 +199,14 @@ def test_attention_lists_only_what_needs_the_student(tmp_path):
     model.pause()
     assert attention_items(model) == ()  # a pause is on Home's card, not an alarm
     model.last = RunOutcome("ok", finished_at=NOW, warning_count=3)
-    assert [i.title for i in attention_items(model)] == ["3 uyarı"]
+    assert [i.title for i in attention_items(model)] == ["3 warnings"]
     model.last = RunOutcome("ok", finished_at=NOW, unreadable_courses=2, warning_count=3)
-    assert [i.title for i in attention_items(model)] == ["2 dersin içeriği okunamadı"]
-    model.last = RunOutcome("error", message="Ağ yok", finished_at=NOW)
-    assert [(i.title, i.detail) for i in attention_items(model)] == [("Senkron tamamlanamadı", "Ağ yok")]
+    assert [i.title for i in attention_items(model)] == ["Could not read 2 courses"]
+    model.last = RunOutcome("error", message="No network", finished_at=NOW)
+    assert [(i.title, i.detail) for i in attention_items(model)] == [("Sync did not finish", "No network")]
     model.session, model.session_expired = None, True
     items = attention_items(model)
-    assert items[0].title == "Oturum sona erdi" and (items[0].action, items[0].action_title) == ("login", "Giriş yap")
+    assert items[0].title == "Session expired" and (items[0].action, items[0].action_title) == ("login", "Sign in")
 
 
 def test_nothing_needs_attention_before_the_first_sign_in(tmp_path):

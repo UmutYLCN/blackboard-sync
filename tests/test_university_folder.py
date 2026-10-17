@@ -169,7 +169,7 @@ def test_uninstall_also_finds_files_an_older_version_left_in_the_chosen_folder(i
 def test_uninstall_dialog_and_menu_name_the_university_folder(tmp_path):
     model = AppModel(dest=tmp_path / "iCloud Drive", now=NOW)
     assert model.root == tmp_path / "iCloud Drive" / "University"
-    assert next(e for e in model.menu(NOW).entries if e.action == "folder").title == "University klasörünü aç"
+    assert next(e for e in model.menu(NOW).entries if e.action == "folder").title == "Open University folder"
 
 
 # -- the one-time move ----------------------------------------------------------
@@ -292,7 +292,7 @@ def test_app_start_queues_the_move_before_any_sync(icloud, client):
     model = jobs.load_model(icloud, NOW, autostart=False)
     assert model.pending_job() == MOVE_JOB and model.move_from == icloud.dest and model.migrating
     assert model.begin(MOVE_JOB)
-    assert "University klasörüne taşınıyor" in model.activity()
+    assert "Moving files to the University folder" in model.activity()
 
     result = jobs.run_move_guarded(icloud, model.move_from, model.dest)
 
@@ -300,7 +300,7 @@ def test_app_start_queues_the_move_before_any_sync(icloud, client):
     assert files_under(icloud.root) == files
     notes = model.finish_move(result.status, result.moved, len(result.kept))
     assert [(n.title, n.message) for n in notes] == [
-        ("Dosyalar University klasörüne taşındı", f"{len(files)} dosya University klasörüne taşındı.")]
+        ("Files moved to the University folder", f"{len(files)} files moved to the University folder.")]
     assert notes[0].data == {"open": str(icloud.root)}
     assert model.move_from is None and model.note == ""
     # Afterwards nothing is pending at the next start.
@@ -313,15 +313,15 @@ def test_app_start_queues_nothing_for_a_current_layout(icloud, client):
     assert jobs.load_model(icloud, NOW, autostart=False).pending is None
 
 
-def test_sync_outcome_with_a_move_notifies_in_turkish(tmp_path):
+def test_sync_outcome_with_a_move_notifies_the_student(tmp_path):
     model = AppModel(dest=tmp_path / "iCloud Drive", now=NOW)
     model.begin("sync")
     outcome = RunOutcome("ok", finished_at=NOW, moved_into_root=12, left_outside_root=2)
     notes = model.finish_sync(outcome, NOW)
-    assert notes[0].title == "Bazı dosyalar taşınamadı"
-    assert notes[0].message == "12 dosya University klasörüne taşındı. 2 dosya taşınamadı ve eski yerinde kaldı."
+    assert notes[0].title == "Some files could not be moved"
+    assert notes[0].message == "12 files moved to the University folder. 2 files could not be moved and stayed where they were."
     assert notes[0].data == {"open": str(tmp_path / "iCloud Drive" / "University")}
-    assert "2 dosya taşınamadı" in model.note
+    assert "2 files could not be moved" in model.note
 
 
 def test_sync_outcome_without_a_move_has_no_move_notification(tmp_path):
@@ -371,7 +371,7 @@ def test_folder_change_question_names_the_university_folders(tmp_path):
 
 def test_note_under_the_folder_field():
     assert settings_form.T_DEST_HINT.startswith(
-        "Dosyalar seçtiğiniz klasörün içindeki University klasörüne kaydedilir.")
+        "Files are saved in the University folder inside the folder you choose.")
 
 
 def test_failed_moves_keep_their_reason(icloud, client, monkeypatch):

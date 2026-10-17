@@ -18,14 +18,14 @@ def recycle(path: Path) -> None:
     except ImportError as exc:
         # Never fall back to SHFileOperation, which can permanently delete files
         # when recycling is unavailable (e.g. on a network/removable volume).
-        raise OSError("Geri Dönüşüm Kutusu API'si yüklenemedi; dosya korundu.") from exc
+        raise OSError("The Recycle Bin API could not be loaded; the file was kept.") from exc
 
     class RecycleOnlySink(FileOperationProgressSink):
         def PreDeleteItem(self, flags, item):
             if not flags & RECYCLE_IF_POSSIBLE:
                 # Raise a COM error: a plain Python return value is not an
                 # HRESULT failure in pywin32's server callback implementation.
-                raise COMException("Dosya geri dönüştürülemiyor; kalıcı silme iptal edildi.", scode=E_ABORT)
+                raise COMException("The file cannot be recycled; permanent deletion was cancelled.", scode=E_ABORT)
             return 0
 
     pythoncom.CoInitialize()
@@ -39,9 +39,9 @@ def recycle(path: Path) -> None:
         operation.DeleteItem(item, sink)
         result = operation.PerformOperations()
         if result or operation.GetAnyOperationsAborted():
-            raise OSError("Dosya Geri Dönüşüm Kutusu'na taşınamadı; dosya korundu.")
+            raise OSError("The file could not be moved to the Recycle Bin; it was kept.")
     except pywintypes.com_error as exc:
-        raise OSError(f"Geri Dönüşüm Kutusu işlemi başarısız: {exc}") from exc
+        raise OSError(f"The Recycle Bin operation failed: {exc}") from exc
     finally:
         operation = None
         pythoncom.CoUninitialize()

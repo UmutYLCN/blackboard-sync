@@ -26,7 +26,7 @@ from blackboard_sync.system import is_windows
 # `login --browser inapp` forces this method.
 INAPP = "inapp"
 POLL_SECONDS = 2
-WINDOW_TITLE = "Blackboard Sync – Giriş"
+WINDOW_TITLE = "Blackboard Sync – Sign in"
 WINDOW_SIZE = (520, 720)
 CLOSED_MESSAGE = "The sign-in window was closed before sign-in finished."
 WEBVIEW2_MISSING = (

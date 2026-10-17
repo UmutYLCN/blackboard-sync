@@ -53,7 +53,7 @@ def test_entire_shared_menu_maps_recursively(tmp_path):
     compare(entries, rendered)
     model.begin("sync")
     busy = presentation.render_menu(model.menu(datetime.now(timezone.utc)).entries, lambda *a: None, Menu, Item)
-    assert not next(i for i in busy.items if getattr(i, 'title', '') == 'Senkronize ediliyor…').enabled
+    assert not next(i for i in busy.items if getattr(i, 'title', '') == 'Syncing…').enabled
 
 
 def test_run_command_quotes_spaces_and_uses_absolute_interpreter():
@@ -105,7 +105,7 @@ def test_notification_keeps_course_lines_and_safe_click_target(tmp_path):
     ])
     note = changes_notification(outcome, tmp_path)
     fields = presentation.notification_fields(note)
-    assert fields['msg'] == 'CSE & $(bad): 2 yeni dosya\nMAT: 1 yeni not'
+    assert fields['msg'] == 'CSE & $(bad): 2 new files\nMAT: 1 new note'
     assert fields['launch'] == (tmp_path / 'Term').as_uri()
     script = notifications.toast_script(note)
     assert '$(bad)' not in script
@@ -198,7 +198,7 @@ def test_settings_window_lists_past_terms_once_and_dispatches_one_time_job(tmp_p
     monkeypatch.setattr(jobs, "run_sync", lambda *args, **kwargs: calls.append((args, kwargs)) or RunOutcome("ok"))
 
     app.refresh()  # not signed in: nothing to look up
-    assert lookups == [] and statuses[-1].past_message == "Eski dönemleri görmek için giriş yapın."
+    assert lookups == [] and statuses[-1].past_message == "Sign in to see past terms."
     app.model.session = {"saved_at": datetime.now(timezone.utc).timestamp(), "user": {"displayName": "Ada"}}
     app.refresh()
     assert lookups == []  # the overview does not ask the school; Genel does
@@ -214,7 +214,7 @@ def test_settings_window_lists_past_terms_once_and_dispatches_one_time_job(tmp_p
     assert calls[0][1]["term_name"] == "2025-2026 - Spring"
     assert calls[0][1]["runner"] is tray.cli_runner
     assert app.model.past_term == "" and app.model.busy is None
-    assert statuses[-1].past_message == "2025-2026 - Spring · 0 dosya indirildi (eski dönem)."
+    assert statuses[-1].past_message == "2025-2026 - Spring · 0 files downloaded (past term)."
     assert len(lookups) == 1
     app.window.state.open = False  # closed: no lookup without the window
     app.model.reload_past_terms()
@@ -251,7 +251,7 @@ def test_uninstall_from_settings_closes_the_window_without_the_tray_hint(tmp_pat
     monkeypatch.setattr(uninstall, "uninstall", lambda *args, **kwargs: ["kept a file"])
     monkeypatch.setattr(uninstall, "remove_app", lambda: [])
 
-    app.dispatch("uninstall")  # "Vazgeç": the window stays
+    app.dispatch("uninstall")  # "Cancel": the window stays
     assert app.window is not None and not destroyed and not app.uninstalling
     app.dispatch("uninstall")
     assert app.window is None and destroyed == [True] and hints == []
@@ -264,7 +264,7 @@ def test_settings_reject_invalid_url_and_busy_job(tmp_path, monkeypatch):
     values = FormValues('http://school.edu', str(tmp_path), False)
     assert app.settings_submitted(values, False)[1] == 'base_url'
     app.model.begin('sync')
-    assert 'bekleyin' in app.settings_submitted(values, False)[0]
+    assert 'Wait for' in app.settings_submitted(values, False)[0]
     assert not (tmp_path / 'settings.json').exists()
 
 
@@ -303,14 +303,14 @@ def test_settings_registry_failure_keeps_window_open(tmp_path, monkeypatch):
         raise PermissionError('Denied')
     monkeypatch.setattr(autostart, 'set_enabled', denied)
     values = FormValues(app.settings.base_url, str(app.settings.dest), True)
-    assert 'kaydedilemedi' in app.settings_submitted(values, False)[0]
+    assert 'Could not save' in app.settings_submitted(values, False)[0]
     assert not (tmp_path / 'settings.json').exists()
 
 
 def test_windows_reopen_hint_names_the_start_menu():
     from blackboard_sync.menubar.main_window_model import reopen_hint
     from blackboard_sync.windows.main_window import REOPEN_WHERE
-    assert "Başlat menüsünden" in reopen_hint(REOPEN_WHERE)
+    assert "the Start menu" in reopen_hint(REOPEN_WHERE)
     assert "Mac" not in reopen_hint(REOPEN_WHERE) and "Launchpad" not in reopen_hint(REOPEN_WHERE)
 
 
@@ -441,7 +441,7 @@ def test_windows_recent_badges_track_viewport_and_return_visit(monkeypatch, tmp_
                         on_section=lambda section: window.update_status(main_status(model, now)))
     window.fit = lambda: None  # geometry is covered by the section/layout test
     window.show()
-    pills = [(widget, options) for widget, options in drawings if options.get('text') == 'YENİ']
+    pills = [(widget, options) for widget, options in drawings if options.get('text') == 'NEW']
     assert len(pills) == 2
     assert all(options['fill'] == '#ffffff' for widget, options in pills)
     window.window.focus_displayof = lambda: window.window
@@ -530,11 +530,11 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     assert window.window.topmost is False
     assert visible() == ['start'] and window.state.open
     assert [window.nav[s].options['text'] for s in (OVERVIEW, ACTIVITY, ANNOUNCEMENTS, COURSES)] == [
-        'Başlangıç', 'Sync activity', 'Announcements', 'Dersler (1/2)']
+        'Get started', 'Sync activity', 'Announcements', 'Courses (1/2)']
     assert GENERAL not in window.nav  # Ayarlar is the gear at the top right
-    assert window.start_button.options['text'] == 'Giriş yap'
-    for text in ('Ders dosyalarınız burada başlayacak.', 'Okulunuzu ve klasörünüzü seçin',
-                 'Bu pencereyi kapatabilirsiniz. Tekrar görmek için Başlat menüsünden Blackboard Sync\'i açmanız yeterli.'):
+    assert window.start_button.options['text'] == 'Sign in'
+    for text in ('Your course files start here.', 'Choose your school and folder',
+                 'You can close this window. To see it again, open Blackboard Sync from the Start menu.'):
         assert text in labels()
     assert 'Dosyalarınız University klasörüne kaydedilir.' not in labels()
     assert window.button_bar.removed  # nothing changed yet
@@ -553,13 +553,13 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     # Ayarlar: the bar appears with a change and leaves with Vazgeç or Kaydet; the window stays.
     window.gear_button.options['command']()
     assert visible() == [GENERAL] and window.button_bar.removed
-    window.interval.set('Yalnızca elle')
+    window.interval.set('Only manually')
     assert not window.button_bar.removed
-    assert window.error_label.options['text'] == 'Kaydedilmemiş değişiklikler'
+    assert window.error_label.options['text'] == 'Unsaved changes'
     window.window.bindings['<Escape>'](None)  # Vazgeç
-    assert window.button_bar.removed and window.interval.get() == 'Her saat'
+    assert window.button_bar.removed and window.interval.get() == 'Every hour'
     window.check_updates.set(False)
-    save = next(w for w in widgets if w.options.get('text') == 'Kaydet')
+    save = next(w for w in widgets if w.options.get('text') == 'Save')
     save.options['command']()
     assert submitted[-1] == (window.values(), False) and submitted[-1][0].check_updates is False
     assert window.button_bar.removed and window.state.open and closed == []
@@ -573,8 +573,8 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     window.update_status(main_status(model, now))
     window.nav[OVERVIEW].options['command']()
     assert visible() == [OVERVIEW] and window.nav[OVERVIEW].options['text'] == 'Home'
-    assert window.state_title.options['text'] == 'Senkronize ediliyor…'
-    assert window.state_detail.options['text'] == 'Yeni içerik kontrol ediliyor…'
+    assert window.state_title.options['text'] == 'Syncing…'
+    assert window.state_detail.options['text'] == 'Checking for new content…'
     # The illustration takes the symbol's place and animates while the window is open.
     assert window.scene.running and window.status.shows_account
     assert window.sync_button.options['state'] == 'disabled'
@@ -584,8 +584,8 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     model.busy = None
     window.update_status(main_status(model, now))
     assert not window.scene.running  # gone with the sync
-    assert window.state_title.options['text'] == 'Güncel'
-    assert window.state_detail.options['text'].startswith('Son senkron: bugün ')
+    assert window.state_title.options['text'] == 'Up to date'
+    assert window.state_detail.options['text'].startswith('Last synced: today ')
     assert window.state_icon.options['text'] == '✓'
     window.sync_button.options['command']()
     assert actions == ['sync']
@@ -603,8 +603,8 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     assert actions == ['sync', 'pause']
     model.pause()
     window.update_status(main_status(model, now))
-    assert window.pause_button.options['text'] == '▶' and window.state_title.options['text'] == 'Duraklatıldı'
-    assert window.sync_button.options['state'] == 'disabled' and window.home_action.options['text'] == 'Sürdür'
+    assert window.pause_button.options['text'] == '▶' and window.state_title.options['text'] == 'Paused'
+    assert window.sync_button.options['state'] == 'disabled' and window.home_action.options['text'] == 'Resume'
     model.resume(now)
     window.update_status(main_status(model, now))
     assert window.pause_button.options['text'] == '⏸'
@@ -615,7 +615,7 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     window.nav[COURSES].options['command']()
     assert visible() == [COURSES]
     assert courses.T_HINT in labels() and courses.T_UNTICK_HINT in labels()
-    assert 'CSE301 Algorithms' in labels() and '2026-2027 Güz · senkronize edilmiyor' in labels()
+    assert 'CSE301 Algorithms' in labels() and '2026-2027 Güz · not syncing' in labels()
     def checks():
         return [check for entry in window.courses_frame.children for check in entry.children
                 if check.options.get('variable') is not None]
@@ -624,7 +624,7 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     checks()[1].options['variable'].set(True)
     checks()[1].options['command']()
     assert toggles == [('_2_1', True)]
-    assert window.nav[COURSES].options['text'] == 'Dersler'
+    assert window.nav[COURSES].options['text'] == 'Courses'
     assert [c.options['variable'].get() for c in checks()] == [True, True]  # drawn again
 
     # The wheel scrolls the section in view, not one that fits.
@@ -643,7 +643,7 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     window.show()  # started again: the overview, at the full size on a big screen
     assert visible() == [OVERVIEW] and window.state.open
     assert window.window.size == "940x640+810+360"
-    window.show(GENERAL)  # "Ayarlar…"
+    window.show(GENERAL)  # "Settings…"
     assert visible() == [GENERAL]
 
 
@@ -663,8 +663,8 @@ def test_windows_home_update_banners_show_hide_and_use_existing_action(monkeypat
     window.update_status(main_status(model, now))
     for box, title, button in banners:
         assert not box.removed
-        assert title.options['text'] == 'Blackboard Sync 99.0.0 hazır'
-        assert button.options['text'] == 'Güncelle' and button.options['state'] == 'normal'
+        assert title.options['text'] == 'Blackboard Sync 99.0.0 is ready'
+        assert button.options['text'] == 'Update' and button.options['state'] == 'normal'
         button.options['command']()
     window.update_button.options['command']()
     assert actions == ['update', 'update', 'update']
@@ -672,7 +672,7 @@ def test_windows_home_update_banners_show_hide_and_use_existing_action(monkeypat
     assert window.overview_update_banner[0].grid_options['row'] == 1
     model.updates.begin('download')
     window.update_status(main_status(model, now))
-    assert all(button.options['text'] == 'İndiriliyor…' and button.options['state'] == 'disabled'
+    assert all(button.options['text'] == 'Downloading…' and button.options['state'] == 'disabled'
                for _, _, button in banners)
     model.updates.finish_download()
     model.configured = True
@@ -769,7 +769,7 @@ def test_update_check_exception_recovers_row(tmp_path, monkeypatch):
     drain_one(app)
     assert app.model.updates.busy is None
     assert app.model.updates.not_before is not None
-    assert app.notices[0].title == 'Güncellemeler denetlenemedi'
+    assert app.notices[0].title == 'Could not check for updates'
 
 
 def test_update_install_waits_for_idle_and_quits_only_after_success(tmp_path, monkeypatch):
@@ -803,7 +803,7 @@ def test_update_install_failure_preserves_app_and_allows_retry(tmp_path, monkeyp
     app, workers = update_app(tmp_path, monkeypatch)
     monkeypatch.setattr(runtime, 'is_frozen', lambda: True)
     def fail(value):
-        raise updater.UpdateError('Güncelleme doğrulanamadı.')
+        raise updater.UpdateError('The update could not be verified.')
     monkeypatch.setattr(updater, 'install_windows_update', fail)
     app.model.updates.available = release()
     app.dispatch = lambda action: (_ for _ in ()).throw(AssertionError('Must not quit'))
@@ -811,7 +811,7 @@ def test_update_install_failure_preserves_app_and_allows_retry(tmp_path, monkeyp
     workers.pop()()
     drain_one(app)
     assert app.model.updates.busy is None
-    assert app.notices[0].message == 'Güncelleme doğrulanamadı.'
+    assert app.notices[0].message == 'The update could not be verified.'
     app.start_update()
     assert len(workers) == 1
 
@@ -926,7 +926,7 @@ def test_closing_the_window_keeps_the_tray_and_hints_once(tmp_path):
     window = app.window = SimpleNamespace(state=SimpleNamespace(open=False))
     app.window_closed()
     assert app.window is window  # kept hidden for the next start
-    assert '^' in TRAY_HINT and 'saatin yanındaki' in TRAY_HINT
+    assert '^' in TRAY_HINT and 'next to the clock' in TRAY_HINT
     app.window_closed()
     assert shown == [TRAY_HINT]
 

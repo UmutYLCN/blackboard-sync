@@ -103,7 +103,7 @@ def test_uninstall_refuses_live_sync_or_move_lock(config, hooks):
     record(config, "Term/Course/file.pdf")
     original = config.state_file.read_bytes()
     with run_lock(config.lock_file):
-        with pytest.raises(AlreadyRunning, match="senkronizasyonun"):
+        with pytest.raises(AlreadyRunning, match="Wait for the sync"):
             uninstall.uninstall(config, True, before_cleanup=lambda: calls.append(("prepare",)), **options)
     assert calls == [] and config.state_file.read_bytes() == original and course.exists()
 
@@ -112,7 +112,7 @@ def test_cli_refuses_running_gui_to_prevent_data_being_recreated(config, hooks):
     options, calls = hooks
     lock = jobs.single_instance(config)
     try:
-        with pytest.raises(AlreadyRunning, match="Önce Blackboard"):
+        with pytest.raises(AlreadyRunning, match="Quit Blackboard Sync first"):
             uninstall.uninstall(config, **options)
         assert not calls
     finally:
@@ -145,7 +145,7 @@ def test_trash_failure_keeps_file_but_finishes_data_and_app_cleanup(config, hook
 
     options["send_to_trash"] = fail
     warnings = uninstall.uninstall(config, True, **options)
-    assert "Dosya Çöp Sepeti" in warnings[0]
+    assert "Could not move a file to the Trash" in warnings[0]
     assert owned.exists() and list(config.data_dir.iterdir()) == []
     assert calls[-1] == ("app",)
 
@@ -155,7 +155,7 @@ def test_corrupt_state_keeps_courses_but_cleans_data(config, hooks):
     file_at(config.data_dir, "state.json", "not json")
     course = file_at(config.dest, "Term/Course/file.pdf")
     warnings = uninstall.uninstall(config, True, **options)
-    assert "kayıtları okunamadı" in warnings[0]
+    assert "records could not be read" in warnings[0]
     assert course.exists() and not list(config.data_dir.iterdir())
 
 
@@ -168,7 +168,7 @@ def test_app_removal_failure_is_reported_after_cleanup(config, hooks):
         raise PermissionError("denied")
 
     options["app_cleanup"] = fail
-    assert "elle silin" in uninstall.uninstall(config, **options)[0]
+    assert "delete it yourself" in uninstall.uninstall(config, **options)[0]
     assert ("startup",) in calls and ("web",) in calls
 
 
@@ -177,7 +177,7 @@ def test_symlink_lock_is_not_opened_or_followed(config, hooks, tmp_path):
     options, calls = hooks
     target = file_at(tmp_path, "keep", "untouched")
     config.lock_file.symlink_to(target)
-    with pytest.raises(BlackboardSyncError, match="bağlantı"):
+    with pytest.raises(BlackboardSyncError, match="is a link"):
         uninstall.uninstall(config, **options)
     assert target.read_text() == "untouched" and calls == []
 
@@ -228,7 +228,7 @@ def test_windows_invokes_inno_uninstaller_and_reports_missing(tmp_path, monkeypa
     assert uninstall.remove_app() == []
     assert launched[0][0] == str(installer)
     installer.unlink()
-    assert "Windows Ayarlar" in uninstall.remove_app()[0]
+    assert "Windows Settings" in uninstall.remove_app()[0]
 
 
 def test_startup_cleanup_uses_existing_platform_helpers(monkeypatch):

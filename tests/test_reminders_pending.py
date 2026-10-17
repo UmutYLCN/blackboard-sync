@@ -84,11 +84,11 @@ def test_reminder_text_names_the_course_the_work_and_the_local_time(tmp_path):
     state = state_with(tmp_path, item("a", datetime(2026, 10, 14, 7, 30, tzinfo=timezone.utc), "Proje"))
     (reminder,), _ = remind(state, tmp_path, NOW)
     title, message = deadlines.reminder_text(reminder, NOW, ISTANBUL)
-    assert title == "Teslim tarihi yaklaşıyor"
-    assert message == "CSE303 Algorithms: Proje\nSon teslim: 14 Ekim 10:30"
+    assert title == "Deadline coming up"
+    assert message == "CSE303 Algorithms: Proje\nDue: October 14 10:30"
     same_day = deadlines.Reminder("k", "1h", NOW + timedelta(minutes=50), "Proje", "CSE303", "x")
-    assert deadlines.reminder_text(same_day, NOW, ISTANBUL)[0] == "Teslime 1 saat kaldı"
-    assert deadlines.reminder_text(same_day, NOW, ISTANBUL)[1].endswith("Son teslim: 15:50")
+    assert deadlines.reminder_text(same_day, NOW, ISTANBUL)[0] == "Due in 1 hour"
+    assert deadlines.reminder_text(same_day, NOW, ISTANBUL)[1].endswith("Due: 15:50")
 
 
 # -- the app's check ----------------------------------------------------------------
@@ -107,7 +107,7 @@ def test_check_notifies_once_and_remembers_it_across_a_restart(tmp_path):
     config, model = app_model(tmp_path, item("a", NOW + timedelta(hours=5), "Proje"))
 
     notes = jobs.check_reminders(config, model, NOW)
-    assert [n.title for n in notes] == ["Teslim tarihi yaklaşıyor"]
+    assert [n.title for n in notes] == ["Deadline coming up"]
     assert notes[0].data == {"deadline": "https://school.edu/x"}
 
     jobs.save_model(config, model)
@@ -130,7 +130,7 @@ def test_many_reminders_at_once_become_one_notification(tmp_path):
     items = [item(f"i{n}", NOW + timedelta(hours=2 + n), f"Ödev {n}") for n in range(jobs.REMINDER_GROUP_FROM)]
     config, model = app_model(tmp_path, *items)
     notes = jobs.check_reminders(config, model, NOW)
-    assert len(notes) == 1 and notes[0].title == "Yaklaşan teslim tarihleri"
+    assert len(notes) == 1 and notes[0].title == "Upcoming deadlines"
     assert notes[0].message.count("\n") == len(items) - 1
 
 

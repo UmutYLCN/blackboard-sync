@@ -56,16 +56,16 @@ def test_home_update_banner_tracks_release_checks_and_downloads(first_run):
     model.updates.finish_check(updater.CheckResult("available", release), NOW, manual=False)
     banner = main_status(model, NOW).update_banner
     assert (banner.title, banner.button_title, banner.enabled) == (
-        "Blackboard Sync 9.9.9 hazır", "Güncelle", True)
+        "Blackboard Sync 9.9.9 is ready", "Update", True)
     model.updates.begin("check")
     banner = main_status(model, NOW).update_banner
-    assert banner.button_title == "Güncelle" and not banner.enabled
+    assert banner.button_title == "Update" and not banner.enabled
     # An offline check preserves the known newer version.
     model.updates.finish_check(updater.CheckResult("unknown"), NOW, manual=False)
     assert main_status(model, NOW).update_banner.enabled
     model.updates.begin("download")
     banner = main_status(model, NOW).update_banner
-    assert banner.button_title == "İndiriliyor…" and not banner.enabled
+    assert banner.button_title == "Downloading…" and not banner.enabled
     model.updates.finish_download("failed")
     assert main_status(model, NOW).update_banner.enabled
     model.updates.finish_check(updater.CheckResult("current"), NOW, manual=False)
@@ -109,8 +109,8 @@ def synced(name="UMUT YALÇIN", **kwargs):
 
 def test_day_time_names_today_and_yesterday_in_local_time():
     local = NOW.astimezone()
-    assert day_time(NOW, NOW) == f"bugün {local:%H:%M}"
-    assert day_time(NOW - timedelta(days=1), NOW) == f"dün {(NOW - timedelta(days=1)).astimezone():%H:%M}"
+    assert day_time(NOW, NOW) == f"today {local:%H:%M}"
+    assert day_time(NOW - timedelta(days=1), NOW) == f"yesterday {(NOW - timedelta(days=1)).astimezone():%H:%M}"
     older = NOW - timedelta(days=9)
     assert day_time(older, NOW) == f"{older.astimezone():%d.%m.%Y %H:%M}"
 
@@ -122,7 +122,7 @@ def test_first_run_until_set_up_and_signed_in_or_synced_once():
     # Signed in from the terminal before saving the window: the form must still be saved.
     assert is_first_run(signed_in(AppModel(DEST, NOW, configured=False)))
     assert not is_first_run(signed_in(AppModel(DEST, NOW)))
-    # Signed out (or expired) after syncing: the overview with "Giriş yap", not the steps again.
+    # Signed out (or expired) after syncing: the overview with "Sign in", not the steps again.
     assert not is_first_run(AppModel(DEST, NOW, last=RunOutcome("ok", finished_at=FINISHED)))
     assert not is_first_run(AppModel(DEST, NOW, session_expired=True))
 
@@ -130,14 +130,14 @@ def test_first_run_until_set_up_and_signed_in_or_synced_once():
 def test_the_first_section_is_called_baslangic_until_the_first_sign_in():
     status = main_status(AppModel(DEST, NOW, configured=False), NOW)
     assert status.first_run and status.overview_title == T_NAV_START
-    assert (status.start_title, status.start_login, status.start_enabled) == ("Giriş yap", True, True)
+    assert (status.start_title, status.start_login, status.start_enabled) == ("Sign in", True, True)
     status = main_status(synced(), NOW)
     assert not status.first_run and status.overview_title == T_NAV_OVERVIEW
 
 
 def test_baslangic_only_saves_when_already_signed_in():
     status = main_status(signed_in(AppModel(DEST, NOW, configured=False)), NOW)
-    assert (status.start_title, status.start_login) == ("Kaydet", False)
+    assert (status.start_title, status.start_login) == ("Save", False)
 
 
 def test_baslangic_says_where_to_sign_in_while_waiting():
@@ -145,8 +145,8 @@ def test_baslangic_says_where_to_sign_in_while_waiting():
     model.begin("login")
     model.login_method = "Google Chrome"
     status = main_status(model, NOW)
-    assert status.start_title == "Giriş bekleniyor…" and not status.start_enabled
-    assert status.start_message == "Google Chrome penceresinde giriş yapmanız bekleniyor…"
+    assert status.start_title == "Waiting for sign-in…" and not status.start_enabled
+    assert status.start_message == "Waiting for you to sign in in Google Chrome…"
     assert status.account.title == T_WAITING
 
 
@@ -154,9 +154,9 @@ def test_signed_in_card_shows_the_last_sync_once():
     status = main_status(synced(), NOW)
     card = status.account
     assert (card.initials, card.title, card.badge) == ("UY", "UMUT YALÇIN", "")  # no "Bağlı" badge
-    assert card.detail == last_sync_text(synced(), NOW) == f"Son senkron: {day_time(FINISHED, NOW)}"
+    assert card.detail == last_sync_text(synced(), NOW) == f"Last synced: {day_time(FINISHED, NOW)}"
     assert not card.warning and not card.action_title
-    assert status.sync_title == "Şimdi senkronize et" and status.sync_enabled
+    assert status.sync_title == "Sync now" and status.sync_enabled
 
 
 @pytest.mark.parametrize("job", ["sync", "past_term", "move"])
@@ -165,11 +165,11 @@ def test_while_syncing_the_card_keeps_the_last_sync_time(job):
     model.begin(job)
     card = main_status(model, NOW).account
     assert card.badge == T_SYNC_RUNNING
-    assert card.detail == f"Son senkron: {day_time(FINISHED, NOW)}"
+    assert card.detail == f"Last synced: {day_time(FINISHED, NOW)}"
     assert "pencereyi kapatabilirsiniz" not in card.detail
     status = main_status(model, NOW)
     assert not status.sync_enabled
-    assert status.sync_title == ("Senkronize ediliyor…" if job == "sync" else "Şimdi senkronize et")
+    assert status.sync_title == ("Syncing…" if job == "sync" else "Sync now")
 
 
 def test_the_first_sync_fills_the_empty_list_with_the_illustration():
@@ -177,7 +177,7 @@ def test_the_first_sync_fills_the_empty_list_with_the_illustration():
     assert sync_scene(model) == ("", "")
     model.begin("sync")
     status = main_status(model, NOW)
-    assert (status.scene, status.scene_line) == (SCENE_FIRST, T_FIRST_SYNC) == (SCENE_FIRST, "Dosyalarınız ilk kez indiriliyor…")
+    assert (status.scene, status.scene_line) == (SCENE_FIRST, T_FIRST_SYNC) == (SCENE_FIRST, "Downloading your files for the first time…")
     model.finish_sync(RunOutcome("ok", finished_at=FINISHED), NOW)
     assert main_status(model, NOW).scene == ""  # it stops with the sync
 
@@ -185,15 +185,15 @@ def test_the_first_sync_fills_the_empty_list_with_the_illustration():
 def test_later_syncs_show_it_small_above_the_list():
     model = synced(recent=[RecentItem("T/SWE305/Homework1.docx", "SWE305", NOW.isoformat())])
     model.begin("sync")
-    assert sync_scene(model) == (SCENE_COMPACT, "Yeni içerik kontrol ediliyor…")
+    assert sync_scene(model) == (SCENE_COMPACT, "Checking for new content…")
     # Synced before but nothing downloaded yet (or it was all cleared): still the large one.
     model = synced()
     model.begin("sync")
-    assert sync_scene(model) == (SCENE_FIRST, "Yeni içerik kontrol ediliyor…")
+    assert sync_scene(model) == (SCENE_FIRST, "Checking for new content…")
 
 
 @pytest.mark.parametrize("job, line", [
-    ("move", "Dosyalar yeni klasöre taşınıyor…"),
+    ("move", "Moving files to the new folder…"),
 ])
 def test_other_jobs_that_change_files_show_it_with_their_own_line(job, line):
     model = synced(recent=[RecentItem("T/C/a.pdf", "C", NOW.isoformat())])
@@ -222,27 +222,27 @@ def test_never_synced_and_failed_runs_are_named_honestly():
     assert last_sync_text(model, NOW) == T_NEVER_SYNCED
     model.last = RunOutcome("error", message="Blackboard'a ulaşılamadı", finished_at=FINISHED)
     card = main_status(model, NOW).account
-    assert card.detail == f"Son deneme: {day_time(FINISHED, NOW)}"
-    assert card.warning and card.message == "Senkron tamamlanamadı: Blackboard'a ulaşılamadı"
+    assert card.detail == f"Last attempt: {day_time(FINISHED, NOW)}"
+    assert card.warning and card.message == "Sync did not finish: Blackboard'a ulaşılamadı"
     assert card.badge == ""
 
 
 def test_expired_or_signed_out_card_offers_sign_in_and_keeps_sync_off():
     model = AppModel(DEST, NOW, last=RunOutcome("login_required", finished_at=FINISHED), session_expired=True)
     status = main_status(model, NOW)
-    assert (status.account.title, status.account.action_title) == (T_EXPIRED, "Giriş yap")
+    assert (status.account.title, status.account.action_title) == (T_EXPIRED, "Sign in")
     assert status.account.warning and status.account.action_enabled and not status.sync_enabled
     model = AppModel(DEST, NOW, last=RunOutcome("ok", finished_at=FINISHED))
     card = main_status(model, NOW).account
-    assert (card.title, card.initials, card.detail) == (T_SIGNED_OUT, "!", f"Son senkron: {day_time(FINISHED, NOW)}")
+    assert (card.title, card.initials, card.detail) == (T_SIGNED_OUT, "!", f"Last synced: {day_time(FINISHED, NOW)}")
     model.begin("sync")
     assert not main_status(model, NOW).account.action_enabled
 
 
 def test_a_note_shows_in_the_card():
     model = synced()
-    model.note = "Dosya bulunamadı."
-    assert main_status(model, NOW).account.message == "Dosya bulunamadı."
+    model.note = "File not found."
+    assert main_status(model, NOW).account.message == "File not found."
 
 
 def test_recent_rows_name_the_file_course_and_day():
@@ -255,15 +255,15 @@ def test_recent_rows_name_the_file_course_and_day():
         ("Quiz", "CSE301", ""),
     ]
     assert rows[0].path == "2026-2027 Güz/SWE305 Web/Homework1.docx"
-    assert recent_count(rows) == "2 dosya" and recent_count(()) == ""
+    assert recent_count(rows) == "2 files" and recent_count(()) == ""
 
 
 def test_course_rows_name_the_course_and_whether_it_syncs():
     on = CourseRow("_1_1", "CSE301", "Algorithms", "2026-2027 Güz", True)
     off = CourseRow("_2_1", "MTH201", "", "2026-2027 Güz", False)
     assert course_title(on) == "CSE301 Algorithms" and course_title(off) == "MTH201"
-    assert course_detail(on) == "2026-2027 Güz · senkronize ediliyor"
-    assert course_detail(off) == "2026-2027 Güz · senkronize edilmiyor"
+    assert course_detail(on) == "2026-2027 Güz · syncing"
+    assert course_detail(off) == "2026-2027 Güz · not syncing"
     assert enabled_count((on,)) == "" and enabled_count((on, off)) == "1/2"
 
 
@@ -296,7 +296,7 @@ def test_window_state_reopens_on_the_overview_and_keeps_the_open_section():
     assert state.show() == OVERVIEW and state.open
     state.select(COURSES)
     assert state.show() == COURSES  # started again while open: stays where it is
-    assert state.show(GENERAL) == GENERAL  # "Ayarlar…"
+    assert state.show(GENERAL) == GENERAL  # "Settings…"
     state.closed()
     assert not state.open
     assert state.show() == OVERVIEW  # opened again after closing
@@ -305,5 +305,5 @@ def test_window_state_reopens_on_the_overview_and_keeps_the_open_section():
 
 
 def test_reopen_hint_names_the_platforms_launcher():
-    assert "Applications veya Launchpad'den" in reopen_hint("Applications veya Launchpad'den")
-    assert reopen_hint("Başlat menüsünden").startswith("Bu pencereyi kapatabilirsiniz.")
+    assert "Applications or Launchpad" in reopen_hint("Applications or Launchpad")
+    assert reopen_hint("the Start menu").startswith("You can close this window.")

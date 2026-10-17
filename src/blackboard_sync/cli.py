@@ -79,19 +79,19 @@ def build_parser() -> argparse.ArgumentParser:
     check = sub.add_parser("check", help="verify the session and list the courses that would sync")
     _add_selection_args(check)
     check.add_argument("--dest", type=Path, help=argparse.SUPPRESS)
-    past = sub.add_parser("past-terms", help="indirilebilen eski dönemleri listele")
-    past.add_argument("--json", action="store_true", help="JSON olarak yazdır")
-    uninstall = sub.add_parser("uninstall", help="uygulamayı ve tüm uygulama verilerini kaldır")
+    past = sub.add_parser("past-terms", help="list the past terms that can be downloaded")
+    past.add_argument("--json", action="store_true", help="print as JSON")
+    uninstall = sub.add_parser("uninstall", help="remove the app and all of its data")
     uninstall.add_argument("--delete-course-files", action="store_true",
-                           help="kayıtlı ders dosyalarını da Çöp Sepeti’ne taşı (varsayılan: koru)")
+                           help="also move the downloaded course files to the Trash (default: keep them)")
     return parser
 
 
 def _add_selection_args(p: argparse.ArgumentParser) -> None:
     selection = p.add_mutually_exclusive_group()
-    selection.add_argument("--term", help='eski dönemi bir kez indir, ör. "2025-2026 Bahar"; otomatik güncellenmez')
+    selection.add_argument("--term", help='download a past term once, e.g. "2025-2026 Bahar"; it is not updated afterwards')
     selection.add_argument("--term-id", metavar="ID",
-                           help="eski dönemi Blackboard kimliğiyle bir kez indir (past-terms --json çıktısındaki id)")
+                           help="download a past term once by its Blackboard id (the id in past-terms --json)")
     selection.add_argument("--all-terms", action="store_true", help="sync every term, including past ones")
     p.add_argument(
         "--course",
@@ -214,7 +214,7 @@ def cmd_past_terms(args, config: Config) -> int:
         print(json.dumps({"terms": [o["label"] for o in options], "options": options, "warnings": warnings},
                          ensure_ascii=False))
     else:
-        print("\n".join(f"{o['label']}  (--term-id {o['id']})" for o in options) or "İndirilebilecek eski dönem yok.")
+        print("\n".join(f"{o['label']}  (--term-id {o['id']})" for o in options) or "No past terms to download.")
     return EXIT_OK
 
 
@@ -240,7 +240,7 @@ def cmd_uninstall(args, config: Config) -> int:
     warnings = uninstall(config, delete_course_files=args.delete_course_files)
     for warning in warnings:
         print(warning, file=sys.stderr)
-    print("Blackboard Sync uygulama verileri kaldırıldı.")
+    print("Blackboard Sync's app data was removed.")
     return EXIT_ERROR if warnings else EXIT_OK
 
 

@@ -23,7 +23,7 @@ def test_native_calendar_draws_days_and_routes_item_clicks(tmp_path):
     window, _, _ = make_window(tmp_path, on_deadlines=lambda: page[0], on_deadline=opened.append)
     window.select(CALENDAR)
     assert not window.pages[CALENDAR].isHidden()
-    assert str(window.nav_items[CALENDAR][2].stringValue()) == "Takvim"
+    assert str(window.nav_items[CALENDAR][2].stringValue()) == "Calendar"
     assert window.deadline_targets == [page[0].days[0].rows[0].target]
     class Click:
         def tag(self):
@@ -177,12 +177,12 @@ def test_idle_uses_text_when_neither_logo_nor_symbol_can_load(config, tmp_path, 
 
 
 def build(menu, n_courses=8):
-    courses = rumps.MenuItem("Dersler")
+    courses = rumps.MenuItem("Courses")
     for i in range(n_courses):
         course = rumps.MenuItem(f"CSE{i}", callback=lambda _s: None)
         course.add(rumps.MenuItem("dosya", callback=lambda _s: None))
         courses.add(course)
-    menu.update([rumps.MenuItem("durum"), rumps.separator, courses, rumps.MenuItem("Çık", callback=lambda _s: None)])
+    menu.update([rumps.MenuItem("durum"), rumps.separator, courses, rumps.MenuItem("Quit", callback=lambda _s: None)])
 
 
 def test_rebuilding_the_menu_does_not_grow_the_callback_registry():
@@ -256,12 +256,12 @@ def test_sidebar_switches_sections_and_baslangic_becomes_home(tmp_path):
     window, model, _ = make_window(tmp_path, AppModel(tmp_path, NOW, configured=False), rows=rows)
     try:
         titles = [str(window.nav_items[s][2].stringValue()) for s in (OVERVIEW, ACTIVITY, ANNOUNCEMENTS, COURSES)]
-        assert titles == ['Başlangıç', 'Sync activity', 'Announcements', 'Dersler']
+        assert titles == ['Get started', 'Sync activity', 'Announcements', 'Courses']
         assert list(window.nav_items) == [OVERVIEW, ACTIVITY, ANNOUNCEMENTS, COURSES, CALENDAR]
         assert GENERAL not in window.nav_items  # Ayarlar is the gear at the top right
         assert str(window.nav_items[COURSES][3].stringValue()) == '1/2'
         assert visible_page(window) == 'start' and window.section == OVERVIEW
-        assert str(window.start_button.title()) == 'Giriş yap'
+        assert str(window.start_button.title()) == 'Sign in'
         assert str(window.start_button.keyEquivalent()) == '\r'  # Return signs in
         assert all(view.isHidden() for view in window.topbar)  # Başlangıç signs in with its own form
         window.target.gear_(None)
@@ -285,15 +285,15 @@ def test_sidebar_switches_sections_and_baslangic_becomes_home(tmp_path):
         # Duraklat / Devam et, Ayarlar and the account sit at the top right, the status in Home's card.
         assert not any(view.isHidden() for view in window.topbar)
         assert str(window.avatar_text.stringValue()) == 'AS'
-        assert str(window.state_title.stringValue()) == 'Güncel'
-        assert str(window.state_detail.stringValue()).startswith('Son senkron: bugün ')
+        assert str(window.state_title.stringValue()) == 'Up to date'
+        assert str(window.state_detail.stringValue()).startswith('Last synced: today ')
         assert window.scene_view.isHidden() and not window.state_icon.isHidden()
         # A sync shows its illustration in the card and keeps the time of the last one.
         model.begin('sync')
         window.update_status(main_status(model, NOW))
-        assert str(window.state_title.stringValue()) == 'Senkronize ediliyor…'
+        assert str(window.state_title.stringValue()) == 'Syncing…'
         assert not window.scene_view.isHidden() and window.state_icon.isHidden()
-        assert str(window.sync_button.title()) == 'Senkronize ediliyor…' and not window.sync_button.isEnabled()
+        assert str(window.sync_button.title()) == 'Syncing…' and not window.sync_button.isEnabled()
     finally:
         window.window.close()
 
@@ -308,7 +308,7 @@ def test_home_buttons_recent_files_and_sign_in(tmp_path):
         signed_in(model).recent = [RecentItem('T/SWE305/Homework1.docx', 'SWE305', NOW.isoformat()),
                                    RecentItem('T/CSE301/week1.pdf', 'CSE301', NOW.isoformat())]
         window.update_status(main_status(model, NOW))
-        assert str(window.recent_count.stringValue()) == '2 dosya'
+        assert str(window.recent_count.stringValue()) == '2 files'
         buttons = [v for v in window.recent_scroll.documentView().subviews()
                    if hasattr(v, 'action') and v.action() == 'openRecent:']
         assert [b.toolTip() for b in buttons] == ['Homework1.docx', 'week1.pdf']
@@ -317,7 +317,7 @@ def test_home_buttons_recent_files_and_sign_in(tmp_path):
         window.target.sync_(None)
         window.target.folder_(None)
         assert actions == ['sync', 'folder']
-        # "Tümünü gör" opens Sync activity.
+        # "View all" opens Sync activity.
         window.target.showActivity_(None)
         assert window.section == 'activity'
         window.select('overview')
@@ -325,12 +325,12 @@ def test_home_buttons_recent_files_and_sign_in(tmp_path):
         model.session = None
         model.session_expired = True
         window.update_status(main_status(model, NOW))
-        assert str(window.state_title.stringValue()) == 'Giriş gerekli'
-        assert not window.home_action.isHidden() and str(window.home_action.title()) == 'Giriş yap'
+        assert str(window.state_title.stringValue()) == 'Sign-in needed'
+        assert not window.home_action.isHidden() and str(window.home_action.title()) == 'Sign in'
         assert not window.sync_button.isEnabled()
         window.target.homeAction_(None)
         assert actions[-1] == 'login'
-        assert [item.title for item in window.status.attention] == ['Oturum sona erdi']
+        assert [item.title for item in window.status.attention] == ['Session expired']
         window.target.attention_(type('B', (), {'tag': lambda self: 0})())
         assert actions[-1] == 'login'
     finally:
@@ -345,14 +345,14 @@ def test_pause_button_and_menu(tmp_path):
     try:
         signed_in(model)
         window.update_status(main_status(model, NOW))
-        assert window.pause_button.isEnabled() and window.pause_button.toolTip() == 'Senkronu duraklat'
+        assert window.pause_button.isEnabled() and window.pause_button.toolTip() == 'Pause syncing'
         window.target.pause_(None)
         assert actions == ['pause']
         model.pause()
         window.update_status(main_status(model, NOW))
-        assert window.pause_button.toolTip() == 'Senkronu sürdür'
-        assert str(window.state_title.stringValue()) == 'Duraklatıldı'
-        assert str(window.home_action.title()) == 'Sürdür' and not window.sync_button.isEnabled()
+        assert window.pause_button.toolTip() == 'Resume syncing'
+        assert str(window.state_title.stringValue()) == 'Paused'
+        assert str(window.home_action.title()) == 'Resume' and not window.sync_button.isEnabled()
         window.target.homeAction_(None)
         assert actions[-1] == 'pause'
     finally:
@@ -377,7 +377,7 @@ def test_sync_activity_lists_files_with_size_and_status(tmp_path):
         window.select(ACTIVITY)
         rows = window.status.activity
         assert [(r.name, r.status, r.size) for r in rows] == [
-            ('week1.pdf', 'Başarıyla indirildi', '14 KB'), ('note.md', 'Not kaydedildi', '—')]
+            ('week1.pdf', 'Successfully downloaded', '14 KB'), ('note.md', 'Note saved', '—')]
         buttons = [v for v in window.activity_scroll.documentView().subviews()
                    if hasattr(v, 'action') and v.action() == 'openActivity:']
         assert [b.toolTip() for b in buttons] == ['week1.pdf', 'note.md']
@@ -408,7 +408,7 @@ def test_announcements_page_puts_what_needs_attention_above_the_announcements(tm
         assert str(window.nav_items[ANNOUNCEMENTS][3].stringValue()) == '1'
         texts = [str(v.stringValue()) for v in window.announcements_scroll.documentView().subviews()
                  if hasattr(v, 'stringValue')]
-        assert texts[0] == 'Dikkat gerektirenler'
+        assert texts[0] == 'Needs your attention'
         window.target.showAnnouncements_(None)
         assert window.section == ANNOUNCEMENTS
     finally:
@@ -434,7 +434,7 @@ def test_recent_badges_and_viewport_seen_tracking(tmp_path, monkeypatch):
     native_window, native_scroll = window.window, window.recent_scroll
     try:
         pills = [v for v in native_scroll.documentView().subviews() if isinstance(v, AppKit.NSBox) and v.contentView() is not None
-                 and any(hasattr(label, 'stringValue') and label.stringValue() == 'YENİ'
+                 and any(hasattr(label, 'stringValue') and label.stringValue() == 'NEW'
                          for label in v.contentView().subviews())]
         assert len(pills) == 2
         window.state.show()
@@ -482,8 +482,8 @@ def test_home_update_banner_visibility_action_and_layout(tmp_path, appearance):
         window.update_status(main_status(model, NOW))
         for box, title, button in banners:
             assert not box.isHidden()
-            assert str(title.stringValue()) == 'Blackboard Sync 9.9.9 hazır'
-            assert str(button.title()) == 'Güncelle' and button.isEnabled()
+            assert str(title.stringValue()) == 'Blackboard Sync 9.9.9 is ready'
+            assert str(button.title()) == 'Update' and button.isEnabled()
             assert button.action() == window.update_button.action() == 'update:'
             button.performClick_(None)
         window.update_button.performClick_(None)
@@ -501,7 +501,7 @@ def test_home_update_banner_visibility_action_and_layout(tmp_path, appearance):
         window.update_status(main_status(model, NOW))
         assert not window.scene_view.isHidden()
         assert window.status_card.frame().origin.y == box.frame().origin.y + UPDATE_BANNER_HEIGHT + GAP
-        model.note = 'Yeni içerik kontrol ediliyor…'
+        model.note = 'Checking for new content…'
         window.window.setContentSize_((960, 378))  # 400-point window including its title bar
         window.update_status(main_status(model, NOW))
         assert box.frame().origin.y + box.frame().size.height < window.status_card.frame().origin.y
@@ -512,7 +512,7 @@ def test_home_update_banner_visibility_action_and_layout(tmp_path, appearance):
         model.busy = None
         model.updates.begin('download')
         window.update_status(main_status(model, NOW))
-        assert all(str(button.title()) == 'İndiriliyor…' and not button.isEnabled() for _, _, button in banners)
+        assert all(str(button.title()) == 'Downloading…' and not button.isEnabled() for _, _, button in banners)
         window.select(GENERAL)
         assert visible_page(window) == GENERAL and not window.update_button.isEnabled()
         model.updates.finish_download()
@@ -544,7 +544,7 @@ def test_a_running_sync_shows_the_illustration_and_it_stops_with_the_sync(tmp_pa
         model.begin('sync')
         window.update_status(main_status(model, NOW))
         assert not window.scene_view.isHidden() and window.state_icon.isHidden()
-        assert str(window.state_detail.stringValue()) == 'Dosyalarınız ilk kez indiriliyor…'
+        assert str(window.state_detail.stringValue()) == 'Downloading your files for the first time…'
         assert window.scene_view.animating and not window.recent_scroll.isHidden()
         # It keeps one timer across refreshes.
         timer = window.scene_view.timer
@@ -561,7 +561,7 @@ def test_a_running_sync_shows_the_illustration_and_it_stops_with_the_sync(tmp_pa
         model.begin('sync')
         window.update_status(main_status(model, NOW))
         assert not window.scene_view.isHidden() and window.scene_view.animating
-        assert str(window.state_detail.stringValue()) == 'Yeni içerik kontrol ediliyor…'
+        assert str(window.state_detail.stringValue()) == 'Checking for new content…'
         assert not window.recent_scroll.isHidden()
         # Only while Home is in view: on another page the motion stops, and returns with Home.
         window.select('activity')
@@ -604,12 +604,12 @@ def test_a_note_shows_in_the_status_card_and_the_account_menu_offers_sign_in(tmp
         model.last = RunOutcome('error', message='Blackboard\'a ulaşılamadı', finished_at=NOW)
         window.update_status(main_status(model, NOW))
         assert not window.account_message.isHidden()
-        assert str(window.account_message.stringValue()) == 'Senkron tamamlanamadı: Blackboard\'a ulaşılamadı'
-        assert str(window.state_title.stringValue()) == 'Senkron tamamlanamadı'
+        assert str(window.account_message.stringValue()) == 'Sync did not finish: Blackboard\'a ulaşılamadı'
+        assert str(window.state_title.stringValue()) == 'Sync did not finish'
         model.session, model.session_expired = None, True
         window.update_status(main_status(model, NOW))
-        assert str(window.home_action.title()) == 'Giriş yap' and not window.home_action.isHidden()
-        assert window.status.form.account_title == 'Giriş yap'  # what the account menu offers
+        assert str(window.home_action.title()) == 'Sign in' and not window.home_action.isHidden()
+        assert window.status.form.account_title == 'Sign in'  # what the account menu offers
         assert str(window.avatar_text.stringValue()) == '!'
     finally:
         window.window.close()
@@ -633,11 +633,11 @@ def test_genel_bar_appears_only_after_a_change_and_saving_keeps_the_window_open(
     try:
         assert window.button_bar.isHidden()
         assert str(window.cancel_button.keyEquivalent()) == ''
-        window.interval_popup.selectItemWithTitle_('Her 3 saatte')
+        window.interval_popup.selectItemWithTitle_('Every 3 hours')
         window.target.changed_(window.interval_popup)
         assert not window.button_bar.isHidden()
-        assert str(window.error_label.stringValue()) == 'Kaydedilmemiş değişiklikler'
-        assert [str(b.title()) for b in (window.cancel_button, window.save_button)] == ['Vazgeç', 'Kaydet']
+        assert str(window.error_label.stringValue()) == 'Unsaved changes'
+        assert [str(b.title()) for b in (window.cancel_button, window.save_button)] == ['Cancel', 'Save']
         assert str(window.cancel_button.keyEquivalent()) == '\x1b'
         window.target.cancel_(None)  # Vazgeç: back to what is saved
         assert window.button_bar.isHidden() and window.values().sync_interval_minutes == 60
@@ -709,7 +709,7 @@ def test_dersler_lists_courses_with_a_checkbox_and_saves_a_change(tmp_path):
         assert courses.T_HINT in labels and courses.T_UNTICK_HINT in labels
         document = window.courses_scroll.documentView()
         texts = [str(v.stringValue()) for v in document.subviews() if hasattr(v, 'stringValue')]
-        assert 'CSE301 Algorithms' in texts and 'T · senkronize ediliyor' in texts
+        assert 'CSE301 Algorithms' in texts and 'T · syncing' in texts
         boxes = [v for v in document.subviews() if hasattr(v, 'action') and str(v.action() or '') == 'courseToggled:']
         assert [int(b.state()) for b in boxes] == [1, 1] and str(window.nav_items[COURSES][3].stringValue()) == ''
         boxes[1].setState_(0)
@@ -718,7 +718,7 @@ def test_dersler_lists_courses_with_a_checkbox_and_saves_a_change(tmp_path):
         assert str(window.nav_items[COURSES][3].stringValue()) == '1/2'
         texts = [str(v.stringValue()) for v in window.courses_scroll.documentView().subviews()
                  if hasattr(v, 'stringValue')]
-        assert 'T · senkronize edilmiyor' in texts  # drawn again with the new choice
+        assert 'T · not syncing' in texts  # drawn again with the new choice
         rows.clear()
         window.refresh_courses()
         assert courses.T_EMPTY in [str(v.stringValue()) for v in window.courses_scroll.documentView().subviews()
@@ -736,19 +736,19 @@ def test_genel_past_terms_section_and_uninstall_button(tmp_path):
     try:
         labels = [str(view.stringValue()) for box in window.form_scroll.documentView().subviews()
                   for view in box.contentView().subviews() if hasattr(view, 'stringValue')]
-        sections = [label for label in labels if label in ('Hesap', 'Klasör', 'Eski dönemler', 'Senkron', 'Güncellemeler')]
-        assert sections == ['Hesap', 'Klasör', 'Senkron', 'Eski dönemler', 'Güncellemeler']
-        assert 'Eski dönem bir kez indirilir, güncellenmez.' in labels
-        assert str(window.past_button.title()) == 'Eski dönemi indir'
-        assert str(window.past_label.stringValue()) == 'Eski dönemleri görmek için giriş yapın.'
+        sections = [label for label in labels if label in ('Account', 'Folder', 'Past terms', 'Sync', 'Updates')]
+        assert sections == ['Account', 'Folder', 'Sync', 'Past terms', 'Updates']
+        assert 'A past term is downloaded once and not updated.' in labels
+        assert str(window.past_button.title()) == 'Download past term'
+        assert str(window.past_label.stringValue()) == 'Sign in to see past terms.'
         assert not window.past_button.isEnabled() and not window.past_popup.isEnabled()
-        assert str(window.uninstall_button.title()) == 'Uygulamayı kaldır…'
+        assert str(window.uninstall_button.title()) == 'Uninstall app…'
         window.target.uninstall_(None)
         assert actions == ['uninstall']
 
         model.session = {'saved_at': NOW.timestamp(), 'user': {'displayName': 'Ada'}}
         window.update_status(main_status(model, NOW))
-        assert str(window.past_label.stringValue()) == 'Eski dönemler yükleniyor…'
+        assert str(window.past_label.stringValue()) == 'Loading past terms…'
         model.finish_past_terms(['2025-2026 Bahar', '2025-2026 Güz'], RunOutcome('ok'))
         window.update_status(main_status(model, NOW))
         assert [str(t) for t in window.past_popup.itemTitles()] == ['2025-2026 Bahar', '2025-2026 Güz']
@@ -762,7 +762,7 @@ def test_genel_past_terms_section_and_uninstall_button(tmp_path):
         assert not window.past_button.isEnabled() and not window.uninstall_button.isEnabled()
         window.target.pastTerm_(None)
         assert downloads == ['2025-2026 Güz']
-        window.target.account_(None)  # signed in: "Hesaptan çıkış yap"
+        window.target.account_(None)  # signed in: "Sign out"
         assert actions[-1] == 'logout'
     finally:
         window.window.close()
@@ -787,7 +787,7 @@ def test_main_window_fits_a_short_screen_and_scrolls_with_the_bar_in_view(tmp_pa
         assert str(window.window.title()) == 'Blackboard Sync'
         assert isinstance(window.form_scroll, NSScrollView)
         window.select(GENERAL)
-        window.interval_popup.selectItemWithTitle_('Yalnızca elle')
+        window.interval_popup.selectItemWithTitle_('Only manually')
         window.changed(window.interval_popup)
         # A 13-inch MacBook (about 640 points free): the window fits and Genel scrolls.
         window.fit_to_screen(screen(640))
@@ -942,14 +942,14 @@ def test_main_menu_quits_edits_and_closes_the_window():
 
     main, window_menu = app.build_main_menu()
     menus = {str(item.title()): item.submenu() for item in main.itemArray()}
-    assert list(menus) == ["Blackboard Sync", "Düzen", "Pencere"]
+    assert list(menus) == ["Blackboard Sync", "Edit", "Window"]
     actions = {str(item.title()): (item.action(), str(item.keyEquivalent()))
                for menu in menus.values() for item in menu.itemArray() if not item.isSeparatorItem()}
-    assert actions["Blackboard Sync'ten çık"] == ("terminate:", "q")
-    assert actions["Yapıştır"] == ("paste:", "v")
-    assert actions["Kapat"] == ("performClose:", "w")
-    assert actions["Küçült"] == ("performMiniaturize:", "m")
-    assert window_menu is menus["Pencere"]
+    assert actions["Quit Blackboard Sync"] == ("terminate:", "q")
+    assert actions["Paste"] == ("paste:", "v")
+    assert actions["Close"] == ("performClose:", "w")
+    assert actions["Minimize"] == ("performMiniaturize:", "m")
+    assert window_menu is menus["Window"]
 
 
 def test_pause_stops_a_running_sync_and_resume_syncs_again(menu_app, monkeypatch):

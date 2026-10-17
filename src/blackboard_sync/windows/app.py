@@ -28,9 +28,9 @@ log = logging.getLogger(__name__)
 GUI_EXE = "Blackboard Sync.exe"
 CLI_EXE = "blackboard-sync-cli.exe"
 # Shown once, when the main window first closes: where the app went.
-TRAY_HINT_TITLE = "Blackboard Sync arka planda çalışıyor"
-TRAY_HINT = ("Menü için saatin yanındaki Blackboard Sync simgesine sağ tıklayın. "
-             "Simge görünmüyorsa gizli simgeleri gösteren ^ okuna tıklayın.")
+TRAY_HINT_TITLE = "Blackboard Sync is running in the background"
+TRAY_HINT = ("Right-click the Blackboard Sync icon next to the clock for the menu. "
+             "If you don't see it, click the ^ arrow that shows hidden icons.")
 TRAY_HINT_SHOWN = "tray-hint-shown"
 # Workers wake Tk with this virtual event, so the UI never polls its queue.
 WAKE_EVENT = "<<bbsync>>"
@@ -252,7 +252,7 @@ class TrayApp:
             webbrowser.open(release.page_url)
             return
         if self.model.busy is not None:
-            self.model.note = "Güncellemeden önce çalışan işlemin tamamlanmasını bekleyin."
+            self.model.note = "Wait for the running job to finish before updating."
             self.refresh()
             return
         if not self.model.updates.begin("download"):
@@ -268,7 +268,7 @@ class TrayApp:
             error = str(exc)
         except Exception:
             log.exception("Update installation failed")
-            error = "Güncelleme yüklenemedi; daha sonra tekrar deneyin."
+            error = "Could not install the update; try again later."
         self.post(self.update_installed, error)
 
     def update_installed(self, error):
@@ -360,7 +360,7 @@ class TrayApp:
                 try:
                     os.startfile(str(target))
                 except OSError:
-                    self.model.note = "Duyuru açılamadı."
+                    self.model.note = "Could not open the announcement."
             elif target:
                 webbrowser.open(target)
         elif action == "reveal":
@@ -380,16 +380,16 @@ class TrayApp:
                                 self.model.recent_seen.opened(item)
                         self.save()
                 except OSError:
-                    self.model.note = "Dosya veya klasör açılamadı."
+                    self.model.note = "Could not open the file or folder."
             else:
-                self.model.note = "Dosya veya klasör henüz yok; önce senkronize edin."
+                self.model.note = "The file or folder does not exist yet; sync first."
         elif action == "logout" and self.model.busy is None:
             # Asked from the main window, so the question belongs in front of it.
             parent = self.window.window if self.window_open else self.root
             if messagebox.askyesno(
-                "Hesaptan çıkış yapılsın mı?",
-                "Tüm giriş verileri silinir; yeniden giriş yaparken okul bilgilerinizi "
-                "tekrar girmeniz gerekir. İndirilen dosyalarınız korunacak.",
+                "Sign out?",
+                "All sign-in data is removed; you will need to enter your school details "
+                "again to sign in. Your downloaded files are kept.",
                 parent=parent,
             ):
                 try:
@@ -397,10 +397,10 @@ class TrayApp:
                     if warnings:
                         self.model.note = warnings[0]
                 except OSError:
-                    self.model.note = "Hesaptan çıkış yapılamadı."
+                    self.model.note = "Could not sign out."
         elif action == "quit":
             if self.model.busy or self.model.updates.busy == "download":
-                messagebox.showinfo("Blackboard Sync", "Önce çalışan işlemin tamamlanmasını bekleyin.", parent=self.root)
+                messagebox.showinfo("Blackboard Sync", "Wait for the running job to finish first.", parent=self.root)
                 return
             self.closed = True
             self.icon.stop()
@@ -530,7 +530,7 @@ class TrayApp:
             courses.set_enabled(self.config, course_id, enabled)
         except OSError as exc:
             log.warning("Could not save the course choice: %s", exc)
-            self.model.note = f"Ders seçimi kaydedilemedi: {exc.strerror or exc}"
+            self.model.note = f"Could not save the course choice: {exc.strerror or exc}"
         jobs.refresh_hidden_folders(self.config, self.model)
         if enabled and not self.uninstalling and self.model.account()[0] is not None:
             self.start_job("sync")  # does nothing while another job runs
@@ -572,7 +572,7 @@ class TrayApp:
             save_settings(self.config.data_dir, submission.settings)
         except OSError as exc:
             log.exception("Could not save settings")
-            return f"Ayarlar kaydedilemedi: {exc}", "dest"
+            return f"Could not save the settings: {exc}", "dest"
         self.settings = submission.settings
         self.model.apply_settings(
             self.settings.dest,

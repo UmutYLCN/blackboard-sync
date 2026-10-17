@@ -14,16 +14,17 @@ from blackboard_sync.config import Config
 from blackboard_sync.state import State
 from blackboard_sync.system import sync_root
 
-T_TAB = "Takvim"
-T_HINT = "Son teslim tarihleri senkron sırasında güncellenir. Saatler bu bilgisayarın yerel saatine göredir."
-T_UPCOMING = "Yaklaşan tarihler"
-T_PAST = "Tarihi geçenler"
-T_PAST_HINT = "Teslim durumu kontrol edilmez; tamamladığınız çalışmalar da burada görünebilir."
-T_EMPTY = "Kayıtlı son teslim tarihi yok."
-T_NOT_SYNCED = "Tarihleri görmek için senkronize edin."
-T_INCOMPLETE = "Bazı derslerin tarihleri güncellenemedi. Varsa önceki kayıtlar gösteriliyor."
-MONTHS = ("Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık")
-WEEKDAYS = ("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
+T_TAB = "Calendar"
+T_HINT = "Due dates are updated during a sync. Times are in this computer's local time."
+T_UPCOMING = "Upcoming"
+T_PAST = "Past due"
+T_PAST_HINT = "Submissions are not checked; work you already handed in may show here too."
+T_EMPTY = "No due dates saved."
+T_NOT_SYNCED = "Sync to see due dates."
+T_INCOMPLETE = "Some courses' due dates could not be updated. Earlier ones are shown where there are any."
+MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+          "November", "December")
+WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
 def parse_due(value: object) -> datetime | None:
@@ -48,7 +49,7 @@ def column_deadline(column: dict, course_id: str, base_url: str,
         url = f"{base_url.rstrip('/')}/ultra/redirect?" + urlencode({
             "redirectType": "nautilus", "courseId": course_id, "contentId": content_id,
         })
-    return {"id": column["id"], "title": column.get("displayName") or column.get("name") or "İsimsiz çalışma",
+    return {"id": column["id"], "title": column.get("displayName") or column.get("name") or "Untitled work",
             "due": due.isoformat(), "content_id": content_id, "url": url}
 
 
@@ -96,7 +97,7 @@ def due_reminders(state: State, root: Path, now: datetime, sent: dict,
             fresh = reached - done
             if fresh:
                 stage = next(name for name, _ in reversed(REMINDER_STAGES) if name in fresh)
-                reminders.append(Reminder(key, stage, due, item.get("title") or "İsimsiz çalışma",
+                reminders.append(Reminder(key, stage, due, item.get("title") or "Untitled work",
                                           course.get("name") or "", note_target(state, root, course_id, item)))
             if done | reached or record:
                 updated[key] = {"due": due.isoformat(), "stages": sorted(done | reached)}
@@ -105,15 +106,15 @@ def due_reminders(state: State, root: Path, now: datetime, sent: dict,
 
 
 def reminder_text(reminder: Reminder, now: datetime, zone: tzinfo | None = None) -> tuple[str, str]:
-    """(title, message) of a reminder's notification, in Turkish."""
+    """(title, message) of a reminder's notification."""
     local = reminder.due.astimezone(zone)
     when = local.strftime("%H:%M") if local.date() == now.astimezone(zone).date() else (
-        f"{local.day} {MONTHS[local.month - 1]} {local.strftime('%H:%M')}")
+        f"{MONTHS[local.month - 1]} {local.day} {local.strftime('%H:%M')}")
     if reminder.stage == "1h":
-        title = "Teslime 1 saat kaldı"
+        title = "Due in 1 hour"
     else:
-        title = "Teslim tarihi yaklaşıyor"
-    return title, f"{reminder.course}: {reminder.title}\nSon teslim: {when}"
+        title = "Deadline coming up"
+    return title, f"{reminder.course}: {reminder.title}\nDue: {when}"
 
 
 @dataclass(frozen=True)
@@ -143,8 +144,8 @@ class DeadlinePage:
 
 
 def day_title(day: date, today: date) -> str:
-    prefix = "Bugün" if day == today else "Yarın" if day == today + timedelta(days=1) else WEEKDAYS[day.weekday()]
-    return f"{prefix} · {day.day} {MONTHS[day.month - 1]} {day.year}"
+    prefix = "Today" if day == today else "Tomorrow" if day == today + timedelta(days=1) else WEEKDAYS[day.weekday()]
+    return f"{prefix} · {MONTHS[day.month - 1]} {day.day}, {day.year}"
 
 
 def note_target(state: State, root: Path, course_id: str, item: dict) -> str:
@@ -208,10 +209,10 @@ def upcoming_rows(page: DeadlinePage, limit: int) -> tuple[DeadlineRow, ...]:
 
 
 def when_text(row: DeadlineRow, today: date) -> str:
-    """"bugün 14:30", "yarın 09:00" or "15 Ekim 09:00": when a due date is, for a small row."""
+    """"today 14:30", "tomorrow 09:00" or "October 15 09:00": when a due date is, for a small row."""
     day = row.due.date()
     if day == today:
-        return f"bugün {row.time}"
+        return f"today {row.time}"
     if day == today + timedelta(days=1):
-        return f"yarın {row.time}"
-    return f"{day.day} {MONTHS[day.month - 1]} {row.time}"
+        return f"tomorrow {row.time}"
+    return f"{MONTHS[day.month - 1]} {day.day} {row.time}"

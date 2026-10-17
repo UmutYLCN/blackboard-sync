@@ -46,7 +46,10 @@ from blackboard_sync.menubar.model import (
     T_SYNC_NOW,
     T_SYNCING,
     AppModel,
+    courses_text,
+    files,
     login_waiting_line,
+    warnings_text,
     parse_iso,
     shorten,
 )
@@ -59,76 +62,76 @@ NAV_SECTIONS = (OVERVIEW, ACTIVITY, ANNOUNCEMENTS, COURSES, CALENDAR)
 SECTIONS = (*NAV_SECTIONS, GENERAL)
 
 T_WINDOW_TITLE = "Blackboard Sync"
-T_NAV_START = "Başlangıç"
+T_NAV_START = "Get started"
 T_NAV_OVERVIEW = "Home"
 T_NAV_ACTIVITY = "Sync activity"
-T_NAV_GENERAL = "Ayarlar"
+T_NAV_GENERAL = "Settings"
 T_NAV_COURSES = courses.T_TAB
 T_NAV_CALENDAR = deadlines.T_TAB
 
 # Başlangıç
-T_START_TITLE = "Ders dosyalarınız burada başlayacak."
+T_START_TITLE = "Your course files start here."
 T_START_INTRO = (
-    "Blackboard hesabınıza bağlanın. Ders dosyalarınız otomatik olarak bu bilgisayara insin; "
-    "her seferinde siteyi kontrol etmeniz gerekmesin."
+    "Connect your Blackboard account and your course files come to this computer by themselves; "
+    "no more checking the site every time."
 )
 START_STEPS = (
-    ("Okulunuzu ve klasörünüzü seçin", "Dosyaların nereye kaydedileceğini siz belirleyin."),
-    ("Blackboard'a giriş yapın", "Okulunuzun giriş ekranı açılır. Girişten sonra ilk senkron başlar."),
-    ("Dosyalarınız kendiliğinden güncellensin",
-     "Varsayılan olarak her saat. Sıklığı Ayarlar'dan değiştirebilirsiniz."),
+    ("Choose your school and folder", "You decide where the files are saved."),
+    ("Sign in to Blackboard", "Your school's sign-in page opens. The first sync starts after you sign in."),
+    ("Your files stay up to date",
+     "Every hour by default. You can change how often in Settings."),
 )
-T_START_FORM = "Başlayalım"
+T_START_FORM = "Let's get started"
 
 
 def reopen_hint(where: str) -> str:
-    """How to find the window again: ``where`` is "Applications veya Launchpad'den" or "Başlat menüsünden"."""
-    return f"Bu pencereyi kapatabilirsiniz. Tekrar görmek için {where} Blackboard Sync'i açmanız yeterli."
+    """How to find the window again: ``where`` is "Applications or Launchpad" or "the Start menu"."""
+    return f"You can close this window. To see it again, open Blackboard Sync from {where}."
 
 
 # Genel bakış
-T_OPEN_FOLDER = "Klasörü aç"
-T_NEW = "YENİ"
-T_UPDATE = "Güncelle"
-T_UPDATE_INTRO = "En yeni sürüme geçmek için güncelleyin."
-T_SYNC_RUNNING = "Senkron sürüyor"
-T_EXPIRED = "Oturum sona erdi"
-T_SIGNED_OUT = "Giriş yapılmadı"
-T_WAITING = "Giriş bekleniyor"
-T_NEVER_SYNCED = "Henüz senkronize edilmedi"
+T_OPEN_FOLDER = "Open folder"
+T_NEW = "NEW"
+T_UPDATE = "Update"
+T_UPDATE_INTRO = "Update to get the latest version."
+T_SYNC_RUNNING = "Syncing"
+T_EXPIRED = "Session expired"
+T_SIGNED_OUT = "Not signed in"
+T_WAITING = "Waiting for sign-in"
+T_NEVER_SYNCED = "Not synced yet"
 # The one line under the illustration on the very first sync.
-T_FIRST_SYNC = "Dosyalarınız ilk kez indiriliyor…"
+T_FIRST_SYNC = "Downloading your files for the first time…"
 # The sidebar's account card; Tk cuts long names itself (AppKit truncates).
 SIDEBAR_NAME_LIMIT = 20
 # Genel: the bar with Vazgeç / Kaydet, only while something is not saved.
-T_UNSAVED = "Kaydedilmemiş değişiklikler"
+T_UNSAVED = "Unsaved changes"
 
 # Home's status card, the headline and what it stands for.
 STATE_SYNCED, STATE_SYNCING, STATE_PAUSED, STATE_ATTENTION, STATE_ERROR = (
     "synced", "syncing", "paused", "attention", "error")
 T_STATE_TITLES = {
-    STATE_SYNCED: "Güncel",
-    STATE_SYNCING: "Senkronize ediliyor…",
-    STATE_PAUSED: "Duraklatıldı",
-    STATE_ATTENTION: "Giriş gerekli",
-    STATE_ERROR: "Senkron tamamlanamadı",
+    STATE_SYNCED: "Up to date",
+    STATE_SYNCING: "Syncing…",
+    STATE_PAUSED: "Paused",
+    STATE_ATTENTION: "Sign-in needed",
+    STATE_ERROR: "Sync did not finish",
 }
-T_VIEW_ALL = "Tümünü gör"
+T_VIEW_ALL = "View all"
 T_OPEN_FILE = "Open"
 T_SHOW_IN_FOLDER = "Show in folder"
-T_HOME_RECENT = "Son indirilenler"
+T_HOME_RECENT = "Recent downloads"
 T_HOME_ANNOUNCEMENTS = announcements.T_TAB
-T_HOME_CALENDAR = "Yaklaşan teslimler"
-T_OPEN_CALENDAR = "Takvimi aç"
-T_ALL_GOOD = "Her şey yolunda!"
-T_ALL_GOOD_DETAIL = "Dikkatinizi gerektiren bir şey burada görünecek."
-T_NO_DEADLINES = "Yaklaşan teslim yok."
-T_ACTIVITY_EMPTY = "Henüz indirilen bir şey yok."
-T_NEEDS_ATTENTION = "Dikkat gerektirenler"
-T_NAME, T_SIZE, T_STATUS = "Ad", "Boyut", "Durum"
-T_RESUME_SHORT = "Sürdür"
-T_PAUSE_SHORT = "Duraklat"
-HOME_RECENT_ROWS = 4  # files listed on Home before "Tümünü gör"
+T_HOME_CALENDAR = "Upcoming deadlines"
+T_OPEN_CALENDAR = "Open calendar"
+T_ALL_GOOD = "You're all caught up!"
+T_ALL_GOOD_DETAIL = "Things that need your attention will show up here."
+T_NO_DEADLINES = "No upcoming deadlines."
+T_ACTIVITY_EMPTY = "Nothing downloaded yet."
+T_NEEDS_ATTENTION = "Needs your attention"
+T_NAME, T_SIZE, T_STATUS = "Name", "File size", "Status"
+T_RESUME_SHORT = "Resume"
+T_PAUSE_SHORT = "Pause"
+HOME_RECENT_ROWS = 4  # files listed on Home before "View all"
 HOME_ANNOUNCEMENT_ROWS = 3  # attention items first, then the newest announcements
 HOME_DEADLINE_ROWS = 4
 
@@ -140,22 +143,22 @@ SCENE_COMPACT = "compact"  # small, above the list
 
 
 def day_time(when: datetime, now: datetime) -> str:
-    """Local "bugün 14:05", "dün 18:20" or "03.10.2026 09:15"."""
+    """Local "today 14:05", "yesterday 18:20" or "03.10.2026 09:15"."""
     local, today = when.astimezone(), now.astimezone().date()
     if local.date() == today:
-        return f"bugün {local:%H:%M}"
+        return f"today {local:%H:%M}"
     if local.date() == today - timedelta(days=1):
-        return f"dün {local:%H:%M}"
+        return f"yesterday {local:%H:%M}"
     return f"{local:%d.%m.%Y %H:%M}"
 
 
 def last_sync_text(model: AppModel, now: datetime) -> str:
-    """When the last sync finished; a failed one is called an attempt ("Son deneme")."""
+    """When the last sync finished; a failed one is called an attempt ("Last attempt")."""
     last = model.last
     if last is None:
         return T_NEVER_SYNCED
     when = day_time(last.finished_at or now, now)
-    return f"Son senkron: {when}" if last.status == "ok" else f"Son deneme: {when}"
+    return f"Last synced: {when}" if last.status == "ok" else f"Last attempt: {when}"
 
 
 def initials(name: str) -> str:
@@ -175,14 +178,14 @@ class AccountCard:
     badge: str = ""
     warning: bool = False
     message: str = ""  # a note or the last error
-    action_title: str = ""  # "Giriş yap" when nobody is signed in
+    action_title: str = ""  # "Sign in" when nobody is signed in
     action_enabled: bool = False
 
 
 @dataclass(frozen=True)
 class RecentRow:
     name: str
-    detail: str  # "SWE305 · bugün 14:05"
+    detail: str  # "SWE305 · today 14:05"
     path: str  # relative to the University folder, for ``open_target``
     kind: str  # "PDF", "DOCX", ... (empty without an extension)
     at: str = ""  # download version, for the visibility tracker
@@ -195,7 +198,7 @@ class HomeState:
 
     kind: str  # one of the STATE_* values
     title: str
-    detail: str  # "Son senkron: bugün 14:05", or the running job's line
+    detail: str  # "Last synced: today 14:05", or the running job's line
     action: str = ""  # a window action the card offers: "login" or "pause" (Devam et)
     action_title: str = ""
 
@@ -204,8 +207,8 @@ class HomeState:
 class ActivityRow:
     name: str
     course: str
-    detail: str  # "CSE303 · bugün 14:05"
-    status: str  # "Başarıyla indirildi"
+    detail: str  # "CSE303 · today 14:05"
+    status: str  # "Successfully downloaded"
     size: str  # "14 KB", "—" for a note without a measurable file
     path: str  # relative to the University folder, for ``open_target``
     kind: str  # "PDF", "MD", ...
@@ -248,8 +251,8 @@ def update_banner(model: AppModel) -> UpdateBanner | None:
     if not updater.enabled() or release is None or not updater.is_newer(release.version, __version__):
         return None
     return UpdateBanner(
-        title=f"Blackboard Sync {release.version} hazır",
-        button_title="İndiriliyor…" if updates.busy == "download" else T_UPDATE,
+        title=f"Blackboard Sync {release.version} is ready",
+        button_title="Downloading…" if updates.busy == "download" else T_UPDATE,
         enabled=updates.busy is None,
     )
 
@@ -300,7 +303,7 @@ def account_card(model: AppModel, now: datetime) -> AccountCard:
     message = model.note
     warning = False
     if not message and model.last is not None and model.last.status == "error" and model.busy is None:
-        message, warning = shorten(f"Senkron tamamlanamadı: {model.last.message}", 120), True
+        message, warning = shorten(f"Sync did not finish: {model.last.message}", 120), True
     if model.busy == "login":
         return AccountCard("…", T_WAITING, login_waiting_line(model.login_method), message=message)
     if name is None:
@@ -344,7 +347,7 @@ def attention_items(model: AppModel) -> tuple[AttentionItem, ...]:
     name, expired = model.account()
     if name is None and model.busy != "login":
         items.append(AttentionItem(T_EXPIRED if expired else T_SIGNED_OUT,
-                                   "Yeni dosyaları almak için giriş yapın.", "login", T_LOGIN))
+                                   "Sign in to get new files.", "login", T_LOGIN))
     banner = update_banner(model)
     if banner is not None:
         items.append(AttentionItem(banner.title, T_UPDATE_INTRO, "update", banner.button_title, warning=False))
@@ -353,13 +356,13 @@ def attention_items(model: AppModel) -> tuple[AttentionItem, ...]:
         items.append(AttentionItem(T_STATE_TITLES[STATE_ERROR], shorten(last.message, 160)))
     elif last is not None and last.status == "ok":
         if last.unreadable_courses:
-            items.append(AttentionItem(f"{last.unreadable_courses} dersin içeriği okunamadı",
-                                       "Blackboard içeriği vermedi; sonraki senkronda yeniden denenecek."))
+            items.append(AttentionItem(f"Could not read {courses_text(last.unreadable_courses)}",
+                                       "Blackboard did not return the content; the next sync tries again."))
         elif last.warning_count:
-            items.append(AttentionItem(f"{last.warning_count} uyarı",
-                                       "Bazı dosyalar indirilemedi; sonraki senkronda yeniden denenecek."))
+            items.append(AttentionItem(warnings_text(last.warning_count).capitalize(),
+                                       "Some files could not be downloaded; the next sync tries again."))
     if model.note and model.busy is None:
-        items.append(AttentionItem("Not", model.note, warning=False))
+        items.append(AttentionItem("Note", model.note, warning=False))
     return tuple(items)
 
 
@@ -421,8 +424,8 @@ def main_status(model: AppModel, now: datetime) -> MainStatus:
 
 
 def recent_count(rows: tuple[RecentRow, ...]) -> str:
-    """The count in the corner of Son indirilenler: "3 dosya" (empty without any)."""
-    return f"{len(rows)} dosya" if rows else ""
+    """The count in the corner of the recent files: "3 files" (empty without any)."""
+    return files(len(rows)) if rows else ""
 
 
 def course_title(row: courses.CourseRow) -> str:
@@ -432,7 +435,7 @@ def course_title(row: courses.CourseRow) -> str:
 
 def course_detail(row: courses.CourseRow) -> str:
     """The line under it: the term, and whether the course syncs."""
-    return " · ".join(part for part in (row.term, "senkronize ediliyor" if row.enabled else "senkronize edilmiyor") if part)
+    return " · ".join(part for part in (row.term, "syncing" if row.enabled else "not syncing") if part)
 
 
 def enabled_count(rows: tuple[courses.CourseRow, ...]) -> str:

@@ -62,10 +62,10 @@ Getter = Callable[..., requests.Response]
 
 
 class UpdateError(Exception):
-    """A download that must not be installed; the message is Turkish, for the student."""
+    """A download that must not be installed; the message is for the student."""
 
 
-STORE_UPDATES = "Güncellemeler Microsoft Store üzerinden yüklenir."
+STORE_UPDATES = "Updates are installed through the Microsoft Store."
 
 
 def enabled() -> bool:
@@ -207,22 +207,22 @@ def expected_checksum(release: Release, get: Getter = _get) -> str | None:
     if release.checksums_url is None:
         return None
     if not is_trusted_url(release.checksums_url):
-        raise UpdateError("Güncelleme doğrulanamadı.")
+        raise UpdateError("The update could not be verified.")
     try:
         resp = get(release.checksums_url, timeout=CHECK_TIMEOUT)
         try:
             if resp.status_code != 200:
-                raise UpdateError("Güncelleme doğrulanamadı.")
+                raise UpdateError("The update could not be verified.")
             text = resp.text
         finally:
             resp.close()
     except requests.RequestException as exc:
-        raise UpdateError("Güncelleme indirilemedi; internet bağlantınızı kontrol edin.") from exc
+        raise UpdateError("The update could not be downloaded; check your internet connection.") from exc
     digest = parse_checksums(text).get(release.asset_name)
     if digest is None:
         # The checksum file is the release's integrity contract: an installer it
         # does not list is not installed.
-        raise UpdateError("Güncelleme doğrulanamadı.")
+        raise UpdateError("The update could not be verified.")
     return digest
 
 
@@ -242,7 +242,7 @@ def download(release: Release, folder: Path, get: Getter = _get) -> Path:
     """
     _require_enabled()
     if not is_trusted_url(release.asset_url) or Path(release.asset_name).name != release.asset_name:
-        raise UpdateError("Güncelleme bu uygulamanın sayfasından gelmiyor; indirilmedi.")
+        raise UpdateError("The update does not come from this app's page; it was not downloaded.")
     expected = expected_checksum(release, get)
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / release.asset_name
@@ -254,7 +254,7 @@ def download(release: Release, folder: Path, get: Getter = _get) -> Path:
         try:
             # Assets redirect to GitHub's storage; never accept a non-HTTPS hop.
             if resp.status_code != 200 or not str(resp.url).startswith("https://"):
-                raise UpdateError("Güncelleme indirilemedi.")
+                raise UpdateError("The update could not be downloaded.")
             with open(partial, "wb") as fh:
                 for chunk in resp.iter_content(CHUNK):
                     fh.write(chunk)
@@ -264,7 +264,7 @@ def download(release: Release, folder: Path, get: Getter = _get) -> Path:
             resp.close()
     except requests.RequestException as exc:
         partial.unlink(missing_ok=True)
-        raise UpdateError("Güncelleme indirilemedi; internet bağlantınızı kontrol edin.") from exc
+        raise UpdateError("The update could not be downloaded; check your internet connection.") from exc
     except BaseException:
         partial.unlink(missing_ok=True)
         raise
@@ -272,7 +272,7 @@ def download(release: Release, folder: Path, get: Getter = _get) -> Path:
         expected is not None and digest.hexdigest() != expected
     ):
         partial.unlink(missing_ok=True)
-        raise UpdateError("İndirilen güncelleme doğrulanamadı; yüklenmedi.")
+        raise UpdateError("The downloaded update could not be verified; it was not installed.")
     os.replace(partial, target)
     log.info("downloaded %s (%d bytes, sha256 %s)", target, size, digest.hexdigest())
     return target

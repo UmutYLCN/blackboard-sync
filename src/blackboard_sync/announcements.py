@@ -13,10 +13,10 @@ from blackboard_sync.htmltext import body_text, feed_html
 from blackboard_sync.state import State
 
 T_TAB = "Announcements"
-T_HINT = "Güncel dönem derslerinizden senkronize edilen tüm duyurular."
-T_EMPTY = "Henüz duyuru yok. Duyurular senkronize edildiğinde burada görünecek."
-T_NO_DATE = "Tarih belirtilmedi"
-T_OPEN = "Duyuruyu aç"
+T_HINT = "Every announcement synced from your current-term courses."
+T_EMPTY = "No announcements yet. They show up here once they are synced."
+T_NO_DATE = "No date given"
+T_OPEN = "Open announcement"
 PREVIEW_LIMIT = 240
 
 
@@ -51,7 +51,7 @@ def metadata(ann: dict, course_id: str, course_name: str, source_path: str, outp
     duration = (ann.get("availability") or {}).get("duration") or {}
     return {
         "course_id": course_id, "course": course_name,
-        "title": html.unescape(ann.get("title") or "Duyuru"),
+        "title": html.unescape(ann.get("title") or "Announcement"),
         "date": duration.get("start") or ann.get("created") or ann.get("modified") or "",
         "preview": preview, "source_path": source_path, "output_key": output_key,
     }

@@ -518,10 +518,10 @@ def test_move_choice_queues_the_move_before_any_sync():
     assert m.pending_job() == MOVE_JOB and m.move_from == Path("/Users/ada/University")
     assert len(m.recent) == 1  # still valid: the files keep their place under the new folder
     assert m.begin(MOVE_JOB) and m.pending is None
-    assert m.icon() == Icon.SYNCING and "taşınıyor" in m.activity()
+    assert m.icon() == Icon.SYNCING and "Moving files" in m.activity()
     notes = m.finish_move("ok", 12, 0)
     assert m.busy is None and m.move_from is None and m.note == ""
-    assert notes[0].message == "12 dosya yeni klasöre taşındı."
+    assert notes[0].message == "12 files moved to the new folder."
     assert notes[0].data == {"open": str(Path("/Volumes/USB/Okul/University"))}
 
 
@@ -530,7 +530,7 @@ def test_files_left_behind_are_reported():
     m.apply_settings(Path("/Volumes/USB/Okul"), school_changed=False, dest_choice=DEST_MOVE)
     m.begin(MOVE_JOB)
     notes = m.finish_move("ok", 10, 2)
-    assert "2 dosya taşınamadı" in m.note and "2 dosya taşınamadı" in notes[0].message
+    assert "2 files could not be moved" in m.note and "2 files could not be moved" in notes[0].message
 
 
 def test_locked_move_is_retried_later():
@@ -539,7 +539,7 @@ def test_locked_move_is_retried_later():
     m.begin(MOVE_JOB)
     assert m.finish_move("locked", 0, 0) == []
     assert m.pending_job() == MOVE_JOB and m.move_from == Path("/Users/ada/University")
-    assert "birazdan" in m.note
+    assert "shortly" in m.note
 
 
 def test_failed_move_is_shown():
@@ -547,7 +547,7 @@ def test_failed_move_is_shown():
     m.apply_settings(Path("/Volumes/USB/Okul"), school_changed=False, dest_choice=DEST_MOVE)
     m.begin(MOVE_JOB)
     m.finish_move("error", 0, 0, "No space left on device")
-    assert m.pending is None and "taşınamadı" in m.note
+    assert m.pending is None and "Could not move" in m.note
 
 
 def test_redownload_choice_queues_a_sync_once_signed_in():
@@ -569,11 +569,11 @@ def test_a_new_folder_without_downloaded_files_queues_nothing():
 
 def test_dialog_offers_move_first_and_names_both_folders():
     assert [c for c, _ in settings_form.DEST_CHOICES] == [DEST_MOVE, DEST_REFETCH]
-    assert [t for _, t in settings_form.DEST_CHOICES] == ["Taşı", "Yeniden indir"]
+    assert [t for _, t in settings_form.DEST_CHOICES] == ["Move", "Download again"]
     old, new = Path("/tmp/University"), Path("/tmp/Okul")
     text = settings_form.dest_change_message(old, new, 7)
-    assert str(old) in text and str(new) in text and "7 dosya" in text
-    assert "taşınmaz" not in settings_form.T_DEST_HINT
+    assert str(old) in text and str(new) in text and "7 files" in text
+    assert "not moved" not in settings_form.T_DEST_HINT
 
 
 # -- the Windows tray app --------------------------------------------------------
@@ -667,7 +667,7 @@ def test_windows_runs_the_move_job_on_a_worker(tmp_path, monkeypatch):
     callback, args = app.events.get_nowait()
     callback(*args)
     assert calls == [(tmp_path / "old", tmp_path / "new")]
-    assert app.model.busy is None and app.notices[0].message == "4 dosya yeni klasöre taşındı."
+    assert app.model.busy is None and app.notices[0].message == "4 files moved to the new folder."
 
 
 def test_windows_dialog_defaults_to_move_and_escape_cancels(monkeypatch):
@@ -696,15 +696,15 @@ def test_windows_dialog_defaults_to_move_and_escape_cancels(monkeypatch):
     pressed[:] = [lambda dialog: dialog.bindings["<Return>"](None)]
     assert ask_dest_choice(None, Path("/a"), Path("/b"), 3) == DEST_MOVE
     titles = [w.options.get("text") for w in widgets]
-    assert ["Taşı", "Yeniden indir", "Vazgeç"] == [t for t in titles if t in (
-        "Taşı", "Yeniden indir", "Sadece yeni dosyalar", "Vazgeç")]
+    assert ["Move", "Download again", "Cancel"] == [t for t in titles if t in (
+        "Move", "Download again", "Sadece new fileslar", "Cancel")]
 
     widgets = []
     pressed[:] = [lambda dialog: dialog.bindings["<Escape>"](None)]
     assert ask_dest_choice(None, Path("/a"), Path("/b"), 3) is None
 
     widgets = []
-    pressed[:] = [lambda dialog: next(w for w in widgets if w.options.get("text") == "Yeniden indir")
+    pressed[:] = [lambda dialog: next(w for w in widgets if w.options.get("text") == "Download again")
                   .options["command"]()]
     assert ask_dest_choice(None, Path("/a"), Path("/b"), 3) == DEST_REFETCH
 
@@ -750,4 +750,4 @@ def test_macos_alert_buttons_map_to_choices(monkeypatch):
     for response, choice in enumerate(expected):
         Alert.response = response
         assert main_window.ask_dest_choice(Path("/a"), Path("/b"), 2) == choice
-    assert Alert.buttons == ["Taşı", "Yeniden indir", "Vazgeç"]
+    assert Alert.buttons == ["Move", "Download again", "Cancel"]

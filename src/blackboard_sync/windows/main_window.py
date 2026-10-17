@@ -21,7 +21,7 @@ from blackboard_sync.windows.sync_scene_view import SyncScene, background_of
 
 log = logging.getLogger(__name__)
 
-REOPEN_WHERE = "Başlat menüsünden"
+REOPEN_WHERE = "the Start menu"
 WIDTH, HEIGHT = 940, 640  # what it opens with when the work area has room
 MIN_WIDTH = 760
 SIDEBAR = 200
@@ -1131,7 +1131,7 @@ def ask_uninstall(parent, dest):
     frame = ttk.Frame(dialog, padding=20)
     frame.grid(sticky="nsew")
     ttk.Label(frame, text=uninstall.MESSAGE, wraplength=480, justify="left").grid(sticky="w", pady=(0, 16))
-    path = ttk.Label(frame, text=f"Geri Dönüşüm Kutusu'na taşınacak dosyaların klasörü:\n{dest}",
+    path = ttk.Label(frame, text=f"The folder whose files go to the Recycle Bin:\n{dest}",
                      wraplength=480, justify="left")
 
     def toggled():
@@ -1144,8 +1144,8 @@ def ask_uninstall(parent, dest):
                     command=toggled).grid(row=1, column=0, sticky="w")
     buttons = ttk.Frame(frame)
     buttons.grid(row=3, column=0, sticky="e", pady=(16, 0))
-    ttk.Button(buttons, text="Kaldır", command=confirm).pack(side="left", padx=4)
-    cancel = ttk.Button(buttons, text="Vazgeç", command=dialog.destroy)
+    ttk.Button(buttons, text="Uninstall", command=confirm).pack(side="left", padx=4)
+    cancel = ttk.Button(buttons, text="Cancel", command=dialog.destroy)
     cancel.pack(side="left", padx=4)
     dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
     dialog.bind("<Escape>", lambda _e: dialog.destroy())

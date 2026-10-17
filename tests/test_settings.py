@@ -148,7 +148,7 @@ def test_another_school_requires_signing_in_again():
 
 
 def test_new_folder_is_reported_but_not_a_new_sign_in(tmp_path):
-    result = submit(FormValues(ISTUN.base_url, str(tmp_path / "Dersler"), True), ISTUN)
+    result = submit(FormValues(ISTUN.base_url, str(tmp_path / "Courses"), True), ISTUN)
     assert result.dest_changed and not result.needs_login(login_pressed=False)
 
 
@@ -167,7 +167,7 @@ def test_nothing_syncs_on_schedule_before_the_first_save():
     m = AppModel(dest=ISTUN.dest, now=NOW, configured=False)
     later = NOW + timedelta(hours=2)
     assert not m.due(later)
-    assert "Ayarlar" in m.status_lines(later)[0]
+    assert "Settings" in m.status_lines(later)[0]
     assert not any(line.startswith("Sonraki senkron") for line in m.status_lines(later))
     m.apply_settings(ISTUN.dest, school_changed=False)
     assert m.due(later)
@@ -185,7 +185,7 @@ def test_new_school_forgets_the_old_result():
     m = AppModel(dest=ISTUN.dest, now=NOW, last=RunOutcome(status="ok", finished_at=NOW), login_prompted=True)
     m.apply_settings(ISTUN.dest, school_changed=True)
     assert m.last is None and m.login_prompted is False
-    assert "giriş" in m.note
+    assert "Sign in" in m.note
 
 
 def test_settings_window_opens_no_taller_than_the_screen():

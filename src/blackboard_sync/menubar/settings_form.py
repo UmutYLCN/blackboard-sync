@@ -38,13 +38,13 @@ from blackboard_sync.settings import (
 )
 from blackboard_sync.system import sync_root
 
-T_INTERVAL_LABEL = "Otomatik senkron"
+T_INTERVAL_LABEL = "Automatic sync"
 # (minutes, menu text); 0 means only by hand. Order is the order in the window.
 INTERVAL_OPTIONS = (
-    (30, "Her 30 dakikada"),
-    (60, "Her saat"),
-    (180, "Her 3 saatte"),
-    (0, "Yalnızca elle"),
+    (30, "Every 30 minutes"),
+    (60, "Every hour"),
+    (180, "Every 3 hours"),
+    (0, "Only manually"),
 )
 assert tuple(minutes for minutes, _ in INTERVAL_OPTIONS) == SYNC_INTERVAL_CHOICES
 
@@ -53,42 +53,42 @@ def interval_title(minutes: int) -> str:
     return dict(INTERVAL_OPTIONS)[normalize_sync_interval(minutes)]
 
 
-T_SECTION_ACCOUNT = "Hesap"
-T_SECTION_FOLDER = "Klasör"
-T_SECTION_PAST_TERMS = "Eski dönemler"
-T_SECTION_GENERAL = "Senkron"
-T_SECTION_UPDATES = "Güncellemeler"
-T_URL_LABEL = "Okulunuzun Blackboard adresi"
-T_URL_PLACEHOLDER = "https://blackboard.okul.edu.tr"
-T_URL_HINT = "Adresi değiştirirseniz yeni okul için tekrar giriş yapmanız gerekir."
-T_DEST_LABEL = "Dosyaların kaydedileceği klasör"
+T_SECTION_ACCOUNT = "Account"
+T_SECTION_FOLDER = "Folder"
+T_SECTION_PAST_TERMS = "Past terms"
+T_SECTION_GENERAL = "Sync"
+T_SECTION_UPDATES = "Updates"
+T_URL_LABEL = "Your school's Blackboard address"
+T_URL_PLACEHOLDER = "https://blackboard.school.edu"
+T_URL_HINT = "If you change the address you need to sign in again for the new school."
+T_DEST_LABEL = "Folder to save files in"
 # Under the folder field: what ``system.sync_root`` does with the chosen folder.
-T_DEST_ROOT_NOTE = "Dosyalar seçtiğiniz klasörün içindeki University klasörüne kaydedilir."
+T_DEST_ROOT_NOTE = "Files are saved in the University folder inside the folder you choose."
 T_DEST_HINT = (
     f"{T_DEST_ROOT_NOTE} "
-    "Klasörü değiştirirseniz indirilmiş dosyaları yeni klasöre taşımayı ya da "
-    "yeniden indirmeyi seçebilirsiniz."
+    "If you change the folder you can move the downloaded files to the new one or "
+    "download them again."
 )
-T_PAST_DOWNLOAD = "Eski dönemi indir"
-T_PAST_DOWNLOADING = "İndiriliyor…"
-T_PAST_NOTE = "Eski dönem bir kez indirilir, güncellenmez."
-T_PAST_EMPTY = "İndirilebilecek eski dönem yok."
-T_PAST_SIGN_IN = "Eski dönemleri görmek için giriş yapın."
+T_PAST_DOWNLOAD = "Download past term"
+T_PAST_DOWNLOADING = "Downloading…"
+T_PAST_NOTE = "A past term is downloaded once and not updated."
+T_PAST_EMPTY = "No past terms to download."
+T_PAST_SIGN_IN = "Sign in to see past terms."
 T_UNINSTALL = uninstall.BUTTON_TITLE
-T_AUTOSTART = "Bilgisayar açılınca başlat"
-T_CHECK_UPDATES = "Güncellemeleri otomatik denetle"
-T_CHOOSE_FOLDER = "Seç…"
-T_CHOOSE_FOLDER_PROMPT = "Bu klasörü kullan"
-T_CHOOSE_FOLDER_MESSAGE = "Ders dosyalarının kaydedileceği klasörü seçin."
-T_SAVE = "Kaydet"
-T_CANCEL = "Vazgeç"
-T_BUSY = "Önce çalışan işlemin tamamlanmasını bekleyin."
-T_DEST_NOT_CHANGED = "Klasör değiştirilmedi."
+T_AUTOSTART = "Start when the computer starts"
+T_CHECK_UPDATES = "Check for updates automatically"
+T_CHOOSE_FOLDER = "Choose…"
+T_CHOOSE_FOLDER_PROMPT = "Use this folder"
+T_CHOOSE_FOLDER_MESSAGE = "Choose the folder to save your course files in."
+T_SAVE = "Save"
+T_CANCEL = "Cancel"
+T_BUSY = "Wait for the running job to finish first."
+T_DEST_NOT_CHANGED = "The folder was not changed."
 
 # Asked when the folder changes and the old one holds downloaded files.
-T_DEST_CHANGE_TITLE = "İndirilen dosyalar ne olsun?"
-T_MOVE = "Taşı"
-T_REDOWNLOAD = "Yeniden indir"
+T_DEST_CHANGE_TITLE = "What should happen to the downloaded files?"
+T_MOVE = "Move"
+T_REDOWNLOAD = "Download again"
 # (choice, button); the first one is the default.
 DEST_CHOICES = ((DEST_MOVE, T_MOVE), (DEST_REFETCH, T_REDOWNLOAD))
 
@@ -116,10 +116,10 @@ def dest_change_message(old: Path, new: Path, files: int) -> str:
     """
     old, new = sync_root(old), sync_root(new)
     return (
-        f"“{display_path(old)}” klasöründe Blackboard'dan indirilmiş {files} dosya var.\n\n"
-        f"{T_MOVE}: dosyalar “{display_path(new)}” klasörüne taşınır, yeniden indirilmez. "
-        "Kendi eklediğiniz dosyalar eski klasörde kalır.\n"
-        f"{T_REDOWNLOAD}: dosyalar yeni klasöre yeniden indirilir; eski klasöre dokunulmaz."
+        f"“{display_path(old)}” holds {files} file{'' if files == 1 else 's'} downloaded from Blackboard.\n\n"
+        f"{T_MOVE}: the files are moved to “{display_path(new)}”, not downloaded again. "
+        "Files you added yourself stay in the old folder.\n"
+        f"{T_REDOWNLOAD}: the files are downloaded again into the new folder; the old folder is not touched."
     )
 
 
@@ -200,18 +200,18 @@ def window_status(model: AppModel) -> WindowStatus:
     if model.busy == "login":
         account, title, action = login_waiting_line(model.login_method), T_LOGGING_IN, "login"
     elif name is not None:
-        account, title, action = f"Giriş yapıldı: {name}", T_LOGOUT, "logout"
+        account, title, action = f"Signed in as {name}", T_LOGOUT, "logout"
     elif expired:
-        account, title, action = "Oturum sona erdi; tekrar giriş yapın.", T_LOGIN, "login"
+        account, title, action = "Your session expired; sign in again.", T_LOGIN, "login"
     else:
-        account, title, action = "Henüz giriş yapılmadı.", T_LOGIN, "login"
+        account, title, action = "Not signed in yet.", T_LOGIN, "login"
     updates = model.updates
     if updates.busy == "check":
-        update_title, update_action = "Denetleniyor…", "check_updates"
+        update_title, update_action = "Checking…", "check_updates"
     elif updates.busy == "download":
-        update_title, update_action = "İndiriliyor…", "update"
+        update_title, update_action = "Downloading…", "update"
     elif updates.available is not None:
-        update_title, update_action = f"{updates.available.version} sürümüne güncelle", "update"
+        update_title, update_action = f"Update to {updates.available.version}", "update"
     else:
         update_title, update_action = T_CHECK_NOW, "check_updates"
     past_terms, past_message, past_enabled = past_term_status(model)
@@ -221,7 +221,7 @@ def window_status(model: AppModel) -> WindowStatus:
         account_title=title,
         account_action=action,
         account_enabled=idle,
-        version=f"Sürüm {__version__}",
+        version=f"Version {__version__}",
         update_title=update_title,
         update_action=update_action,
         update_enabled=updates.busy is None,
@@ -236,7 +236,7 @@ def window_status(model: AppModel) -> WindowStatus:
 def initial_values(saved: Settings | None, current: Settings, autostart: bool) -> FormValues:
     """Prefill the window with the saved settings, else what the app uses now.
 
-    On the first launch "Bilgisayar açılınca başlat" is ticked: the app is
+    On the first launch "Start when the computer starts" is ticked: the app is
     meant to run in the background without the student thinking about it.
     """
     shown = saved or current

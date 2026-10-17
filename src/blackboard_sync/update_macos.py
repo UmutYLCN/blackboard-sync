@@ -57,28 +57,28 @@ TOOL_TIMEOUT = 300  # spctl may ask Apple about the notarization ticket
 QUIT_WAIT_SECONDS = 120
 
 T_BUSY = (
-    "Senkronizasyon veya klasör taşıma sürerken güncelleme yüklenemez; "
-    "bittikten sonra tekrar deneyin."
+    "The update cannot be installed while a sync or a folder move runs; "
+    "try again once it has finished."
 )
-T_KEPT = "mevcut sürüm korunuyor."
-T_ATTACH = f"Güncellemenin disk görüntüsü açılamadı; {T_KEPT}"
-T_NO_APP = f"Disk görüntüsünde Blackboard Sync bulunamadı; {T_KEPT}"
-T_WRONG_APP = f"İndirilen güncelleme beklenen Blackboard Sync sürümü değil; {T_KEPT}"
-T_BAD_SIGNATURE = f"Güncellemenin imzası geçersiz; {T_KEPT}"
-T_OTHER_TEAM = f"Güncelleme Blackboard Sync geliştiricisi tarafından imzalanmamış; {T_KEPT}"
-T_NOT_NOTARIZED = f"Güncelleme Apple tarafından onaylanmamış (notarization); {T_KEPT}"
-T_COPY = f"Yeni sürüm kopyalanamadı; {T_KEPT}"
-T_HANDOFF = f"Güncelleme başlatılamadı; {T_KEPT}"
+T_KEPT = "the current version is kept."
+T_ATTACH = f"The update's disk image could not be opened; {T_KEPT}"
+T_NO_APP = f"Blackboard Sync was not found in the disk image; {T_KEPT}"
+T_WRONG_APP = f"The downloaded update is not the expected Blackboard Sync version; {T_KEPT}"
+T_BAD_SIGNATURE = f"The update's signature is not valid; {T_KEPT}"
+T_OTHER_TEAM = f"The update is not signed by the Blackboard Sync developer; {T_KEPT}"
+T_NOT_NOTARIZED = f"The update is not notarized by Apple; {T_KEPT}"
+T_COPY = f"The new version could not be copied; {T_KEPT}"
+T_HANDOFF = f"The update could not be started; {T_KEPT}"
 
 # Why the app cannot replace itself; shown before the steps of the manual update.
-T_FROM_IMAGE = "Blackboard Sync disk görüntüsünden çalıştığı için kendini güncelleyemiyor."
+T_FROM_IMAGE = "Blackboard Sync runs from its disk image, so it cannot update itself."
 T_TRANSLOCATED = (
-    "macOS, Blackboard Sync'i geçici bir konumdan çalıştırdığı için uygulama kendini güncelleyemiyor."
+    "macOS runs Blackboard Sync from a temporary location, so the app cannot update itself."
 )
 T_NOT_WRITABLE = (
-    "Blackboard Sync'in bulunduğu klasöre yazılamadığı için uygulama kendini güncelleyemiyor."
+    "The folder Blackboard Sync is in cannot be written to, so the app cannot update itself."
 )
-T_UNSIGNED = "Bu sürüm imzasız olduğu için güncelleme otomatik doğrulanıp yüklenemiyor."
+T_UNSIGNED = "This version is unsigned, so the update cannot be verified and installed automatically."
 
 # Waits for the app (pid $1) to exit, swaps $3 into $2 with $4 as the old app's
 # temporary name, then starts the app with $5 (``open``). Any failed step puts

@@ -41,16 +41,15 @@ UPDATE_INTERVAL = timedelta(days=1)
 UPDATE_FIRST_DELAY = timedelta(minutes=2)
 UPDATE_RETRY_DELAY = timedelta(hours=1)
 
-# (report key, Turkish label). Turkish keeps the noun singular after a number:
-# "2 yeni dosya".
+# (report key, label after one, label after more): "1 new file", "2 new files".
 CHANGE_LABELS = (
-    ("new_files", "yeni dosya"),
-    ("updated_files", "güncellenen dosya"),
-    ("new_notes", "yeni not"),
-    ("updated_notes", "güncellenen not"),
-    ("new_announcements", "yeni duyuru"),
-    ("updated_announcements", "güncellenen duyuru"),
-    ("skipped_large_files", "büyük dosya indirilmedi"),
+    ("new_files", "new file", "new files"),
+    ("updated_files", "updated file", "updated files"),
+    ("new_notes", "new note", "new notes"),
+    ("updated_notes", "updated note", "updated notes"),
+    ("new_announcements", "new announcement", "new announcements"),
+    ("updated_announcements", "updated announcement", "updated announcements"),
+    ("skipped_large_files", "large file not downloaded", "large files not downloaded"),
 )
 # Report key -> what happened, for Sync activity (the same words the window shows).
 ENTRY_KINDS = {
@@ -62,45 +61,45 @@ ENTRY_KINDS = {
     "updated_announcements": "updated_announcement",
 }
 ENTRY_LABELS = {
-    "new_file": "Başarıyla indirildi",
-    "updated_file": "Güncellendi",
-    "new_note": "Not kaydedildi",
-    "updated_note": "Not güncellendi",
-    "new_announcement": "Duyuru kaydedildi",
-    "updated_announcement": "Duyuru güncellendi",
+    "new_file": "Successfully downloaded",
+    "updated_file": "Updated",
+    "new_note": "Note saved",
+    "updated_note": "Note updated",
+    "new_announcement": "Announcement saved",
+    "updated_announcement": "Announcement updated",
 }
 ACTIVITY_LIMIT = 300
 
-# What "Son indirilenler" lists: things that appeared or changed locally.
+# What "Recent downloads" lists: things that appeared or changed locally.
 RECENT_KEYS = ("new_files", "updated_files", "new_notes", "new_announcements")
 
 STATUS_BY_EXIT = {EXIT_OK: "ok", EXIT_LOGIN_REQUIRED: "login_required", EXIT_LOCKED: "locked"}
 
 # Menu text
-T_SYNC_NOW = "Şimdi senkronize et"
-T_SYNCING = "Senkronize ediliyor…"
-T_PAST_LOADING = "Eski dönemler yükleniyor…"
-T_LOGIN = "Giriş yap"
-T_LOGGING_IN = "Giriş bekleniyor…"
-T_LOGOUT = "Hesaptan çıkış yap"
-T_EXPIRED = "⚠ Oturum sona erdi — Giriş yap"
-T_RECENT = "Son indirilenler"
-T_RECENT_EMPTY = "Henüz yeni bir şey yok"
-T_PAUSE = "Senkronu duraklat"
-T_RESUME = "Senkronu sürdür"
-T_PAUSED = "Duraklatıldı"
-T_SETTINGS = "Ayarlar…"
-T_QUIT = "Çık"
-T_AUTO_SYNC_OFF = "otomatik senkron kapalı"
-T_CHECK_NOW = "Şimdi denetle"
-T_CHECKING_UPDATES = "Güncellemeler denetleniyor…"
-T_DOWNLOADING_UPDATE = "Güncelleme indiriliyor…"
-T_UPDATE_WAIT = "Güncellemeden önce çalışan işlemin tamamlanmasını bekleyin; sonra tekrar deneyin."
+T_SYNC_NOW = "Sync now"
+T_SYNCING = "Syncing…"
+T_PAST_LOADING = "Loading past terms…"
+T_LOGIN = "Sign in"
+T_LOGGING_IN = "Waiting for sign-in…"
+T_LOGOUT = "Sign out"
+T_EXPIRED = "⚠ Session expired — Sign in"
+T_RECENT = "Recent downloads"
+T_RECENT_EMPTY = "Nothing new yet"
+T_PAUSE = "Pause syncing"
+T_RESUME = "Resume syncing"
+T_PAUSED = "Paused"
+T_SETTINGS = "Settings…"
+T_QUIT = "Quit"
+T_AUTO_SYNC_OFF = "automatic sync off"
+T_CHECK_NOW = "Check now"
+T_CHECKING_UPDATES = "Checking for updates…"
+T_DOWNLOADING_UPDATE = "Downloading update…"
+T_UPDATE_WAIT = "Wait for the running job to finish before updating, then try again."
 
 
 def open_folder_title(root: Path) -> str:
-    """The menu item that opens the folder the files are in, named after it: "University klasörünü aç"."""
-    return f"{root.name or root} klasörünü aç"
+    """The menu item that opens the folder the files are in, named after it: "Open University folder"."""
+    return f"Open {root.name or root} folder"
 
 
 # Update actions of the menu row and the settings window. "check_updates"
@@ -141,7 +140,7 @@ def sync_arguments(job: str, settings: Settings, term_name: str = "", term_id: s
         elif term_name:
             args.extend(["--term", term_name])
         else:
-            raise ValueError("Eski dönem seçilmedi.")
+            raise ValueError("No past term was chosen.")
     return args
 
 
@@ -200,7 +199,7 @@ class RunOutcome:
         for c in data.get("courses") or []:
             counts = {
                 key: (int(c.get(key) or 0) if key == "skipped_large_files" else len(c.get(key) or []))
-                for key, _ in CHANGE_LABELS
+                for key, _one, _many in CHANGE_LABELS
             }
             recent = [p for key in RECENT_KEYS for p in c.get(key) or []]
             code = c.get("code") or c.get("name") or "?"
@@ -270,13 +269,14 @@ def parse_sync_output(stdout: str, returncode: int, stderr: str, now: datetime) 
 
 
 def course_line(course: CourseChange) -> str:
-    """e.g. "CSE303: 2 yeni dosya, 1 yeni duyuru"."""
+    """e.g. "CSE303: 2 new files, 1 new announcement"."""
     return f"{course.code}: {counts_text(course.counts)}"
 
 
 def counts_text(counts: dict[str, int]) -> str:
-    parts = [f"{counts[key]} {label}" for key, label in CHANGE_LABELS if counts.get(key)]
-    return ", ".join(parts) if parts else "yeni bir şey yok"
+    parts = [f"{counts[key]} {one if counts[key] == 1 else many}"
+             for key, one, many in CHANGE_LABELS if counts.get(key)]
+    return ", ".join(parts) if parts else "nothing new"
 
 
 def format_time(when: datetime, now: datetime) -> str:
@@ -285,7 +285,7 @@ def format_time(when: datetime, now: datetime) -> str:
     if local.date() == local_now.date():
         return local.strftime("%H:%M")
     if local.date() == (local_now - timedelta(days=1)).date():
-        return f"dün {local.strftime('%H:%M')}"
+        return f"yesterday {local.strftime('%H:%M')}"
     return local.strftime("%d.%m %H:%M")
 
 
@@ -328,7 +328,7 @@ def changes_notification(outcome: RunOutcome, dest: Path) -> Notification | None
     folders = [str(dest / c.folder) for c in changed]
     target = folders[0] if len(folders) == 1 else os.path.commonpath(folders)
     return Notification(
-        title="Blackboard: yeni içerik",
+        title="Blackboard: new content",
         message="\n".join(course_line(c) for c in changed),
         data={"open": target},
     )
@@ -336,8 +336,8 @@ def changes_notification(outcome: RunOutcome, dest: Path) -> Notification | None
 
 def update_notification(release: Release) -> Notification:
     return Notification(
-        title=f"Blackboard Sync {release.version} hazır — Güncelle",
-        message="Yeni sürümü indirmek için tıklayın.",
+        title=f"Blackboard Sync {release.version} is ready — Update",
+        message="Click to download the new version.",
         data={"action": "update"},
     )
 
@@ -345,33 +345,46 @@ def update_notification(release: Release) -> Notification:
 def login_waiting_line(method: str) -> str:
     """The status line while signing in, naming where: a browser or the app's window."""
     if method == INAPP:
-        return "Açılan pencerede giriş yapmanız bekleniyor…"
+        return "Waiting for you to sign in in the window that opened…"
     if method:
-        return f"{method} penceresinde giriş yapmanız bekleniyor…"
-    return "Tarayıcıda giriş yapmanız bekleniyor…"
+        return f"Waiting for you to sign in in {method}…"
+    return "Waiting for you to sign in in the browser…"
+
+
+def files(count: int) -> str:
+    """ "1 file", "12 files"."""
+    return f"{count} file" if count == 1 else f"{count} files"
+
+
+def courses_text(count: int) -> str:
+    return f"{count} course" if count == 1 else f"{count} courses"
+
+
+def warnings_text(count: int) -> str:
+    return f"{count} warning" if count == 1 else f"{count} warnings"
 
 
 def move_summary(moved: int, kept: int) -> str:
-    """ "12 dosya yeni klasöre taşındı." plus what stayed behind, if anything."""
-    text = f"{moved} dosya yeni klasöre taşındı." if moved else "Hiçbir dosya taşınmadı."
+    """ "12 files moved to the new folder." plus what stayed behind, if anything."""
+    text = f"{files(moved)} moved to the new folder." if moved else "No files were moved."
     if kept:
-        text += f" {kept} dosya taşınamadı ve eski klasörde kaldı."
+        text += f" {files(kept)} could not be moved and stayed in the old folder."
     return text
 
 
 def root_move_summary(moved: int, kept: int, root: Path) -> str:
-    """ "12 dosya University klasörüne taşındı." plus what stayed behind, if anything."""
+    """ "12 files moved to the University folder." plus what stayed behind, if anything."""
     name = root.name or str(root)
-    text = f"{moved} dosya {name} klasörüne taşındı." if moved else "Hiçbir dosya taşınmadı."
+    text = f"{files(moved)} moved to the {name} folder." if moved else "No files were moved."
     if kept:
-        text += f" {kept} dosya taşınamadı ve eski yerinde kaldı."
+        text += f" {files(kept)} could not be moved and stayed where they were."
     return text
 
 
 def login_notification() -> Notification:
     return Notification(
-        title="Blackboard oturumu sona erdi",
-        message="Yeni dosyaları almak için menüden “Giriş yap”ı seçin.",
+        title="Blackboard session expired",
+        message="Choose “Sign in” in the menu to get new files.",
         data={"action": "login"},
     )
 
@@ -415,8 +428,8 @@ class UpdateState:
             self.not_before = now + UPDATE_RETRY_DELAY
             if manual:
                 return [Notification(
-                    "Güncellemeler denetlenemedi",
-                    "İnternet bağlantınızı kontrol edip daha sonra tekrar deneyin.",
+                    "Could not check for updates",
+                    "Check your internet connection and try again later.",
                     {},
                 )]
             return []
@@ -428,13 +441,13 @@ class UpdateState:
             self.notified = release.version
             return [update_notification(release)]
         if manual and release is None:
-            return [Notification("Blackboard Sync güncel", f"Kullandığınız sürüm ({__version__}) en yenisi.", {})]
+            return [Notification("Blackboard Sync is up to date", f"You have the latest version ({__version__}).", {})]
         return []
 
     def finish_download(self, error: str = "") -> list[Notification]:
         self.busy = None
         if error:
-            return [Notification("Güncelleme yüklenemedi", error, {})]
+            return [Notification("Could not install the update", error, {})]
         return []
 
     def finish_install(self, current: str = __version__) -> list[Notification]:
@@ -444,13 +457,13 @@ class UpdateState:
             return []
         if version == current:
             return [Notification(
-                f"Blackboard Sync {version} sürümüne güncellendi",
-                "Ayarlarınız ve indirdiğiniz ders dosyaları korundu.",
+                f"Blackboard Sync was updated to {version}",
+                "Your settings and downloaded course files were kept.",
                 {},
             )]
         return [Notification(
-            "Güncelleme yüklenemedi",
-            f"Blackboard Sync {version} yerine konamadı; {current} sürümü kullanılmaya devam ediyor.",
+            "Could not install the update",
+            f"Blackboard Sync {version} could not be put in place; version {current} is still in use.",
             {},
         )]
 
@@ -459,7 +472,7 @@ class UpdateState:
         if self.busy == "download":
             return MenuEntry(T_DOWNLOADING_UPDATE, enabled=False)
         if self.available is not None:
-            return MenuEntry(f"Güncelleme var: {self.available.version} — Güncelle", "update")
+            return MenuEntry(f"Update available: {self.available.version} — Update", "update")
         return None
 
     def saved_state(self) -> dict:
@@ -693,7 +706,7 @@ class AppModel:
         self.note = ""  # a transient extra line (lock held, sign-in failed, ...)
         self.sync_interval = sync_interval(sync_interval_minutes)  # None: only by hand
         self.next_run_at = self.schedule(now, FIRST_SYNC_DELAY)
-        self.check_updates = check_updates  # the "Güncellemeleri otomatik denetle" setting
+        self.check_updates = check_updates  # the "Check for updates automatically" setting
         self.updates = updates or UpdateState(not_before=now + UPDATE_FIRST_DELAY)
 
     # -- state ----------------------------------------------------------
@@ -817,9 +830,9 @@ class AppModel:
         self.past_term_ids = dict(names) if outcome.status == "ok" and isinstance(names, dict) else {}
         if outcome.status == "login_required":
             self.auth_failed_at = outcome.finished_at or now
-            self.note = "Eski dönemleri görmek için giriş yapın ve tekrar deneyin."
+            self.note = "Sign in and try again to see past terms."
         elif outcome.status == "locked":
-            self.note = "Başka bir senkron sürüyor; eski dönemler birazdan yeniden yüklenecek."
+            self.note = "Another sync is running; past terms will load again shortly."
         else:
             # The lookup runs by itself when Genel is shown: it keeps
             # another job's note.
@@ -848,7 +861,7 @@ class AppModel:
         summary = root_move_summary(moved, kept, self.root)
         if kept and not self.note:
             self.note = shorten(summary, 80)
-        title = f"Dosyalar {self.root.name or self.root} klasörüne taşındı" if not kept else "Bazı dosyalar taşınamadı"
+        title = f"Files moved to the {self.root.name or self.root} folder" if not kept else "Some files could not be moved"
         return [Notification(title, summary, {"open": str(self.root)})]
 
     def _finish_sync(self, outcome: RunOutcome, now: datetime) -> list[Notification]:
@@ -859,7 +872,7 @@ class AppModel:
             # Duraklat stopped the run: nothing it had not finished counts, and the schedule waits.
             if job == "past_term":
                 self.past_term = self.past_term_id = ""
-                self.past_message = "Eski dönem indirmesi duraklatıldı; tekrar indirin."
+                self.past_message = "The past term download was paused; download it again."
             return notes
         if job == "past_term":
             term = outcome.past_term or self.past_term
@@ -867,31 +880,31 @@ class AppModel:
             if outcome.status == "ok":
                 count = sum(c.counts.get(key, 0) for c in outcome.courses
                             for key in ("new_files", "new_notes", "new_announcements"))
-                self.note = f"{term} · {count} dosya indirildi (eski dönem)."
+                self.note = f"{term} · {files(count)} downloaded (past term)."
                 if outcome.unreadable_courses:
                     # Not "nothing new": Blackboard refused the content, so the term is not complete.
-                    self.note += (f" {outcome.unreadable_courses} dersin içeriği okunamadı;"
-                                  " eski dönem tamamlanmadı, tekrar deneyin.")
+                    self.note += (f" Could not read the content of {courses_text(outcome.unreadable_courses)};"
+                                  " the past term is not complete, try again.")
                 elif outcome.warning_count:
-                    self.note += f" {outcome.warning_count} uyarı; eksikler için tekrar deneyin."
+                    self.note += f" {warnings_text(outcome.warning_count)}; try again for what is missing."
                 self.remember(outcome)
-                notes.append(Notification("Blackboard: eski dönem", self.note,
+                notes.append(Notification("Blackboard: past term", self.note,
                                           {"open": str(self.root / Path(outcome.courses[0].folder).parent)
                                            if outcome.courses else str(self.root)}))
             elif outcome.status == "locked":
-                self.note = "Başka bir senkron sürüyor; eski dönemi indirmek için tekrar deneyin."
+                self.note = "Another sync is running; try again to download the past term."
             elif outcome.status == "login_required":
                 self.auth_failed_at = outcome.finished_at or now
-                self.note = "Eski dönemi indirmek için giriş yapın ve tekrar deneyin."
+                self.note = "Sign in and try again to download the past term."
                 notes.append(login_notification())
             else:
-                self.note = shorten(f"Eski dönem indirilemedi: {outcome.message}", 100)
+                self.note = shorten(f"Could not download the past term: {outcome.message}", 100)
             self.past_message = self.note
             return notes
         if outcome.status == "locked":
             # Another sync (e.g. from the terminal) is running; keep what we
             # knew and look again soon.
-            self.note = "Başka bir senkron sürüyor; birazdan tekrar denenecek."
+            self.note = "Another sync is running; trying again shortly."
             self.next_run_at = self.schedule(now, self.retry_delay)
             return notes
         self.last = outcome
@@ -923,11 +936,11 @@ class AppModel:
             # A sync from the terminal holds the folders; move once it is done,
             # still before any sync into the new folder.
             self.pending = MOVE_JOB
-            self.note = "Başka bir senkron sürüyor; dosyalar birazdan taşınacak."
+            self.note = "Another sync is running; the files will be moved shortly."
             return []
         self.move_from = None
         if status != "ok":
-            self.note = shorten(f"Dosyalar taşınamadı: {message}", 80)
+            self.note = shorten(f"Could not move the files: {message}", 80)
             return []
         if migrating:
             self.note = ""
@@ -936,7 +949,7 @@ class AppModel:
         self.note = shorten(summary, 80) if kept else ""
         if not moved and not kept:
             return []
-        return [Notification("Dosyalar taşındı" if not kept else "Bazı dosyalar taşınamadı",
+        return [Notification("Files moved" if not kept else "Some files could not be moved",
                              summary, {"open": str(self.root)})]
 
     def finish_login(self, ok: bool, message: str, now: datetime) -> None:
@@ -949,7 +962,7 @@ class AppModel:
             self.note = ""
             self.next_run_at = self.schedule(now, timedelta(0))  # fetch what was missed right away
         else:
-            self.note = shorten(f"Giriş tamamlanamadı: {message}", 80)
+            self.note = shorten(f"Sign-in did not finish: {message}", 80)
 
     def apply_settings(
         self,
@@ -1005,7 +1018,7 @@ class AppModel:
             self.courses = []
             self.last = None
             self.login_prompted = False
-            self.note = "Yeni okul için giriş yapın."
+            self.note = "Sign in for the new school."
 
     def reschedule(self, now: datetime) -> None:
         """Recompute the next run after the interval changed.
@@ -1067,36 +1080,36 @@ class AppModel:
         return shorten(user.get("displayName") or user.get("userName") or user.get("id") or "Blackboard", 50), False
 
     def headline(self, now: datetime) -> str:
-        """When the last sync ran and how it went: "14:05 senkronize edildi".
+        """When the last sync ran and how it went: "synced at 14:05".
 
-        The clock time (not "17 dk önce") keeps the text, and so the menu, unchanged
+        The clock time (not "17 min ago") keeps the text, and so the menu, unchanged
         until something really happens; a relative label rebuilt the menu every minute.
         """
         if self.last is None:
-            return "henüz senkronize edilmedi"
+            return "not synced yet"
         when = format_time(self.last.finished_at or now, now)
         if self.last.status == "ok":
-            return f"{when} senkronize edildi"
+            return f"synced at {when}"
         if self.last.status == "login_required":
-            return f"{when} denendi"
-        return f"{when} denendi · hata"
+            return f"tried at {when}"
+        return f"tried at {when} · error"
 
     def activity(self) -> str:
         """What is going on instead of the usual schedule ("" when nothing special)."""
         if self.busy == "sync":
-            return "Yeni içerik kontrol ediliyor…"
+            return "Checking for new content…"
         if self.busy == "past_terms":
             return T_PAST_LOADING
         if self.busy == "past_term":
-            return f"{self.past_term} indiriliyor (eski dönem)…"
+            return f"Downloading {self.past_term} (past term)…"
         if self.busy == "login":
             return login_waiting_line(self.login_method)
         if self.busy == MOVE_JOB:
             if self.migrating:
-                return f"Dosyalar {self.root.name or self.root} klasörüne taşınıyor…"
-            return "Dosyalar yeni klasöre taşınıyor…"
+                return f"Moving files to the {self.root.name or self.root} folder…"
+            return "Moving files to the new folder…"
         if not self.configured:
-            return f"Kurulumu tamamlamak için “{T_SETTINGS}”ı seçin"
+            return f"Choose “{T_SETTINGS}” to finish setting up"
         if self.paused:
             return T_PAUSED
         return ""
@@ -1116,7 +1129,7 @@ class AppModel:
         if self.next_run_at is None:
             parts.append(T_AUTO_SYNC_OFF)
         else:
-            parts.append(f"sonraki: {format_time(self.next_run_at, now) if self.next_run_at > now else 'birazdan'}")
+            parts.append(f"next: {format_time(self.next_run_at, now) if self.next_run_at > now else 'soon'}")
         return parts
 
     def status_lines(self, now: datetime) -> list[str]:
@@ -1157,7 +1170,7 @@ class AppModel:
             label = course.name if course.name.startswith(course.code) else f"{course.code} {course.name}".strip()
             count = sum(course.counts.get(key, 0) for key in ("new_files", "new_notes", "new_announcements"))
             if count:
-                label += f" ({count} yeni)"
+                label += f" ({count} new)"
             course_items.append((label, course.folder))
         update = self.updates.menu_entry()
         sync = MenuEntry(menu.sync_title, "sync", enabled=menu.sync_enabled)
@@ -1168,7 +1181,7 @@ class AppModel:
                 else [*top, *status, MenuEntry(), sync, pause])
         menu.entries = [
             *head,
-            MenuEntry("Dersler", children=[MenuEntry(label, "open", value=path) for label, path in unique_labels(course_items)] or [MenuEntry("Henüz ders yok", enabled=False)]),
+            MenuEntry("Courses", children=[MenuEntry(label, "open", value=path) for label, path in unique_labels(course_items)] or [MenuEntry("No courses yet", enabled=False)]),
             MenuEntry(T_RECENT, children=[MenuEntry(label, "open", value=path) for label, path in menu.recent] or [MenuEntry(T_RECENT_EMPTY, enabled=False)]),
             MenuEntry(open_folder_title(self.root), "folder"),
             MenuEntry(),

@@ -266,17 +266,17 @@ def find_past_term(terms: list[Term], now: datetime, term_name: str | None = Non
         matches = [t for t in terms if t.id and (
             wanted in {n.strip().casefold() for n in t.names} or (key and academic_term(t.name) == key))]
     if not matches:
-        raise BlackboardSyncError(f"{label!r} adlı dönem bulunamadı.")
+        raise BlackboardSyncError(f"No term named {label!r}.")
     if len(matches) > 1:
         raise BlackboardSyncError(
-            f"{label!r} adında birden fazla dönem var; birini kimliğiyle seçin (--term-id): "
+            f"More than one term is named {label!r}; choose one by its id (--term-id): "
             + ", ".join(t.id for t in matches)
         )
     term = matches[0]
     if term.id in {t.id for t in choose_current_terms(terms, now)}:
-        raise BlackboardSyncError(f"{term.name!r} güncel dönem; indirmek için normal senkronu kullanın.")
+        raise BlackboardSyncError(f"{term.name!r} is the current term; the normal sync downloads it.")
     if term.id not in {t.id for t in choose_past_terms(terms, now)}:
-        raise BlackboardSyncError(f"{term.name!r} indirilebilecek eski bir dönem değil.")
+        raise BlackboardSyncError(f"{term.name!r} is not a past term that can be downloaded.")
     return term
 
 
@@ -1057,7 +1057,7 @@ class Syncer:
     def media_label(name: str, size: int | None) -> str:
         if size is None:
             return name
-        return f"{name} (Bu dosya çok büyük ({human_size(size)}), Blackboard'da aç)"
+        return f"{name} (this file is too large ({human_size(size)}); open it in Blackboard)"
 
     def fetch_file(
         self,
@@ -1316,7 +1316,7 @@ def run_sync(
     past = term_name is not None or term_id is not None
     if past and (not (term_id or term_name or "").strip() or all_terms
                  or (term_name is not None and term_id is not None)):
-        raise BlackboardSyncError("İndirilecek tek bir eski dönem adı belirtin.")
+        raise BlackboardSyncError("Name a single past term to download.")
     now = now or datetime.now(timezone.utc)
     report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.root),
                         past_term=term_name or term_id or "")
@@ -1390,8 +1390,8 @@ def run_sync(
             if unreadable:
                 # Not a finished archive: say so instead of "0 files", and keep it open for a retry.
                 report.warnings.append(
-                    f"{len(unreadable)} dersin içeriği okunamadı ({', '.join(unreadable)}); "
-                    "eski dönem tamamlanmadı, tekrar deneyin."
+                    f"Could not read the content of {len(unreadable)} course{'' if len(unreadable) == 1 else 's'} "
+                    f"({', '.join(unreadable)}); the past term is not complete, try again."
                 )
             if not dry_run:
                 state.record_past_term(terms[0].id, terms[0].name, [c.id for c in courses],

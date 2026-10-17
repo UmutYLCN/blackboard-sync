@@ -184,7 +184,7 @@ def test_unreadable_past_course_is_reported_and_left_for_a_retry(config, client,
 
     monkeypatch.setattr(client, "contents", denied)
     report = sync(config, client, term_name=PAST)
-    assert report.courses[0].content_error and any("okunamadı" in w for w in report.warnings)
+    assert report.courses[0].content_error and any("Could not read the content" in w for w in report.warnings)
     entry = State.load(config.state_file).past_terms["_40_1"]
     assert entry["incomplete"] and "downloaded_at" not in entry
     outcome = RunOutcome.from_report(report.to_dict())
@@ -192,7 +192,7 @@ def test_unreadable_past_course_is_reported_and_left_for_a_retry(config, client,
     model.past_term = PAST
     assert model.begin("past_term")
     model.finish_sync(outcome, NOW)
-    assert "1 dersin içeriği okunamadı" in model.note and "tamamlanmadı" in model.note
+    assert "Could not read the content of 1 course" in model.note and "not complete" in model.note
 
     monkeypatch.setattr(client, "contents", read)
     assert sync(config, client, term_name=PAST).totals()["new_files"] == 2
@@ -212,7 +212,7 @@ def test_english_record_of_the_current_term_is_the_current_term(config, client, 
     assert report.terms == [CURRENT]
     assert sorted(p.name for p in config.root.iterdir()) == [CURRENT]
     assert "CSE331 Operating Systems" in {p.name for p in (config.root / CURRENT).iterdir()}
-    with pytest.raises(BlackboardSyncError, match="güncel dönem"):
+    with pytest.raises(BlackboardSyncError, match="is the current term"):
         sync(config, client, term_name="2026-2027 Fall")
 
 

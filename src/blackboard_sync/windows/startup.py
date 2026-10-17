@@ -30,8 +30,8 @@ LOG_BACKUPS = 3  # windows-tray.log plus three older ones: 4 MB at most
 # thread to the log every <seconds> (to see where a running app waits).
 STACK_DUMP_ENV = "BBSYNC_STACK_DUMP"
 ERROR_TITLE = "Blackboard Sync"
-ERROR_TEXT = "Blackboard Sync beklenmeyen bir hata nedeniyle durdu."
-ERROR_LOG_TEXT = "Ayrıntılar bu dosyada:\n{path}"
+ERROR_TEXT = "Blackboard Sync stopped because of an unexpected error."
+ERROR_LOG_TEXT = "The details are in this file:\n{path}"
 
 MB_ICONERROR = 0x10
 MB_SETFOREGROUND = 0x10000

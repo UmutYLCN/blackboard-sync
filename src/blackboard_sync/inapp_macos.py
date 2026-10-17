@@ -87,13 +87,13 @@ def _edit_menu() -> NSMenu:
     """A main menu, so Cmd+C / Cmd+V / Cmd+A / Cmd+W work in the sign-in page."""
     bar = NSMenu.alloc().init()
     for title, items in (
-        ("Blackboard Sync", [("Giriş penceresini kapat", "performClose:", "w")]),
-        ("Düzen", [
-            ("Geri al", "undo:", "z"),
-            ("Kes", "cut:", "x"),
-            ("Kopyala", "copy:", "c"),
-            ("Yapıştır", "paste:", "v"),
-            ("Tümünü seç", "selectAll:", "a"),
+        ("Blackboard Sync", [("Close Sign-in Window", "performClose:", "w")]),
+        ("Edit", [
+            ("Undo", "undo:", "z"),
+            ("Cut", "cut:", "x"),
+            ("Copy", "copy:", "c"),
+            ("Paste", "paste:", "v"),
+            ("Select All", "selectAll:", "a"),
         ]),
     ):
         holder = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, None, "")
