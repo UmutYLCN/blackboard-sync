@@ -955,18 +955,17 @@ text through pystray, so expiry uses the shared warning label and a red icon.
 Idle is green, syncing blue, and errors orange. Settings saves and exit wait
 until a running sync/sign-in finishes. For packaged installation, see the [README](../README.md).
 
-#### The WebView2 main window (in progress)
+#### The WebView2 main window
 
-The Tk main window is being replaced by a page shown in Microsoft Edge WebView2
-through pywebview (already shipped for the in-app sign-in). It draws Home, the
-sidebar and the top bar so far; the other pages still show a placeholder, so it
-is off unless you start the app with `BLACKBOARD_SYNC_UI=web`:
+The main window is a page shown in Microsoft Edge WebView2 through pywebview
+(already shipped for the in-app sign-in). Without WebView2 the app logs why and opens
+the older Tk window; `BLACKBOARD_SYNC_UI=tk` asks for the Tk window on purpose:
 
 ```powershell
-$env:BLACKBOARD_SYNC_UI = "web"; .\.venv\Scripts\python.exe -m blackboard_sync.windows
+$env:BLACKBOARD_SYNC_UI = "tk"; .\.venv\Scripts\python.exe -m blackboard_sync.windows
 ```
 
-Without WebView2 the app logs why and opens the Tk window. How it is put together:
+How it is put together:
 
 - `windows/webui/` holds `index.html`, `app.css` (light and dark follow the Windows
   setting), `app.js` and a subset of Material Symbols Rounded icons (Apache-2.0,
@@ -983,7 +982,14 @@ Without WebView2 the app logs why and opens the Tk window. How it is put togethe
   root (`after`, `event_generate`, `mainloop`). The page asks for new states itself
   (`Bridge.next_state` waits until there is one), so the app never waits on the GUI.
   Closing the window hides it; Quit destroys it and pywebview's loop ends.
-- Questions (sign out, quit while busy, language restart) are native Windows message boxes.
+- Yes/no questions (sign out, quit while busy, language restart) are native Windows message
+  boxes; the folder change, uninstall and Google Calendar disconnect questions are the page's own
+  dialogs (`WebHost.ask` waits on the app's thread for the answer the page sends).
+- The settings form is edited in the page and sent whole on Save; `web_window.form_values`
+  checks the types and `settings_form.submit` the values, as for the Tk and macOS windows.
+- **Settings → Appearance → Theme** (System / Light / Dark) is saved at once in
+  `settings.json` (`Settings.theme`, kept by every Save) and also sets the title bar's color.
+- The tray icon is the app's logo (`webui/logo.png`) with a colored dot unless all is well.
 
 To see the page without Windows, render invented states in Chromium:
 

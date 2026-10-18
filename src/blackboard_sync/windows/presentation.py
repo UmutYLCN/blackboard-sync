@@ -30,22 +30,21 @@ def notification_fields(note: Notification) -> dict:
             "launch": launch}
 
 
+# The app's logo (the same file the main window shows), with a status dot unless all is well.
+LOGO = Path(__file__).with_name("webui") / "logo.png"
+ICON_SIZE = 64
+# The dot sits over the logo's own round sync badge, bottom right, with a white ring.
+DOT = (36, 36, 63, 63)
+DOT_RING = 3
+
+
 def icon_image(state: Icon):
     from PIL import Image, ImageDraw
 
-    image = Image.new("RGBA", (64, 64))
-    draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle((4, 4, 60, 60), radius=12, fill=COLORS[state])
-    if state == Icon.IDLE:
-        draw.polygon([(12, 25), (32, 15), (52, 25), (32, 35)], fill="white")
-        draw.line([(20, 33), (20, 43), (44, 43), (44, 33)], fill="white", width=4)
-    elif state == Icon.SYNCING:
-        draw.arc((15, 15, 49, 49), 30, 300, fill="white", width=5)
-        draw.polygon([(46, 13), (50, 29), (36, 24)], fill="white")
-    elif state == Icon.PAUSED:
-        draw.rectangle((21, 18, 28, 46), fill="white")
-        draw.rectangle((36, 18, 43, 46), fill="white")
-    else:
-        draw.line((32, 15, 32, 36), fill="white", width=6)
-        draw.ellipse((29, 44, 35, 50), fill="white")
+    image = Image.open(LOGO).convert("RGBA").resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
+    if state != Icon.IDLE:
+        draw = ImageDraw.Draw(image)
+        draw.ellipse(DOT, fill="white")
+        left, top, right, bottom = DOT
+        draw.ellipse((left + DOT_RING, top + DOT_RING, right - DOT_RING, bottom - DOT_RING), fill=COLORS[state])
     return image

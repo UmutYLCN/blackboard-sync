@@ -11,6 +11,7 @@ import pytest
 
 from blackboard_sync import deadlines
 from blackboard_sync.announcements import AnnouncementRow
+from blackboard_sync.courses import CourseRow
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar.settings_form import WindowStatus
 from blackboard_sync.windows import webui_page, webui_state
@@ -46,9 +47,12 @@ ANNOUNCEMENTS = (AnnouncementRow("k1", "CSE301", "Exercise 2", "15.10.2026", "",
                  AnnouncementRow("k3", "COE305", "Third", "15.10.2026", "", "", ""))
 
 
+COURSES = tuple(CourseRow(f"_{i}_1", f"CSE30{i}", "Course", "2026-2027 Güz", i != 4) for i in range(5))
+
+
 def state(current=None, rows=ANNOUNCEMENTS, page=None):
     return webui_state.window_state(current or status(), main.OVERVIEW, main.OVERVIEW, rows,
-                                    page or deadline_page(), date(2026, 10, 18), course_count="4/5")
+                                    page or deadline_page(), date(2026, 10, 18), course_rows=COURSES)
 
 
 @pytest.mark.parametrize("extension, kind", [
@@ -96,7 +100,7 @@ def test_attention_comes_before_announcements_and_ids_are_what_was_drawn():
     assert {item["id"] for item in data["nav"] if item["badge"] == "2"} == {main.ANNOUNCEMENTS}
     ids = webui_state.ids(data)
     assert ids["file"] == {row.path for row in RECENT[:main.HOME_RECENT_ROWS]}
-    assert ids["announcement"] == {"k1"}
+    assert ids["announcement"] == {"k1", "k2", "k3"}  # k1 on Home, all three on Announcements
     assert ids["attention"] == {"login"}  # a note without an action offers no click
     assert ids["deadline"] == {"Term/CSE301/Proposal.pdf", "https://bb.example/report"}
 
@@ -168,10 +172,20 @@ def test_page_renders_without_script_errors(tmp_path):
                 page.on("console", lambda msg, name=name: msg.type == "error" and errors.append(f"{name}: {msg.text}"))
                 html = webui_page.document(extra_script="window.__PREVIEW_STATE__ = " + json.dumps(data) + ";")
                 page.set_content(html)
-                assert page.text_content("h1") == data["home"]["heading"]
+                titles = {item["id"]: item["title"] for item in data["nav"]}
+                heading = (data["home"]["heading"] if data["page"] == main.OVERVIEW
+                           else data["text"]["settings"] if data["section"] == main.GENERAL
+                           else titles[data["section"]])
+                assert page.text_content("h1") == heading
+                assert "[object" not in page.text_content("#content")
                 assert page.locator(".nav-item").count() == len(main.NAV_SECTIONS)
-                page.click("#open-folder")
-                assert ["action", "folder"] in page.evaluate("window.__calls")
+                if data["dialog"]:  # modal: the page behind it takes no clicks
+                    assert page.is_visible("dialog[open]")
+                    page.click('dialog [data-default="true"]')
+                    assert ["dialog_answer", data["dialog"]["id"], "cancel", False] in page.evaluate("window.__calls")
+                else:
+                    page.click("#open-folder")
+                    assert ["action", "folder"] in page.evaluate("window.__calls")
                 page.close()
             browser.close()
     except sync_api.Error as exc:
@@ -179,3 +193,113 @@ def test_page_renders_without_script_errors(tmp_path):
             pytest.skip(f"no Chromium: {exc}")
         raise
     assert not errors
+
+
+def test_tray_icon_is_the_logo_with_a_status_dot():
+    from blackboard_sync.menubar.model import Icon
+    from blackboard_sync.windows import presentation
+
+    idle = presentation.icon_image(Icon.IDLE)
+    assert idle.size == (presentation.ICON_SIZE, presentation.ICON_SIZE)
+    left, top, right, bottom = presentation.DOT
+    centre = ((left + right) // 2, (top + bottom) // 2)
+    for state in (Icon.SYNCING, Icon.EXPIRED, Icon.ERROR, Icon.PAUSED):
+        color = presentation.COLORS[state].lstrip("#")
+        assert presentation.icon_image(state).getpixel(centre)[:3] == tuple(int(color[i:i + 2], 16) for i in (0, 2, 4))
+    assert idle.getpixel(centre) != presentation.icon_image(Icon.ERROR).getpixel(centre)  # all is well: no dot
+
+
+def settings_rows(data):
+    return {row["key"]: row for section in data["settings"]["sections"] for row in section["rows"]}
+
+
+def test_settings_page_rows_follow_the_model():
+    from blackboard_sync.gcal import CalendarStatus
+
+    connected = replace(FORM, calendar=CalendarStatus(connected=True, last_sync="2026-10-18T12:05:00+00:00"))
+    data = webui_state.window_state(status(form=connected), main.GENERAL, main.GENERAL, theme="dark")
+    keys = [section["key"] for section in data["settings"]["sections"]]
+    assert keys[:4] == ["account", "sync", "appearance", "calendar"] and keys[-1] == "danger"
+    rows = settings_rows(data)
+    assert rows["theme"]["choices"] == [{"value": "system", "title": "System"}, {"value": "light", "title": "Light"},
+                                        {"value": "dark", "title": "Dark"}]
+    assert data["settings"]["theme"] == "dark" and data["theme"] == "dark"
+    assert rows["interval"]["field"] == "sync_interval_minutes" and rows["interval"]["choices"][1]["value"] == 60
+    calendar = rows["google_calendar"]
+    assert calendar["control"] == "buttons" and calendar["title"] == "Connected"
+    assert [button["key"] for button in calendar["buttons"]] == ["google_calendar_sync", "google_calendar_disconnect"]
+    assert rows["google_calendar_sync"]["hidden"] and rows["google_calendar_disconnect"]["hidden"]
+    assert {"google_calendar_sync", "google_calendar_disconnect", "account"} <= webui_state.ids(data)["button"]
+    assert "uninstall" not in webui_state.ids(data)["button"]  # disabled while not idle (FORM default)
+
+
+def test_store_build_settings_hide_updates_and_removal():
+    data = webui_state.window_state(status(), main.GENERAL, main.GENERAL, packaged=True)
+    sections = {section["key"]: section for section in data["settings"]["sections"]}
+    assert "danger" not in sections
+    rows = settings_rows(data)
+    assert "check_updates" not in rows and rows["update"]["control"] == ""
+    assert len(sections["updates"]["notes"]) == 2
+
+
+def test_other_pages_carry_their_rows_and_ids():
+    activity = (main.ActivityRow("a.pdf", "CSE303", "CSE303 · today", "Downloaded", "2 MB", "Term/CSE303/a.pdf", "PDF"),)
+    data = webui_state.window_state(status(activity=activity), main.ACTIVITY, main.ACTIVITY, ANNOUNCEMENTS,
+                                    deadline_page(), date(2026, 10, 18), course_rows=COURSES)
+    assert data["activity"]["rows"][0] == {"id": "Term/CSE303/a.pdf", "name": "a.pdf", "detail": "CSE303 · today",
+                                           "kind": "pdf", "size": "2 MB", "status": "Downloaded"}
+    assert [row["enabled"] for row in data["courses"]["rows"]] == [True, True, True, True, False]
+    assert [len(day["rows"]) for day in data["calendar"]["days"]] == [1, 1]
+    ids = webui_state.ids(data)
+    assert "Term/CSE303/a.pdf" in ids["file"] and ids["course"] == {row.id for row in COURSES}
+    first = webui_state.window_state(status(first_run=True), main.OVERVIEW, "start")
+    assert first["page"] == "start" and first["start"]["button"]["login"] is True
+
+
+def test_theme_is_saved_and_kept_across_save():
+    from blackboard_sync.menubar.settings_form import FormValues, submit
+    from blackboard_sync.settings import Settings, load_settings, normalize_theme, save_settings
+
+    assert normalize_theme("dark") == "dark" and normalize_theme("purple") == "system"
+    current = Settings("https://bb.example", Path("/home/u/Documents"), theme="dark")
+    submission = submit(FormValues("https://bb.example", "/home/u/Documents", True), current)
+    assert submission.settings.theme == "dark"  # the form does not carry it; saving keeps it
+
+
+def test_theme_survives_settings_json(tmp_path):
+    from blackboard_sync.settings import Settings, load_settings, save_settings
+
+    save_settings(tmp_path, Settings("https://bb.example", tmp_path, theme="light"))
+    assert load_settings(tmp_path).theme == "light"
+
+
+def test_settings_form_edits_save_and_theme_in_a_browser():
+    """Typing shows the Save bar, Save sends the edited form, the theme switches at once."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    script = Path(__file__).resolve().parents[1] / "scripts" / "webui-preview.py"
+    namespace = {"__name__": "webui_preview"}
+    exec(compile(script.read_text(encoding="utf-8"), str(script), "exec"), namespace)
+    data = namespace["fixtures"](NOW)["settings"]
+    try:
+        with sync_api.sync_playwright() as playwright:
+            browser = playwright.chromium.launch(executable_path=namespace["chromium"]())
+            page = browser.new_page(color_scheme="light")
+            page.set_content(webui_page.document(extra_script="window.__PREVIEW_STATE__ = " + json.dumps(data) + ";"))
+            assert page.is_hidden("#save-bar")
+            page.fill('[data-key="field-base_url"]', "https://other.school.edu")
+            assert page.is_visible("#save-bar")
+            page.click("#save-bar .pill.filled")
+            saved = [entry for entry in page.evaluate("window.__calls") if entry[0] == "save"]
+            assert saved[-1][1]["base_url"] == "https://other.school.edu" and saved[-1][2] is False
+            background = page.evaluate("getComputedStyle(document.body).backgroundColor")
+            page.select_option('[data-key="select-theme"]', index=2)  # Dark
+            assert page.evaluate("document.documentElement.dataset.theme") == "dark"
+            assert page.evaluate("getComputedStyle(document.body).backgroundColor") != background
+            assert ["set_theme", "dark"] in page.evaluate("window.__calls")
+            page.click("#save-bar .pill.gray")  # Cancel: back to what is saved
+            assert page.input_value('[data-key="field-base_url"]') == data["settings"]["values"]["base_url"]
+            browser.close()
+    except sync_api.Error as exc:
+        if "Executable doesn't exist" in str(exc):
+            pytest.skip(f"no Chromium: {exc}")
+        raise

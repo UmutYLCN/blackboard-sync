@@ -1,7 +1,7 @@
 """Windows-only entry point; Tk (or ``loop.EventLoop``) owns state, tray and workers enqueue events.
 
-The main window is the Tk ``MainWindow`` or, with ``BLACKBOARD_SYNC_UI=web``, the WebView2 page
-(``web_window``); without WebView2 the Tk window is used.
+The main window is the WebView2 page (``web_window``); without WebView2, or with
+``BLACKBOARD_SYNC_UI=tk``, it is the Tk ``MainWindow``.
 """
 
 import argparse
@@ -43,7 +43,7 @@ WAKE_EVENT = "<<bbsync>>"
 # cannot wake Tk, so they are checked on a slow timer; this is also the safety
 # net should a wake-up ever be lost.
 REQUEST_CHECK_MS = 2000
-# Which main window to show: "tk" (default) or "web", the WebView2 page while it is being finished.
+# Which main window to show: "web" (default, the WebView2 page) or "tk" (the older Tk window).
 UI_ENV = "BLACKBOARD_SYNC_UI"
 # The same failing check is logged with its traceback at most this often.
 ERROR_LOG_INTERVAL = 60.0
@@ -213,6 +213,40 @@ class TrayApp:
                           else RunOutcome(status="error", message=str(exc)))
             self.post(self.job_done, job, result)
         threading.Thread(target=worker, daemon=True).start()
+
+    def start_calendar(self, action="sync", **options):
+        """Connect, sync or disconnect Google Calendar on a worker; pressing Connect again cancels it."""
+        if self.model.calendar_busy:
+            if action == "connect" and self.model.calendar_busy == "connect":
+                self.calendar_cancel.set()
+            return
+        if action == "sync" and self.model.paused:
+            return
+        self.model.calendar_busy = action
+        cancel = threading.Event()
+        self.calendar_cancel = cancel
+        self.refresh()
+        def worker():
+            self.post(self.calendar_done, jobs.run_calendar_guarded(self.config, action, cancel=cancel, **options))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def disconnect_calendar(self):
+        """Asked in the WebView2 page (the Tk window has no Calendar section)."""
+        choice = self.web.ask_calendar_disconnect() if self.web is not None else None
+        if choice is not None:
+            self.start_calendar("disconnect", delete_calendar=choice)
+
+    def theme_chosen(self, theme):
+        """Settings → Theme, saved at once (not with the form); before the first Save it waits for it."""
+        from dataclasses import replace
+
+        self.settings = replace(self.settings, theme=theme)
+        if jobs.saved_settings(self.config) is None:
+            return
+        try:
+            save_settings(self.config.data_dir, self.settings)
+        except OSError:
+            log.exception("Could not save the theme")
 
     def calendar_done(self, status):
         self.model.calendar_busy = None
@@ -385,6 +419,12 @@ class TrayApp:
             self.toggle_pause()
         elif action in ("settings", "calendar_settings"):
             self.show_window(GENERAL)
+        elif action == "calendar_connect":
+            self.start_calendar("connect")
+        elif action == "calendar_sync":
+            self.start_calendar()
+        elif action == "calendar_disconnect":
+            self.disconnect_calendar()
         elif action == "deadline":
             if value.startswith(self.config.base_url.rstrip("/") + "/"):
                 webbrowser.open(value)
@@ -542,6 +582,8 @@ class TrayApp:
             return
         if self.window is None:
             log.info("Opening the main window (first run %s)", not self.model.configured)
+            web = {} if self.web is None else {
+                "theme": lambda: self.settings.theme, "on_theme": self.theme_chosen, "packaged": package.is_packaged}
             self.window = MainWindow(self.root, self.form_values(), self.window_status(),
                                      self.settings_submitted, self.dispatch, self.window_closed,
                                      on_values=self.form_values,
@@ -555,7 +597,7 @@ class TrayApp:
                                      on_course_toggle=self.course_toggled,
                                      on_past_term=self.download_past_term,
                                      on_section=lambda _section: self.refresh(),
-                                     recent_seen=self.model.recent_seen, on_seen=self.save)
+                                     recent_seen=self.model.recent_seen, on_seen=self.save, **web)
         if not self.window_open:
             self.model.reload_past_terms()
         self.window.show(section)
@@ -695,7 +737,7 @@ def run_web(config, show_window, lock):
 
     loop = EventLoop()
     try:
-        host = WebHost.create(loop)
+        host = WebHost.create(loop, jobs.effective_settings(config).theme)
     except Exception:
         log.exception("The WebView2 main window is unavailable; using the Tk window")
         return False
@@ -744,7 +786,7 @@ def main(argv=None):
             autostart.upgrade_legacy()
         except OSError:
             log.exception("Could not register update-toast activation or login item")
-        if os.environ.get(UI_ENV, "tk").strip().lower() == "web" and run_web(config, show_window, lock):
+        if os.environ.get(UI_ENV, "web").strip().lower() != "tk" and run_web(config, show_window, lock):
             return 0
         root = tk.Tk()
         root.withdraw()

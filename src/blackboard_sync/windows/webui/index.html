@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="{{LANG}}">
+<html lang="{{LANG}}" data-theme="{{THEME}}">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="{{CSP}}">
@@ -12,8 +12,11 @@
 <div class="app" id="app">
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-name" data-text="window_title"></div>
-      <div class="brand-version" data-text="version"></div>
+      <img class="brand-logo" src="{{LOGO}}" alt="">
+      <div class="brand-text">
+        <div class="brand-name" data-text="window_title"></div>
+        <div class="brand-version" data-text="version"></div>
+      </div>
     </div>
     <button class="open-folder" id="open-folder" type="button">
       <svg class="icon" aria-hidden="true"><use href="#i-folder_open"/></svg>
@@ -37,6 +40,7 @@
   </main>
 </div>
 <div class="menu" id="menu" popover role="menu"></div>
+<dialog class="dialog" id="dialog"></dialog>
 {{SCRIPT}}
 </body>
 </html>

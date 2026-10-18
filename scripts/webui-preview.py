@@ -112,10 +112,64 @@ def fixtures(now: datetime) -> dict[str, dict]:
                        tr("Blackboard Sync {version} is ready").format(version="1.7.0"), main.T_UPDATE, True)),
                    announcements, page),
     }
+    from blackboard_sync import uninstall
+    from blackboard_sync.courses import CourseRow
+    from blackboard_sync.gcal import CalendarStatus
+    from blackboard_sync.menubar.settings_form import FormValues
+
+    today = now.astimezone().date()
+    course_rows = tuple(CourseRow(f"_{index}_1", code, title, "2026-2027 Güz", enabled) for index, (code, title, enabled) in
+                        enumerate((("CSE301", "Database Management", True), ("CSE303", "Algorithm Analysis", True),
+                                   ("COE305", "Software Project Management", True), ("PHY101", "Physics I", True),
+                                   ("TUR101", "Turkish Language I", False))))
+    values = FormValues("https://blackboard.istun.edu.tr", "~/Documents", True, True, 60, "tr" if tr("Home") != "Home" else "en")
     result = {}
     for name, (status, rows, deadline_page) in states.items():
-        result[name] = webui_state.window_state(status, main.OVERVIEW, main.OVERVIEW, rows, deadline_page,
-                                                now.astimezone().date(), course_count="4/5" if name == "up-to-date" else "")
+        result[name] = webui_state.window_state(status, main.OVERVIEW, main.OVERVIEW, rows, deadline_page, today,
+                                                course_rows=course_rows, values=values)
+
+    # The other pages, from the up-to-date app.
+    activity = tuple(main.ActivityRow(row.name, row.detail.split(" · ")[0], row.detail, tr("Successfully downloaded"),
+                                      size, row.path, row.kind)
+                     for row, size in zip(recent, ("2.4 MB", "6.1 MB", "48 KB", "19 KB", "12 MB")))
+    previews = ("Please upload your second home exercise before Sunday. The template is in Course Content → Week 4.",
+                "Friday's lecture is online; the Teams link is in the course calendar.", "")
+    page_rows = tuple(replace(row, preview=preview) for row, preview in zip(announcements, previews))
+    past = (("Lab report 1", "PHY101 Physics I", local - timedelta(days=3)),)
+    past_days = tuple(deadlines.DeadlineDay(when.date(), deadlines.day_title(when.date(), today), True,
+                                            (deadlines.DeadlineRow(title, course, when, f"https://bb.example/{title}"),))
+                      for title, course, when in past)
+    titled = deadlines.DeadlinePage(tuple(replace(day, title=deadlines.day_title(day.day, today)) for day in page.days)
+                                    + past_days, "")
+    full = replace(synced, activity=activity, attention=(main.AttentionItem(
+        tr("Blackboard Sync {version} is ready").format(version="1.7.0"), main.T_UPDATE_INTRO, "update", main.T_UPDATE,
+        warning=False),))
+    settings_form = replace(form, past_terms=("2025-2026 Bahar", "2025-2026 Güz"), past_available=True,
+                            past_enabled=True, past_message=tr("A past term is downloaded once and not updated."),
+                            uninstall_enabled=True,
+                            calendar=CalendarStatus(connected=True, last_sync="2026-10-18T12:05:00+00:00"))
+    for name, section, current, extra in (
+        ("activity", main.ACTIVITY, full, {}),
+        ("announcements-page", main.ANNOUNCEMENTS, full, {}),
+        ("courses", main.COURSES, full, {}),
+        ("calendar", main.CALENDAR, full, {}),
+        ("settings", main.GENERAL, replace(full, form=settings_form), {}),
+        ("settings-error", main.GENERAL, replace(full, form=replace(form, calendar=CalendarStatus(needs_reconnect=True,
+                                                                     last_error="Token expired"))),
+         {"error": (tr("The address must start with https://."), "base_url")}),
+        ("settings-dark-forced", main.GENERAL, replace(full, form=settings_form), {"theme": "dark"}),
+        ("uninstall-dialog", main.GENERAL, replace(full, form=settings_form), {"dialog": {
+            "id": "q1", "title": uninstall.TITLE, "message": uninstall.MESSAGE,
+            "checkbox": {"label": tr("Also delete the downloaded course files"), "detail": "C:\\Users\\umut\\Documents\\University"},
+            "buttons": [{"id": "cancel", "title": tr("Cancel"), "style": "gray", "default": True},
+                        {"id": "uninstall", "title": tr("Uninstall"), "style": "danger filled"}]}}),
+    ):
+        rows = page_rows if section == main.ANNOUNCEMENTS else announcements
+        result[name] = webui_state.window_state(current, section, section, rows, titled, today,
+                                                course_rows=course_rows, values=values, **extra)
+    first = replace(synced, first_run=True, recent=(), home_heading="", home_subtitle="", start_title=tr("Sign in"))
+    result["start"] = webui_state.window_state(first, main.OVERVIEW, "start", (), deadlines.DeadlinePage(), today,
+                                               values=replace(values, base_url="", dest="~/Documents"))
     return result
 
 

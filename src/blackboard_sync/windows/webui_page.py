@@ -12,6 +12,7 @@ Icons are Material Symbols Rounded (Apache-2.0, ``webui/icons/LICENSE``).
 
 from __future__ import annotations
 
+import base64
 import re
 import secrets
 from pathlib import Path
@@ -48,8 +49,17 @@ def new_nonce() -> str:
     return secrets.token_urlsafe(18)
 
 
-def document(nonce: str | None = None, extra_style: str = "", extra_script: str = "", lang: str = "en") -> str:
-    """The whole page. ``extra_style``/``extra_script`` are for the preview only (its font, a fixed state)."""
+def logo() -> str:
+    """The app's logo (``webui/logo.png``, 128 px) as a data URI: the page loads no files."""
+    return "data:image/png;base64," + base64.b64encode((ASSETS / "logo.png").read_bytes()).decode()
+
+
+def document(nonce: str | None = None, extra_style: str = "", extra_script: str = "", lang: str = "en",
+             theme: str = "system") -> str:
+    """The whole page; ``theme`` is ``Settings.theme`` (the page follows later changes itself).
+
+    ``extra_style``/``extra_script`` are for the preview only (its font, a fixed state).
+    """
     nonce = nonce or new_nonce()
     template = (ASSETS / "index.html").read_text(encoding="utf-8")
     style = (ASSETS / "app.css").read_text(encoding="utf-8") + extra_style
@@ -57,6 +67,8 @@ def document(nonce: str | None = None, extra_style: str = "", extra_script: str 
     before = f'<script nonce="{nonce}">{extra_script}</script>' if extra_script else ""
     replacements = {
         "{{LANG}}": lang,
+        "{{THEME}}": theme,
+        "{{LOGO}}": logo(),
         "{{CSP}}": csp(nonce),
         "{{STYLE}}": f'<style nonce="{nonce}">{style}</style>',
         "{{ICONS}}": icon_sprite(),

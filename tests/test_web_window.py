@@ -2,6 +2,7 @@
 
 import threading
 import time
+from pathlib import Path
 from dataclasses import replace
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
@@ -125,7 +126,7 @@ class ImmediateLoop:
 
 def make_host(loop=None):
     loop = loop or ImmediateLoop()
-    host = WebHost(FakeWebview(), loop, light=True, area=(0, 0, 1920, 1040))
+    host = WebHost(FakeWebview(), loop, "system", windows_light=True, area=(0, 0, 1920, 1040))
     loop.host = host
     return host
 
@@ -144,7 +145,8 @@ def test_window_starts_hidden_with_the_page_and_the_bridge():
 def test_bridge_exposes_only_its_calls():
     public = {name for name in dir(Bridge(make_host())) if not name.startswith("_")}
     assert public == {"next_state", "navigate", "action", "open_file", "reveal_file", "announcement", "deadline",
-                      "attention", "recent_visible"}
+                      "attention", "recent_visible", "toggle_course", "save", "cancel_form", "setting", "set_theme",
+                      "choose_folder", "dialog_answer"}
 
 
 @pytest.mark.parametrize("area, expected", [
@@ -262,6 +264,7 @@ def make_window(**overrides):
         on_deadlines=lambda: page, on_deadline=lambda target: events.append(("deadline", target)),
         on_announcements=lambda: ROWS, on_open_announcement=lambda row: events.append(("announcement", row.key)),
         on_section=lambda section: events.append(("section", section)), recent_seen=Seen(),
+        on_past_term=lambda name: events.append(("past", name)),
         on_seen=lambda: events.append("seen"), today=lambda: date(2026, 10, 18))
     options.update(overrides)
     window = WebMainWindow(host.loop, None, status(),
@@ -376,3 +379,149 @@ def test_web_mode_falls_back_to_tk_where_webview2_cannot_run(tmp_path, monkeypat
 
     monkeypatch.setattr(WebHost, "create", classmethod(lambda cls, loop: unavailable(loop)))
     assert tray.run_web(Config(data_dir=tmp_path, dest=tmp_path), True, lock=None) is False
+
+
+# -- Settings, Get started and questions ------------------------------------------------
+
+GOOD_FORM = {"base_url": "https://bb.example", "dest": "C:/Users/u/Documents", "autostart": True,
+             "check_updates": False, "sync_interval_minutes": 180, "language": "tr"}
+
+
+@pytest.mark.parametrize("change", [
+    {"autostart": "yes"}, {"sync_interval_minutes": 5}, {"sync_interval_minutes": True}, {"language": "de"},
+    {"base_url": None}, {"dest": "x" * 5000}, {"check_updates": 1},
+])
+def test_form_values_refuse_wrong_types(change):
+    assert web_window.form_values({**GOOD_FORM, **change}) is None
+    assert web_window.form_values("not a dict") is None
+
+
+def test_form_values_keep_the_texts_for_submit_to_check():
+    values = web_window.form_values(GOOD_FORM)
+    assert values == FormValues("https://bb.example", "C:/Users/u/Documents", True, False, 180, "tr")
+
+
+def test_save_shows_the_error_and_success_drops_the_edits():
+    window, host, events = make_window()
+    answers = iter([("Enter a valid address", "base_url"), None])
+    window.on_submit = lambda values, login: events.append(("submit", login)) or next(answers)
+    window.save(web_window.form_values(GOOD_FORM), False)
+    state = host.next_state(0, 0.01)["state"]
+    assert state["settings"]["error"] == "Enter a valid address" and state["settings"]["error_field"] == "base_url"
+    assert state["start"]["message"] == "Enter a valid address" and state["start"]["message_warning"]
+    generation = state["settings"]["generation"]
+    window.save(web_window.form_values(GOOD_FORM), True)
+    state = host.next_state(0, 0.01)["state"]
+    assert state["settings"]["error"] == "" and state["settings"]["generation"] == generation + 1
+    assert events == [("submit", False), ("submit", True)]
+
+
+def test_settings_buttons_act_only_while_shown_and_enabled():
+    window, host, events = make_window()
+    window.status = status(form=replace(FORM, past_terms=("2025-2026 Bahar",), past_available=True, past_enabled=True,
+                                        uninstall_enabled=False))
+    window._draw()
+    window.run_setting("past_download", "2025-2026 Bahar")
+    window.run_setting("past_download", "../../other")
+    window.run_setting("uninstall", "")  # disabled now
+    window.run_setting("google_calendar", "")  # Connect
+    window.run_setting("google_calendar_disconnect", "")  # not connected: not shown
+    window.run_setting("update", "")
+    assert events == [("past", "2025-2026 Bahar"), ("action", "calendar_connect"), ("action", "check_updates")]
+
+
+def test_course_switch_and_theme():
+    from blackboard_sync.courses import CourseRow
+
+    toggled, themes = [], []
+    window, host, events = make_window(
+        on_courses=lambda: (CourseRow("_1_1", "CSE303", "Algorithms", "Güz", True),),
+        on_course_toggle=lambda course, enabled: toggled.append((course, enabled)),
+        theme=lambda: themes[-1] if themes else "system", on_theme=themes.append)
+    window.toggle_course("_1_1", False)
+    window.toggle_course("_9_1", False)
+    assert toggled == [("_1_1", False)]
+    window.set_theme("dark")
+    state = host.next_state(0, 0.01)["state"]
+    assert themes == ["dark"] and state["theme"] == "dark" and state["settings"]["theme"] == "dark"
+
+
+def test_a_question_waits_for_the_page_and_closing_answers_no():
+    window, host, events = make_window()
+    window.show()
+    results = []
+    asking = threading.Thread(target=lambda: results.append(host.ask_uninstall("C:/Users/u/University")))
+    asking.start()
+    deadline = time.monotonic() + 2
+    while host._question is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+    dialog = host.next_state(0, 0.5)["state"]["dialog"]
+    assert dialog["checkbox"]["label"] and [button["id"] for button in dialog["buttons"]] == ["cancel", "uninstall"]
+    host.answer("wrong-id", "uninstall", True)  # an old question's answer is ignored
+    host.answer(dialog["id"], "uninstall", True)
+    asking.join(2)
+    assert results == [True] and window.dialog is None
+    asking = threading.Thread(target=lambda: results.append(host.ask_calendar_disconnect()))
+    asking.start()
+    while host._question is None and asking.is_alive():
+        time.sleep(0.01)
+    (closing,) = host.window.events.closing.handlers
+    host.page = SimpleNamespace(close=lambda: None, state=SimpleNamespace(open=True), dialog=None, _draw=lambda: None)
+    closing()
+    asking.join(2)
+    assert results[-1] is None
+
+
+def test_folder_change_question_returns_a_known_choice():
+    window, host, events = make_window()
+    window.show()
+    host.ask = lambda question: ("move", False)
+    old, new = Path("/home/u/old"), Path("/home/u/new")
+    assert host.ask_dest_choice(old, new, 3) == "move"
+    host.ask = lambda question: ("evil", False)
+    assert host.ask_dest_choice(old, new, 3) is None
+
+
+def test_folder_picker_returns_one_path():
+    host = make_host()
+    host.webview.FileDialog = SimpleNamespace(FOLDER=20)
+    host.window.create_file_dialog = lambda kind: ("C:\\Users\\u\\Docs",) if kind == 20 else None
+    assert Bridge(host).choose_folder() == "C:\\Users\\u\\Docs"
+    host.window.create_file_dialog = lambda kind: None
+    assert host.choose_folder() is None
+
+
+@pytest.mark.parametrize("theme, windows_light, light", [
+    ("system", True, True), ("system", False, False), ("light", False, True), ("dark", True, False),
+])
+def test_theme_decides_light_or_dark(theme, windows_light, light):
+    assert web_window.is_light(theme, windows_light) is light
+
+
+def test_tray_app_calendar_actions_and_theme(tmp_path, monkeypatch):
+    from blackboard_sync.settings import load_settings, save_settings
+    from blackboard_sync.windows.app import jobs
+
+    app = make_app(tmp_path)
+    threads = []
+    monkeypatch.setattr("blackboard_sync.windows.app.threading.Thread",
+                        lambda target, daemon: SimpleNamespace(start=lambda: threads.append(target)))
+    app.post = lambda callback, *args: callback(*args)
+    ran = []
+    monkeypatch.setattr(jobs, "run_calendar_guarded",
+                        lambda config, action, cancel, **options: ran.append((action, options)) or "status")
+    app.dispatch("calendar_connect")
+    assert app.model.calendar_busy == "connect"
+    app.dispatch("calendar_connect")  # pressed again while waiting for the browser: cancels
+    assert app.calendar_cancel.is_set()
+    threads.pop(0)()
+    assert ran == [("connect", {})] and app.model.calendar_busy is None
+    app.web = SimpleNamespace(ask_calendar_disconnect=lambda: True)
+    app.dispatch("calendar_disconnect")
+    threads.pop(0)()
+    assert ran[-1] == ("disconnect", {"delete_calendar": True})
+    app.theme_chosen("dark")  # nothing saved yet: waits for the first Save
+    assert app.settings.theme == "dark" and load_settings(tmp_path) is None
+    save_settings(tmp_path, app.settings)
+    app.theme_chosen("light")
+    assert load_settings(tmp_path).theme == "light"

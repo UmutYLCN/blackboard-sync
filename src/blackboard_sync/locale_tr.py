@@ -625,4 +625,11 @@ CATALOG = {
     'Please wait for the calendar operation to finish.': 'Takvim işleminin tamamlanmasını bekleyin.',
     "Coming soon": "Çok yakında",
     "Past-term downloads are being redesigned and will return soon.": "Eski dönem indirme özelliği yeniden tasarlanıyor; çok yakında geri dönecek.",
+    # Settings → Appearance (the Windows window)
+    "Appearance": "Görünüm",
+    "Theme": "Tema",
+    "System follows the light or dark mode chosen in Windows.": "Sistem, Windows'ta seçili açık veya koyu modu izler.",
+    "System": "Sistem",
+    "Light": "Açık",
+    "Dark": "Koyu",
 }
