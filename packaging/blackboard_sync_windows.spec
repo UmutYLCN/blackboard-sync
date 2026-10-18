@@ -9,6 +9,8 @@ sys.path.insert(0, str(ROOT / "packaging"))
 from google_oauth_bundle import oauth_datas
 GOOGLE_OAUTH_DATAS = oauth_datas(ROOT)
 TTKBOOTSTRAP_DATAS = collect_data_files("ttkbootstrap.assets")
+# The WebView2 main window's page, stylesheet, script and icons (windows/webui_page.py).
+WEBUI_DATAS = [(str(ROOT / "src" / "blackboard_sync" / "windows" / "webui"), "blackboard_sync/windows/webui")]
 VERSION = re.search(
     r'__version__ = "([^"]+)"', (ROOT / "src" / "blackboard_sync" / "__init__.py").read_text()
 ).group(1)
@@ -18,13 +20,14 @@ a = Analysis(
     [str(ROOT / "packaging" / "app_entry.py")],
     pathex=[str(ROOT / "src")],
     # Fonts of the PDF notes (blackboard_sync.notepdf), with their license.
-    datas=[(str(ROOT / "assets" / "fonts"), "assets/fonts")] + GOOGLE_OAUTH_DATAS + TTKBOOTSTRAP_DATAS,
+    datas=[(str(ROOT / "assets" / "fonts"), "assets/fonts")] + GOOGLE_OAUTH_DATAS + TTKBOOTSTRAP_DATAS + WEBUI_DATAS,
     # The sync child run and the tray app are imported lazily by app_entry, the
     # in-app sign-in window (pywebview on WebView2, through pythonnet) by login.
     # pyinstaller-hooks-contrib's pywebview hook bundles the WebView2 interop DLLs.
     hiddenimports=[
         "blackboard_sync.cli",
         "blackboard_sync.windows.app",
+        "blackboard_sync.windows.web_window",
         "pystray._win32",
         "playwright.sync_api",
         "blackboard_sync.inapp_windows",

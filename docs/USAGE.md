@@ -34,6 +34,12 @@ The app is in English by default. To switch to Turkish, open **Settings**, choos
 **Language** in the **Sync** section and press **Save**. The language is used once the app starts again;
 Blackboard Sync offers to restart right away. Downloaded files, notes and folder names do not change.
 
+## Theme (Windows)
+
+On Windows, **Settings → Appearance → Theme** chooses the main window's colors: **System** follows the
+light or dark mode set in Windows, **Light** and **Dark** keep one. The change applies at once and is saved
+right away, without **Save**. macOS follows the system's appearance.
+
 ## Calendar
 
 **Calendar** shows the assignments, exams and other graded work of your synced courses day by day,
@@ -154,7 +160,7 @@ environment yourself. Only dragging the app to the Trash in Finder does not clea
 
 ## Google Calendar (optional)
 
-On macOS open **Settings → Google Calendar → Connect Google Calendar**. Consent
+Open **Settings → Google Calendar → Connect Google Calendar** (macOS and Windows). Consent
 opens in your browser; you can cancel in the app while it waits. Connection and
 Disconnect take effect immediately, independently of the settings Save/Cancel
 buttons. A Google Desktop OAuth client must first be configured by the developer;

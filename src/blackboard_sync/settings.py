@@ -26,6 +26,14 @@ SETTINGS_FILE = "settings.json"
 # shorter choice on purpose: an idle sync is a few hundred requests to the school.
 SYNC_INTERVAL_CHOICES = (30, 60, 180, 0)
 DEFAULT_SYNC_INTERVAL_MINUTES = 60
+# The main window's colors (the Windows WebView2 window): follow Windows, or always light or dark.
+THEME_SYSTEM, THEME_LIGHT, THEME_DARK = "system", "light", "dark"
+THEMES = (THEME_SYSTEM, THEME_LIGHT, THEME_DARK)
+
+
+def normalize_theme(value: object) -> str:
+    """A known theme, else following Windows."""
+    return value if value in THEMES else THEME_SYSTEM
 
 
 def normalize_sync_interval(value: object) -> int:
@@ -51,6 +59,7 @@ class Settings:
     check_updates: bool = True
     sync_interval_minutes: int = DEFAULT_SYNC_INTERVAL_MINUTES
     language: str = DEFAULT_LANGUAGE  # i18n.LANGUAGES; applies after a restart
+    theme: str = THEME_SYSTEM  # THEMES; applies at once (not part of the window's Save/Cancel form)
 
     def to_dict(self) -> dict:
         return {
@@ -59,6 +68,7 @@ class Settings:
             "check_updates": self.check_updates,
             "sync_interval_minutes": self.sync_interval_minutes,
             "language": self.language,
+            "theme": self.theme,
         }
 
     @classmethod
@@ -69,6 +79,7 @@ class Settings:
             check_updates=data.get("check_updates", True) is not False,
             sync_interval_minutes=normalize_sync_interval(data.get("sync_interval_minutes")),
             language=normalize_language(data.get("language")),
+            theme=normalize_theme(data.get("theme")),
         )
 
 

@@ -34,6 +34,9 @@ from blackboard_sync.menubar.model import (
 )
 from blackboard_sync.settings import (
     SYNC_INTERVAL_CHOICES,
+    THEME_DARK,
+    THEME_LIGHT,
+    THEME_SYSTEM,
     Settings,
     display_path,
     normalize_base_url,
@@ -136,9 +139,10 @@ def window_height(content: float, chrome: float, available: float) -> int:
 # Cancel); the others act at once (a button) or only choose (the past term).
 SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER = "account", "sync", "calendar", "folder"
 SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER = "past_terms", "updates", "danger"
+SECTION_APPEARANCE = "appearance"  # the Windows WebView2 window only (``settings_sections(appearance=True)``)
 # Top to bottom; Calendar actions are immediate, outside the saved form.
-SECTION_ORDER = (SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER, SECTION_PAST_TERMS,
-                 SECTION_UPDATES, SECTION_DANGER)
+SECTION_ORDER = (SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR, SECTION_FOLDER,
+                 SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER)
 
 CONTROL_FIELD, CONTROL_POPUP, CONTROL_SWITCH, CONTROL_BUTTON = "field", "popup", "switch", "button"
 
@@ -149,6 +153,11 @@ T_INTERVAL_DETAIL = tr("How often Blackboard is checked for new files.")
 T_AUTOSTART_DETAIL = tr("Keeps syncing in the background after you sign in to the computer.")
 T_CHECK_UPDATES_DETAIL = tr("Looks for a new version once a day.")
 T_UNINSTALL_LABEL = tr("Uninstall Blackboard Sync")
+T_SECTION_APPEARANCE = tr("Appearance")
+T_THEME_LABEL = tr("Theme")
+T_THEME_DETAIL = tr("System follows the light or dark mode chosen in Windows.")
+# (value, menu text); applies at once, outside the Save/Cancel form.
+THEME_OPTIONS = ((THEME_SYSTEM, tr("System")), (THEME_LIGHT, tr("Light")), (THEME_DARK, tr("Dark")))
 
 
 @dataclass(frozen=True)
@@ -183,6 +192,9 @@ SECTIONS = {section.key: section for section in (
         SettingRow("autostart", T_AUTOSTART, T_AUTOSTART_DETAIL, CONTROL_SWITCH, field="autostart"),
         SettingRow("language", T_LANGUAGE_LABEL, T_LANGUAGE_RESTART, CONTROL_POPUP, field="language"),
     )),
+    SettingsSection(SECTION_APPEARANCE, T_SECTION_APPEARANCE, (
+        SettingRow("theme", T_THEME_LABEL, T_THEME_DETAIL, CONTROL_POPUP),
+    )),
     SettingsSection(SECTION_CALENDAR, tr("Google Calendar"), (
         SettingRow("google_calendar", "", detail=" ", button=tr("Connect Google Calendar")),
         SettingRow("google_calendar_sync", tr("Sync calendar now"), button=tr("Sync calendar now")),
@@ -206,9 +218,10 @@ SECTIONS = {section.key: section for section in (
 )}
 
 
-def settings_sections() -> tuple[SettingsSection, ...]:
-    """The sections the page shows, in order."""
-    return tuple(SECTIONS[key] for key in SECTION_ORDER if key in SECTIONS)
+def settings_sections(appearance: bool = False) -> tuple[SettingsSection, ...]:
+    """The sections the page shows, in order; Appearance only where the window can change its theme."""
+    return tuple(SECTIONS[key] for key in SECTION_ORDER
+                 if key in SECTIONS and (appearance or key != SECTION_APPEARANCE))
 
 
 @dataclass(frozen=True)
@@ -457,6 +470,7 @@ def submit(values: FormValues, current: Settings) -> Submission:
         check_updates=values.check_updates,
         sync_interval_minutes=normalize_sync_interval(values.sync_interval_minutes),
         language=normalize_language(values.language),
+        theme=current.theme,  # chosen apart from the form (``Settings.theme``)
     )
     return Submission(
         settings=settings,

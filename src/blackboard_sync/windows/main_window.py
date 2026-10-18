@@ -76,8 +76,8 @@ class SettingsRowViews:
         self.title, self.detail, self.control = title, detail, control
 
 
-def work_area(window):
-    """(left, top, width, height) of the screen above the taskbar."""
+def work_area(window=None):
+    """(left, top, width, height) of the screen above the taskbar; ``window`` (Tk) is the fallback's source."""
     if sys.platform == "win32":
         import ctypes
         from ctypes import wintypes
@@ -85,6 +85,8 @@ def work_area(window):
         rect = wintypes.RECT()
         if ctypes.windll.user32.SystemParametersInfoW(0x30, 0, ctypes.byref(rect), 0):  # SPI_GETWORKAREA
             return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
+    if window is None:
+        return 0, 0, 1280, 752
     return 0, 0, window.winfo_screenwidth(), window.winfo_screenheight() - 48
 
 

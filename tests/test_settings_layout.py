@@ -10,6 +10,7 @@ from blackboard_sync.menubar.settings_form import (
     CONTROL_POPUP,
     CONTROL_SWITCH,
     SECTION_ACCOUNT,
+    SECTION_APPEARANCE,
     SECTION_CALENDAR,
     SECTION_DANGER,
     SECTION_FOLDER,
@@ -30,14 +31,18 @@ def all_rows():
 
 
 def test_the_sections_come_in_the_planned_order_with_a_slot_for_the_calendar():
-    assert SECTION_ORDER == (SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER, SECTION_PAST_TERMS,
-                             SECTION_UPDATES, SECTION_DANGER)
+    assert SECTION_ORDER == (SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR, SECTION_FOLDER,
+                             SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER)
     # The immediate Calendar controls occupy the reserved slot.
     assert SECTION_CALENDAR in SECTIONS
     assert [section.key for section in settings_sections()] == [
         SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER, SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER]
     assert [section.title for section in settings_sections()] == [
         "Account", "Sync", "Google Calendar", "Folder", "Past terms", "Updates", "Danger zone"]
+    # Appearance (the theme) only where the window can change it: the Windows WebView2 window.
+    assert [section.key for section in settings_sections(appearance=True)][:4] == [
+        SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR]
+    assert [row.key for row in SECTIONS[SECTION_APPEARANCE].rows] == ["theme"]
 
 
 def test_the_rows_of_each_section():

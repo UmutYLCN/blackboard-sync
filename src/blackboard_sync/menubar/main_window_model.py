@@ -166,13 +166,28 @@ AFTERNOON_FROM_HOUR = 12
 EVENING_FROM_HOUR = 18
 
 
-def first_name(name: str) -> str:
-    """The first word of the signed-in name, as Blackboard wrote it ("" without a name).
+# Letters only Turkish spells with: a word holding one of them lower-cases I as ı.
+TURKISH_LETTERS = frozenset("ÇĞİÖŞÜçğıöşü")
 
-    The letters are not changed: upper-casing or title-casing would need Turkish i/İ rules.
+
+def name_case(word: str) -> str:
+    """"UMUT" -> "Umut": a word Blackboard wrote in capitals, in title case; others stay as they are.
+
+    I has two lower-case forms. A word with a letter only Turkish has ("IŞIK", "İLKER") takes
+    the Turkish ı/i ("Işık", "İlker"); any other ("WILLIAM", "ISMAIL") the English i.
     """
+    if len(word) < 2 or not word.isupper():
+        return word
+    rest = word[1:]
+    if TURKISH_LETTERS & set(word):
+        rest = rest.replace("I", "ı").replace("İ", "i")
+    return word[0] + rest.lower()
+
+
+def first_name(name: str) -> str:
+    """The first word of the signed-in name ("" without a name); capitals become title case."""
     words = name.split()
-    return words[0] if words else ""
+    return name_case(words[0]) if words else ""
 
 
 def greeting(name: str, now: datetime, zone: tzinfo | None = None) -> str:

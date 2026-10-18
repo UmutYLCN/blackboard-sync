@@ -1,4 +1,8 @@
-"""Windows-only entry point; Tk owns state, tray and workers enqueue events."""
+"""Windows-only entry point; Tk (or ``loop.EventLoop``) owns state, tray and workers enqueue events.
+
+The main window is the WebView2 page (``web_window``); without WebView2, or with
+``BLACKBOARD_SYNC_UI=tk``, it is the Tk ``MainWindow``.
+"""
 
 import argparse
 import logging
@@ -39,6 +43,8 @@ WAKE_EVENT = "<<bbsync>>"
 # cannot wake Tk, so they are checked on a slow timer; this is also the safety
 # net should a wake-up ever be lost.
 REQUEST_CHECK_MS = 2000
+# Which main window to show: "web" (default, the WebView2 page) or "tk" (the older Tk window).
+UI_ENV = "BLACKBOARD_SYNC_UI"
 # The same failing check is logged with its traceback at most this often.
 ERROR_LOG_INTERVAL = 60.0
 
@@ -85,6 +91,8 @@ def cli_runner(command, **kwargs):
 
 
 class TrayApp:
+    web = None  # the WebView2 window's ``WebHost`` when the main window is the page (``web_window``)
+
     def __init__(self, config, root, show_window=False):
         import pystray
 
@@ -205,6 +213,40 @@ class TrayApp:
                           else RunOutcome(status="error", message=str(exc)))
             self.post(self.job_done, job, result)
         threading.Thread(target=worker, daemon=True).start()
+
+    def start_calendar(self, action="sync", **options):
+        """Connect, sync or disconnect Google Calendar on a worker; pressing Connect again cancels it."""
+        if self.model.calendar_busy:
+            if action == "connect" and self.model.calendar_busy == "connect":
+                self.calendar_cancel.set()
+            return
+        if action == "sync" and self.model.paused:
+            return
+        self.model.calendar_busy = action
+        cancel = threading.Event()
+        self.calendar_cancel = cancel
+        self.refresh()
+        def worker():
+            self.post(self.calendar_done, jobs.run_calendar_guarded(self.config, action, cancel=cancel, **options))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def disconnect_calendar(self):
+        """Asked in the WebView2 page (the Tk window has no Calendar section)."""
+        choice = self.web.ask_calendar_disconnect() if self.web is not None else None
+        if choice is not None:
+            self.start_calendar("disconnect", delete_calendar=choice)
+
+    def theme_chosen(self, theme):
+        """Settings → Theme, saved at once (not with the form); before the first Save it waits for it."""
+        from dataclasses import replace
+
+        self.settings = replace(self.settings, theme=theme)
+        if jobs.saved_settings(self.config) is None:
+            return
+        try:
+            save_settings(self.config.data_dir, self.settings)
+        except OSError:
+            log.exception("Could not save the theme")
 
     def calendar_done(self, status):
         self.model.calendar_busy = None
@@ -362,8 +404,6 @@ class TrayApp:
             self.drawn = menu
 
     def dispatch(self, action, value=""):
-        from tkinter import messagebox
-
         if self.uninstalling:
             return
         if action in ("sync", "login"):
@@ -379,6 +419,12 @@ class TrayApp:
             self.toggle_pause()
         elif action in ("settings", "calendar_settings"):
             self.show_window(GENERAL)
+        elif action == "calendar_connect":
+            self.start_calendar("connect")
+        elif action == "calendar_sync":
+            self.start_calendar()
+        elif action == "calendar_disconnect":
+            self.disconnect_calendar()
         elif action == "deadline":
             if value.startswith(self.config.base_url.rstrip("/") + "/"):
                 webbrowser.open(value)
@@ -415,12 +461,10 @@ class TrayApp:
                 self.model.note = tr("The file or folder does not exist yet; sync first.")
         elif action == "logout" and self.model.busy is None:
             # Asked from the main window, so the question belongs in front of it.
-            parent = self.window.window if self.window_open else self.root
-            if messagebox.askyesno(
+            if self.ask_yes_no(
                 tr("Sign out?"),
                 tr("All sign-in data is removed; you will need to enter your school details "
                    "again to sign in. Your downloaded files are kept."),
-                parent=parent,
             ):
                 try:
                     warnings = jobs.logout(self.config)
@@ -430,7 +474,7 @@ class TrayApp:
                     self.model.note = tr("Could not sign out.")
         elif action == "quit":
             if self.model.busy or self.model.updates.busy == "download":
-                messagebox.showinfo("Blackboard Sync", settings_form.T_BUSY, parent=self.root)
+                self.show_message("info", "Blackboard Sync", settings_form.T_BUSY, parent=self.root)
                 return
             self.closed = True
             self.icon.stop()
@@ -462,18 +506,19 @@ class TrayApp:
         return self.model.busy == "past_term"
 
     def start_uninstall(self):
-        from tkinter import messagebox
-        from .main_window import ask_uninstall
-
-        parent = self.window.window if self.window_open else self.root
         if package.is_packaged():
-            messagebox.showinfo("Blackboard Sync", uninstall.STORE_REMOVAL, parent=parent)
+            self.show_message("info", "Blackboard Sync", uninstall.STORE_REMOVAL)
             return
         if self.model.busy or self.model.updates.busy:
-            messagebox.showinfo("Blackboard Sync", uninstall.BUSY, parent=parent)
+            self.show_message("info", "Blackboard Sync", uninstall.BUSY)
             return
         self.uninstalling = True
-        choice = ask_uninstall(parent, sync_root(self.settings.dest))
+        if self.web is not None:
+            choice = self.web.ask_uninstall(sync_root(self.settings.dest))
+        else:
+            from .main_window import ask_uninstall
+
+            choice = ask_uninstall(self.dialog_parent(), sync_root(self.settings.dest))
         if choice is None:
             self.uninstalling = False
             return
@@ -481,7 +526,6 @@ class TrayApp:
             # Closed without window_closed: no "runs in the background" hint now.
             window, self.window = self.window, None
             window.destroy()
-            parent = self.root
         try:
             self.config.dest = self.settings.dest
             warnings = uninstall.uninstall(
@@ -489,14 +533,14 @@ class TrayApp:
                 owns_app_lock=True, app_cleanup=lambda: [],
             )
         except (BlackboardSyncError, OSError) as exc:
-            messagebox.showerror("Blackboard Sync", str(exc), parent=parent)
+            self.show_message("error", "Blackboard Sync", str(exc))
             self.uninstalling = False
             return
         if warnings:
-            messagebox.showwarning("Blackboard Sync", "\n\n".join(warnings), parent=parent)
+            self.show_message("warning", "Blackboard Sync", "\n\n".join(warnings))
         warnings = uninstall.remove_app()
         if warnings:
-            messagebox.showwarning("Blackboard Sync", "\n\n".join(warnings), parent=parent)
+            self.show_message("warning", "Blackboard Sync", "\n\n".join(warnings))
         self.closed = True
         self.icon.stop()
         self.root.destroy()
@@ -529,12 +573,17 @@ class TrayApp:
 
     def show_window(self, section=None):
         """Open the main window (or bring it forward); its taskbar button comes with it."""
-        from .main_window import MainWindow
+        if self.web is not None:
+            from .web_window import WebMainWindow as MainWindow
+        else:
+            from .main_window import MainWindow
 
         if self.uninstalling:
             return
         if self.window is None:
             log.info("Opening the main window (first run %s)", not self.model.configured)
+            web = {} if self.web is None else {
+                "theme": lambda: self.settings.theme, "on_theme": self.theme_chosen, "packaged": package.is_packaged}
             self.window = MainWindow(self.root, self.form_values(), self.window_status(),
                                      self.settings_submitted, self.dispatch, self.window_closed,
                                      on_values=self.form_values,
@@ -548,7 +597,7 @@ class TrayApp:
                                      on_course_toggle=self.course_toggled,
                                      on_past_term=self.download_past_term,
                                      on_section=lambda _section: self.refresh(),
-                                     recent_seen=self.model.recent_seen, on_seen=self.save)
+                                     recent_seen=self.model.recent_seen, on_seen=self.save, **web)
         if not self.window_open:
             self.model.reload_past_terms()
         self.window.show(section)
@@ -626,11 +675,7 @@ class TrayApp:
 
     def offer_language_restart(self):
         """The language is read when the app starts: offer to start again in the new one now."""
-        from tkinter import messagebox
-
-        parent = self.window.window if self.window_open else self.root
-        if messagebox.askyesno(settings_form.T_LANGUAGE_RESTART_TITLE, settings_form.T_LANGUAGE_RESTART,
-                               parent=parent):
+        if self.ask_yes_no(settings_form.T_LANGUAGE_RESTART_TITLE, settings_form.T_LANGUAGE_RESTART):
             self.restart()
 
     def restart(self):
@@ -650,16 +695,60 @@ class TrayApp:
         self.dispatch("quit")
 
     def ask_dest_choice(self, old, new, files):
+        if self.web is not None:
+            return self.web.ask_dest_choice(old, new, files)
         from .main_window import ask_dest_choice
 
-        parent = self.window.window if self.window_open else self.root
-        return ask_dest_choice(parent, old, new, files)
+        return ask_dest_choice(self.dialog_parent(), old, new, files)
+
+    # -- dialogs: Tk's in front of the Tk window, native message boxes for the WebView2 page ----
+    def dialog_parent(self):
+        """What a question is asked in front of: the main window while it is open, else the hidden root."""
+        return self.window.window if self.window_open else self.root
+
+    def ask_yes_no(self, title, message):
+        if self.web is not None:
+            return self.web.ask_yes_no(title, message)
+        from tkinter import messagebox
+
+        return messagebox.askyesno(title, message, parent=self.dialog_parent())
+
+    def show_message(self, kind, title, message, parent=None):
+        """``kind`` is "info", "warning" or "error"; ``parent`` overrides ``dialog_parent`` (Tk)."""
+        if self.web is not None:
+            self.web.show_message(kind, title, message)
+            return
+        from tkinter import messagebox
+
+        show = getattr(messagebox, {"info": "showinfo", "warning": "showwarning", "error": "showerror"}[kind])
+        show(title, message, parent=parent if parent is not None else self.dialog_parent())
 
     def save(self):
         try:
             jobs.save_model(self.config, self.model)
         except OSError:
             log.exception("Could not save tray state")
+
+
+def run_web(config, show_window, lock):
+    """Run the app with the WebView2 main window; False (nothing started) where WebView2 cannot run."""
+    from .loop import EventLoop
+    from .web_window import WebHost
+
+    loop = EventLoop()
+    try:
+        host = WebHost.create(loop, jobs.effective_settings(config).theme)
+    except Exception:
+        log.exception("The WebView2 main window is unavailable; using the Tk window")
+        return False
+    loop.host = host
+    loop.on_destroy.append(host.quit)  # Quit: the window closes and pywebview's loop ends
+    app = TrayApp(config, loop, show_window)
+    app.web = host
+    app.lifetime_lock = lock
+    log.info("Main window: WebView2")
+    host.run(app.run)
+    return True
 
 
 def main(argv=None):
@@ -697,6 +786,8 @@ def main(argv=None):
             autostart.upgrade_legacy()
         except OSError:
             log.exception("Could not register update-toast activation or login item")
+        if os.environ.get(UI_ENV, "web").strip().lower() != "tk" and run_web(config, show_window, lock):
+            return 0
         root = tk.Tk()
         root.withdraw()
         if sys.platform == "win32":

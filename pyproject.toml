@@ -47,5 +47,8 @@ version = {attr = "blackboard_sync.__version__"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"blackboard_sync.windows" = ["webui/*.html", "webui/*.css", "webui/*.js", "webui/*.png", "webui/icons/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

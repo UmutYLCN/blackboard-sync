@@ -70,7 +70,13 @@ def test_greeting_uses_the_local_hour_not_utc():
     ("Madonna", "Madonna"),  # one word
     ("  Ada   Lovelace ", "Ada"),
     ("İsmail Çağrı Öğrenci", "İsmail"),  # Turkish letters stay as they are
-    ("UMUT YALÇIN", "UMUT"),
+    ("UMUT YALÇIN", "Umut"),  # Blackboard's capitals become title case
+    ("IŞIK Yılmaz", "Işık"),  # a Turkish word keeps the dotless ı
+    ("İLKER", "İlker"),
+    ("ISMAIL", "Ismail"),  # no Turkish letter: the English i
+    ("WILLIAM", "William"),
+    ("McDonald", "McDonald"),  # mixed case is how the student wrote it
+    ("A", "A"),
     ("", ""),
     ("   ", ""),
 ])
