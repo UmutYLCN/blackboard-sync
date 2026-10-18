@@ -107,7 +107,7 @@ below follow what the app does. Check each question's info icon when its wording
 | Gambling, simulated gambling | No | Same |
 | Users can interact or exchange content with other users (chat, posting, sharing) | No | It only downloads from the student's own courses; nothing is posted |
 | Shares the user's location | No | It reads no location |
-| Shares personal information with third parties | No | The session goes only to the school's own Blackboard (privacy page: "Your data is not shared with, sold or rented to any third party") |
+| Shares personal information with third parties | Yes, optional | If Calendar is enabled, deadline titles, course names, due times and Blackboard links are sent to Google at the user’s request; disclose optional sharing in the submission. Blackboard cookies go only to the school. |
 | Digital purchases | No | Free, no in-app purchases |
 | Unrestricted internet access (for example a web browser) | No | The sign-in window opens the school's sign-in page; the app is not a browser. Confirm against the question's info text |
 
@@ -182,7 +182,7 @@ copy.
   explanation and a link to the demo video. Suggested text for the second case (date it):
 
   ```text
-  [date] This app downloads course files from a university's Blackboard Learn system. Signing in requires the student's own school account on the school's sign-in page, so we cannot provide a shared test account. Without an account testers can: open the app from Start (the "Get started" first-run page appears; the UI is English, with Turkish under Settings > Language), enter any Blackboard address and choose a folder, open Settings (the gear; automatic sync interval, language, start at sign-in, the note that updates come from the Microsoft Store), and close the window to see the app keep running in the notification area. A demo of a full sync: https://github.com/user-attachments/assets/d7e1e0a7-a25b-4412-824b-52ee71d25b03 . The app has no analytics and contacts only the Blackboard address the user enters.
+  [date] This app downloads course files from a university's Blackboard Learn system. Signing in requires the student's own school account on the school's sign-in page, so we cannot provide a shared test account. Without an account testers can: open the app from Start (the "Get started" first-run page appears; the UI is English, with Turkish under Settings > Language), enter any Blackboard address and choose a folder, open Settings (the gear; automatic sync interval, language, start at sign-in, the note that updates come from the Microsoft Store), and close the window to see the app keep running in the notification area. A demo of a full sync: https://github.com/user-attachments/assets/d7e1e0a7-a25b-4412-824b-52ee71d25b03 . The app has no analytics. It contacts the Blackboard address the user enters and its redirects; optional Calendar sync also contacts Google. Calendar connection is currently CLI-only on Windows.
   ```
 
 - [ ] **Submission notification audience:** the account owner is notified by default; add

@@ -827,14 +827,14 @@ def test_settings_page_is_sections_of_rows(tmp_path):
         texts = settings_texts(window)
         by_text = {text: top for top, text in texts}
 
-        # Sections top to bottom, each with its rows' titles under its own title; no Calendar yet.
+        # Sections top to bottom, each with its rows' titles under its own title, including Google Calendar.
         expected = []
         for section in settings_sections():
             expected.append(section.title)
-            expected += [row.title for row in section.rows if row.title]
+            expected += [row.title for row in section.rows if row.title and section.key != SECTION_CALENDAR]
         order = [text for _, text in texts if text in expected]
         assert order == expected
-        assert SECTION_CALENDAR not in SECTIONS and 'Calendar' not in by_text
+        assert SECTION_CALENDAR in SECTIONS and 'Google Calendar' in by_text
         above = [t for t in expected if t not in ('Danger zone', 'Uninstall Blackboard Sync')]
         assert max(by_text[t] for t in above) < by_text['Danger zone'] < by_text['Uninstall Blackboard Sync']  # last
 
@@ -950,9 +950,9 @@ def test_genel_past_terms_section_and_uninstall_button(tmp_path):
     window, model, _ = make_window(tmp_path, on_action=actions.append, on_past_term=downloads.append)
     try:
         labels = [text for _, text in settings_texts(window)]
-        sections = [label for label in labels if label in ('Account', 'Folder', 'Past terms', 'Sync', 'Updates',
+        sections = [label for label in labels if label in ('Account', 'Folder', 'Past terms', 'Google Calendar', 'Sync', 'Updates',
                                                            'Danger zone')]
-        assert sections == ['Account', 'Sync', 'Folder', 'Past terms', 'Updates', 'Danger zone']
+        assert sections == ['Account', 'Sync', 'Google Calendar', 'Folder', 'Past terms', 'Updates', 'Danger zone']
         assert 'A past term is downloaded once and not updated.' in labels
         assert str(window.past_button.title()) == 'Download past term'
         assert str(window.past_label.stringValue()) == 'Sign in to see past terms.'
@@ -1183,3 +1183,9 @@ def test_pause_stops_a_running_sync_and_resume_syncs_again(menu_app, monkeypatch
     assert menu_app.model.begin('sync')
     menu_app.toggle_pause()  # a running sync is ended
     assert menu_app.model.paused and stopped == [True]
+
+
+@pytest.fixture(autouse=True)
+def retained_archive_engine(monkeypatch):
+    """Exercise the retained archive engine; release-default guards have their own tests."""
+    monkeypatch.setattr("blackboard_sync.menubar.model.PAST_TERMS_AVAILABLE", True)

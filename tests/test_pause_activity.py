@@ -215,3 +215,9 @@ def test_attention_lists_only_what_needs_the_student(tmp_path):
 def test_nothing_needs_attention_before_the_first_sign_in(tmp_path):
     assert attention_items(AppModel(tmp_path, NOW, configured=False)) == ()
     assert main_status(AppModel(tmp_path, NOW, configured=False), NOW).pause_enabled is False
+
+
+@pytest.fixture(autouse=True)
+def retained_archive_engine(monkeypatch):
+    """Exercise the retained archive engine; release-default guards have their own tests."""
+    monkeypatch.setattr("blackboard_sync.menubar.model.PAST_TERMS_AVAILABLE", True)

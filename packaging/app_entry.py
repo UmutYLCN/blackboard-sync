@@ -16,7 +16,8 @@ CHECK_LOGIN_RUNTIME = "--check-login-runtime"
 CHECK_PACKAGE = "--check-package"
 # Hidden self-test used by CI: draws a PDF note with the bundled fonts.
 CHECK_NOTE_PDF = "--check-note-pdf"
-CLI_COMMANDS = {"login", "sync", "check", "past-terms", "uninstall", "--version", "-h", "--help"}
+CHECK_GOOGLE_CALENDAR = "--check-google-calendar"
+CLI_COMMANDS = {"login", "sync", "check", "past-terms", "uninstall", "calendar", "--version", "-h", "--help"}
 # CLI options that come before the subcommand; the menu bar app passes the
 # school from its settings window as ``--base-url URL sync ...``.
 CLI_GLOBAL_OPTIONS = {"--base-url", "--data-dir", "-v", "--verbose"}
@@ -29,6 +30,15 @@ def main() -> int:
 
         web_view = check_runtime()
         print(f"login runtime ok (Playwright, {web_view})")
+        return 0
+    if args == [CHECK_GOOGLE_CALENDAR]:
+        from blackboard_sync.gcal import oauth_client_settings
+
+        client = oauth_client_settings()
+        if not client.get("client_id") or not client.get("client_secret"):
+            print("Google Calendar client configuration is missing.", file=sys.stderr)
+            return 1
+        print("Google Calendar client configuration OK.")
         return 0
     if args == [CHECK_NOTE_PDF]:
         from blackboard_sync.notepdf import check_runtime as check_note_pdf

@@ -47,7 +47,7 @@ DELETED FILES
 Pick files you downloaded and later removed from the folder, and download them again. Files you dismiss are not suggested again.
 
 PAST TERMS
-Download the files of an earlier term in one go. A past term is downloaded once and not kept up to date.
+Past-term desktop downloads are being redesigned. The section currently shows Coming soon; existing downloaded files are kept.
 
 SETTINGS
 • Automatic sync: every 30 minutes, every hour, every 3 hours, or manual only.
@@ -57,7 +57,7 @@ SETTINGS
 PRIVACY
 • You type your password only on your school's own sign-in page; the app never sees or stores it.
 • Your sign-in session, settings and download records stay on your computer.
-• The app connects only to your school's Blackboard address (and the sign-in and file addresses it redirects to).
+• The app connects to Blackboard and its sign-in/file redirects, plus Google only if you enable optional Calendar sync.
 • No analytics, ads or usage tracking, and no account to create.
 
 REQUIREMENTS
@@ -88,7 +88,7 @@ A tidy University folder, by term and course
 A Windows notification when new files arrive
 Automatic sync every 30 minutes, every hour, every 3 hours, or manual only
 Deleted: pick files you removed and download them again
-Download a past term's files in one go
+Past-term downloads: coming soon
 Can start in the background when the computer starts
 Never sees your password; your session stays on your computer
 No analytics, ads or usage tracking
@@ -145,3 +145,7 @@ Leave empty (see `listing-tr.md`).
 ```text
 Umut Yalçın
 ```
+
+## Optional Google Calendar privacy
+
+CLI connection enables automatic deadline updates to a dedicated Blackboard Deadlines calendar. Google receives event titles, course names, due times and Blackboard links. Tokens are stored in Windows Credential Manager; mapping and status stay in the private app data folder. Run `calendar disconnect` to revoke access and clear local Calendar data, optionally with `--delete-calendar` (keeping the calendar retains only its non-secret ID for reconnection), or revoke at https://myaccount.google.com/connections. Windows connection controls are not yet available in the GUI. Google API use follows the Google API Services User Data Policy, including Limited Use.

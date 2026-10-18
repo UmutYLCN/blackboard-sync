@@ -114,6 +114,8 @@ UPDATE_ACTIONS = ("check_updates", "update")
 # Sync and discovery jobs. Every "sync" mirrors Blackboard: files that were
 # deleted or broke are downloaded again (``sync.Syncer.present``).
 SYNC_JOBS = ("sync", "past_term", "past_terms")
+# Temporarily unavailable in the desktop apps while the archive flow is redesigned.
+PAST_TERMS_AVAILABLE = False
 # Moves the downloaded files into a new destination folder (``relocate.py``); with
 # ``move_from`` equal to ``dest`` it only moves the files of an older version
 # from the chosen folder into its University folder (``relocate.migrate_to_root``).
@@ -684,6 +686,9 @@ class AppModel:
         self.hidden_folders: tuple[str, ...] = ()
         self.login_prompted = login_prompted
         self.autostart = autostart
+        from blackboard_sync.gcal import CalendarStatus
+        self.calendar = CalendarStatus()
+        self.calendar_busy: str | None = None
         self.busy: str | None = None  # "sync" | "login" | "move" | ...
         self.past_term = ""  # only for the active one-time job; never saved as a default
         self.past_term_id = ""  # ...and the Blackboard id of that term
@@ -789,6 +794,8 @@ class AppModel:
 
         Nothing starts while an update downloads: it may end with the app quitting.
         """
+        if job in ("past_terms", "past_term") and not self.past_terms_available:
+            return False
         if self.busy is not None or self.updates.busy == "download":
             return False
         self.busy = job
@@ -796,11 +803,16 @@ class AppModel:
             self.pending = None
         return True
 
+    @property
+    def past_terms_available(self) -> bool:
+        return PAST_TERMS_AVAILABLE
+
     def past_terms_due(self, now: datetime | None = None) -> bool:
         """The past-term list still has to be looked up (once Genel is in view)."""
         now = now or datetime.now(timezone.utc)
         return (
-            not self.past_terms_loaded
+            self.past_terms_available
+            and not self.past_terms_loaded
             and (self.past_terms_retry_at is None or now >= self.past_terms_retry_at)
             and self.configured
             and self.account()[0] is not None
@@ -852,7 +864,7 @@ class AppModel:
 
     @property
     def can_download_past_term(self) -> bool:
-        return self.busy is None and self.updates.busy != "download" and bool(self.past_terms)
+        return self.past_terms_available and self.busy is None and self.updates.busy != "download" and bool(self.past_terms)
 
     def finish_sync(self, outcome: RunOutcome, now: datetime) -> list[Notification]:
         notes = self._finish_sync(outcome, now)
@@ -1208,6 +1220,7 @@ class AppModel:
             "recent_seen": self.recent_seen.saved_state(self.recent),
             "updates": self.updates.saved_state(),
             "pending": self.saved_pending(),
+            "calendar": vars(self.calendar),
             "reminders": self.reminders_sent,
             "paused": self.paused,
             "activity": [vars(item) for item in self.activity_log],

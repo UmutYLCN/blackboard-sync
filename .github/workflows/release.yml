@@ -30,15 +30,21 @@ jobs:
         run: |
           VERSION="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/blackboard_sync/__init__.py)"
           test "v$VERSION" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME does not match version $VERSION" >&2; exit 1; }
-      - name: Build the app and .dmg
+      - name: Prepare and test
         run: |
           ./scripts/setup.sh
           .venv/bin/python -m pytest -q
-          ./scripts/build-app.sh
+      - name: Build the app and .dmg
+        env:
+          BBSYNC_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.GOOGLE_CALENDAR_OAUTH_CLIENT_JSON }}
+          BBSYNC_REQUIRE_GOOGLE_OAUTH: "1"
+        run: ./scripts/build-app.sh
       # The browser sign-in needs Playwright's driver inside the app, the in-app
       # sign-in window needs WebKit.
       - name: Check the app can start the sign-in runtime
         run: dist/"Blackboard Sync.app"/Contents/MacOS/"Blackboard Sync" --check-login-runtime
+      - name: Check bundled Google Calendar client metadata
+        run: dist/"Blackboard Sync.app"/Contents/MacOS/"Blackboard Sync" --check-google-calendar
       - name: Check the app can draw a PDF note
         run: dist/"Blackboard Sync.app"/Contents/MacOS/"Blackboard Sync" --check-note-pdf
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -230,7 +236,12 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
       - name: Build the installer
+        env:
+          BBSYNC_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.GOOGLE_CALENDAR_OAUTH_CLIENT_JSON }}
+          BBSYNC_REQUIRE_GOOGLE_OAUTH: "1"
         run: ./scripts/build-windows.ps1
+      - name: Check bundled Google Calendar client metadata
+        run: '& "dist/Blackboard Sync/blackboard-sync-cli.exe" --check-google-calendar'
       # Install it the way the updater does (silently), check the installed app,
       # then uninstall and check nothing but the app was removed.
       - name: Smoke-test the installer
@@ -248,6 +259,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: setup
@@ -275,5 +287,10 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" $FILES --clobber
           else
-            gh release create "$GITHUB_REF_NAME" $FILES --title "$GITHUB_REF_NAME" --generate-notes $PRERELEASE
+            NOTES="docs/releases/${GITHUB_REF_NAME#v}.md"
+            if [ -f "$NOTES" ]; then
+              gh release create "$GITHUB_REF_NAME" $FILES --title "$GITHUB_REF_NAME" --notes-file "$NOTES" $PRERELEASE
+            else
+              gh release create "$GITHUB_REF_NAME" $FILES --title "$GITHUB_REF_NAME" --generate-notes $PRERELEASE
+            fi
           fi

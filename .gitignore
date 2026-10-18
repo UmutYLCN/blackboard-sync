@@ -21,3 +21,11 @@ University/
 
 # Wrangler local state
 .wrangler/
+
+# Optional Google Calendar local state and downloaded OAuth credentials
+google-token.json
+google-calendar.json
+google-calendar-events.json
+google-calendar-target.json
+google-calendar.lock
+client_secret*.json

@@ -151,3 +151,74 @@ In the packaged Windows install the terminal command is `blackboard-sync-cli.exe
 folder. The macOS package uses `"/Applications/Blackboard Sync.app/Contents/MacOS/Blackboard Sync" uninstall`.
 When installed from source, this command clears the data; remove the source folder and virtual
 environment yourself. Only dragging the app to the Trash in Finder does not clear the app's data.
+
+## Google Calendar (optional)
+
+On macOS open **Settings → Google Calendar → Connect Google Calendar**. Consent
+opens in your browser; you can cancel in the app while it waits. Connection and
+Disconnect take effect immediately, independently of the settings Save/Cancel
+buttons. A Google Desktop OAuth client must first be configured by the developer;
+see [Google Calendar setup](GOOGLE_CALENDAR_SETUP.md).
+
+After each successful Blackboard sync, the app sends deadline changes to its
+separate **Blackboard Deadlines** calendar. **Sync calendar now** sends the cached
+deadlines without downloading Blackboard data. Pause stops automatic Calendar
+updates too; Resume runs Blackboard first, then Calendar. Hidden courses are
+excluded and their managed events are removed on the next Calendar run. Events
+are 30 minutes long, ending at the deadline, without Google reminders by default.
+The app already supplies its own 24-hour and 1-hour deadline notifications.
+Deleted Blackboard deadlines are removed from Google; passing a due date alone
+does not remove an existing event. Deadlines over 14 days old are not newly added.
+If you delete the dedicated calendar, the next run recreates it.
+
+Google receives the event title, course name, due time, Blackboard link, and
+technical identifiers for matching the app's events. The app never reads your
+personal events or writes to your main calendar. Refresh tokens stay in macOS
+Keychain or Windows Credential Manager (private token JSON on other platforms);
+calendar ID, status and the event ID/hash mapping are saved privately on your
+computer. Access tokens stay in memory. See the [privacy policy](../site/privacy.html).
+Blackboard Sync's use and transfer of information received from Google APIs
+adhere to the Google API Services User Data Policy, including the Limited Use
+requirements.
+
+**Disconnect** revokes the token and removes local Calendar connection data.
+If you keep the Google calendar, only its non-secret ID remains locally so a
+later connection can reuse it or delete it. The confirmation has an optional **Also delete the Blackboard Deadlines calendar
+from Google** checkbox. Otherwise the existing Google calendar remains and stops
+updating. You can revoke access independently at
+[Google Account → Third-party connections](https://myaccount.google.com/connections).
+After revocation, the next Calendar attempt shows **Reconnect** in Home and
+Settings. Blackboard downloads keep working. If deletion was requested after
+access was revoked, reconnect first or delete the calendar in Google settings.
+Disconnect before uninstalling; uninstalling the app does not revoke Google's
+grant or remove its remote calendar.
+
+Terminal commands (also used to connect/reconnect on Windows, whose native
+Calendar connection controls are not yet implemented):
+
+```sh
+blackboard-sync calendar connect
+blackboard-sync calendar status
+blackboard-sync calendar sync
+blackboard-sync calendar sync --reminders   # opt in to Google's default reminders
+blackboard-sync calendar disconnect
+blackboard-sync calendar disconnect --delete-calendar
+```
+
+`status` prints only connection state, last sync/error and whether reconnection is
+needed. Tokens are never printed. `calendar sync` uses the cached Blackboard
+source; run `blackboard-sync sync` first when testing from the terminal. The
+terminal Blackboard sync command itself does not automatically contact Google.
+
+
+## Version 1.6.0: past-term downloads
+
+The desktop Past terms section now shows **Coming soon** and cannot be clicked
+while its workflow is being redesigned. Opening Settings no longer starts a
+past-term lookup. Existing archived files remain on disk. The CLI's explicit
+archive commands remain available for terminal use.
+
+Official release packages include the Desktop OAuth client configuration; Google
+Calendar Connect no longer needs terminal environment variables. Source checkouts
+can use the gitignored `.bbsync/google-oauth-client.json` or the environment
+overrides described in the setup guide.

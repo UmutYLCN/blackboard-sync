@@ -1,8 +1,12 @@
 # PyInstaller spec for "Blackboard Sync.app". Build with scripts/build-app.sh.
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(SPECPATH).parent
+sys.path.insert(0, str(ROOT / "packaging"))
+from google_oauth_bundle import oauth_datas
+GOOGLE_OAUTH_DATAS = oauth_datas(ROOT)
 VERSION = re.search(
     r'__version__ = "([^"]+)"', (ROOT / "src" / "blackboard_sync" / "__init__.py").read_text()
 ).group(1)
@@ -17,7 +21,7 @@ a = Analysis(
         (str(ROOT / "assets" / "fonts"), "assets/fonts"),
         # The main window's sidebar logo (transparent; the .icns has a background).
         (str(ROOT / "assets" / "icon" / "logo.png"), "assets/icon"),
-    ],
+    ] + GOOGLE_OAUTH_DATAS,
     # The sync child run and the menu bar app are imported lazily by app_entry,
     # the in-app sign-in window (WKWebView) lazily by login.
     hiddenimports=[

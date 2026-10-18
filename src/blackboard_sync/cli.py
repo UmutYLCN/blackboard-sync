@@ -85,6 +85,14 @@ def build_parser() -> argparse.ArgumentParser:
     uninstall = sub.add_parser("uninstall", help="remove the app and all of its data")
     uninstall.add_argument("--delete-course-files", action="store_true",
                            help="also move the downloaded course files to the Trash (default: keep them)")
+    calendar = sub.add_parser("calendar", help="manage the optional Google Calendar connection")
+    commands = calendar.add_subparsers(dest="calendar_action", required=True)
+    commands.add_parser("connect", help="authorize in the system browser")
+    commands.add_parser("status", help="show connection status as JSON")
+    calendar_sync = commands.add_parser("sync", help="send cached Blackboard deadlines to Google")
+    calendar_sync.add_argument("--reminders", action="store_true", help="use Google calendar default reminders")
+    disconnect = commands.add_parser("disconnect", help="revoke access and remove local Calendar data")
+    disconnect.add_argument("--delete-calendar", action="store_true")
     return parser
 
 
@@ -246,6 +254,23 @@ def cmd_uninstall(args, config: Config) -> int:
     return EXIT_ERROR if warnings else EXIT_OK
 
 
+def cmd_calendar(args, config: Config) -> int:
+    from dataclasses import asdict
+    from blackboard_sync import gcal
+
+    if args.calendar_action == "status":
+        print(json.dumps(asdict(gcal.status(config))))
+    else:
+        options = {}
+        if args.calendar_action == "disconnect":
+            options["delete_calendar"] = args.delete_calendar
+        elif args.calendar_action == "sync":
+            options["reminders"] = args.reminders
+        gcal.perform(config, args.calendar_action, **options)
+        print(json.dumps(asdict(gcal.status(config))))
+    return EXIT_OK
+
+
 def _utf8_output() -> None:
     """Windows: write UTF-8 even when the output is a pipe (Turkish names, JSON)."""
     for stream in (sys.stdout, sys.stderr):
@@ -268,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
         logging.getLogger("urllib3").setLevel(logging.WARNING)
     config = make_config(args)
     handlers = {"login": cmd_login, "sync": cmd_sync, "check": cmd_check,
-                "past-terms": cmd_past_terms, "uninstall": cmd_uninstall}
+                "past-terms": cmd_past_terms, "uninstall": cmd_uninstall, "calendar": cmd_calendar}
     try:
         return handlers[args.command](args, config)
     except LoginRequired as exc:

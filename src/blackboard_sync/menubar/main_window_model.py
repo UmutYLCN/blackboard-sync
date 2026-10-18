@@ -411,6 +411,12 @@ def attention_items(model: AppModel) -> tuple[AttentionItem, ...]:
     if is_first_run(model):
         return ()
     items: list[AttentionItem] = []
+    if model.calendar.needs_reconnect:
+        items.append(AttentionItem(tr("Google Calendar needs to be reconnected"),
+                                   tr("Open Settings to reconnect your calendar."), "calendar_settings", tr("Reconnect")))
+    elif model.calendar.last_error:
+        items.append(AttentionItem(tr("Google Calendar error"), model.calendar.last_error,
+                                   "calendar_settings", tr("Settings")))
     name, expired = model.account()
     if name is None and model.busy != "login":
         items.append(AttentionItem(T_EXPIRED if expired else T_SIGNED_OUT,

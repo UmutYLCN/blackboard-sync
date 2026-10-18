@@ -68,3 +68,10 @@ def human_size(size: int) -> str:
             return f"{value:.1f}".replace(".", ",").rstrip("0").rstrip(",") + f" {unit}"
         value /= 1000
     return f"{value:.1f}".replace(".", ",") + " TB"
+
+
+class CalendarAuthExpired(BlackboardSyncError):
+    """The Google grant is missing, expired or revoked; Blackboard stays signed in."""
+
+    def __init__(self):
+        super().__init__(tr("Google Calendar needs to be reconnected"))

@@ -295,3 +295,9 @@ def test_settings_section_shows_lookup_failures_and_empty_list(tmp_path):
     model.begin("past_terms")
     model.finish_past_terms([], RunOutcome("ok"))
     assert window_status(model).past_message == "No past terms to download."
+
+
+@pytest.fixture(autouse=True)
+def retained_archive_engine(monkeypatch):
+    """Exercise the retained archive engine; release-default guards have their own tests."""
+    monkeypatch.setattr("blackboard_sync.menubar.model.PAST_TERMS_AVAILABLE", True)
