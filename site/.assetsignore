@@ -6,3 +6,5 @@ README.md
 .wrangler
 .dev.vars*
 node_modules
+tests
+.pytest_cache
