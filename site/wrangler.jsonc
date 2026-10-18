@@ -5,8 +5,8 @@
   "assets": {
     "directory": ".",
     "binding": "ASSETS",
-    // Only the short download links run the Worker; every other path is static.
-    "run_worker_first": ["/mac", "/mac/", "/windows", "/windows/"]
+    // Only the short download links and the video (byte ranges) run the Worker; every other path is static.
+    "run_worker_first": ["/mac", "/mac/", "/windows", "/windows/", "/assets/*.mp4"]
   },
   "vars": {
     "RELEASE_API": "https://api.github.com/repos/UmutYLCN/blackboard-sync/releases/latest",

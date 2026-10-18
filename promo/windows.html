@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Blackboard Sync — Windows</title>
+<style>
+{{FONT}}
+{{FILM_CSS}}
+/* Windows 11 windows */
+.w11 { border-radius: 12px; background: #f1f4f9; color: #1b1f26; }
+.w11.dark { background: #111317; color: #e6e8ec; }
+.w11-bar { height: 44px; display: flex; align-items: center; gap: 12px; padding-left: 16px; font-size: 17px; }
+.w11-bar img { width: 20px; height: 20px; }
+.w11-bar .ctrl { margin-left: auto; display: flex; height: 100%; }
+.w11-bar .ctrl i { width: 58px; height: 100%; display: grid; place-items: center; position: relative; }
+.w11-bar .ctrl i::before { content: ""; position: absolute; background: currentColor; }
+.w11-bar .ctrl .min::before { width: 12px; height: 1.5px; }
+.w11-bar .ctrl .max::before { width: 11px; height: 11px; background: none; border: 1.5px solid currentColor; border-radius: 2px; }
+.w11-bar .ctrl .x::before, .w11-bar .ctrl .x::after { content: ""; position: absolute; width: 15px; height: 1.5px; background: currentColor; transform: rotate(45deg); }
+.w11-bar .ctrl .x::after { transform: rotate(-45deg); }
+.w11-screen { position: relative; width: 960px; height: 750px; overflow: hidden; }
+#app { width: 768px; height: 600px; border: 0; transform: scale(1.25); transform-origin: 0 0; display: block; background: transparent; }
+.browser-w11 { background: #f6f7f9; color: #1f2733; border-radius: 12px; }
+.browser-w11 .w11-bar { background: #e9ecf1; border-bottom: 1px solid #d6d9df; color: #4a5464; }
+.browser-w11 .w11-bar .tab { background: #f6f7f9; height: 34px; margin-top: 10px; border-radius: 10px 10px 0 0; padding: 0 18px; display: flex; align-items: center; gap: 10px; font-size: 16px; color: #27303d; }
+
+/* Windows 11 toast */
+.toast { position: absolute; width: 540px; padding: 16px 18px 18px; border-radius: 12px; background: #2b2b2b; border: 1px solid #3c3c3c; color: #fff; box-shadow: 0 24px 60px rgb(0 0 0 / 50%); }
+.toast .head { display: flex; align-items: center; gap: 10px; font-size: 15px; color: #c8c8c8; margin-bottom: 10px; }
+.toast .head img { width: 22px; height: 22px; }
+.toast .head span { margin-left: auto; font-size: 18px; color: #9a9a9a; }
+.toast .t { font-size: 20px; font-weight: 700; }
+.toast .b { font-size: 18px; color: #d6d6d6; margin-top: 4px; line-height: 1.35; }
+
+/* the tray, zoomed */
+.taskbar { position: absolute; left: 60px; right: 60px; top: 960px; height: 130px; border-radius: 26px; background: rgb(32 34 38 / 96%); box-shadow: 0 24px 60px rgb(0 0 0 / 50%), 0 0 0 1px rgb(255 255 255 / 8%); display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 0 30px; color: #e8e8e8; }
+.taskbar .icon { font-size: 40px; }
+.taskbar .slot { width: 76px; height: 76px; border-radius: 14px; display: grid; place-items: center; position: relative; }
+.taskbar .slot.hot { background: rgb(255 255 255 / 10%); }
+.taskbar .slot img { width: 54px; height: 54px; }
+.taskbar .dot { position: absolute; right: 8px; bottom: 8px; width: 24px; height: 24px; border-radius: 50%; border: 3px solid #fff; }
+.taskbar .clock { text-align: right; font-size: 24px; line-height: 1.3; margin-left: 14px; }
+.traymenu { position: absolute; width: 520px; padding: 10px; border-radius: 16px; background: rgb(44 44 48 / 98%); border: 1px solid #3d3d42; box-shadow: 0 24px 60px rgb(0 0 0 / 55%); color: #f0f0f0; }
+.traymenu div { height: 52px; display: flex; align-items: center; gap: 14px; padding: 0 16px; border-radius: 8px; font-size: 21px; }
+.traymenu div.muted { color: #9a9aa2; font-size: 18px; height: 40px; }
+.traymenu div.on { background: rgb(255 255 255 / 9%); }
+.traymenu div .icon { font-size: 26px; color: #9fc7ff; }
+.traymenu div .arrow { margin-left: auto; font-size: 22px; color: #aaa; }
+.traymenu hr { border: 0; border-top: 1px solid #45454b; margin: 6px 8px; }
+
+/* Explorer */
+.explorer { background: #fff; color: #1b1b1b; border-radius: 12px; }
+.explorer .w11-bar { background: #f3f3f3; }
+.explorer .tab { background: #fff; height: 34px; margin-top: 10px; border-radius: 10px 10px 0 0; padding: 0 18px; display: flex; align-items: center; gap: 10px; font-size: 16px; }
+.ex-address { display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-bottom: 1px solid #e8e8e8; font-size: 17px; color: #333; }
+.ex-address .crumbs { flex: 1; background: #f5f5f5; border-radius: 6px; padding: 8px 12px; }
+.ex-body { display: flex; height: calc(100% - 44px - 56px); }
+.ex-nav { width: 210px; border-right: 1px solid #ececec; padding: 12px 8px; font-size: 17px; }
+.ex-nav div { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 6px; }
+.ex-nav div .icon { font-size: 22px; color: #e8a33d; }
+.ex-nav div.on { background: #e5f0fc; }
+.ex-list { flex: 1; padding: 8px 14px; }
+.ex-head { display: flex; font-size: 15px; color: #666; padding: 6px 10px; border-bottom: 1px solid #eee; }
+.ex-head span:first-child { flex: 1; }
+.ex-row { display: flex; align-items: center; gap: 12px; height: 50px; font-size: 19px; padding: 0 10px; border-radius: 6px; }
+.ex-row .ic { font-size: 28px; }
+.ex-row .ic.folder { color: #f2b636; } .ex-row .ic.pdf { color: #d93025; } .ex-row .ic.ppt { color: #d35400; } .ex-row .ic.note { color: #2b7bd6; }
+.ex-row .tri { font-size: 24px; color: #777; width: 24px; }
+.ex-row .tri.closed { transform: rotate(-90deg); }
+.ex-row .kind { margin-left: auto; color: #777; font-size: 15px; width: 150px; }
+.ex-row.hot { background: #cce4f7; }
+
+/* theme menu (scene 9) */
+.thememenu { position: absolute; width: 250px; padding: 8px; border-radius: 14px; background: #fff; color: #1b1f26; box-shadow: 0 20px 50px rgb(0 0 0 / 35%), 0 0 0 1px rgb(0 0 0 / 8%); }
+.thememenu div { height: 50px; display: flex; align-items: center; gap: 12px; padding: 0 14px; border-radius: 10px; font-size: 20px; }
+.thememenu div .icon { font-size: 24px; color: #5f6775; }
+.thememenu div.on { background: #d6e4fb; color: #0a3a8c; font-weight: 600; }
+.thememenu div.on .icon { color: #0b57d0; }
+</style>
+</head>
+<body>
+{{ICONS}}
+<div class="stage">
+  <div class="bg"></div>
+
+  <!-- 1 · the problem -->
+  <div class="layer" id="s1">
+    <h1 class="headline" id="s1h">Blackboard'dan dosyaları<br><em>tek tek</em> mi indiriyorsun?</h1>
+    <div class="win browser-w11" id="s1w" style="left:86px;top:392px;width:908px;height:800px">
+      <div class="w11-bar"><div class="tab"><svg class="icon"><use href="#i-public"/></svg>Blackboard · Algorithm Analysis</div><div class="ctrl"><i class="min"></i><i class="max"></i><i class="x"></i></div></div>
+      <div class="bb-list">
+        <div class="bb-group">
+          <div class="bb-row"><svg class="icon"><use href="#i-folder_open-fill"/></svg><span class="name">Syllabus</span></div>
+          <div class="bb-row indent"><svg class="icon"><use href="#i-description-fill"/></svg><span class="name">CSE303_Syllabus_v1.pdf</span><span class="bb-state" id="st0"></span></div>
+        </div>
+        <div class="bb-group">
+          <div class="bb-row"><svg class="icon"><use href="#i-folder_open-fill"/></svg><span class="name">Lecture Notes</span></div>
+          <div class="bb-row indent"><svg class="icon"><use href="#i-folder-fill"/></svg><span class="name">Week 1</span></div>
+          <div class="bb-row indent2"><svg class="icon"><use href="#i-slideshow-fill"/></svg><span class="name">Lecture_Notes_1.pptx</span><span class="bb-state" id="st1"></span></div>
+          <div class="bb-row indent"><svg class="icon"><use href="#i-folder-fill"/></svg><span class="name">Week 2</span></div>
+          <div class="bb-row indent2"><svg class="icon"><use href="#i-slideshow-fill"/></svg><span class="name">Lecture_Notes_2.pptx</span><span class="bb-state" id="st2"></span></div>
+          <div class="bb-row indent2"><svg class="icon"><use href="#i-folder_zip-fill"/></svg><span class="name">code.zip</span><span class="bb-state" id="st3"></span></div>
+          <div class="bb-row indent"><svg class="icon"><use href="#i-folder-fill"/></svg><span class="name">Week 3</span></div>
+          <div class="bb-row indent2"><svg class="icon"><use href="#i-description-fill"/></svg><span class="name">big-o-cheatsheet.pdf</span><span class="bb-state" id="st4"></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="caption" id="s1c"><b id="s1n">0</b> / 47 dosya indirildi…</div>
+  </div>
+
+  <!-- 2 · the answer -->
+  <div class="layer" id="s2">
+    <div class="glow" id="s2g" style="top:120px"></div>
+    <img class="logo-big" id="s2l" src="{{LOGO}}" style="top:250px" alt="">
+    <div class="wordmark" id="s2w" style="top:600px">Blackboard Sync</div>
+    <div class="tagline" id="s2t" style="top:760px">Ders dosyaların bilgisayarına<br><span class="grad">kendiliğinden</span> gelir.</div>
+  </div>
+
+  <!-- headlines and captions over the app window (scenes 3, 4, 7, 9) -->
+  <div class="layer" id="s3"><h1 class="headline" id="s3h">Bir kere giriş yap.</h1><div class="sub" id="s3s" style="top:208px">Gerisini uygulama halleder.</div>
+    <div class="caption" id="s3c" style="bottom:100px">Şifreni yalnızca okulunun sayfasına yazarsın.<br><b>Uygulama onu hiç görmez.</b></div></div>
+  <div class="layer" id="s4"><h1 class="headline" id="s4h">Dosyaların<br><em>kendiliğinden</em> gelir.</h1>
+    <div class="caption" id="s4c" style="bottom:100px">Her saat arka planda.<br><b>Sen hiçbir şey yapmadan.</b></div></div>
+  <div class="layer" id="s7"><h1 class="headline" id="s7h">Teslim tarihlerini<br><em>kaçırma.</em></h1>
+    <div class="caption" id="s7c" style="bottom:100px">24 saat ve 1 saat kala <b>hatırlatır.</b></div></div>
+  <div class="layer" id="s9"><h1 class="headline" id="s9h">Açık mı, koyu mu?<br><em>Sen seç.</em></h1>
+    <div class="caption" id="s9c" style="bottom:100px">Windows'u izler ya da <b>istediğin temada</b> kalır.</div></div>
+
+  <!-- the app: the Windows app's own page -->
+  <div class="win w11" id="appwin" style="left:60px;top:340px;width:960px;height:794px;visibility:hidden">
+    <div class="w11-bar"><img src="{{LOGO}}" alt="">Blackboard Sync<div class="ctrl"><i class="min"></i><i class="max"></i><i class="x"></i></div></div>
+    <div class="w11-screen"><iframe id="app" title="Blackboard Sync"></iframe></div>
+    <div class="sheet" id="s3sheet" style="top:170px">
+      <div class="url"><svg class="icon"><use href="#i-lock-fill"/></svg>blackboard.istun.edu.tr</div>
+      <h3>Okulunun giriş sayfası</h3>
+      <div class="fake">umut@ogrenci.edu.tr</div>
+      <div class="fake pw">••••••••••</div>
+      <div class="go">Oturum aç</div>
+      <div class="okay" id="s3ok"><div><svg class="icon"><use href="#i-check_circle-fill"/></svg>Giriş yapıldı</div></div>
+    </div>
+  </div>
+  <div class="toast" id="toast4" style="left:420px;top:930px;visibility:hidden">
+    <div class="head"><img src="{{LOGO}}" alt="">Blackboard Sync<span>×</span></div>
+    <div class="t">Blackboard: yeni içerik</div><div class="b">CSE303: 1 yeni dosya<br>COE305: 1 yeni dosya</div>
+  </div>
+  <div class="toast" id="toast7" style="left:420px;top:930px;visibility:hidden">
+    <div class="head"><img src="{{LOGO}}" alt="">Blackboard Sync<span>×</span></div>
+    <div class="t">Teslime 1 saat kaldı</div><div class="b">CSE301 Database Management: PROJECT PROPOSAL SUBMISSION<br>Teslim: 23:59</div>
+  </div>
+  <div class="thememenu" id="themenu" style="visibility:hidden">
+    <div id="tm0"><svg class="icon"><use href="#i-contrast"/></svg>Sistem</div>
+    <div id="tm1"><svg class="icon"><use href="#i-light_mode"/></svg>Açık</div>
+    <div id="tm2"><svg class="icon"><use href="#i-dark_mode"/></svg>Koyu</div>
+  </div>
+
+  <!-- 5 · next to the clock -->
+  <div class="layer" id="s5">
+    <h1 class="headline" id="s5h">Saatin yanında,<br><em>sessizce</em> çalışır.</h1>
+    <div class="traymenu" id="s5m">
+      <div class="muted">Güncel · Son senkron: bugün 18:14</div>
+      <hr>
+      <div id="s5sync"><svg class="icon"><use href="#i-sync"/></svg>Şimdi senkronize et</div>
+      <div><svg class="icon"><use href="#i-pause"/></svg>Senkronu duraklat</div>
+      <hr>
+      <div><svg class="icon"><use href="#i-school"/></svg>Dersler<svg class="icon arrow"><use href="#i-chevron_right"/></svg></div>
+      <div><svg class="icon"><use href="#i-download"/></svg>Son indirilenler<svg class="icon arrow"><use href="#i-chevron_right"/></svg></div>
+      <div><svg class="icon"><use href="#i-folder_open-fill"/></svg>University klasörünü aç</div>
+      <hr>
+      <div><svg class="icon"><use href="#i-settings"/></svg>Ayarlar…</div>
+    </div>
+    <div class="taskbar" id="s5t">
+      <div class="slot"><svg class="icon"><use href="#i-keyboard_arrow_up"/></svg></div>
+      <div class="slot hot" id="s5slot"><img src="{{LOGO}}" alt=""><div class="dot" id="s5dot"></div></div>
+      <div class="slot"><svg class="icon"><use href="#i-wifi"/></svg></div>
+      <div class="slot"><svg class="icon"><use href="#i-volume_up"/></svg></div>
+      <div class="slot"><svg class="icon"><use href="#i-battery_full"/></svg></div>
+      <div class="clock">18:14<br>18.10.2026</div>
+    </div>
+    <div class="caption" id="s5c">Pencereyi kapatsan da çalışmaya devam eder.<br><b>Durumu simgeden görürsün.</b></div>
+  </div>
+
+  <!-- 6 · the folder -->
+  <div class="layer" id="s6">
+    <h1 class="headline" id="s6h">Blackboard'daki düzenin<br><em>aynısı.</em></h1>
+    <div class="win explorer" id="s6w" style="left:60px;top:370px;width:960px;height:790px">
+      <div class="w11-bar"><div class="tab"><svg class="icon" style="color:#f2b636;font-size:20px"><use href="#i-folder-fill"/></svg>University</div><div class="ctrl"><i class="min"></i><i class="max"></i><i class="x"></i></div></div>
+      <div class="ex-address"><div class="crumbs">Bu bilgisayar › Belgeler › University</div></div>
+      <div class="ex-body">
+        <div class="ex-nav">
+          <div><svg class="icon" style="color:#2b7bd6"><use href="#i-home"/></svg>Giriş</div>
+          <div><svg class="icon" style="color:#2b7bd6"><use href="#i-desktop_windows"/></svg>Masaüstü</div>
+          <div><svg class="icon" style="color:#2b7bd6"><use href="#i-download"/></svg>İndirilenler</div>
+          <div><svg class="icon"><use href="#i-folder-fill"/></svg>Belgeler</div>
+          <div class="on"><svg class="icon"><use href="#i-folder-fill"/></svg>University</div>
+        </div>
+        <div class="ex-list" id="s6list">
+          <div class="ex-head"><span>Ad</span><span style="width:150px">Tür</span></div>
+          <div class="ex-row"><svg class="icon tri"><use href="#i-keyboard_arrow_down"/></svg><svg class="icon ic folder"><use href="#i-folder-fill"/></svg>2026-2027 Güz<span class="kind">Dosya klasörü</span></div>
+          <div class="ex-row" style="padding-left:40px"><svg class="icon tri"><use href="#i-keyboard_arrow_down"/></svg><svg class="icon ic folder"><use href="#i-folder-fill"/></svg>CSE303 Algorithm Analysis<span class="kind">Dosya klasörü</span></div>
+          <div class="ex-row" style="padding-left:70px"><svg class="icon tri closed"><use href="#i-keyboard_arrow_down"/></svg><svg class="icon ic folder"><use href="#i-folder-fill"/></svg>Syllabus<span class="kind">Dosya klasörü</span></div>
+          <div class="ex-row" style="padding-left:70px"><svg class="icon tri"><use href="#i-keyboard_arrow_down"/></svg><svg class="icon ic folder"><use href="#i-folder-fill"/></svg>Lecture Notes<span class="kind">Dosya klasörü</span></div>
+          <div class="ex-row" style="padding-left:100px"><svg class="icon tri"><use href="#i-keyboard_arrow_down"/></svg><svg class="icon ic folder"><use href="#i-folder-fill"/></svg>Week 1<span class="kind">Dosya klasörü</span></div>
+          <div class="ex-row" style="padding-left:154px"><svg class="icon ic pdf"><use href="#i-picture_as_pdf-fill"/></svg>Intro - Asymptotic Notation.pdf<span class="kind">PDF Belgesi</span></div>
+          <div class="ex-row" style="padding-left:154px"><svg class="icon ic ppt"><use href="#i-slideshow-fill"/></svg>week1-slides.pptx<span class="kind">PowerPoint</span></div>
+          <div class="ex-row" style="padding-left:100px"><svg class="icon tri closed"><use href="#i-keyboard_arrow_down"/></svg><svg class="icon ic folder"><use href="#i-folder-fill"/></svg>Week 2<span class="kind">Dosya klasörü</span></div>
+          <div class="ex-row" style="padding-left:70px"><svg class="icon tri"><use href="#i-keyboard_arrow_down"/></svg><svg class="icon ic folder"><use href="#i-folder-fill"/></svg>Duyurular<span class="kind">Dosya klasörü</span></div>
+          <div class="ex-row" style="padding-left:124px" id="s6hot"><svg class="icon ic note"><use href="#i-article-fill"/></svg>2026-09-20 Welcome to CSE303.pdf<span class="kind">PDF Belgesi</span></div>
+          <div class="ex-row" style="padding-left:40px"><svg class="icon tri closed"><use href="#i-keyboard_arrow_down"/></svg><svg class="icon ic folder"><use href="#i-folder-fill"/></svg>COE305 Software Project Management<span class="kind">Dosya klasörü</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="caption" id="s6c">Duyurular ve notlar da <b>PDF</b> olarak kaydedilir.</div>
+  </div>
+
+  <!-- 8 · Google Calendar -->
+  <div class="layer" id="s8">
+    <h1 class="headline" id="s8h"><em>Google Takvim'ine</em><br>kendiliğinden eklenir.</h1>
+    <div class="win gcal" id="s8w" style="left:60px;top:370px;width:960px;height:760px;border-radius:12px">
+      <div class="w11-bar" style="background:#f1f3f5;border-bottom:1px solid #e1e4e8;color:#4b5563">Takvim<div class="ctrl"><i class="min"></i><i class="max"></i><i class="x"></i></div></div>
+      <div class="g-head">Ekim 2026<div class="g-cal"><i></i>Blackboard Deadlines</div></div>
+      <div class="g-grid">
+        <div class="g-day today">Paz<b>18</b></div><div class="g-day">Pzt<b>19</b></div><div class="g-day">Sal<b>20</b></div>
+        <div class="g-day">Çar<b>21</b></div><div class="g-day">Per<b>22</b></div><div class="g-day">Cum<b>23</b></div><div class="g-day">Cmt<b>24</b></div>
+        <div class="g-col"><div class="g-hours"><span style="top:-8px">18:00</span><span style="top:70px">19:00</span><span style="top:148px">20:00</span><span style="top:226px">21:00</span><span style="top:304px">22:00</span><span style="top:382px">23:00</span></div>
+          <div class="g-event" id="ge0" style="top:395px;height:70px">PROJECT PROPOSAL<small>23:29 – 23:59</small></div></div>
+        <div class="g-col"></div><div class="g-col"></div><div class="g-col"></div><div class="g-col"></div>
+        <div class="g-col"><div class="g-event" id="ge1" style="top:318px;height:70px">Report 2<small>PHY101</small></div>
+          <div class="g-event" id="ge2" style="top:395px;height:70px">Report 3<small>PHY101</small></div></div>
+        <div class="g-col"></div>
+      </div>
+    </div>
+    <div class="caption" id="s8c">Ayrı bir <b>Blackboard Deadlines</b> takvimi.<br>Diğer takvimlerin gizli kalır.</div>
+  </div>
+
+  <!-- 10 · and more -->
+  <div class="layer" id="s10">
+    <h1 class="headline" id="s10h">Ve <em>dahası.</em></h1>
+    <div class="tiles">
+      <div class="tile" id="t0"><svg class="icon"><use href="#i-campaign"/></svg><b>Tüm duyurular tek yerde</b><span>Yenisi gelince bildirim.</span></div>
+      <div class="tile" id="t1"><svg class="icon"><use href="#i-school"/></svg><b>İstediğin dersleri seç</b><span>İşaretini kaldır, artık inmesin.</span></div>
+      <div class="tile" id="t2"><svg class="icon"><use href="#i-pause_circle"/></svg><b>Tek tıkla durdur</b><span>Devam et deyince kaldığı yerden.</span></div>
+      <div class="tile" id="t3"><svg class="icon"><use href="#i-translate"/></svg><b>Türkçe ve English</b><span>Dili ayarlardan seç.</span></div>
+    </div>
+  </div>
+
+  <!-- 11 · trust -->
+  <div class="layer" id="s11">
+    <h1 class="headline" id="s11h">Şifren <em>sende</em> kalır.</h1>
+    <div class="sub" id="s11s" style="top:210px">Oturumun yalnızca kendi bilgisayarında durur.</div>
+    <div class="shield" id="s11i"><svg class="icon"><use href="#i-verified_user-fill"/></svg></div>
+    <div class="chips">
+      <div class="chip2" id="c0"><svg class="icon"><use href="#i-favorite-fill"/></svg>Ücretsiz</div>
+      <div class="chip2" id="c1"><svg class="icon"><use href="#i-code"/></svg>Açık kaynak</div>
+      <div class="chip2" id="c2"><svg class="icon"><use href="#i-block"/></svg>Reklam yok</div>
+      <div class="chip2" id="c3"><svg class="icon"><use href="#i-visibility_off"/></svg>Veri toplamaz</div>
+    </div>
+  </div>
+
+  <!-- 12 · download -->
+  <div class="layer" id="s12">
+    <div class="glow" id="s12g" style="top:120px"></div>
+    <img class="logo-big" id="s12l" src="{{LOGO}}" style="top:250px" alt="">
+    <div class="wordmark" id="s12w" style="top:610px">Blackboard Sync</div>
+    <div class="tagline" id="s12t" style="top:740px;font-size:46px;font-weight:600;color:var(--muted)">Blackboard'u kontrol etmeyi bırak.</div>
+    <div class="cta" id="s12b"><svg class="icon"><use href="#i-download"/></svg>Windows için ücretsiz indir</div>
+    <div class="cta-url" id="s12u">blackboardsyncapp.com</div>
+    <div class="also" id="s12a">macOS sürümü de var.</div>
+  </div>
+
+  <div id="ring"></div>
+  <svg id="cursor" viewBox="0 0 40 40"><path d="M6 4 L6 32 L13 25 L18 37 L23 35 L18 23 L28 23 Z" fill="#111" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/></svg>
+</div>
+
+<script>
+{{FILM_JS}}
+window.FILM = { fps: 30, duration: 69.0, width: 1080, height: 1350 };
+const STATES = {{STATES}};
+const WEBUI = "{{WEBUI}}";
+
+const SCENE_TIMES = {
+  s1: [0, 5.1], s2: [5.0, 9.1], s3: [9.0, 16.1], s4: [16.0, 25.1], s5: [25.0, 30.1], s6: [30.0, 36.1],
+  s7: [36.0, 43.1], s8: [43.0, 50.1], s9: [50.0, 56.1], s10: [56.0, 61.1], s11: [61.0, 64.6], s12: [64.5, 69.0],
+};
+function layer(id, t) {
+  const [a, b] = SCENE_TIMES[id];
+  const visible = t >= a && t <= b;
+  $(id).style.display = visible ? "block" : "none";  // display: a visible child would show through a hidden parent
+  return visible;
+}
+
+// The app's page, loaded once; render.py waits for it (window.ready).
+const frame = $("app");
+const appWin = () => frame.contentWindow;
+const appDoc = () => frame.contentDocument;
+window.ready = () => new Promise((resolve) => {
+  frame.addEventListener("load", () => {
+    const check = () => (appWin().app ? appDoc().fonts.ready.then(resolve) : setTimeout(check, 20));
+    check();
+  }, { once: true });
+  frame.srcdoc = new TextDecoder().decode(Uint8Array.from(atob(WEBUI), (c) => c.charCodeAt(0)));
+});
+
+let shown = null;
+function appState(key, theme = "light") {
+  const id = `${key}:${theme}`;
+  if (id === shown) return;
+  shown = id;
+  const state = structuredClone(STATES[key]);
+  state.theme = theme;
+  state.settings.theme = theme;
+  appWin().app.render(state);
+}
+// The page's own animations (the sync icon, the flying papers) at the film's time.
+function appClock(t) {
+  for (const animation of appDoc().getAnimations()) {
+    animation.pause();
+    animation.currentTime = t * 1000;
+  }
+}
+function appScroll(selector, offset = 12) {
+  const content = appDoc().getElementById("content");
+  const target = selector && appDoc().querySelector(selector);
+  content.scrollTop = target ? Math.max(0, target.offsetTop - offset) : 0;
+}
+// Where an element of the page is on the stage.
+function onStage(selector) {
+  const el = appDoc().querySelector(selector);
+  if (!el) return [0, 0, 0, 0];
+  const box = frame.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  return [box.left + r.left * 1.25, box.top + r.top * 1.25, r.width * 1.25, r.height * 1.25];
+}
+
+// The window with the app, over scenes 3, 4, 7 and 9.
+const APP_SCENES = [[9.0, 16.1], [16.0, 25.1], [36.0, 43.1], [50.0, 56.1]];
+SCENES.push((t) => {
+  const span = APP_SCENES.find(([a, b]) => t >= a && t <= b);
+  const win = $("appwin");
+  if (!span) { win.style.visibility = "hidden"; return; }
+  const [a, b] = span;
+  show(win, t, a + 0.15, b, { rise: 70, scale: 0.03 });
+  let theme = "light";
+  if (t < 16.05) {
+    appState("start");
+    const done = t >= 12.4;
+    const input = appDoc().querySelector('[data-key="field-base_url"]');
+    appScroll(".start .card", 18);
+    if (input) {
+      const text = "https://blackboard.istun.edu.tr";
+      const n = Math.round(text.length * p(t, 10.4, 11.7));
+      input.value = text.slice(0, n);
+      if (t >= 10.2 && !done) input.focus(); else input.blur();
+    }
+  } else if (t < 25.05) {
+    appState(t < 20.4 ? "first-sync" : "up-to-date");
+    appScroll(null);
+  } else if (t < 43.05) {
+    appState("calendar");
+    appScroll(null);
+  } else {
+    theme = t >= 53.0 ? "dark" : "light";
+    appState("settings", theme);
+    appScroll('[data-key="select-theme"]', 230);
+  }
+  win.classList.toggle("dark", theme === "dark");
+  for (const button of appDoc().querySelectorAll(".status-head .pill:disabled")) button.style.display = "none";
+  appClock(t - a);
+});
+
+// The pointer: [time, x, y] on the stage; some points follow elements of the page.
+function cursorPath(t) {
+  if (t >= 0.9 && t <= 4.7) {
+    return { path: [[0.9, 980, 1250], [1.45, 820, 570], [2.05, 820, 776], [2.6, 820, 990], [3.1, 820, 1062], [3.6, 820, 1178]],
+             clicks: [1.5, 2.1, 2.65, 3.15, 3.65] };
+  }
+  if (t >= 9.7 && t <= 12.9) {
+    const [ix, iy, iw, ih] = onStage('[data-key="field-base_url"]');
+    const [bx, by, bw, bh] = onStage(".start .pill.filled");
+    return { path: [[9.7, 980, 1250], [10.15, ix + iw * 0.6, iy + ih * 0.55], [11.9, ix + iw * 0.62, iy + ih * 0.6], [12.35, bx + bw * 0.5, by + bh * 0.55]],
+             clicks: [10.2, 12.4] };
+  }
+  if (t >= 25.2 && t <= 29.9) {
+    const slot = $("s5slot").getBoundingClientRect();
+    const item = $("s5sync").getBoundingClientRect();
+    const lx = slot.left + slot.width / 2, ly = slot.top + slot.height / 2;
+    const ix = item.left + 90, iy = item.top + item.height / 2;
+    return { path: [[25.2, 980, 1300], [25.85, lx, ly], [26.6, lx, ly], [27.15, ix, iy], [27.5, ix, iy], [28.3, 1000, 1330]],
+             clicks: [25.95, 27.25] };
+  }
+  if (t >= 51.0 && t <= 54.0) {
+    const [sx, sy, sw, sh] = onStage('[data-key="select-theme"]');
+    const koyu = [sx + 60, sy + sh + 8 + 25 + 2 * 50];
+    return { path: [[51.0, 980, 1250], [51.6, sx + sw * 0.6, sy + sh * 0.55], [52.4, sx + sw * 0.6, sy + sh * 0.55], [52.85, ...koyu], [53.1, ...koyu], [53.9, 1000, 1330]],
+             clicks: [51.65, 52.9] };
+  }
+  return null;
+}
+
+// 1 · the problem.
+SCENES.push((t) => {
+  if (!layer("s1", t)) return;
+  show("s1h", t, 0.15, 5.1, { rise: 40 });
+  show("s1w", t, 0.35, 5.1, { rise: 70, scale: 0.04 });
+  show("s1c", t, 0.6, 5.1, { rise: 20 });
+  let done = 0;
+  [1.5, 2.1, 2.65, 3.15, 3.65].forEach((c, i) => {
+    const el = $(`st${i}`);
+    if (t < c) { el.textContent = ""; return; }
+    const k = p(t, c + 0.05, c + 0.75);
+    if (k < 1) {
+      el.replaceChildren();
+      const bar = document.createElement("span"); bar.className = "bb-bar";
+      const fill = document.createElement("i"); fill.style.width = `${Math.round(k * 100)}%`;
+      bar.append(fill); el.append(bar);
+    } else {
+      done += 1;
+      if (!el.querySelector(".ok")) el.innerHTML = '<svg class="icon ok"><use href="#i-check_circle-fill"/></svg>';
+    }
+  });
+  $("s1n").textContent = String(done);
+});
+
+// 2 · the answer.
+SCENES.push((t) => {
+  if (!layer("s2", t)) return;
+  const k = ease.back(p(t, 5.15, 5.85));
+  const out = ease.in(p(t, 8.6, 9.1));
+  $("s2l").style.opacity = (Math.min(1, p(t, 5.15, 5.5)) * (1 - out)).toFixed(3);
+  $("s2l").style.transform = `scale(${(0.55 + 0.45 * k) * (1 - 0.15 * out)}) rotate(${(1 - k) * -12}deg)`;
+  $("s2g").style.opacity = (0.4 + 0.6 * p(t, 5.3, 6.5) - out).toFixed(3);
+  show("s2w", t, 5.75, 9.1, { rise: 30 });
+  show("s2t", t, 6.35, 9.1, { rise: 30 });
+});
+
+// 3 · sign in once.
+SCENES.push((t) => {
+  if (!layer("s3", t)) return;
+  show("s3h", t, 9.05, 16.1, { rise: 30 });
+  show("s3s", t, 9.25, 16.1, { rise: 20 });
+  show("s3sheet", t, 12.55, 16.1, { rise: 50, scale: 0.05 });
+  show("s3ok", t, 14.6, 16.1, { rise: 0, d: 0.3 });
+  show("s3c", t, 12.9, 16.1, { rise: 20 });
+});
+SCENES.push((t) => { if (t < 9 || t > 16.1) $("s3sheet").style.visibility = "hidden"; });
+
+// 4 · files come by themselves.
+SCENES.push((t) => {
+  if (!layer("s4", t)) { $("toast4").style.visibility = "hidden"; return; }
+  show("s4h", t, 16.05, 25.1, { rise: 30 });
+  show("s4c", t, 16.6, 25.1, { rise: 20 });
+  show("toast4", t, 21.3, 24.7, { rise: -40, scale: 0.03 });
+});
+
+// 5 · the tray: the icon shows the state; its menu does the rest.
+SCENES.push((t) => {
+  if (!layer("s5", t)) return;
+  show("s5h", t, 25.05, 30.1, { rise: 30 });
+  show("s5t", t, 25.2, 30.1, { rise: 60, scale: 0.04 });
+  show("s5c", t, 28.6, 30.1, { rise: 20 });
+  // The menu opens from the icon; "Sync now" runs a sync (blue dot), then all is well (no dot).
+  const slot = $("s5slot").getBoundingClientRect();
+  $("s5m").style.left = `${Math.min(1080 - 60 - 520, slot.left + slot.width / 2 - 260)}px`;
+  $("s5m").style.top = `${$("s5t").getBoundingClientRect().top - 18 - $("s5m").offsetHeight}px`;
+  show("s5m", t, 26.0, 27.45, { rise: 30, scale: 0.04, d: 0.25 });
+  $("s5sync").classList.toggle("on", t >= 27.0 && t < 27.45);
+  const syncing = t >= 27.4 && t < 28.9;
+  $("s5dot").style.background = "#1675d1";
+  $("s5dot").style.opacity = syncing ? "1" : "0";
+});
+
+// 6 · the folder.
+SCENES.push((t) => {
+  if (!layer("s6", t)) return;
+  show("s6h", t, 30.05, 36.1, { rise: 30 });
+  show("s6w", t, 30.15, 36.1, { rise: 70, scale: 0.03 });
+  [...$("s6list").children].forEach((row, i) => show(row, t, 30.5 + i * 0.22, 36.1, { rise: 14, d: 0.3, out: false }));
+  $("s6hot").classList.toggle("hot", t >= 33.6);
+  show("s6c", t, 33.4, 36.1, { rise: 20 });
+});
+
+// 7 · deadlines and the reminder.
+SCENES.push((t) => {
+  if (!layer("s7", t)) { $("toast7").style.visibility = "hidden"; return; }
+  show("s7h", t, 36.05, 43.1, { rise: 30 });
+  show("s7c", t, 38.6, 43.1, { rise: 20 });
+  show("toast7", t, 38.8, 42.6, { rise: -40, scale: 0.03 });
+});
+
+// 8 · Google Calendar.
+SCENES.push((t) => {
+  if (!layer("s8", t)) return;
+  show("s8h", t, 43.05, 50.1, { rise: 30 });
+  show("s8w", t, 43.15, 50.1, { rise: 70, scale: 0.03 });
+  [[44.2, -360], [44.75, -260], [45.3, -260]].forEach(([start, dx], i) => {
+    const k = ease.back(p(t, start, start + 0.7));
+    const el = $(`ge${i}`);
+    el.style.opacity = p(t, start, start + 0.25).toFixed(3);
+    el.style.transform = `translate(${(1 - k) * dx}px, ${(1 - k) * -160}px) scale(${0.7 + 0.3 * k})`;
+  });
+  show("s8c", t, 45.8, 50.1, { rise: 20 });
+});
+
+// 9 · theme: System, Light or Dark, picked in Settings.
+SCENES.push((t) => {
+  const menuEl = $("themenu");
+  if (!layer("s9", t)) { menuEl.style.visibility = "hidden"; return; }
+  show("s9h", t, 50.05, 56.1, { rise: 30 });
+  show("s9c", t, 53.4, 56.1, { rise: 20 });
+  const open = t >= 51.7 && t < 53.0;
+  if (open) {
+    const [sx, sy, sw, sh] = onStage('[data-key="select-theme"]');
+    menuEl.style.left = `${sx}px`;
+    menuEl.style.top = `${sy + sh + 8}px`;
+    menuEl.style.width = `${Math.max(250, sw)}px`;
+  }
+  menuEl.style.visibility = open ? "visible" : "hidden";
+  menuEl.style.opacity = open ? ease.out(p(t, 51.7, 51.9)).toFixed(3) : "0";
+  const hover = t >= 52.5 ? 2 : 1;  // Light is chosen; the pointer goes to Dark
+  ["tm0", "tm1", "tm2"].forEach((id, i) => $(id).classList.toggle("on", i === hover));
+});
+
+// 10 · and more.
+SCENES.push((t) => {
+  if (!layer("s10", t)) return;
+  show("s10h", t, 56.05, 61.1, { rise: 30 });
+  ["t0", "t1", "t2", "t3"].forEach((id, i) => show(id, t, 56.4 + i * 0.3, 61.1, { rise: 50, scale: 0.08 }));
+});
+
+// 11 · trust.
+SCENES.push((t) => {
+  if (!layer("s11", t)) return;
+  show("s11h", t, 61.05, 64.6, { rise: 30 });
+  show("s11s", t, 61.25, 64.6, { rise: 20 });
+  show("s11i", t, 61.2, 64.6, { rise: 0, scale: 0.3 });
+  ["c0", "c1", "c2", "c3"].forEach((id, i) => show(id, t, 61.8 + i * 0.22, 64.6, { rise: 26, scale: 0.1 }));
+});
+
+// 12 · download.
+SCENES.push((t) => {
+  if (!layer("s12", t)) return;
+  const k = ease.back(p(t, 64.6, 65.3));
+  $("s12l").style.opacity = p(t, 64.6, 64.95).toFixed(3);
+  $("s12l").style.transform = `scale(${0.6 + 0.4 * k})`;
+  $("s12g").style.opacity = (0.5 + 0.5 * Math.sin((t - 64.6) * 1.6) * 0.3 + 0.2).toFixed(3);
+  show("s12w", t, 65.0, 99, { rise: 30, out: false });
+  show("s12t", t, 65.4, 99, { rise: 24, out: false });
+  show("s12b", t, 65.9, 99, { rise: 30, scale: 0.08, out: false });
+  $("s12b").style.transform += " translateX(-50%)";
+  show("s12u", t, 66.3, 99, { rise: 20, out: false });
+  show("s12a", t, 66.7, 99, { rise: 16, out: false });
+});
+// Last: the pointer follows elements the scenes above have just laid out.
+SCENES.push((t) => {
+  const active = cursorPath(t);
+  pointer($("cursor"), $("ring"), active ? active.path : [[0, -100, -100]], active ? active.clicks : [], t, !!active);
+});
+</script>
+</body>
+</html>

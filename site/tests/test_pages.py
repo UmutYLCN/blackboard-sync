@@ -28,8 +28,8 @@ def context_for(browser, *, width=1440, javascript=True, release_ok=True):
                                   reduced_motion='reduce', java_script_enabled=javascript)
     context.route(API, lambda route: route.fulfill(status=200 if release_ok else 503,
                                                    json=RELEASE if release_ok else {}))
-    # The media is unchanged; avoid downloading the external MP4 in layout tests.
-    context.route('https://github.com/user-attachments/**', lambda route: route.abort())
+    # Layout tests do not need the MP4.
+    context.route('**/*.mp4', lambda route: route.abort())
     return context
 
 
@@ -119,3 +119,21 @@ def test_old_turkish_privacy_links_redirect_to_turkish(browser, path):
         response = context.request.get(BASE + path, max_redirects=0)
         assert response.status == 301
         assert response.headers['location'].endswith('/tr/privacy')
+
+
+def test_promo_video_answers_byte_ranges(browser):
+    """Safari plays the video only from 206 responses."""
+    with browser.new_context() as context:
+        whole = context.request.get(BASE + '/assets/promo-mac-tr.mp4')
+        assert whole.status == 200
+        assert whole.headers['accept-ranges'] == 'bytes'
+        size = len(whole.body())
+        first = context.request.get(BASE + '/assets/promo-mac-tr.mp4', headers={'Range': 'bytes=0-1'})
+        assert first.status == 206
+        assert first.headers['content-range'] == f'bytes 0-1/{size}'
+        assert first.body() == whole.body()[:2]
+        last = context.request.get(BASE + '/assets/promo-mac-tr.mp4', headers={'Range': 'bytes=-100'})
+        assert last.status == 206
+        assert last.body() == whole.body()[-100:]
+        past = context.request.get(BASE + '/assets/promo-mac-tr.mp4', headers={'Range': f'bytes={size}-'})
+        assert past.status == 416
