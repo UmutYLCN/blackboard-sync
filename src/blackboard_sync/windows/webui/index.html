@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="{{LANG}}">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="{{CSP}}">
+<meta name="color-scheme" content="light dark">
+<title>Blackboard Sync</title>
+{{STYLE}}
+</head>
+<body>
+{{ICONS}}
+<div class="app" id="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-name" data-text="window_title"></div>
+      <div class="brand-version" data-text="version"></div>
+    </div>
+    <button class="open-folder" id="open-folder" type="button">
+      <svg class="icon" aria-hidden="true"><use href="#i-folder_open"/></svg>
+      <span data-text="open_folder"></span>
+    </button>
+    <nav class="nav" id="nav"></nav>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <div class="heading">
+        <h1 id="heading"></h1>
+        <p class="subtitle" id="subtitle"></p>
+      </div>
+      <div class="actions" id="actions">
+        <button class="icon-button" id="pause" type="button"><svg class="icon" aria-hidden="true"><use href="#i-pause_circle"/></svg></button>
+        <button class="icon-button" id="gear" type="button"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button>
+        <button class="avatar" id="avatar" type="button" aria-haspopup="menu"></button>
+      </div>
+    </header>
+    <div class="content" id="content"></div>
+  </main>
+</div>
+<div class="menu" id="menu" popover role="menu"></div>
+{{SCRIPT}}
+</body>
+</html>
