@@ -303,7 +303,7 @@ def model(**kwargs):
 
 
 def update_row(m):
-    """The menu row above "Ayarlar…" that only exists while an update is waiting."""
+    """The menu row above "Settings…" that only exists while an update is waiting."""
     entries = m.menu(NOW).entries
     row = entries[-3]
     return row if row.title else None
@@ -329,14 +329,14 @@ def test_setting_off_means_no_scheduled_checks():
     assert not m.update_due(NOW + timedelta(days=30))
     m.apply_settings(m.dest, school_changed=False)  # a caller without the setting keeps it
     assert not m.update_due(NOW + timedelta(days=30))
-    # "Şimdi denetle" in the settings window still works when it is off.
+    # "Check now" in the settings window still works when it is off.
     assert window_status(m).update_action == "check_updates" and m.updates.begin("check")
 
 
 def test_one_notification_per_new_version():
     m = model()
     notes = m.updates.finish_check(AVAILABLE, NOW, manual=False)
-    assert [n.title for n in notes] == ["Blackboard Sync 1.1.0 hazır — Güncelle"]
+    assert [n.title for n in notes] == ["Blackboard Sync 1.1.0 is ready — Update"]
     assert notes[0].data == {"action": "update"}
     assert m.updates.finish_check(AVAILABLE, NOW + UPDATE_INTERVAL, manual=False) == []
     newer = CheckResult("available", Release("1.2.0", "", "Blackboard-Sync-1.2.0.dmg", ""))
@@ -354,10 +354,10 @@ def test_failed_check_is_silent_and_retried_sooner():
 def test_manual_check_always_answers():
     m = model()
     assert [n.title for n in m.updates.finish_check(CheckResult("current"), NOW, manual=True)] == [
-        "Blackboard Sync güncel"
+        "Blackboard Sync is up to date"
     ]
     assert [n.title for n in m.updates.finish_check(CheckResult("unknown"), NOW, manual=True)] == [
-        "Güncellemeler denetlenemedi"
+        "Could not check for updates"
     ]
     m.updates.finish_check(AVAILABLE, NOW, manual=False)
     assert len(m.updates.finish_check(AVAILABLE, NOW, manual=True)) == 1
@@ -367,20 +367,20 @@ def test_update_row_and_button_follow_the_update_state():
     m = model()
     assert update_row(m) is None
     status = window_status(m)
-    assert (status.update_title, status.update_action, status.update_enabled) == ("Şimdi denetle", "check_updates", True)
-    assert status.version.startswith("Sürüm ")
+    assert (status.update_title, status.update_action, status.update_enabled) == ("Check now", "check_updates", True)
+    assert status.version.startswith("Version ")
     m.updates.begin("check")
     assert update_row(m) is None  # a check only shows in the settings window
-    assert (window_status(m).update_title, window_status(m).update_enabled) == ("Denetleniyor…", False)
+    assert (window_status(m).update_title, window_status(m).update_enabled) == ("Checking…", False)
     m.updates.finish_check(AVAILABLE, NOW, manual=False)
     row = update_row(m)
-    assert (row.title, row.action) == ("Güncelleme var: 1.1.0 — Güncelle", "update")
-    assert (window_status(m).update_title, window_status(m).update_action) == ("1.1.0 sürümüne güncelle", "update")
+    assert (row.title, row.action) == ("Update available: 1.1.0 — Update", "update")
+    assert (window_status(m).update_title, window_status(m).update_action) == ("Update to 1.1.0", "update")
     assert m.updates.begin("download")
-    assert update_row(m).title == "Güncelleme indiriliyor…" and not update_row(m).enabled
+    assert update_row(m).title == "Downloading update…" and not update_row(m).enabled
     assert not window_status(m).update_enabled
-    assert [n.title for n in m.updates.finish_download("İndirilen güncelleme doğrulanamadı; yüklenmedi.")] == [
-        "Güncelleme yüklenemedi"
+    assert [n.title for n in m.updates.finish_download("The downloaded update could not be verified; it was not installed.")] == [
+        "Could not install the update"
     ]
     assert update_row(m).action == "update"  # can be tried again
     m.updates.finish_check(CheckResult("current"), NOW, manual=False)

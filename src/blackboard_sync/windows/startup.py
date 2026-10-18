@@ -16,6 +16,7 @@ import sys
 import threading
 from pathlib import Path
 
+from blackboard_sync.i18n import tr
 from blackboard_sync.system import default_data_dir, make_private_dir
 
 log = logging.getLogger(__name__)
@@ -29,9 +30,9 @@ LOG_BACKUPS = 3  # windows-tray.log plus three older ones: 4 MB at most
 # Hidden diagnostic: BBSYNC_STACK_DUMP=<seconds> writes the stack of every
 # thread to the log every <seconds> (to see where a running app waits).
 STACK_DUMP_ENV = "BBSYNC_STACK_DUMP"
-ERROR_TITLE = "Blackboard Sync"
-ERROR_TEXT = "Blackboard Sync beklenmeyen bir hata nedeniyle durdu."
-ERROR_LOG_TEXT = "Ayrıntılar bu dosyada:\n{path}"
+ERROR_TITLE = tr("Blackboard Sync")
+ERROR_TEXT = tr("Blackboard Sync stopped because of an unexpected error.")
+ERROR_LOG_TEXT = tr("The details are in this file:\n{path}")
 
 MB_ICONERROR = 0x10
 MB_SETFOREGROUND = 0x10000

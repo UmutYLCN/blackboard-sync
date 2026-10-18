@@ -14,6 +14,7 @@ from pathlib import Path
 from blackboard_sync import announcements, courses, deadlines, relocate, runtime, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
+from blackboard_sync.i18n import tr
 from blackboard_sync.menubar import jobs, settings_form
 from blackboard_sync.menubar.main_window_model import GENERAL, main_status, shows_window_at_launch
 from blackboard_sync.menubar.model import MOVE_JOB, open_target, RunOutcome, UPDATE_ACTIONS
@@ -28,9 +29,9 @@ log = logging.getLogger(__name__)
 GUI_EXE = "Blackboard Sync.exe"
 CLI_EXE = "blackboard-sync-cli.exe"
 # Shown once, when the main window first closes: where the app went.
-TRAY_HINT_TITLE = "Blackboard Sync arka planda çalışıyor"
-TRAY_HINT = ("Menü için saatin yanındaki Blackboard Sync simgesine sağ tıklayın. "
-             "Simge görünmüyorsa gizli simgeleri gösteren ^ okuna tıklayın.")
+TRAY_HINT_TITLE = tr("Blackboard Sync is running in the background")
+TRAY_HINT = (tr("Right-click the Blackboard Sync icon next to the clock for the menu. "
+             "If you don't see it, click the ^ arrow that shows hidden icons."))
 TRAY_HINT_SHOWN = "tray-hint-shown"
 # Workers wake Tk with this virtual event, so the UI never polls its queue.
 WAKE_EVENT = "<<bbsync>>"
@@ -57,6 +58,16 @@ class LogThrottle:
         return True
 
 
+def app_command():
+    """The command line that starts this tray app (a restart in a new language)."""
+    executable = Path(sys.executable)
+    if runtime.is_frozen():
+        return [str(executable)]
+    if executable.name.lower() == "python.exe":
+        executable = executable.with_name("pythonw.exe")
+    return [str(executable), "-m", "blackboard_sync.windows"]
+
+
 def cli_runner(command, **kwargs):
     # pythonw can discard standard streams even with redirected handles. Run
     # the console interpreter hidden so the CLI always returns its JSON report.
@@ -69,8 +80,8 @@ def cli_runner(command, **kwargs):
         # the CLI runs as the console twin installed next to it.
         command[0] = str(executable.with_name(CLI_EXE))
     # The CLI emits UTF-8 even when the Windows ANSI code page is different.
-    return subprocess.run(command, **kwargs, encoding="utf-8", errors="replace",
-                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    return jobs.run_cancellable(command, **kwargs, encoding="utf-8", errors="replace",
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 class TrayApp:
@@ -252,7 +263,7 @@ class TrayApp:
             webbrowser.open(release.page_url)
             return
         if self.model.busy is not None:
-            self.model.note = "Güncellemeden önce çalışan işlemin tamamlanmasını bekleyin."
+            self.model.note = tr("Wait for the running job to finish before updating.")
             self.refresh()
             return
         if not self.model.updates.begin("download"):
@@ -268,7 +279,7 @@ class TrayApp:
             error = str(exc)
         except Exception:
             log.exception("Update installation failed")
-            error = "Güncelleme yüklenemedi; daha sonra tekrar deneyin."
+            error = tr("Could not install the update; try again later.")
         self.post(self.update_installed, error)
 
     def update_installed(self, error):
@@ -283,6 +294,18 @@ class TrayApp:
     def notification_clicked(self, data):
         if data.get("action") in UPDATE_ACTIONS:
             self.dispatch(data["action"])
+
+    def toggle_pause(self):
+        """Duraklat / Devam et: pausing also ends a sync that is running right now."""
+        if self.model.paused:
+            self.model.resume(jobs.utcnow())
+            self.save()
+            self.start_next()
+            return
+        self.model.pause()
+        if self.model.busy in ("sync", "past_term"):
+            jobs.stop_sync()  # the worker reports "paused" and frees the job slot
+        self.save()
 
     def notify(self, note):
         try:
@@ -333,6 +356,8 @@ class TrayApp:
         elif action == "uninstall":
             self.start_uninstall()
             return
+        elif action == "pause":
+            self.toggle_pause()
         elif action == "settings":
             self.show_window(GENERAL)
         elif action == "deadline":
@@ -346,9 +371,15 @@ class TrayApp:
                 try:
                     os.startfile(str(target))
                 except OSError:
-                    self.model.note = "Duyuru açılamadı."
+                    self.model.note = tr("Could not open the announcement.")
             elif target:
                 webbrowser.open(target)
+        elif action == "reveal":
+            target = open_target(self.model.root, value)
+            if target is not None and target.is_file():
+                subprocess.Popen(["explorer", "/select,", str(target)], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            elif target is not None:
+                os.startfile(str(target))
         elif action in ("folder", "open"):
             target = self.model.root if action == "folder" else open_target(self.model.root, value)
             if target and target.exists():
@@ -360,16 +391,16 @@ class TrayApp:
                                 self.model.recent_seen.opened(item)
                         self.save()
                 except OSError:
-                    self.model.note = "Dosya veya klasör açılamadı."
+                    self.model.note = tr("Could not open the file or folder.")
             else:
-                self.model.note = "Dosya veya klasör henüz yok; önce senkronize edin."
+                self.model.note = tr("The file or folder does not exist yet; sync first.")
         elif action == "logout" and self.model.busy is None:
             # Asked from the main window, so the question belongs in front of it.
             parent = self.window.window if self.window_open else self.root
             if messagebox.askyesno(
-                "Hesaptan çıkış yapılsın mı?",
-                "Tüm giriş verileri silinir; yeniden giriş yaparken okul bilgilerinizi "
-                "tekrar girmeniz gerekir. İndirilen dosyalarınız korunacak.",
+                tr("Sign out?"),
+                tr("All sign-in data is removed; you will need to enter your school details "
+                   "again to sign in. Your downloaded files are kept."),
                 parent=parent,
             ):
                 try:
@@ -377,10 +408,10 @@ class TrayApp:
                     if warnings:
                         self.model.note = warnings[0]
                 except OSError:
-                    self.model.note = "Hesaptan çıkış yapılamadı."
+                    self.model.note = tr("Could not sign out.")
         elif action == "quit":
             if self.model.busy or self.model.updates.busy == "download":
-                messagebox.showinfo("Blackboard Sync", "Önce çalışan işlemin tamamlanmasını bekleyin.", parent=self.root)
+                messagebox.showinfo("Blackboard Sync", settings_form.T_BUSY, parent=self.root)
                 return
             self.closed = True
             self.icon.stop()
@@ -489,6 +520,7 @@ class TrayApp:
                                      self.settings_submitted, self.dispatch, self.window_closed,
                                      on_values=self.form_values,
                                      on_open=lambda path: self.dispatch("open", path),
+                                     on_reveal=lambda path: self.dispatch("reveal", path),
                                      on_deadlines=lambda: deadlines.load_calendar(self.config, self.settings.dest),
                                      on_deadline=lambda target: self.dispatch("deadline", target),
                                      on_announcements=lambda: announcements.load_rows(self.config),
@@ -509,7 +541,7 @@ class TrayApp:
             courses.set_enabled(self.config, course_id, enabled)
         except OSError as exc:
             log.warning("Could not save the course choice: %s", exc)
-            self.model.note = f"Ders seçimi kaydedilemedi: {exc.strerror or exc}"
+            self.model.note = tr("Could not save the course choice: {error}").format(error=exc.strerror or exc)
         jobs.refresh_hidden_folders(self.config, self.model)
         if enabled and not self.uninstalling and self.model.account()[0] is not None:
             self.start_job("sync")  # does nothing while another job runs
@@ -551,7 +583,7 @@ class TrayApp:
             save_settings(self.config.data_dir, submission.settings)
         except OSError as exc:
             log.exception("Could not save settings")
-            return f"Ayarlar kaydedilemedi: {exc}", "dest"
+            return tr("Could not save the settings: {error}").format(error=exc), "dest"
         self.settings = submission.settings
         self.model.apply_settings(
             self.settings.dest,
@@ -568,7 +600,35 @@ class TrayApp:
             else:
                 self.login_after_job = True
         self.refresh()
+        if submission.language_changed:
+            # After the window has taken the saved values back.
+            self.root.after(0, self.offer_language_restart)
         return None
+
+    def offer_language_restart(self):
+        """The language is read when the app starts: offer to start again in the new one now."""
+        from tkinter import messagebox
+
+        parent = self.window.window if self.window_open else self.root
+        if messagebox.askyesno(settings_form.T_LANGUAGE_RESTART_TITLE, settings_form.T_LANGUAGE_RESTART,
+                               parent=parent):
+            self.restart()
+
+    def restart(self):
+        """Start a new copy that takes over once this one has quit, then quit."""
+        if self.model.busy or self.model.updates.busy == "download":
+            self.model.note = tr("Could not restart Blackboard Sync; quit it and open it again.")
+            self.refresh()
+            return
+        flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        try:
+            jobs.relaunch(self.config, app_command(), creationflags=flags)
+        except OSError:
+            log.exception("Could not restart")
+            self.model.note = tr("Could not restart Blackboard Sync; quit it and open it again.")
+            self.refresh()
+            return
+        self.dispatch("quit")
 
     def ask_dest_choice(self, old, new, files):
         from .main_window import ask_dest_choice
@@ -595,6 +655,8 @@ def main(argv=None):
     # The login item and the updater's silent reinstall start the app in the
     # tray only; any other start (installer, Start Menu) shows its main window.
     parser.add_argument(autostart.BACKGROUND, action="store_true")
+    # A copy started by ``restart`` (a new language): it waits for the old one to quit.
+    parser.add_argument(jobs.RESTARTING, action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     # Logging is set up by .startup, before this module is imported.
     config = Config.from_env()
@@ -603,7 +665,7 @@ def main(argv=None):
         activation.request_update(config)
     # The packaged (MSIX) app's login item cannot pass --background.
     show_window = args.store_notification or not (args.background or args.notification or autostart.started_at_login())
-    lock = jobs.single_instance(config)
+    lock = jobs.wait_for_instance(config) if args.restarting else jobs.single_instance(config)
     if lock is None:
         log.info("Another copy is already running%s", "; asking it to show its window" if show_window else "")
         if show_window:

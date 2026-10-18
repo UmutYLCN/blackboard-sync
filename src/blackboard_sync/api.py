@@ -20,6 +20,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 import requests
 
 from blackboard_sync.errors import ApiError, LoginRequired, SkippedMedia
+from blackboard_sync.i18n import tr
 from blackboard_sync.system import set_hidden
 
 log = logging.getLogger(__name__)
@@ -69,15 +70,15 @@ class BlackboardClient:
 
     def _check_login(self, resp: requests.Response, same_host: bool = True) -> None:
         if resp.status_code == 401:
-            raise LoginRequired("Your Blackboard session has expired.")
+            raise LoginRequired(tr("Your Blackboard session has expired."))
         final = urlsplit(resp.url or "")
         base = urlsplit(self.base_url)
         # API calls never leave Blackboard unless bounced to a single-sign-on page.
         # Downloads may legitimately redirect to file storage on another host.
         if same_host and final.netloc and final.netloc != base.netloc:
-            raise LoginRequired("Blackboard redirected to a sign-in page.")
+            raise LoginRequired(tr("Blackboard redirected to a sign-in page."))
         if any(marker in final.path for marker in _LOGIN_MARKERS):
-            raise LoginRequired("Blackboard redirected to a sign-in page.")
+            raise LoginRequired(tr("Blackboard redirected to a sign-in page."))
 
     def get_json(self, path: str, params: dict | None = None) -> dict:
         url = self.url(path)
@@ -90,7 +91,7 @@ class BlackboardClient:
             # A real sign-in redirect was already caught by _check_login via the final
             # URL; any other HTML (e.g. a maintenance page) is transient, not an expired
             # session, so retry on the next run instead of asking the user to sign in.
-            raise ApiError(resp.status_code, path, "Blackboard answered with a web page instead of data.")
+            raise ApiError(resp.status_code, path, tr("Blackboard answered with a web page instead of data."))
         return resp.json()
 
     def get_paged(self, path: str, params: dict | None = None) -> Iterator[dict]:
@@ -210,7 +211,7 @@ class BlackboardClient:
                 # the final URL, so skip just this item instead of reporting an expired
                 # session. A file the server names explicitly (Content-Disposition) is saved
                 # as-is, so a real .php/.xhtml/extensionless upload is never dropped.
-                raise ApiError(resp.status_code, url, "Blackboard answered a download with a web page.")
+                raise ApiError(resp.status_code, url, tr("Blackboard answered a download with a web page."))
             digest = hashlib.sha256()
             size = 0
             fd, tmp = _mkstemp(into_dir)

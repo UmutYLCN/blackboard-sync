@@ -76,7 +76,7 @@ def test_manual_mode_is_zero_and_survives_a_reload(tmp_path):
 
 def test_the_menu_offers_30_60_180_and_by_hand_only():
     assert [m for m, _ in INTERVAL_OPTIONS] == [30, 60, 180, 0]
-    assert [t for _, t in INTERVAL_OPTIONS][-1] == "Yalnızca elle"
+    assert [t for _, t in INTERVAL_OPTIONS][-1] == "Only manually"
 
 
 # -- form -------------------------------------------------------------------------
@@ -250,25 +250,25 @@ def test_next_run_text_is_the_absolute_clock_time_for_every_interval():
     for minutes in (30, 60, 180):
         m = model(minutes)
         finish(m, at=NOW)
-        expected = f"sonraki: {format_time(NOW + timedelta(minutes=minutes), NOW)}"
+        expected = f"next: {format_time(NOW + timedelta(minutes=minutes), NOW)}"
         assert m.detail(NOW)[-1] == expected
 
 
 def test_overdue_run_still_says_birazdan():
     m = model(60)
     finish(m, at=NOW)
-    assert m.detail(NOW + timedelta(hours=2))[-1] == "sonraki: birazdan"
+    assert m.detail(NOW + timedelta(hours=2))[-1] == "next: soon"
 
 
 def test_manual_mode_says_automatic_sync_is_off_and_puts_the_sync_button_first():
     m = model(0, session={"saved_at": 9e9, "user": {"displayName": "Ada"}})
     finish(m, at=NOW)
     lines = m.status_lines(NOW)
-    assert lines[0] == f"✓ Ada · {format_time(NOW, NOW)} senkronize edildi"
-    assert lines[1].endswith("otomatik senkron kapalı")
-    assert not any("sonraki" in line for line in lines)
+    assert lines[0] == f"✓ Ada · synced at {format_time(NOW, NOW)}"
+    assert lines[1].endswith("automatic sync off")
+    assert not any("next:" in line for line in lines)
     entries = m.menu(NOW).entries
-    assert entries[0].action == "sync" and entries[0].title == "Şimdi senkronize et" and entries[0].enabled
+    assert entries[0].action == "sync" and entries[0].title == "Sync now" and entries[0].enabled
 
 
 def test_automatic_modes_keep_the_menu_layout():
@@ -280,4 +280,4 @@ def test_automatic_modes_keep_the_menu_layout():
 def test_manual_mode_text_is_constant_over_time_so_the_menu_is_not_rebuilt():
     m = model(0)
     finish(m, at=NOW)
-    assert m.detail(NOW)[-1] == m.detail(NOW + timedelta(hours=9))[-1] == "otomatik senkron kapalı"
+    assert m.detail(NOW)[-1] == m.detail(NOW + timedelta(hours=9))[-1] == "automatic sync off"

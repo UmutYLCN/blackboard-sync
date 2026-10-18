@@ -1,14 +1,14 @@
 """What the settings show and what saving them means, without any GUI code.
 
-The settings live in the main window (``main_window_model``). Its Genel section
-has five parts: Hesap (school address, who is signed in, sign in or out),
-Klasör (destination), Eski dönemler (download a past term once), Genel (start
-at login, sync interval) and Güncellemeler (automatic checks, check now,
+The settings live in the main window (``main_window_model``). Its Settings page
+has five parts: Account (school address, who is signed in, sign in or out),
+Folder (destination), Past terms (download a past term once), Sync (start
+at login, sync interval, language) and Updates (automatic checks, check now,
 version, uninstall). Dersler (``courses.py``) picks the courses that sync. The GUI layers (``main_window.py`` on macOS,
 ``windows/main_window.py``) only draw ``FormValues`` and ``WindowStatus`` and
 report which button was pressed.
 
-User-facing strings are Turkish on purpose: the window is read by the student.
+User-facing strings go through ``i18n.tr``: the window is read by the student.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from blackboard_sync import __version__, uninstall
+from blackboard_sync.i18n import DEFAULT_LANGUAGE, LANGUAGES, language_name, normalize_language, ntr, tr
 from blackboard_sync.menubar.model import (
     DEST_MOVE,
     DEST_REFETCH,
@@ -38,13 +39,13 @@ from blackboard_sync.settings import (
 )
 from blackboard_sync.system import sync_root
 
-T_INTERVAL_LABEL = "Otomatik senkron"
+T_INTERVAL_LABEL = tr("Automatic sync")
 # (minutes, menu text); 0 means only by hand. Order is the order in the window.
 INTERVAL_OPTIONS = (
-    (30, "Her 30 dakikada"),
-    (60, "Her saat"),
-    (180, "Her 3 saatte"),
-    (0, "Yalnızca elle"),
+    (30, tr("Every 30 minutes")),
+    (60, tr("Every hour")),
+    (180, tr("Every 3 hours")),
+    (0, tr("Only manually")),
 )
 assert tuple(minutes for minutes, _ in INTERVAL_OPTIONS) == SYNC_INTERVAL_CHOICES
 
@@ -53,42 +54,59 @@ def interval_title(minutes: int) -> str:
     return dict(INTERVAL_OPTIONS)[normalize_sync_interval(minutes)]
 
 
-T_SECTION_ACCOUNT = "Hesap"
-T_SECTION_FOLDER = "Klasör"
-T_SECTION_PAST_TERMS = "Eski dönemler"
-T_SECTION_GENERAL = "Genel"
-T_SECTION_UPDATES = "Güncellemeler"
-T_URL_LABEL = "Okulunuzun Blackboard adresi"
-T_URL_PLACEHOLDER = "https://blackboard.okul.edu.tr"
-T_URL_HINT = "Adresi değiştirirseniz yeni okul için tekrar giriş yapmanız gerekir."
-T_DEST_LABEL = "Dosyaların kaydedileceği klasör"
+T_LANGUAGE_LABEL = tr("Language")
+# Each language is named in itself, so a student can find theirs in either language.
+LANGUAGE_OPTIONS = LANGUAGES
+T_LANGUAGE_RESTART_TITLE = tr("Restart Blackboard Sync to change the language?")
+T_LANGUAGE_RESTART = tr("The new language is used once the app starts again.")
+T_RESTART_NOW = tr("Restart now")
+T_LATER = tr("Later")
+
+
+def language_title(code: str) -> str:
+    return language_name(code)
+
+
+def language_code(title: str) -> str:
+    return next((code for code, name in LANGUAGE_OPTIONS if name == title), LANGUAGE_OPTIONS[0][0])
+
+
+T_SECTION_ACCOUNT = tr("Account")
+T_SECTION_FOLDER = tr("Folder")
+T_SECTION_PAST_TERMS = tr("Past terms")
+T_SECTION_GENERAL = tr("Sync")
+T_SECTION_UPDATES = tr("Updates")
+T_URL_LABEL = tr("Your school's Blackboard address")
+T_URL_PLACEHOLDER = tr("https://blackboard.school.edu")
+T_URL_HINT = tr("If you change the address you need to sign in again for the new school.")
+T_DEST_LABEL = tr("Folder to save files in")
 # Under the folder field: what ``system.sync_root`` does with the chosen folder.
-T_DEST_ROOT_NOTE = "Dosyalar seçtiğiniz klasörün içindeki University klasörüne kaydedilir."
+T_DEST_ROOT_NOTE = tr("Files are saved in the University folder inside the folder you choose.")
 T_DEST_HINT = (
-    f"{T_DEST_ROOT_NOTE} "
-    "Klasörü değiştirirseniz indirilmiş dosyaları yeni klasöre taşımayı ya da "
-    "yeniden indirmeyi seçebilirsiniz."
+    T_DEST_ROOT_NOTE + " "
+    + tr("If you change the folder you can move the downloaded files to the new one or "
+         "download them again.")
 )
-T_PAST_DOWNLOAD = "Eski dönemi indir"
-T_PAST_DOWNLOADING = "İndiriliyor…"
-T_PAST_NOTE = "Eski dönem bir kez indirilir, güncellenmez."
-T_PAST_EMPTY = "İndirilebilecek eski dönem yok."
-T_PAST_SIGN_IN = "Eski dönemleri görmek için giriş yapın."
+T_PAST_DOWNLOAD = tr("Download past term")
+T_PAST_DOWNLOADING = tr("Downloading…")
+T_PAST_NOTE = tr("A past term is downloaded once and not updated.")
+T_PAST_EMPTY = tr("No past terms to download.")
+T_PAST_SIGN_IN = tr("Sign in to see past terms.")
 T_UNINSTALL = uninstall.BUTTON_TITLE
-T_AUTOSTART = "Bilgisayar açılınca başlat"
-T_CHECK_UPDATES = "Güncellemeleri otomatik denetle"
-T_CHOOSE_FOLDER = "Seç…"
-T_CHOOSE_FOLDER_PROMPT = "Bu klasörü kullan"
-T_CHOOSE_FOLDER_MESSAGE = "Ders dosyalarının kaydedileceği klasörü seçin."
-T_SAVE = "Kaydet"
-T_CANCEL = "Vazgeç"
-T_BUSY = "Önce çalışan işlemin tamamlanmasını bekleyin."
-T_DEST_NOT_CHANGED = "Klasör değiştirilmedi."
+T_AUTOSTART = tr("Start when the computer starts")
+T_CHECK_UPDATES = tr("Check for updates automatically")
+T_CHOOSE_FOLDER = tr("Choose…")
+T_CHOOSE_FOLDER_PROMPT = tr("Use this folder")
+T_CHOOSE_FOLDER_MESSAGE = tr("Choose the folder to save your course files in.")
+T_SAVE = tr("Save")
+T_CANCEL = tr("Cancel")
+T_BUSY = tr("Wait for the running job to finish first.")
+T_DEST_NOT_CHANGED = tr("The folder was not changed.")
 
 # Asked when the folder changes and the old one holds downloaded files.
-T_DEST_CHANGE_TITLE = "İndirilen dosyalar ne olsun?"
-T_MOVE = "Taşı"
-T_REDOWNLOAD = "Yeniden indir"
+T_DEST_CHANGE_TITLE = tr("What should happen to the downloaded files?")
+T_MOVE = tr("Move")
+T_REDOWNLOAD = tr("Download again")
 # (choice, button); the first one is the default.
 DEST_CHOICES = ((DEST_MOVE, T_MOVE), (DEST_REFETCH, T_REDOWNLOAD))
 
@@ -115,11 +133,15 @@ def dest_change_message(old: Path, new: Path, files: int) -> str:
     ``old`` and ``new`` are the chosen folders; the text names their University folders.
     """
     old, new = sync_root(old), sync_root(new)
+    held = ntr("“{folder}” holds {n} file downloaded from Blackboard.",
+               "“{folder}” holds {n} files downloaded from Blackboard.", files)
     return (
-        f"“{display_path(old)}” klasöründe Blackboard'dan indirilmiş {files} dosya var.\n\n"
-        f"{T_MOVE}: dosyalar “{display_path(new)}” klasörüne taşınır, yeniden indirilmez. "
-        "Kendi eklediğiniz dosyalar eski klasörde kalır.\n"
-        f"{T_REDOWNLOAD}: dosyalar yeni klasöre yeniden indirilir; eski klasöre dokunulmaz."
+        held.format(folder=display_path(old), n=files) + "\n\n"
+        + tr("{move}: the files are moved to “{folder}”, not downloaded again. "
+             "Files you added yourself stay in the old folder.").format(move=T_MOVE, folder=display_path(new))
+        + "\n"
+        + tr("{redownload}: the files are downloaded again into the new folder; the old folder is not touched."
+             ).format(redownload=T_REDOWNLOAD)
     )
 
 
@@ -132,6 +154,7 @@ class FormValues:
     autostart: bool
     check_updates: bool = True
     sync_interval_minutes: int = 60  # 0: only by hand
+    language: str = DEFAULT_LANGUAGE
 
 
 @dataclass(frozen=True)
@@ -145,6 +168,7 @@ class Submission:
     # ``~/X/University`` instead of ``~/X`` (or back) changes nothing.
     dest_changed: bool
     interval_changed: bool = False  # the next automatic run is recomputed
+    language_changed: bool = False  # the app offers to restart in the new language
 
     def needs_login(self, login_pressed: bool) -> bool:
         return login_pressed or self.school_changed
@@ -200,18 +224,18 @@ def window_status(model: AppModel) -> WindowStatus:
     if model.busy == "login":
         account, title, action = login_waiting_line(model.login_method), T_LOGGING_IN, "login"
     elif name is not None:
-        account, title, action = f"Giriş yapıldı: {name}", T_LOGOUT, "logout"
+        account, title, action = tr("Signed in as {name}").format(name=name), T_LOGOUT, "logout"
     elif expired:
-        account, title, action = "Oturum sona erdi; tekrar giriş yapın.", T_LOGIN, "login"
+        account, title, action = tr("Your session expired; sign in again."), T_LOGIN, "login"
     else:
-        account, title, action = "Henüz giriş yapılmadı.", T_LOGIN, "login"
+        account, title, action = tr("Not signed in yet."), T_LOGIN, "login"
     updates = model.updates
     if updates.busy == "check":
-        update_title, update_action = "Denetleniyor…", "check_updates"
+        update_title, update_action = tr("Checking…"), "check_updates"
     elif updates.busy == "download":
-        update_title, update_action = "İndiriliyor…", "update"
+        update_title, update_action = tr("Downloading…"), "update"
     elif updates.available is not None:
-        update_title, update_action = f"{updates.available.version} sürümüne güncelle", "update"
+        update_title, update_action = tr("Update to {version}").format(version=updates.available.version), "update"
     else:
         update_title, update_action = T_CHECK_NOW, "check_updates"
     past_terms, past_message, past_enabled = past_term_status(model)
@@ -221,7 +245,7 @@ def window_status(model: AppModel) -> WindowStatus:
         account_title=title,
         account_action=action,
         account_enabled=idle,
-        version=f"Sürüm {__version__}",
+        version=tr("Version {version}").format(version=__version__),
         update_title=update_title,
         update_action=update_action,
         update_enabled=updates.busy is None,
@@ -236,7 +260,7 @@ def window_status(model: AppModel) -> WindowStatus:
 def initial_values(saved: Settings | None, current: Settings, autostart: bool) -> FormValues:
     """Prefill the window with the saved settings, else what the app uses now.
 
-    On the first launch "Bilgisayar açılınca başlat" is ticked: the app is
+    On the first launch "Start when the computer starts" is ticked: the app is
     meant to run in the background without the student thinking about it.
     """
     shown = saved or current
@@ -246,11 +270,12 @@ def initial_values(saved: Settings | None, current: Settings, autostart: bool) -
         autostart=autostart or saved is None,
         check_updates=shown.check_updates,
         sync_interval_minutes=shown.sync_interval_minutes,
+        language=shown.language,
     )
 
 
 def submit(values: FormValues, current: Settings) -> Submission:
-    """Validate the inputs; raises ``SettingsError`` with a Turkish message.
+    """Validate the inputs; raises ``SettingsError`` with a message for the student.
 
     ``current`` is what the app syncs with right now (the saved settings, or
     the defaults before the first save).
@@ -260,6 +285,7 @@ def submit(values: FormValues, current: Settings) -> Submission:
         dest=normalize_dest(values.dest),
         check_updates=values.check_updates,
         sync_interval_minutes=normalize_sync_interval(values.sync_interval_minutes),
+        language=normalize_language(values.language),
     )
     return Submission(
         settings=settings,
@@ -267,5 +293,6 @@ def submit(values: FormValues, current: Settings) -> Submission:
         school_changed=settings.base_url != current.base_url.rstrip("/"),
         dest_changed=sync_root(settings.dest) != sync_root(current.dest),
         interval_changed=settings.sync_interval_minutes != current.sync_interval_minutes,
+        language_changed=settings.language != current.language,
     )
 

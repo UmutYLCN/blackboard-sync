@@ -52,7 +52,7 @@ Items marked **Decide** are the maintainer's call; all are collected again under
 ### 1. Pricing and availability
 
 - [ ] **Markets:** **Decide.** All markets (the default) or Turkey only. The app works with
-  any school's Blackboard Learn, but its interface is Turkish only.
+  any school's Blackboard Learn; its interface is English by default, with Turkish in Settings.
 - [ ] **Audience:** Public audience.
 - [ ] **Discoverability:** Make this product available and discoverable in the Microsoft Store.
 - [ ] **Schedule:** Release as soon as possible; Stop acquisition never. (Use
@@ -136,21 +136,21 @@ copy.
    needs a higher version.
 4. **Device family availability:** Windows 10/11 Desktop only (the manifest's
    `Windows.Desktop`); leave the others off.
-5. Partner Center reports the package's language (`tr-TR`), the restricted capability
+5. Partner Center reports the package's languages (`en-US`, the default, and `tr-TR`), the restricted capability
    `runFullTrust` and the identity; they must match `packaging/msix/identity.toml`.
 
 ### 5. Store listings
 
-- [ ] **Languages:** Turkish comes from the package. **Decide** whether to add English
-  (**Add/remove languages > Manage additional languages**).
+- [ ] **Languages:** English and Turkish both come from the package, so both listings are
+  needed (`listing-en.md` and `listing-tr.md`).
 - [ ] **Text:** paste from `listing-tr.md` (and `listing-en.md`): description, short
   description, product features, keywords, copyright and trademark info, developed by.
   Leave "What's new in this version" empty for the first submission. The non-affiliation
   sentence is the second paragraph of the description and part of the copyright line.
 - [ ] **Screenshots:** upload `01-tek-tek.png`, `02-genel-bakis.png`, `03-baslangic.png`,
   `04-ilk-senkron.png`, then `05-tepsi-menusu.png`, with the captions from the listing file.
-  The problem card comes first, followed by the four Windows captures. Upload the same
-  Turkish-titled images separately for each language.
+  The problem card comes first, followed by the four Windows captures. Upload English
+  images (`screenshots/en/`) to the English listing and Turkish ones to the Turkish listing.
 - [ ] **Store logos:** poster art (1440x2160): `images/poster-art.png`; 1:1 box art
   (2160x2160): `images/box-art.png`; 1:1 app tile icons: `images/store-logo-300.png`
   (300x300), `images/store-logo-150.png` (150x150), `images/store-logo-71.png` (71x71).
@@ -182,7 +182,7 @@ copy.
   explanation and a link to the demo video. Suggested text for the second case (date it):
 
   ```text
-  [date] This app downloads course files from a university's Blackboard Learn system. Signing in requires the student's own school account on the school's sign-in page, so we cannot provide a shared test account. Without an account testers can: open the app from Start (the "Başlangıç" first-run page appears; the UI is Turkish), enter any Blackboard address and choose a folder, open the "Genel" settings (automatic sync interval, start at sign-in, the note that updates come from the Microsoft Store), and close the window to see the app keep running in the notification area. A demo of a full sync: https://github.com/user-attachments/assets/d7e1e0a7-a25b-4412-824b-52ee71d25b03 . The app has no analytics and contacts only the Blackboard address the user enters.
+  [date] This app downloads course files from a university's Blackboard Learn system. Signing in requires the student's own school account on the school's sign-in page, so we cannot provide a shared test account. Without an account testers can: open the app from Start (the "Get started" first-run page appears; the UI is English, with Turkish under Settings > Language), enter any Blackboard address and choose a folder, open Settings (the gear; automatic sync interval, language, start at sign-in, the note that updates come from the Microsoft Store), and close the window to see the app keep running in the notification area. A demo of a full sync: https://github.com/user-attachments/assets/d7e1e0a7-a25b-4412-824b-52ee71d25b03 . The app has no analytics and contacts only the Blackboard address the user enters.
   ```
 
 - [ ] **Submission notification audience:** the account owner is notified by default; add
@@ -199,31 +199,33 @@ text; the opening card introduces the problem, followed by four titled app scree
 
 The first submission opens with a text-only card adapted from the promo, then the four
 **light-mode Windows** captures taken by the maintainer. These final PNGs have no TASLAK
-label; the old macOS drafts and their inputs have been removed. Use the same
-Turkish-titled images for both listing languages.
+label; the old macOS drafts and their inputs have been removed. These captures show the
+app's earlier Turkish-only interface; the app is now English by default with Turkish as an
+option in Settings, so new captures (English for the English listing, Turkish for the
+Turkish one) are due before the next submission.
 
 | Final image / upload order | Content | Original capture size |
 | --- | --- | --- |
-| [01-tek-tek.png](screenshots/01-tek-tek.png) | **Blackboard’dan dosyaları tek tek mi indiriyorsun?** / **Buna artık gerek yok.** — text-only problem card | Rendered at 1920x1080 |
-| [02-genel-bakis.png](screenshots/02-genel-bakis.png) | **Genel bakış**, after a sync: **Son indirilenler**, 10 files | 942x726 |
-| [03-baslangic.png](screenshots/03-baslangic.png) | **Başlangıç**: school Blackboard address, save folder, **Bilgisayar açılınca başlat**, **Giriş yap** | 942x672 |
-| [04-ilk-senkron.png](screenshots/04-ilk-senkron.png) | **Genel bakış**, first sync: **Yeni içerik kontrol ediliyor…**, **Senkron sürüyor** | 942x672 |
-| [05-tepsi-menusu.png](screenshots/05-tepsi-menusu.png) | Notification-area menu: last sync, **Şimdi senkronize et**, **Dersler**, **Son indirilenler**, University folder | 391x200 |
+| [01-tek-tek.png](screenshots/01-tek-tek.png) | “Still downloading files from Blackboard one by one?” / “You no longer have to.” — text-only problem card | Rendered at 1920x1080 |
+| [02-genel-bakis.png](screenshots/02-genel-bakis.png) | **Home**, after a sync: **Recent downloads**, 10 files | 942x726 |
+| [03-baslangic.png](screenshots/03-baslangic.png) | **Get started**: school Blackboard address, save folder, **Start when the computer starts**, **Sign in** | 942x672 |
+| [04-ilk-senkron.png](screenshots/04-ilk-senkron.png) | **Home**, first sync: **Checking for new content…**, **Syncing** | 942x672 |
+| [05-tepsi-menusu.png](screenshots/05-tepsi-menusu.png) | Notification-area menu: last sync, **Sync now**, **Courses**, **Recent downloads**, University folder | 391x200 |
 
-![Genel bakış](screenshots/02-genel-bakis.png)
+![Home](screenshots/02-genel-bakis.png)
 
 ### Promo card selection
 
 The source is the maintainer's local `~/Desktop/blackboard-sync-video/scene.html` and its
-rendered preview frames. Its reusable text beats are:
+rendered preview frames. Its reusable text beats (Turkish in the video; English here) are:
 
-- **Problem:** “Blackboard’dan dosyaları tek tek mi indiriyorsun?” (`s1cap`).
-- **Reveal:** “Buna artık gerek yok.” (`s2a`).
-- **Setup:** “Okulunu seç, giriş yap. Hepsi bu.” (`s3cap`).
-- **Background downloads:** “Her saat kontrol eder, yeni dosyaları otomatik indirir ve haber verir.” (`s4sub`).
-- **Organisation:** “Her şey klasör klasör bilgisayarında.” (`s5cap`).
+- **Problem:** “Still downloading files from Blackboard one by one?” (`s1cap`).
+- **Reveal:** “You no longer have to.” (`s2a`).
+- **Setup:** “Choose your school, sign in. That's it.” (`s3cap`).
+- **Background downloads:** “Checks every hour, downloads new files automatically and lets you know.” (`s4sub`).
+- **Organisation:** “Everything on your computer, folder by folder.” (`s5cap`).
 - **Other features:** assignment attachments, deleted-file recovery and past-term downloads.
-- **Closing value statement:** “Ders dosyaların, otomatik olarak bilgisayarında.” (`s7tag`).
+- **Closing value statement:** “Your course files, on your computer automatically.” (`s7tag`).
 
 The problem and reveal are combined into **one opening card**, so the listing introduces
 why the app exists and then immediately shows the Windows app. The remaining statements
@@ -262,10 +264,10 @@ that kind still require Windows captures to produce final images.
 The opening card and four captures form the first submission set. The following have no
 Windows captures yet and are deliberately absent from `shots.js` and the final image set:
 
-- **Silinenler**: a few deleted files available to download again.
-- **Eski dönemler**: a past term selected in the settings.
-- **Klasörler**: File Explorer showing the University term/course folder structure.
-- **Genel settings**: automatic sync options and other settings.
+- **Deleted files**: a few deleted files available to download again.
+- **Past terms**: a past term selected in the settings.
+- **Folders**: File Explorer showing the University term/course folder structure.
+- **Settings**: automatic sync options, the language and other settings.
 
 **Dark-mode captures** could not be taken and are also a later improvement. Higher-quality
 PNG originals, transferred without WhatsApp compression, can replace the current inputs
@@ -324,7 +326,8 @@ risks failing certification. A trailer can be added later, rebuilt from Windows 
 1. **Notes for certification / test account:** how certification testers can sign in
    (school test account or explanation only). The biggest certification risk.
 2. **Markets:** all markets or Turkey only.
-3. **English listing:** add it or not (the screenshots keep their Turkish titles).
+3. **Screenshots:** take new English captures for the English listing (`render.sh --lang en`) and
+   Turkish ones for the Turkish listing; the current ones show the earlier Turkish-only interface.
 4. **Category:** Education > Study aids is proposed; secondary category Productivity or none.
 5. **Support contact:** GitHub Issues URL or an email address.
 6. **OneDrive backup declaration:** keep the default (checked) or uncheck.

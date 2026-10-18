@@ -35,6 +35,7 @@ from Foundation import NSURL, NSMakePoint, NSMakeRect, NSObject, NSURLRequest
 from PyObjCTools import AppHelper
 from WebKit import WKWebsiteDataStore, WKWebView, WKWebViewConfiguration
 
+from blackboard_sync.i18n import tr
 from blackboard_sync.inapp import (
     WINDOW_SIZE,
     WINDOW_TITLE,
@@ -87,13 +88,13 @@ def _edit_menu() -> NSMenu:
     """A main menu, so Cmd+C / Cmd+V / Cmd+A / Cmd+W work in the sign-in page."""
     bar = NSMenu.alloc().init()
     for title, items in (
-        ("Blackboard Sync", [("Giriş penceresini kapat", "performClose:", "w")]),
-        ("Düzen", [
-            ("Geri al", "undo:", "z"),
-            ("Kes", "cut:", "x"),
-            ("Kopyala", "copy:", "c"),
-            ("Yapıştır", "paste:", "v"),
-            ("Tümünü seç", "selectAll:", "a"),
+        ("Blackboard Sync", [(tr("Close Sign-in Window"), "performClose:", "w")]),
+        ("Edit", [
+            (tr("Undo"), "undo:", "z"),
+            (tr("Cut"), "cut:", "x"),
+            (tr("Copy"), "copy:", "c"),
+            (tr("Paste"), "paste:", "v"),
+            (tr("Select All"), "selectAll:", "a"),
         ]),
     ):
         holder = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, None, "")

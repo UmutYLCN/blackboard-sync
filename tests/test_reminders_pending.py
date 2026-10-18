@@ -1,4 +1,4 @@
-"""Teslim tarihi hatırlatmaları, hafta/ay takvimi ve yeniden başlatmada kalıcı taşıma işi."""
+"""Teslim tarihi hatırlatmaları ve yeniden başlatmada kalıcı taşıma işi."""
 
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -84,11 +84,11 @@ def test_reminder_text_names_the_course_the_work_and_the_local_time(tmp_path):
     state = state_with(tmp_path, item("a", datetime(2026, 10, 14, 7, 30, tzinfo=timezone.utc), "Proje"))
     (reminder,), _ = remind(state, tmp_path, NOW)
     title, message = deadlines.reminder_text(reminder, NOW, ISTANBUL)
-    assert title == "Teslim tarihi yaklaşıyor"
-    assert message == "CSE303 Algorithms: Proje\nSon teslim: 14 Ekim 10:30"
+    assert title == "Deadline coming up"
+    assert message == "CSE303 Algorithms: Proje\nDue: October 14 10:30"
     same_day = deadlines.Reminder("k", "1h", NOW + timedelta(minutes=50), "Proje", "CSE303", "x")
-    assert deadlines.reminder_text(same_day, NOW, ISTANBUL)[0] == "Teslime 1 saat kaldı"
-    assert deadlines.reminder_text(same_day, NOW, ISTANBUL)[1].endswith("Son teslim: 15:50")
+    assert deadlines.reminder_text(same_day, NOW, ISTANBUL)[0] == "Due in 1 hour"
+    assert deadlines.reminder_text(same_day, NOW, ISTANBUL)[1].endswith("Due: 15:50")
 
 
 # -- the app's check ----------------------------------------------------------------
@@ -107,7 +107,7 @@ def test_check_notifies_once_and_remembers_it_across_a_restart(tmp_path):
     config, model = app_model(tmp_path, item("a", NOW + timedelta(hours=5), "Proje"))
 
     notes = jobs.check_reminders(config, model, NOW)
-    assert [n.title for n in notes] == ["Teslim tarihi yaklaşıyor"]
+    assert [n.title for n in notes] == ["Deadline coming up"]
     assert notes[0].data == {"deadline": "https://school.edu/x"}
 
     jobs.save_model(config, model)
@@ -130,65 +130,8 @@ def test_many_reminders_at_once_become_one_notification(tmp_path):
     items = [item(f"i{n}", NOW + timedelta(hours=2 + n), f"Ödev {n}") for n in range(jobs.REMINDER_GROUP_FROM)]
     config, model = app_model(tmp_path, *items)
     notes = jobs.check_reminders(config, model, NOW)
-    assert len(notes) == 1 and notes[0].title == "Yaklaşan teslim tarihleri"
+    assert len(notes) == 1 and notes[0].title == "Upcoming deadlines"
     assert notes[0].message.count("\n") == len(items) - 1
-
-
-# -- week and month ---------------------------------------------------------------
-
-def page_with(tmp_path, *items):
-    return deadlines.calendar_page(state_with(tmp_path, *items), tmp_path, NOW, ISTANBUL)
-
-
-def test_week_starts_on_monday_and_holds_that_days_due_dates(tmp_path):
-    page = page_with(tmp_path, item("a", datetime(2026, 10, 14, 7, 30, tzinfo=timezone.utc)),
-                     item("b", datetime(2026, 10, 14, 5, 0, tzinfo=timezone.utc), "Sınav"))
-    grid = deadlines.grid_page(page, deadlines.VIEW_WEEK, date(2026, 10, 16), date(2026, 10, 13))
-    assert grid.title == "12 – 18 Ekim 2026" and len(grid.weeks) == 1
-    days = grid.weeks[0]
-    assert [d.number for d in days] == ["12", "13", "14", "15", "16", "17", "18"]
-    assert [d.today for d in days] == [False, True, False, False, False, False, False]
-    assert [r.title for r in days[2].rows] == ["Sınav", "Ödev"]  # earliest first
-    assert all(not d.rows for i, d in enumerate(days) if i != 2)
-
-
-def test_elapsed_and_upcoming_dates_of_one_day_share_a_cell(tmp_path):
-    page = page_with(tmp_path, item("a", NOW - timedelta(hours=1)), item("b", NOW + timedelta(hours=1)))
-    cell = next(d for d in deadlines.grid_page(page, deadlines.VIEW_WEEK, NOW.date(), NOW.date()).weeks[0]
-                if d.day == NOW.date())
-    assert len(cell.rows) == 2
-
-
-def test_month_fills_whole_weeks_and_marks_the_neighbouring_months(tmp_path):
-    grid = deadlines.grid_page(page_with(tmp_path), deadlines.VIEW_MONTH, date(2026, 10, 20), date(2026, 10, 13))
-    assert grid.title == "Ekim 2026" and grid.weekdays[0] == "Pzt"
-    assert len(grid.weeks) == 5 and all(len(week) == 7 for week in grid.weeks)
-    assert grid.weeks[0][0].day == date(2026, 9, 28) and grid.weeks[0][0].outside
-    assert not grid.weeks[0][3].outside and grid.weeks[0][3].number == "1"
-    assert grid.weeks[-1][-1].day == date(2026, 11, 1) and grid.weeks[-1][-1].outside
-
-
-def test_month_lengths_and_year_boundaries(tmp_path):
-    page = page_with(tmp_path)
-    february = deadlines.grid_page(page, deadlines.VIEW_MONTH, date(2026, 2, 10), date(2026, 2, 10))
-    assert len(february.weeks) == 5 and february.weeks[-1][-1].day == date(2026, 3, 1)
-    december = deadlines.grid_page(page, deadlines.VIEW_MONTH, date(2026, 12, 5), date(2026, 12, 5))
-    assert december.title == "Aralık 2026" and december.weeks[-1][-1].day == date(2027, 1, 3)
-    across = deadlines.grid_page(page, deadlines.VIEW_WEEK, date(2026, 12, 30), date(2026, 12, 30))
-    assert across.title == "28 Ara 2026 – 3 Oca 2027"
-
-
-def test_stepping_moves_by_week_or_month(tmp_path):
-    assert deadlines.shift_anchor(date(2026, 10, 16), deadlines.VIEW_WEEK, 1) == date(2026, 10, 23)
-    assert deadlines.shift_anchor(date(2026, 10, 16), deadlines.VIEW_WEEK, -3) == date(2026, 9, 25)
-    assert deadlines.shift_anchor(date(2026, 12, 31), deadlines.VIEW_MONTH, 1) == date(2027, 1, 1)
-    assert deadlines.shift_anchor(date(2026, 1, 31), deadlines.VIEW_MONTH, -1) == date(2025, 12, 1)
-
-
-def test_an_empty_calendar_still_draws_and_keeps_the_hint(tmp_path):
-    grid = deadlines.grid_page(deadlines.DeadlinePage(), deadlines.VIEW_MONTH, date(2026, 10, 1), date(2026, 10, 1))
-    assert grid.message == deadlines.T_NOT_SYNCED
-    assert sum(len(day.rows) for week in grid.weeks for day in week) == 0
 
 
 # -- the move that was asked for survives a restart ---------------------------------
@@ -227,45 +170,3 @@ def test_a_download_into_the_new_folder_is_queued_too_and_bad_data_is_ignored(tm
         other.restore_pending(junk)
         assert other.pending is None and other.move_from is None
 
-
-# -- the Windows window draws the views ---------------------------------------------
-
-def test_windows_calendar_switches_between_list_week_and_month(monkeypatch, tmp_path):
-    from tests.test_windows import fake_tk
-    from blackboard_sync.menubar.main_window_model import CALENDAR, main_status
-    from blackboard_sync.menubar.settings_form import FormValues
-    from blackboard_sync.windows.main_window import MainWindow
-
-    widgets = fake_tk(monkeypatch, tmp_path)
-    today = datetime.now().astimezone().date()
-    due = datetime.now(timezone.utc) + timedelta(days=1)
-    page = deadlines.calendar_page(state_with(tmp_path, item("a", due, "Proje")), tmp_path, datetime.now(timezone.utc))
-    opened = []
-    window = MainWindow(None, FormValues("https://school.edu", str(tmp_path), True),
-                        main_status(AppModel(tmp_path, NOW), NOW), lambda *_: None, lambda *_: None, lambda: None,
-                        on_deadlines=lambda: page, on_deadline=opened.append)
-    window.select(CALENDAR)
-    assert window.calendar_mode.get() == deadlines.VIEW_LIST
-
-    window.calendar_mode.set(deadlines.VIEW_WEEK)
-    window.refresh_calendar()
-    def alive(w):  # the fake does not destroy a destroyed widget's children
-        while w is not None and hasattr(w, "destroyed"):
-            if w.destroyed:
-                return False
-            w = w.parent
-        return True
-
-    live = [w for w in widgets if alive(w)]
-    assert sum(1 for w in live if w.options.get("text") == "Proje" and "command" in w.options) == 1
-    assert window.calendar_title.options["text"] == deadlines.grid_page(page, "week", today, today).title
-
-    window.calendar_mode.set(deadlines.VIEW_MONTH)
-    window.refresh_calendar()
-    assert window.calendar_title.options["text"] == deadlines.grid_page(page, "month", today, today).title
-    window._calendar_step(1)
-    assert window.calendar_anchor == deadlines.shift_anchor(today, "month", 1)
-    window._calendar_open_week(today)
-    assert window.calendar_mode.get() == deadlines.VIEW_WEEK and window.calendar_anchor == today
-    window._calendar_today()
-    assert window.calendar_anchor is None

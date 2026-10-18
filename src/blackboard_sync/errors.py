@@ -1,5 +1,7 @@
 """Exceptions and process exit codes."""
 
+from blackboard_sync.i18n import tr
+
 EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_USAGE = 2
@@ -20,7 +22,7 @@ class LoginRequired(BlackboardSyncError):
 
     def __init__(self, reason: str):
         super().__init__(
-            f"{reason} Run `blackboard-sync login` to sign in to Blackboard."
+            f"{reason} " + tr("Run `blackboard-sync login` to sign in to Blackboard.")
         )
         self.reason = reason
 

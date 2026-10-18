@@ -25,6 +25,7 @@
   </Dependencies>
 
   <Resources>
+    <Resource Language="en-US" />
     <Resource Language="tr-TR" />
   </Resources>
 
@@ -32,7 +33,7 @@
     <Application Id="BlackboardSync" Executable="Blackboard Sync.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="${visual_display_name}"
-        Description="Blackboard ders içeriklerini bilgisayarınızdaki klasörlere eşitler."
+        Description="Syncs your Blackboard course content into folders on your computer."
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from blackboard_sync.i18n import tr
+
 # IFileOperation flags, including recycling and no associated HTML asset folders.
 FLAGS = 0x00080000 | 0x20000000 | 0x00100000 | 0x0400 | 0x0010 | 0x0004 | 0x2000
 RECYCLE_IF_POSSIBLE = 0x80
@@ -18,14 +20,14 @@ def recycle(path: Path) -> None:
     except ImportError as exc:
         # Never fall back to SHFileOperation, which can permanently delete files
         # when recycling is unavailable (e.g. on a network/removable volume).
-        raise OSError("Geri Dönüşüm Kutusu API'si yüklenemedi; dosya korundu.") from exc
+        raise OSError(tr("The Recycle Bin API could not be loaded; the file was kept.")) from exc
 
     class RecycleOnlySink(FileOperationProgressSink):
         def PreDeleteItem(self, flags, item):
             if not flags & RECYCLE_IF_POSSIBLE:
                 # Raise a COM error: a plain Python return value is not an
                 # HRESULT failure in pywin32's server callback implementation.
-                raise COMException("Dosya geri dönüştürülemiyor; kalıcı silme iptal edildi.", scode=E_ABORT)
+                raise COMException(tr("The file cannot be recycled; permanent deletion was cancelled."), scode=E_ABORT)
             return 0
 
     pythoncom.CoInitialize()
@@ -39,9 +41,9 @@ def recycle(path: Path) -> None:
         operation.DeleteItem(item, sink)
         result = operation.PerformOperations()
         if result or operation.GetAnyOperationsAborted():
-            raise OSError("Dosya Geri Dönüşüm Kutusu'na taşınamadı; dosya korundu.")
+            raise OSError(tr("The file could not be moved to the Recycle Bin; it was kept."))
     except pywintypes.com_error as exc:
-        raise OSError(f"Geri Dönüşüm Kutusu işlemi başarısız: {exc}") from exc
+        raise OSError(tr("The Recycle Bin operation failed: {error}").format(error=exc)) from exc
     finally:
         operation = None
         pythoncom.CoUninitialize()

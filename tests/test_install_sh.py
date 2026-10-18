@@ -137,7 +137,7 @@ def test_unsigned_release_installs_as_before(env):
     result = run(env)
     assert result.returncode == 0, result.stderr
     assert installed(env) == "new version"
-    assert "imzasız" in result.stdout
+    assert "unsigned" in result.stdout
     assert "com.apple.quarantine" in logged(env, "xattr")
     assert "Blackboard Sync.app" in logged(env, "open")
 
@@ -147,8 +147,8 @@ def test_signed_notarized_release_installs_without_touching_quarantine(env):
     result = run(env)
     assert result.returncode == 0, result.stderr
     assert installed(env) == "new version"
-    assert "Apple onayı" in result.stdout
-    assert "imzasız" not in result.stdout
+    assert "Apple notarization" in result.stdout
+    assert "unsigned" not in result.stdout
     assert logged(env, "xattr") == ""
 
 
@@ -165,7 +165,7 @@ def test_signed_release_that_fails_a_check_is_not_installed(env, signature, team
     env.update(FAKE_SIGNATURE=signature, FAKE_TEAM=team, FAKE_GATEKEEPER=gatekeeper)
     result = run(env)
     assert result.returncode != 0
-    assert "kurulum iptal edildi" in result.stderr
+    assert "installation cancelled" in result.stderr
     assert installed(env) == "old version"
     assert logged(env, "xattr") == ""
     assert logged(env, "open") == ""
@@ -176,7 +176,7 @@ def test_signed_release_with_gatekeeper_off_still_needs_a_valid_signature(env):
     result = run(env)
     assert result.returncode == 0, result.stderr
     assert installed(env) == "new version"
-    assert "Gatekeeper bu Mac'te kapalı" in result.stdout
+    assert "Gatekeeper is off on this Mac" in result.stdout
 
     env["FAKE_TEAM"] = "OTHERTEAM1"
     (Path(env["FAKE_RELEASE"]) / "volume/Blackboard Sync.app/Contents/MacOS/Blackboard Sync").write_text("other")
@@ -188,7 +188,7 @@ def test_checksum_mismatch_is_not_installed(env):
     (Path(env["FAKE_RELEASE"]) / DMG_NAME).write_bytes(b"tampered")
     result = run(env)
     assert result.returncode != 0
-    assert "Sağlama toplamı uyuşmuyor" in result.stderr
+    assert "The checksum does not match" in result.stderr
     assert installed(env) == "old version"
 
 
@@ -200,7 +200,7 @@ def test_failed_copy_keeps_the_old_app_and_removes_the_temporary_copy(env):
     env["FAKE_DITTO_FAIL"] = "1"
     result = run(env)
     assert result.returncode != 0
-    assert "kopyalanamadı" in result.stderr
+    assert "Could not copy the app" in result.stderr
     assert installed(env) == "old version"
     assert leftovers(env) == []
     assert logged(env, "open") == ""
@@ -244,10 +244,10 @@ def test_other_location_copy_is_reported_and_not_deleted(env, tmp_path):
     user_app = tmp_path / "home/Applications/Blackboard Sync.app/Contents/MacOS/Blackboard Sync"
     assert user_app.read_text() == "new version"
     assert stale.exists()
-    assert f"{system}/Blackboard Sync.app içinde başka bir kopya var" in result.stdout
-    assert f"güncel sürüm {tmp_path}/home/Applications/Blackboard Sync.app" in result.stdout
+    assert f"{system}/Blackboard Sync.app and it was not updated" in result.stdout
+    assert f"the current version is in {tmp_path}/home/Applications/Blackboard Sync.app" in result.stdout
 
 
 def test_no_warning_when_there_is_no_other_copy(env):
     result = run(env)
-    assert "başka bir kopya" not in result.stdout
+    assert "another copy" not in result.stdout

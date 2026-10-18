@@ -41,7 +41,7 @@ ORGANISED FOLDERS
 Files are saved in a University folder inside the folder you choose, by term and course as on Blackboard. The default is Documents\University. If you change the folder later, you can move the downloaded files, download them again, or only get new files.
 
 OVERVIEW
-The main window lists your latest downloads; open any of them with a click. "Şimdi senkronize et" (sync now) checks right away and "Klasörü aç" (open folder) takes you to the University folder. Closing the window keeps the app running from its icon next to the clock.
+The main window lists your latest downloads; open any of them with a click. "Sync now" checks right away and "Open folder" takes you to the University folder. Closing the window keeps the app running from its icon next to the clock.
 
 DELETED FILES
 Pick files you downloaded and later removed from the folder, and download them again. Files you dismiss are not suggested again.

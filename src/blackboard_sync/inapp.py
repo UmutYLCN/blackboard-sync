@@ -19,6 +19,7 @@ import time
 from email.utils import parsedate_to_datetime
 from typing import Callable, Iterable
 
+from blackboard_sync.i18n import tr
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.session import cookie_matches_host, host_of
 from blackboard_sync.system import is_windows
@@ -26,13 +27,13 @@ from blackboard_sync.system import is_windows
 # `login --browser inapp` forces this method.
 INAPP = "inapp"
 POLL_SECONDS = 2
-WINDOW_TITLE = "Blackboard Sync – Giriş"
+WINDOW_TITLE = tr("Blackboard Sync – Sign in")
 WINDOW_SIZE = (520, 720)
-CLOSED_MESSAGE = "The sign-in window was closed before sign-in finished."
+CLOSED_MESSAGE = tr("The sign-in window was closed before sign-in finished.")
 WEBVIEW2_MISSING = (
-    "The sign-in window needs the Microsoft Edge WebView2 Runtime, which is missing on this "
-    "computer. Install it from https://go.microsoft.com/fwlink/p/?LinkId=2124703 or install "
-    "Google Chrome or Microsoft Edge, then sign in again."
+    tr("The sign-in window needs the Microsoft Edge WebView2 Runtime, which is missing on this "
+       "computer. Install it from https://go.microsoft.com/fwlink/p/?LinkId=2124703 or install "
+       "Google Chrome or Microsoft Edge, then sign in again.")
 )
 
 Cookie = dict
@@ -120,7 +121,7 @@ def watch_for_session(
         if user:
             return user, cookies
         closed.wait(poll)
-    raise BlackboardSyncError(f"Sign-in was not completed within {int(timeout // 60)} minutes.")
+    raise BlackboardSyncError(tr("Sign-in was not completed within {n} minutes.").format(n=int(timeout // 60)))
 
 
 class Outcome:
@@ -174,7 +175,7 @@ def _gui(platform: str | None):
             from blackboard_sync import inapp_macos as gui
     except ImportError as exc:  # a checkout set up before this window existed
         raise BlackboardSyncError(
-            f"The sign-in window is unavailable ({exc}); run ./scripts/setup.sh again "
-            "or install a Chromium-based browser."
+            tr("The sign-in window is unavailable ({error}); run ./scripts/setup.sh again "
+               "or install a Chromium-based browser.").format(error=exc)
         ) from exc
     return gui

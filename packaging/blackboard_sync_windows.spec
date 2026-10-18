@@ -22,6 +22,7 @@ a = Analysis(
         "pystray._win32",
         "playwright.sync_api",
         "blackboard_sync.inapp_windows",
+        "blackboard_sync.locale_tr",  # Turkish, loaded once the language is known
         "webview.platforms.winforms",
         "webview.platforms.edgechromium",
         "clr",

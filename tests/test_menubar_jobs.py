@@ -90,7 +90,7 @@ def test_model_is_restored_from_last_run_and_saved_state(tmp_path):
     model = jobs.load_model(config, NOW, autostart=False)
     assert model.icon() == Icon.EXPIRED and model.recent == []
 
-    # First start after a terminal sync: its new files seed "Son indirilenler".
+    # First start after a terminal sync: its new files seed "Recent downloads".
     config.last_run_file.write_text(
         json.dumps(
             {
@@ -305,7 +305,7 @@ def test_session_evidence_and_logout_preserve_files(config):
                  [{"name": "auth", "value": "test", "domain": "blackboard.example.edu"}],
                  {"id": "1", "userName": "ada", "name": {"given": "Ada", "family": "Student"}})
     model = jobs.load_model(config, NOW, False)
-    assert model.menu(NOW).entries[0].title == "✓ Ada Student · henüz senkronize edilmedi"
+    assert model.menu(NOW).entries[0].title == "✓ Ada Student · not synced yet"
     jobs.logout(config)
     jobs.refresh_session(config, model, jobs.effective_settings(config))
     assert model.menu(NOW).entries[0].action == "login"

@@ -123,12 +123,12 @@ When `windows/package.is_packaged()` is true, the app never checks GitHub,
 downloads an installer or runs a Setup EXE. Scheduled and manual update actions
 are guarded, including stale saved releases and clicks on old update toasts.
 The settings omit the automatic-check checkbox and update buttons, and show
-"Güncellemeler Microsoft Store üzerinden yüklenir." The tray omits update actions.
+"Updates are installed through the Microsoft Store." The tray omits update actions.
 
 The in-app uninstall button is replaced with a note pointing to **Windows
 Settings > Apps**. The uninstall backend (including CLI `uninstall` and
 `--delete-course-files`) returns that guidance before changing any app data,
-startup settings or course files. **Hesaptan çıkış yap** still clears the session
+startup settings or course files. **Sign out** still clears the session
 normally. The unpackaged Setup build retains its updater and Inno uninstaller;
 macOS behavior is unchanged.
 

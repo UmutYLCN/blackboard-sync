@@ -18,12 +18,13 @@ import time
 from pathlib import Path
 
 from blackboard_sync.config import Config
+from blackboard_sync.i18n import tr
 
 log = logging.getLogger("blackboard_sync.signout")
 
-LOCKED_WARNING = (
-    "Giriş verilerinin bir kısmı silinemedi; açık kalan giriş tarayıcısını kapatıp "
-    "tekrar çıkış yapın."
+LOCKED_WARNING = tr(
+    "Some sign-in data could not be removed; close the sign-in browser if it is still open "
+    "and sign out again."
 )
 RETRIES = 3
 RETRY_DELAY = 0.3

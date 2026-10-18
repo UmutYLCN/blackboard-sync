@@ -2,7 +2,7 @@
 # Run from a Windows machine with Python 3.12 and Inno Setup 6 (iscc) on PATH.
 # Freezes the tray app with PyInstaller (freeze-windows.ps1) and wraps it in a
 # per-user installer.
-# The installer is unsigned: Windows SmartScreen asks once ("Ek bilgi > Yine de çalıştır").
+# The installer is unsigned: Windows SmartScreen asks once ("More info > Run anyway").
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 

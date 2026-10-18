@@ -20,23 +20,24 @@ import logging
 from dataclasses import dataclass
 from typing import Iterable
 
+from blackboard_sync.i18n import tr
 from blackboard_sync.config import Config
 from blackboard_sync.session import write_private_json
 from blackboard_sync.state import State
 
 log = logging.getLogger(__name__)
 
-T_TAB = "Dersler"
+T_TAB = tr("Courses")
 T_HINT = (
-    "Bu klasör Blackboard'un bir kopyasıdır: işaretli derslerin dosyaları her senkronda "
-    "Blackboard'la eşitlenir, silinen veya bozulan dosyalar yeniden indirilir. Dosyaları kendi "
-    "düzeninize göre saklamak için başka bir klasöre kopyalayın."
+    tr("This folder is a copy of Blackboard: the files of the ticked courses are matched to "
+    "Blackboard on every sync, and deleted or damaged files are downloaded again. To keep files "
+    "your own way, copy them to another folder.")
 )
 T_UNTICK_HINT = (
-    "İşaretini kaldırdığınız ders artık senkronize edilmez; Takvim ve Duyurular'da da görünmez. "
-    "İndirilmiş dosyaları silinmez. Tekrar işaretlerseniz eksik dosyaları hemen iner."
+    tr("A course you untick is no longer synced and does not show in Calendar or Announcements. "
+    "Its downloaded files are not deleted. Tick it again and its missing files come right away.")
 )
-T_EMPTY = "Dersler ilk senkrondan sonra burada listelenir."
+T_EMPTY = tr("Your courses are listed here after the first sync.")
 
 
 @dataclass(frozen=True)

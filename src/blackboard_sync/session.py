@@ -20,6 +20,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from blackboard_sync.errors import LoginRequired
+from blackboard_sync.i18n import tr
 from blackboard_sync.system import set_private_file_mode
 
 SESSION_VERSION = 1
@@ -89,17 +90,17 @@ def save_session(path: Path, base_url: str, cookies: list[dict], user: dict | No
 
 def load_session(path: Path, base_url: str) -> dict:
     if not path.exists():
-        raise LoginRequired("You are not signed in yet.")
+        raise LoginRequired(tr("You are not signed in yet."))
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        raise LoginRequired("The saved session could not be read.")
+        raise LoginRequired(tr("The saved session could not be read."))
     if data.get("base_url", "").rstrip("/") != base_url.rstrip("/"):
-        raise LoginRequired(f"The saved session belongs to {data.get('base_url')}.")
+        raise LoginRequired(tr("The saved session belongs to {url}.").format(url=data.get("base_url")))
     now = time.time()
     live = [c for c in data.get("cookies", []) if not c.get("expires") or c["expires"] > now]
     if not live:
-        raise LoginRequired("Your Blackboard session has expired.")
+        raise LoginRequired(tr("Your Blackboard session has expired."))
     data["cookies"] = live
     return data
 

@@ -11,24 +11,28 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import urlencode
 
 from blackboard_sync.config import Config
+from blackboard_sync.i18n import tr
 from blackboard_sync.state import State
 from blackboard_sync.system import sync_root
 
-T_TAB = "Takvim"
-T_HINT = "Son teslim tarihleri senkron sırasında güncellenir. Saatler bu bilgisayarın yerel saatine göredir."
-T_UPCOMING = "Yaklaşan tarihler"
-T_PAST = "Tarihi geçenler"
-T_PAST_HINT = "Teslim durumu kontrol edilmez; tamamladığınız çalışmalar da burada görünebilir."
-T_EMPTY = "Kayıtlı son teslim tarihi yok."
-T_NOT_SYNCED = "Tarihleri görmek için senkronize edin."
-T_VIEW_LIST, T_VIEW_WEEK, T_VIEW_MONTH, T_TODAY = "Liste", "Hafta", "Ay", "Bugün"
-T_NO_DEADLINE = "Teslim tarihi yok"
-T_MORE = "+{count} daha"
-T_INCOMPLETE = "Bazı derslerin tarihleri güncellenemedi. Varsa önceki kayıtlar gösteriliyor."
-MONTHS = ("Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık")
-MONTHS_SHORT = ("Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara")
-WEEKDAYS_SHORT = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
-WEEKDAYS = ("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
+T_TAB = tr("Calendar")
+T_HINT = tr("Due dates are updated during a sync. Times are in this computer's local time.")
+T_UPCOMING = tr("Upcoming")
+T_PAST = tr("Past due")
+T_PAST_HINT = tr("Submissions are not checked; work you already handed in may show here too.")
+T_EMPTY = tr("No due dates saved.")
+T_NOT_SYNCED = tr("Sync to see due dates.")
+T_INCOMPLETE = tr("Some courses' due dates could not be updated. Earlier ones are shown where there are any.")
+MONTHS = (tr("January"), tr("February"), tr("March"), tr("April"), tr("May"), tr("June"), tr("July"),
+          tr("August"), tr("September"), tr("October"), tr("November"), tr("December"))
+WEEKDAYS = (tr("Monday"), tr("Tuesday"), tr("Wednesday"), tr("Thursday"), tr("Friday"), tr("Saturday"),
+            tr("Sunday"))
+
+
+def month_day(day: date, time: str = "") -> str:
+    """ "October 15" / "October 15 09:00" (Turkish: "15 Ekim 09:00")."""
+    text = tr("{month} {day}").format(month=MONTHS[day.month - 1], day=day.day)
+    return f"{text} {time}" if time else text
 
 
 def parse_due(value: object) -> datetime | None:
@@ -53,7 +57,7 @@ def column_deadline(column: dict, course_id: str, base_url: str,
         url = f"{base_url.rstrip('/')}/ultra/redirect?" + urlencode({
             "redirectType": "nautilus", "courseId": course_id, "contentId": content_id,
         })
-    return {"id": column["id"], "title": column.get("displayName") or column.get("name") or "İsimsiz çalışma",
+    return {"id": column["id"], "title": column.get("displayName") or column.get("name") or tr("Untitled work"),
             "due": due.isoformat(), "content_id": content_id, "url": url}
 
 
@@ -101,7 +105,7 @@ def due_reminders(state: State, root: Path, now: datetime, sent: dict,
             fresh = reached - done
             if fresh:
                 stage = next(name for name, _ in reversed(REMINDER_STAGES) if name in fresh)
-                reminders.append(Reminder(key, stage, due, item.get("title") or "İsimsiz çalışma",
+                reminders.append(Reminder(key, stage, due, item.get("title") or tr("Untitled work"),
                                           course.get("name") or "", note_target(state, root, course_id, item)))
             if done | reached or record:
                 updated[key] = {"due": due.isoformat(), "stages": sorted(done | reached)}
@@ -110,15 +114,15 @@ def due_reminders(state: State, root: Path, now: datetime, sent: dict,
 
 
 def reminder_text(reminder: Reminder, now: datetime, zone: tzinfo | None = None) -> tuple[str, str]:
-    """(title, message) of a reminder's notification, in Turkish."""
+    """(title, message) of a reminder's notification."""
     local = reminder.due.astimezone(zone)
     when = local.strftime("%H:%M") if local.date() == now.astimezone(zone).date() else (
-        f"{local.day} {MONTHS[local.month - 1]} {local.strftime('%H:%M')}")
+        month_day(local.date(), local.strftime("%H:%M")))
     if reminder.stage == "1h":
-        title = "Teslime 1 saat kaldı"
+        title = tr("Due in 1 hour")
     else:
-        title = "Teslim tarihi yaklaşıyor"
-    return title, f"{reminder.course}: {reminder.title}\nSon teslim: {when}"
+        title = tr("Deadline coming up")
+    return title, f"{reminder.course}: {reminder.title}\n" + tr("Due: {time}").format(time=when)
 
 
 @dataclass(frozen=True)
@@ -148,8 +152,8 @@ class DeadlinePage:
 
 
 def day_title(day: date, today: date) -> str:
-    prefix = "Bugün" if day == today else "Yarın" if day == today + timedelta(days=1) else WEEKDAYS[day.weekday()]
-    return f"{prefix} · {day.day} {MONTHS[day.month - 1]} {day.year}"
+    prefix = tr("Today") if day == today else tr("Tomorrow") if day == today + timedelta(days=1) else WEEKDAYS[day.weekday()]
+    return f"{prefix} · " + tr("{month} {day}, {year}").format(month=MONTHS[day.month - 1], day=day.day, year=day.year)
 
 
 def note_target(state: State, root: Path, course_id: str, item: dict) -> str:
@@ -204,80 +208,19 @@ def load_calendar(config: Config, dest: Path) -> DeadlinePage:
                          hidden=load_disabled(config))
 
 
-# -- week and month views ------------------------------------------------
-# Same cached due dates as the list, laid out on a calendar. Pure functions: the windows only draw.
-VIEW_LIST, VIEW_WEEK, VIEW_MONTH = "list", "week", "month"
-VIEWS = ((VIEW_LIST, T_VIEW_LIST), (VIEW_WEEK, T_VIEW_WEEK), (VIEW_MONTH, T_VIEW_MONTH))
+
+def upcoming_rows(page: DeadlinePage, limit: int) -> tuple[DeadlineRow, ...]:
+    """The next ``limit`` due dates that have not passed, soonest first (Home's small calendar)."""
+    rows = [row for day in page.days if not day.past for row in day.rows]
+    rows.sort(key=lambda row: (row.due.astimezone(timezone.utc), row.course, row.title))
+    return tuple(rows[:limit])
 
 
-@dataclass(frozen=True)
-class GridDay:
-    day: date
-    title: str  # "Bugün · 13 Ekim 2026", as in the list
-    number: str  # "13"
-    today: bool
-    outside: bool  # a day of the neighbouring month, shown to fill the week
-    rows: tuple[DeadlineRow, ...]
-
-
-@dataclass(frozen=True)
-class GridPage:
-    title: str  # "Ekim 2026" or "12 – 18 Ekim 2026"
-    weekdays: tuple[str, ...]
-    weeks: tuple[tuple[GridDay, ...], ...]  # a week view has one
-    message: str = ""
-
-
-def week_start(day: date) -> date:
-    """The Monday of the week holding ``day``."""
-    return day - timedelta(days=day.weekday())
-
-
-def shift_anchor(anchor: date, mode: str, step: int) -> date:
-    """Move a week view by ``step`` weeks or a month view by ``step`` months."""
-    if mode == VIEW_MONTH:
-        index = anchor.year * 12 + anchor.month - 1 + step
-        return date(index // 12, index % 12 + 1, 1)
-    return anchor + timedelta(weeks=step)
-
-
-def rows_by_day(page: DeadlinePage) -> dict[date, tuple[DeadlineRow, ...]]:
-    """Every due date of the list, upcoming and elapsed, under its local day; earliest first."""
-    grouped: dict[date, list[DeadlineRow]] = {}
-    for day in page.days:
-        for row in day.rows:
-            grouped.setdefault(row.due.date(), []).append(row)
-    return {day: tuple(sorted(rows, key=lambda r: (r.due.astimezone(timezone.utc), r.course, r.title)))
-            for day, rows in grouped.items()}
-
-
-def week_title(first: date, last: date) -> str:
-    if first.month == last.month:
-        return f"{first.day} – {last.day} {MONTHS[last.month - 1]} {last.year}"
-    if first.year == last.year:
-        return f"{first.day} {MONTHS_SHORT[first.month - 1]} – {last.day} {MONTHS_SHORT[last.month - 1]} {last.year}"
-    return (f"{first.day} {MONTHS_SHORT[first.month - 1]} {first.year} – "
-            f"{last.day} {MONTHS_SHORT[last.month - 1]} {last.year}")
-
-
-def grid_page(page: DeadlinePage, mode: str, anchor: date, today: date) -> GridPage:
-    """The week (``VIEW_WEEK``) or month (``VIEW_MONTH``) around ``anchor``, Monday first."""
-    by_day = rows_by_day(page)
-
-    def cell(day: date, month: int | None) -> GridDay:
-        return GridDay(day, day_title(day, today), str(day.day), day == today,
-                       month is not None and day.month != month, by_day.get(day, ()))
-
-    if mode == VIEW_MONTH:
-        first = date(anchor.year, anchor.month, 1)
-        start = week_start(first)
-        last = date(anchor.year + (anchor.month == 12), anchor.month % 12 + 1, 1) - timedelta(days=1)
-        count = (week_start(last) - start).days // 7 + 1
-        weeks = tuple(tuple(cell(start + timedelta(days=7 * w + d), anchor.month) for d in range(7))
-                      for w in range(count))
-        title = f"{MONTHS[anchor.month - 1]} {anchor.year}"
-    else:
-        start = week_start(anchor)
-        weeks = (tuple(cell(start + timedelta(days=d), None) for d in range(7)),)
-        title = week_title(start, start + timedelta(days=6))
-    return GridPage(title, WEEKDAYS_SHORT, weeks, page.message)
+def when_text(row: DeadlineRow, today: date) -> str:
+    """"today 14:30", "tomorrow 09:00" or "October 15 09:00": when a due date is, for a small row."""
+    day = row.due.date()
+    if day == today:
+        return tr("today {time}").format(time=row.time)
+    if day == today + timedelta(days=1):
+        return tr("tomorrow {time}").format(time=row.time)
+    return month_day(day, row.time)

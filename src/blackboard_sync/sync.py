@@ -23,6 +23,7 @@ from blackboard_sync.config import Config
 from blackboard_sync.deadlines import column_deadline
 from blackboard_sync.errors import AlreadyRunning, ApiError, BlackboardSyncError, LoginRequired, SkippedMedia, human_size
 from blackboard_sync.htmltext import body_text, find_embedded_files
+from blackboard_sync.i18n import tr
 from blackboard_sync.notepdf import render_pdf
 from blackboard_sync.notes import (
     announcement_date,
@@ -266,17 +267,17 @@ def find_past_term(terms: list[Term], now: datetime, term_name: str | None = Non
         matches = [t for t in terms if t.id and (
             wanted in {n.strip().casefold() for n in t.names} or (key and academic_term(t.name) == key))]
     if not matches:
-        raise BlackboardSyncError(f"{label!r} adlı dönem bulunamadı.")
+        raise BlackboardSyncError(tr("No term named {name}.").format(name=repr(label)))
     if len(matches) > 1:
         raise BlackboardSyncError(
-            f"{label!r} adında birden fazla dönem var; birini kimliğiyle seçin (--term-id): "
+            tr("More than one term is named {name}; choose one by its id (--term-id): ").format(name=repr(label))
             + ", ".join(t.id for t in matches)
         )
     term = matches[0]
     if term.id in {t.id for t in choose_current_terms(terms, now)}:
-        raise BlackboardSyncError(f"{term.name!r} güncel dönem; indirmek için normal senkronu kullanın.")
+        raise BlackboardSyncError(tr("{name} is the current term; the normal sync downloads it.").format(name=repr(term.name)))
     if term.id not in {t.id for t in choose_past_terms(terms, now)}:
-        raise BlackboardSyncError(f"{term.name!r} indirilebilecek eski bir dönem değil.")
+        raise BlackboardSyncError(tr("{name} is not a past term that can be downloaded.").format(name=repr(term.name)))
     return term
 
 
@@ -286,7 +287,7 @@ def run_lock(path: Path):
     fh = open(path, "w")
     try:
         if not try_lock(fh):
-            raise AlreadyRunning("Another blackboard-sync run is already in progress.")
+            raise AlreadyRunning(tr("Another blackboard-sync run is already in progress."))
         yield
     finally:
         fh.close()
@@ -407,7 +408,7 @@ class Syncer:
                 try:
                     course = self.client.course(membership["courseId"])
                 except ApiError as exc:
-                    warnings.append(f"Skipped course {membership.get('courseId')}: {exc}")
+                    warnings.append(tr("Skipped course {course}: {error}").format(course=membership.get("courseId"), error=exc))
                     continue
             if (course.get("availability") or {}).get("available") == "No":
                 continue  # private / not yet opened by the instructor
@@ -419,7 +420,7 @@ class Syncer:
             if course_term not in terms:
                 raw = self.client.term(course_term) if course_term else None
                 if course_term and raw is None:
-                    warnings.append(f"Could not read term {course_term}; using its id as folder name.")
+                    warnings.append(tr("Could not read term {term}; using its id as folder name.").format(term=course_term))
                 name = (raw or {}).get("name") or (f"Term {course_term}" if course_term else NO_TERM)
                 start, end = term_dates(raw)
                 terms[course_term] = Term(course_term, name, start, end)
@@ -547,14 +548,16 @@ class Syncer:
             return new_rel
         if new.exists() and not self._same_entry(old, new):
             warnings.append(
-                f"Kept folder {old_rel!r}: could not rename it to {new_rel!r} because that "
-                "folder already exists. Move your files into one of them to finish."
+                tr("Kept folder {old}: could not rename it to {new} because that "
+                   "folder already exists. Move your files into one of them to finish.").format(
+                    old=repr(old_rel), new=repr(new_rel))
             )
             return old_rel
         try:
             os.rename(old, new)
         except OSError as exc:
-            warnings.append(f"Kept folder {old_rel!r}: could not rename it to {new_rel!r} ({exc}).")
+            warnings.append(tr("Kept folder {old}: could not rename it to {new} ({error}).").format(
+                old=repr(old_rel), new=repr(new_rel), error=exc))
             return old_rel
         self.state.move_tree(old_rel, new_rel)
         log.info("Renamed %s to %s", old_rel, new_rel)
@@ -638,7 +641,7 @@ class Syncer:
             roots = self.client.contents(course.id)
         except (ApiError, *ITEM_ERRORS) as exc:
             report.content_error = str(exc)
-            report.warnings.append(f"Could not read course content: {exc}")
+            report.warnings.append(tr("Could not read course content: {error}").format(error=exc))
         else:
             self.walk(course, roots, course.rel_dir, report)
         if not self.dry_run and not self.missing_only:
@@ -646,7 +649,7 @@ class Syncer:
         try:
             self.sync_announcements(course, report)
         except ITEM_ERRORS as exc:
-            report.warnings.append(f"Could not sync announcements: {exc}")
+            report.warnings.append(tr("Could not sync announcements: {error}").format(error=exc))
         return report
 
     def sync_deadlines(self, course: Course, report: CourseReport) -> None:
@@ -656,7 +659,7 @@ class Syncer:
             # page must not remove deadlines saved by an earlier sync.
             columns = self.client.grade_columns(course.id)
         except (ApiError, *ITEM_ERRORS) as exc:
-            report.warnings.append(f"Could not read due dates: {exc}")
+            report.warnings.append(tr("Could not read due dates: {error}").format(error=exc))
             entry = {**previous, "name": self.course_label(course), "unavailable": True}
         else:
             items = [parsed for column in columns if (parsed := column_deadline(
@@ -688,14 +691,15 @@ class Syncer:
                         (self.dest / sub_dir).mkdir(parents=True, exist_ok=True)
                     children = self.client.children(course.id, item["id"])
                 except (ApiError, *ITEM_ERRORS) as exc:
-                    report.warnings.append(f"Could not open folder {item.get('title')!r}: {exc}")
+                    report.warnings.append(tr("Could not open folder {name}: {error}").format(
+                        name=repr(item.get("title")), error=exc))
                     continue
                 self.walk(course, children, sub_dir, report, item.get("title") or "")
             else:
                 try:
                     self.process_item(course, item, rel_dir, report, parent_title)
                 except (ApiError, *ITEM_ERRORS) as exc:
-                    report.warnings.append(f"Skipped {item.get('title')!r}: {exc}")
+                    report.warnings.append(tr("Skipped {name}: {error}").format(name=repr(item.get("title")), error=exc))
                 self.checkpoint()
 
     @staticmethod
@@ -1057,7 +1061,7 @@ class Syncer:
     def media_label(name: str, size: int | None) -> str:
         if size is None:
             return name
-        return f"{name} (Bu dosya çok büyük ({human_size(size)}), Blackboard'da aç)"
+        return f"{name} (this file is too large ({human_size(size)}); open it in Blackboard)"
 
     def fetch_file(
         self,
@@ -1316,7 +1320,7 @@ def run_sync(
     past = term_name is not None or term_id is not None
     if past and (not (term_id or term_name or "").strip() or all_terms
                  or (term_name is not None and term_id is not None)):
-        raise BlackboardSyncError("İndirilecek tek bir eski dönem adı belirtin.")
+        raise BlackboardSyncError(tr("Name a single past term to download."))
     now = now or datetime.now(timezone.utc)
     report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.root),
                         past_term=term_name or term_id or "")
@@ -1329,7 +1333,7 @@ def run_sync(
     me = client.me()  # also the cheapest way to prove the session still works
     user_id = me.get("id") or user_id
     if not user_id:
-        raise LoginRequired("Blackboard did not identify the signed-in user.")
+        raise LoginRequired(tr("Blackboard did not identify the signed-in user."))
     terms, courses = syncer.discover(
         user_id,
         term_name=term_name,
@@ -1390,8 +1394,8 @@ def run_sync(
             if unreadable:
                 # Not a finished archive: say so instead of "0 files", and keep it open for a retry.
                 report.warnings.append(
-                    f"{len(unreadable)} dersin içeriği okunamadı ({', '.join(unreadable)}); "
-                    "eski dönem tamamlanmadı, tekrar deneyin."
+                    f"Could not read the content of {len(unreadable)} course{'' if len(unreadable) == 1 else 's'} "
+                    f"({', '.join(unreadable)}); the past term is not complete, try again."
                 )
             if not dry_run:
                 state.record_past_term(terms[0].id, terms[0].name, [c.id for c in courses],

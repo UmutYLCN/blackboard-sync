@@ -166,13 +166,13 @@
     el.alt = "";
     stage.append(el);
   } else {
-    stage.innerHTML = '<div class="placeholder"><strong>Windows ekran görüntüsü gerekli</strong><p></p></div>';
+    stage.innerHTML = '<div class="placeholder"><strong>Windows capture needed</strong><p></p></div>';
     stage.querySelector("p").textContent = shot.capture;
   }
   if (params.get("draft") === "1") {
     const tag = document.createElement("div");
     tag.className = "draft";
-    tag.textContent = img ? "TASLAK · macOS görüntüsü · Store'a yüklemeyin" : "TASLAK · Store'a yüklemeyin";
+    tag.textContent = img ? "DRAFT · macOS capture · do not upload to the Store" : "DRAFT · do not upload to the Store";
     document.body.append(tag);
   }
 </script>

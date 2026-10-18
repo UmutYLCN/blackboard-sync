@@ -17,7 +17,7 @@ from .test_progress_saving import Killed, kill_on_item, writes  # noqa: F401
 from .test_past_terms import COURSE as PAST_COURSE, PAST, ROOT as PAST_ROOT, archive  # noqa: F401
 from .test_sync import COURSE, CSE, NOW, files_under, sync
 
-HEADING = "Video ve ses dosyaları (Blackboard'da aç):"
+HEADING = "Video and audio files (open in Blackboard):"
 BASE = "https://blackboard.example.edu"
 BIG = b"\0" * (3 << 20)
 
@@ -226,10 +226,10 @@ def test_size_skipped_file_is_linked_counted_and_not_retried(config, client, fak
 
     assert report.totals()["skipped_large_files"] >= 1
     course_report = next(course for course in report.courses if course.code == "CSE303")
-    assert "büyük dosya indirilmedi" in course_report.summary_line()
-    assert "büyük dosya indirilmedi" in report.render_text()
+    assert "large files not downloaded" in course_report.summary_line()
+    assert "large files not downloaded" in report.render_text()
     note = note_text(config.dest / CSE / "Dataset.pdf")
-    assert "Bu dosya çok büyük (11 B), Blackboard'da aç" in note
+    assert "this file is too large (11 B); open it in Blackboard" in note
     assert f"<{BASE}{path}>" in note
     item = State.load(config.state_file).items["content:_13004_1:_large_1"]
     assert item["media"] == ["attachment:_13004_1:_large_att_1"]

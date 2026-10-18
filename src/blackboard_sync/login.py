@@ -36,6 +36,7 @@ import requests
 from blackboard_sync.api import BlackboardClient
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
+from blackboard_sync.i18n import tr
 from blackboard_sync.inapp import INAPP
 from blackboard_sync.inapp import check_runtime as inapp_check_runtime
 from blackboard_sync.inapp import sign_in as inapp_sign_in
@@ -124,7 +125,8 @@ def _browser_order(preference: str, platform: str | None) -> list[str]:
     available = supported_browsers(platform)
     if preference != "auto":
         if preference not in BROWSERS:
-            raise BlackboardSyncError(f"Unknown browser {preference!r}; use {', '.join(available)}.")
+            raise BlackboardSyncError(tr("Unknown browser {name}; use {choices}.").format(
+                name=repr(preference), choices=", ".join(available)))
         return [preference]
     return available
 
@@ -168,12 +170,12 @@ def find_browser(
         return found
     if preference == "auto":
         raise NoSupportedBrowserError(
-            "Could not find a supported browser (Google Chrome, Microsoft Edge, Brave, Vivaldi, "
-            "Opera, Opera GX, Chromium or Arc) on this computer.",
+            tr("Could not find a supported browser (Google Chrome, Microsoft Edge, Brave, Vivaldi, "
+               "Opera, Opera GX, Chromium or Arc) on this computer."),
             None,
         )
     raise NoSupportedBrowserError(
-        f"Could not find {BROWSER_LABELS[preference]} on this computer.", preference
+        tr("Could not find {browser} on this computer.").format(browser=BROWSER_LABELS[preference]), preference
     )
 
 
@@ -276,7 +278,7 @@ def start_browser(
     if not is_windows(platform):
         result = run(argv, capture_output=True, text=True)
         if result.returncode != 0:
-            raise BrowserStartError(f"Could not open {label}: {result.stderr.strip()}")
+            raise BrowserStartError(tr("Could not open {browser}: {error}").format(browser=label, error=result.stderr.strip()))
         return
     try:
         spawn(
@@ -288,7 +290,7 @@ def start_browser(
             creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
         )
     except OSError as exc:
-        raise BrowserStartError(f"Could not open {label}: {exc}") from exc
+        raise BrowserStartError(tr("Could not open {browser}: {error}").format(browser=label, error=exc)) from exc
 
 
 def wait_for_devtools_port(profile_dir: Path, timeout: float = 30) -> int:
@@ -305,8 +307,8 @@ def wait_for_devtools_port(profile_dir: Path, timeout: float = 30) -> int:
             pass
         time.sleep(0.25)
     raise BrowserStartError(
-        "The browser did not start. If a sign-in window from an earlier attempt is "
-        "still open, close it and run `blackboard-sync login` again."
+        tr("The browser did not start. If a sign-in window from an earlier attempt is "
+        "still open, close it and run `blackboard-sync login` again.")
     )
 
 
@@ -363,11 +365,11 @@ def login(
         except BrowserStartError as exc:
             if browser != "auto":
                 raise
-            out(f"{exc} Using the app's own sign-in window instead.")
+            out(f"{exc} " + tr("Using the app's own sign-in window instead."))
             app = None
     if app is None:
-        out(f"Opening the sign-in window on {config.base_url} ...")
-        out("Sign in to Blackboard in that window. It closes by itself once you are in.")
+        out(tr("Opening the sign-in window on {url} ...").format(url=config.base_url))
+        out(tr("Sign in to Blackboard in that window. It closes by itself once you are in."))
         user, cookies = (inapp or inapp_sign_in)(
             config.base_url + "/",
             config.base_url,
@@ -378,7 +380,8 @@ def login(
         )
 
     kept = save_session(config.session_file, config.base_url, cookies, user)
-    out(f"Signed in as {user.get('userName') or user.get('id')}; session saved ({kept} cookies).")
+    out(tr("Signed in as {name}; session saved ({n} cookies).").format(name=user.get("userName") or user.get("id"),
+                                                                         n=kept))
     return user
 
 
@@ -414,8 +417,8 @@ def _browser_sign_in(config, app, timeout, out, run, connect, check_user, spawn,
     if stale.exists():
         stale.unlink()
 
-    out(f"Opening {label} on {config.base_url} ...")
-    out("Sign in to Blackboard in that window. It closes by itself once you are in.")
+    out(tr("Opening {browser} on {url} ...").format(browser=label, url=config.base_url))
+    out(tr("Sign in to Blackboard in that window. It closes by itself once you are in."))
     start_browser(
         launch_command(app, config.profile_dir, config.base_url + "/", platform),
         label,
@@ -429,7 +432,7 @@ def _browser_sign_in(config, app, timeout, out, run, connect, check_user, spawn,
         try:
             cdp_browser = connect_fn(f"http://127.0.0.1:{port}")
         except Exception as exc:
-            raise BrowserStartError(f"Could not connect to {label}: {exc}") from exc
+            raise BrowserStartError(tr("Could not connect to {browser}: {error}").format(browser=label, error=exc)) from exc
         try:
             return _wait_for_sign_in(cdp_browser, config.base_url, timeout, check_user)
         finally:
@@ -441,12 +444,12 @@ def _wait_for_sign_in(cdp_browser, base_url: str, timeout: float, check_user) ->
     seen_window = False
     while time.monotonic() < deadline:
         if not cdp_browser.is_connected():
-            raise BlackboardSyncError("The browser was closed before sign-in finished.")
+            raise BlackboardSyncError(tr("The browser was closed before sign-in finished."))
         contexts = cdp_browser.contexts
         has_window = bool(contexts and contexts[0].pages)
         if seen_window and not has_window:
             # On macOS the app keeps running after its last window is closed.
-            raise BlackboardSyncError("The browser window was closed before sign-in finished.")
+            raise BlackboardSyncError(tr("The browser window was closed before sign-in finished."))
         seen_window = seen_window or has_window
         if not contexts:
             time.sleep(POLL_SECONDS)
@@ -456,7 +459,7 @@ def _wait_for_sign_in(cdp_browser, base_url: str, timeout: float, check_user) ->
         if user:
             return user, cookies
         time.sleep(POLL_SECONDS)
-    raise BlackboardSyncError(f"Sign-in was not completed within {int(timeout // 60)} minutes.")
+    raise BlackboardSyncError(tr("Sign-in was not completed within {n} minutes.").format(n=int(timeout // 60)))
 
 
 def check_runtime() -> str:
@@ -484,11 +487,11 @@ class _connector:
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:  # pragma: no cover - dependency is pinned
-            raise BrowserStartError("Playwright is not installed; see the README's setup steps.") from exc
+            raise BrowserStartError(tr("Playwright is not installed; see the README's setup steps.")) from exc
         try:
             self._pw = sync_playwright().start()
         except Exception as exc:
-            raise BrowserStartError(f"Could not start the browser connection: {exc}") from exc
+            raise BrowserStartError(tr("Could not start the browser connection: {error}").format(error=exc)) from exc
         return self._pw.chromium.connect_over_cdp
 
     def __exit__(self, *exc):

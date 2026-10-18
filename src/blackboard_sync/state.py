@@ -49,6 +49,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
+from blackboard_sync.i18n import tr
 from blackboard_sync.session import write_private_json
 
 STATE_VERSION = 1
@@ -149,13 +150,14 @@ class State:
             state = cls(path)
             if backup:
                 saved = _set_aside(path)
-                state.recovery = (
-                    f"Could not read {path.name} ({exc}); moved it to {saved.name} "
+                state.recovery = tr(
+                    "Could not read {name} ({error}); moved it to {saved} "
                     "and continued with an empty state. Files already on disk that match "
                     "Blackboard's copy are kept as they are, not duplicated."
-                )
+                ).format(name=path.name, error=exc, saved=saved.name)
             else:
-                state.recovery = f"Could not read {path.name} ({exc}); it would be set aside on a real sync."
+                state.recovery = tr("Could not read {name} ({error}); it would be set aside on a real sync.").format(
+                    name=path.name, error=exc)
             return state
 
     def save(self) -> None:
