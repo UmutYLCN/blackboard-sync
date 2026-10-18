@@ -19,9 +19,10 @@ still shows **Blackboard Sync**.
 | --- | --- |
 | `listing-tr.md` | Turkish Store listing (primary market), ready to paste |
 | `listing-en.md` | English Store listing (additional language), ready to paste |
-| `screenshots/01-tek-tek.png` … `05-tepsi-menusu.png` | Final 1920x1080 images: problem card, then four Windows screenshots, in upload order (see [Screenshots](#screenshots)) |
+| `screenshots/01-tek-tek.png` … `09-tepsi-menusu.png` | Final 1920x1080 images: problem card, then eight Windows screenshots, in upload order (see [Screenshots](#screenshots)) |
+| `screenshots/capture.py` | Captures the Windows app's own page (light and dark) and the tray menu into `screenshots/src/windows/` |
 | `screenshots/render.sh` | Renders the screenshots from `screenshots/src/` |
-| `screenshots/src/` | `template.html`, `shots.js` (titles, captions, what to capture), `windows/` (the four Windows captures as PNG) |
+| `screenshots/src/` | `template.html`, `shots.js` (titles, captions, what to capture), `windows/` (the eight Windows captures as PNG, from `capture.py`) |
 | `trailer/make-trailer.sh` | Builds the 1920x1080 trailer and its thumbnail into `out/` |
 | `trailer/draft-trailer-thumbnail.png` | The thumbnail it makes, for review |
 | `images/hero-art.png` | 16:9 Super hero art, 1920x1080 (no text, no UI) |
@@ -40,7 +41,7 @@ Chrome), Node.js for the screenshot manifest, and `ffmpeg` for the trailer.
 1. Download the package from CI (see [4. Packages](#4-packages)).
 2. Do the manual test in `docs/MSIX.md` ("Manual Windows verification still required")
    with that exact `.msix`, signed with the test certificate as described there.
-3. Use the five final Store images in [Screenshots](#screenshots). Capture additional
+3. Use the nine final Store images in [Screenshots](#screenshots). Capture additional
    screens during future manual tests to improve the listing.
 
 ## Partner Center checklist
@@ -147,10 +148,10 @@ copy.
   description, product features, keywords, copyright and trademark info, developed by.
   Leave "What's new in this version" empty for the first submission. The non-affiliation
   sentence is the second paragraph of the description and part of the copyright line.
-- [ ] **Screenshots:** upload `01-tek-tek.png`, `02-genel-bakis.png`, `03-baslangic.png`,
-  `04-ilk-senkron.png`, then `05-tepsi-menusu.png`, with the captions from the listing file.
-  The problem card comes first, followed by the four Windows captures. Upload English
-  images (`screenshots/en/`) to the English listing and Turkish ones to the Turkish listing.
+- [ ] **Screenshots:** upload `01-tek-tek.png` to `09-tepsi-menusu.png` in order, with the
+  captions from the listing file. The problem card comes first, followed by the eight Windows
+  captures. Use the Turkish-titled images for both listings (`render.sh --lang en` makes
+  English ones in `screenshots/en/` if wanted).
 - [ ] **Store logos:** poster art (1440x2160): `images/poster-art.png`; 1:1 box art
   (2160x2160): `images/box-art.png`; 1:1 app tile icons: `images/store-logo-300.png`
   (300x300), `images/store-logo-150.png` (150x150), `images/store-logo-71.png` (71x71).
@@ -194,23 +195,27 @@ copy.
 Microsoft: desktop screenshots are PNG, 1366x768 or larger (up to 3840x2160), at most 50 MB,
 up to 10 per language, with an optional caption of 200 characters each
 ([Screenshots, images and trailers](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/screenshots-and-images)).
-The app captures show the Windows app as it is. All five images are 1920x1080 with Turkish
-text; the opening card introduces the problem, followed by four titled app screenshots.
+All nine images are 1920x1080 with Turkish titles; the opening card introduces the problem,
+followed by eight titled screenshots of the Windows app (1.6.2).
 
-The first submission opens with a text-only card adapted from the promo, then the four
-**light-mode Windows** captures taken by the maintainer. These final PNGs have no TASLAK
-label; the old macOS drafts and their inputs have been removed. These captures show the
-app's earlier Turkish-only interface; the app is now English by default with Turkish as an
-option in Settings, so new captures (English for the English listing, Turkish for the
-Turkish one) are due before the next submission.
+The app captures come from `screenshots/capture.py`: the app's own WebView2 page
+(`src/blackboard_sync/windows/webui`) with the states of `scripts/webui-preview.py` (the same
+invented student, courses and files as the promo films), in a Windows 11 window frame, at 2x.
+They are rendered as the Store package shows them, without update rows or offers (the Store
+updates the app). The tray image draws the notification-area menu with the app's Turkish menu
+texts (`menubar/model.py`, `Model.menu`) above a taskbar corner with the tray icon (the logo).
 
-| Final image / upload order | Content | Original capture size |
-| --- | --- | --- |
-| [01-tek-tek.png](screenshots/01-tek-tek.png) | “Still downloading files from Blackboard one by one?” / “You no longer have to.” — text-only problem card | Rendered at 1920x1080 |
-| [02-genel-bakis.png](screenshots/02-genel-bakis.png) | **Home**, after a sync: **Recent downloads**, 10 files | 942x726 |
-| [03-baslangic.png](screenshots/03-baslangic.png) | **Get started**: school Blackboard address, save folder, **Start when the computer starts**, **Sign in** | 942x672 |
-| [04-ilk-senkron.png](screenshots/04-ilk-senkron.png) | **Home**, first sync: **Checking for new content…**, **Syncing** | 942x672 |
-| [05-tepsi-menusu.png](screenshots/05-tepsi-menusu.png) | Notification-area menu: last sync, **Sync now**, **Courses**, **Recent downloads**, University folder | 391x200 |
+| Final image / upload order | Content |
+| --- | --- |
+| [01-tek-tek.png](screenshots/01-tek-tek.png) | “Still downloading files from Blackboard one by one?” / “You no longer have to.” — text-only problem card |
+| [02-genel-bakis.png](screenshots/02-genel-bakis.png) | Ana sayfa after a sync: greeting, Güncel, recent files, announcements and upcoming due dates |
+| [03-teslim-tarihleri.png](screenshots/03-teslim-tarihleri.png) | Takvim page: upcoming due dates grouped by day |
+| [04-google-takvim.png](screenshots/04-google-takvim.png) | Ayarlar: Görünüm (theme) and Google Takvim connected |
+| [05-duyurular.png](screenshots/05-duyurular.png) | Duyurular page with three announcements |
+| [06-dersler.png](screenshots/06-dersler.png) | Dersler page: five courses, one turned off |
+| [07-koyu-tema.png](screenshots/07-koyu-tema.png) | Ana sayfa in the dark theme |
+| [08-baslangic.png](screenshots/08-baslangic.png) | Başlangıç first-run page: school address, save folder, start with computer and Giriş yap |
+| [09-tepsi-menusu.png](screenshots/09-tepsi-menusu.png) | Notification-area menu above the taskbar, with the tray icon |
 
 ![Home](screenshots/02-genel-bakis.png)
 
@@ -239,40 +244,29 @@ rendering the Store set needs only repository files.
 
 ### Sources and rendering
 
-The four capture inputs are in `screenshots/src/windows/`. They were converted to PNG from
-`genel-bakis-liste.jpeg`, `baslangic.jpeg`, `senkron-suruyor.jpeg` and
-`tepsi-menusu.jpeg`, respectively, received via WhatsApp. The conversion preserves the decoded pixels and original
-sizes; it cannot recover detail lost to JPEG compression. No sharpening or artificial
-upscaling was applied. The template fits each capture within its image area; the small
-tray menu stays at its native 391x200 size, centred below the title (`compact` in `shots.js`).
-
-Render from the repository root:
+Capture the app, then render the final images, from the repository root:
 
 ```sh
-./store/microsoft/screenshots/render.sh
+PYTHONPATH=src python store/microsoft/screenshots/capture.py   # src/windows/*.png
+./store/microsoft/screenshots/render.sh                        # screenshots/*.png
 ```
 
-The five final 1920x1080 PNGs are written directly to `screenshots/`. Upload them in the
+`capture.py` needs Playwright's Chromium. Linux has no Segoe UI, so pass a font there
+(`--font inter-latin-wght-normal.woff2 --font inter-latin-ext-wght-normal.woff2`, as for the
+promo films); `--only ID` recaptures one image. `render.sh` uses headless Google Chrome as on macOS;
+on Linux its `--window-size` screenshot can come out short, so check the bottom edge of the images. The template fits each capture within its
+image area; the tray image is centred below the title (`compact` in `shots.js`).
+
+The nine final 1920x1080 PNGs are written directly to `screenshots/`. Upload them in the
 table's order, with the captions in `listing-tr.md` or `listing-en.md` (also stored in
-`screenshots/src/shots.js`). The maintainer's upload copies are in
-`~/Downloads/blackboard-sync-store/screenshots-final/`, with the same numbered filenames.
-`kind: "card"` in `shots.js` renders the opening card without a capture; entries without
-that kind still require Windows captures to produce final images.
+`screenshots/src/shots.js`). `kind: "card"` in `shots.js` renders the opening card without a
+capture; other entries take `src/windows/<id>.png`.
 
 ### To add later
 
-The opening card and four captures form the first submission set. The following have no
-Windows captures yet and are deliberately absent from `shots.js` and the final image set:
-
-- **Deleted files**: a few deleted files available to download again.
-- **Past terms**: a past term selected in the settings.
+- **Deleted files** and **past terms** views.
 - **Folders**: File Explorer showing the University term/course folder structure.
-- **Settings**: automatic sync options, the language and other settings.
-
-**Dark-mode captures** could not be taken and are also a later improvement. Higher-quality
-PNG originals, transferred without WhatsApp compression, can replace the current inputs
-later. Capture only the Windows app window, keep private information out of view, and add
-new app-capture entries to `shots.js` only when the corresponding Windows captures are available.
+- A capture from a real Windows PC to compare with the rendered window before the submission.
 
 ## Trailer
 
@@ -335,9 +329,9 @@ risks failing certification. A trailer can be added later, rebuilt from Windows 
 
 ## Settled decisions
 
-- **Screenshots:** open with the promo problem/reveal card, then show the four available
-  light-mode Windows captures. Keep Turkish titles for both listings. More views and dark
-  mode can follow later.
+- **Screenshots:** open with the promo problem/reveal card, then show eight captures of the
+  Windows app (1.6.2, WebView2 window): seven in light mode, one in dark mode, plus the tray
+  menu. Keep Turkish titles for both listings.
 
 - **Privacy policy page:** the page is now English, lives at `/privacy` (the old `/gizlilik`
   redirects there) and covers the Store package (data folder, startup task, no GitHub

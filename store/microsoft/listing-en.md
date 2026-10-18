@@ -103,10 +103,14 @@ Free and open source
 | Image | Caption |
 | --- | --- |
 | `01-tek-tek.png` | Still downloading Blackboard files one by one? Blackboard Sync automatically downloads your course files to your computer in the background. |
-| `02-genel-bakis.png` | Overview: new course files on Blackboard download in the background; the latest downloads are listed in one place. |
-| `03-baslangic.png` | Getting started: enter your school's Blackboard address, choose a save folder and whether to start with your computer, then sign in. |
-| `04-ilk-senkron.png` | The first sync starts after sign-in. Overview shows that syncing is in progress while the app checks for new content. |
-| `05-tepsi-menusu.png` | The app keeps working from the system tray after you close its window. Check the last sync, sync again, or access your courses and recent downloads. |
+| `02-genel-bakis.png` | Home: new course files download in the background. Recent downloads, announcements and upcoming due dates at a glance. |
+| `03-teslim-tarihleri.png` | Calendar: upcoming due dates, day by day. A notification comes 24 hours and 1 hour before each one is due. |
+| `04-google-takvim.png` | Connect Google Calendar in Settings: due dates stay up to date in a separate Blackboard Deadlines calendar. Your other calendars stay private. |
+| `05-duyurular.png` | Announcements: every course’s Blackboard announcements in one list, newest first. Open any of them in one click. |
+| `06-dersler.png` | Courses: see this term’s courses and untick the ones you don’t want. Unticked courses are not synced; downloaded files are not deleted. |
+| `07-koyu-tema.png` | Dark theme: the app follows your Windows theme, or stays light or dark from Settings. |
+| `08-baslangic.png` | Getting started: enter your school's Blackboard address, choose a save folder and whether to start with your computer, then sign in. |
+| `09-tepsi-menusu.png` | The app keeps working from the system tray after you close its window. Check the last sync, sync again, or access your courses and recent downloads. |
 
 ## Trailer title
 

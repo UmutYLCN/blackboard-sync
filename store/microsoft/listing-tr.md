@@ -105,10 +105,14 @@ Analiz, reklam ve kullanım takibi yok
 | Image | Caption |
 | --- | --- |
 | `01-tek-tek.png` | Blackboard’dan dosyaları tek tek mi indiriyorsun? Blackboard Sync, ders dosyalarını arka planda otomatik olarak bilgisayarına indirir. |
-| `02-genel-bakis.png` | Genel bakış: Blackboard'daki yeni ders dosyaları arka planda kendiliğinden iner; son indirilenler tek listede. |
-| `03-baslangic.png` | Başlangıç: okulunun Blackboard adresini yaz, kayıt klasörünü ve bilgisayar açılınca başlatma seçeneğini belirle, ardından giriş yap. |
-| `04-ilk-senkron.png` | İlk senkron girişten sonra başlar. Genel bakışta yeni içerik kontrol edilirken senkronun sürdüğünü görebilirsin. |
-| `05-tepsi-menusu.png` | Pencereyi kapatsan da uygulama saatin yanındaki simgeden çalışır. Son senkronu gör, yeni bir senkron başlat veya derslerine ve indirdiklerine ulaş. |
+| `02-genel-bakis.png` | Ana sayfa: yeni ders dosyaları arka planda kendiliğinden iner. Son indirilenler, duyurular ve yaklaşan teslim tarihleri tek bakışta. |
+| `03-teslim-tarihleri.png` | Takvim: yaklaşan teslim tarihleri gün gün listelenir. Teslime 24 saat ve 1 saat kala bildirim gelir. |
+| `04-google-takvim.png` | Ayarlar’dan Google Takvim’i bağla: teslim tarihleri ayrı bir Blackboard Deadlines takviminde güncel kalır. Diğer takvimlerin gizli kalır. |
+| `05-duyurular.png` | Duyurular: tüm derslerinin Blackboard duyuruları tek listede, en yenisi en üstte. Herhangi birini tek tıkla aç. |
+| `06-dersler.png` | Dersler: bu dönemin derslerini gör, istemediğinin işaretini kaldır. İşaretsiz dersler senkronize edilmez; indirilmiş dosyalar silinmez. |
+| `07-koyu-tema.png` | Koyu tema: uygulama Windows’un temasını izler ya da Ayarlar’dan açık veya koyu temada kalır. |
+| `08-baslangic.png` | Başlangıç: okulunun Blackboard adresini yaz, kayıt klasörünü ve bilgisayar açılınca başlatma seçeneğini belirle, ardından giriş yap. |
+| `09-tepsi-menusu.png` | Pencereyi kapatsan da uygulama saatin yanındaki simgeden çalışır. Son senkronu gör, yeni bir senkron başlat veya derslerine ve indirdiklerine ulaş. |
 
 ## Trailer title
 
