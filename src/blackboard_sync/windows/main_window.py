@@ -18,6 +18,7 @@ from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
 from blackboard_sync.i18n import tr
 from blackboard_sync.menubar.model import T_RECENT_EMPTY
+from blackboard_sync.windows.pill_button import PillButton
 from blackboard_sync.windows.sync_scene_view import SyncScene, background_of
 
 log = logging.getLogger(__name__)
@@ -47,6 +48,32 @@ RUNNING = "#1f6fb2"
 AVATAR = 34  # the account button at the top right
 AVATAR_FILL, AVATAR_WARNING_FILL, AVATAR_TEXT = "#dce7f5", "#fbe3cf", "#1b2a44"
 COMPACT_SCENE = (120, 70)  # in Home's status card while a sync runs
+# Settings: a card of rows per section, like the macOS page. A row has its title and description on
+# the left and its control on the right; the on/off settings are check boxes (Tk has no switch).
+ROW_WRAP = 360  # the left text of a row wraps here first, then at the width the window leaves it
+ROW_MIN_WRAP = 120
+DANGER_BORDER = "#d9534f"
+# In the Microsoft Store build the Store owns updates and removal: no check box, no buttons.
+PACKAGED_HIDDEN_ROWS = ("check_updates",)
+# Which attributes of the window hold a row's control, its title and its description.
+ROW_ATTRIBUTES = {
+    "account": ("account_button", "account_label", None),
+    "interval": ("interval_dropdown", None, None),
+    "language": ("language_dropdown", None, None),
+    "past_term": ("past_dropdown", None, None),
+    "past_download": ("past_button", None, "past_label"),
+    "update": ("update_button", "version_label", None),
+    "uninstall": ("uninstall_button", None, None),
+}
+# Rows whose description changes while the app runs.
+LIVE_DETAIL_ROWS = ("past_download",)
+
+
+class SettingsRowViews:
+    """The widgets of one Settings row, so the app's state can reach them by the row's key."""
+
+    def __init__(self, title, detail, control):
+        self.title, self.detail, self.control = title, detail, control
 
 
 def work_area(window):
@@ -301,7 +328,14 @@ class MainWindow:
         page.columnconfigure(0, weight=3, uniform="home")
         page.columnconfigure(1, weight=2, uniform="home")
         page.rowconfigure(3, weight=1)
-        self.overview_title = self._header(page, "")
+        # Home's header: a greeting, and under it one line about the next due dates (hidden without any).
+        header = ttk.Frame(page)
+        header.grid(row=0, column=0, sticky="w", pady=(0, 12))
+        self.overview_title = ttk.Label(header, font=TITLE_FONT)
+        self.overview_title.grid(row=0, column=0, sticky="w")
+        self.overview_subtitle = ttk.Label(header, foreground=MUTED)
+        self.overview_subtitle.grid(row=1, column=0, sticky="w")
+        self.overview_subtitle.grid_remove()
         self.overview_update_banner = self._build_update_banner(page, 1)
         background = background_of(page)
 
@@ -319,9 +353,10 @@ class MainWindow:
         self.state_detail.grid(row=1, column=1, sticky="nw")
         buttons = ttk.Frame(status)
         buttons.grid(row=0, column=2, rowspan=2, sticky="ne")
-        self.sync_button = ttk.Button(buttons, command=lambda: self.on_action("sync"))
+        # Drive's pills: gray for the card's own buttons, tinted for "View all".
+        self.sync_button = PillButton(buttons, command=lambda: self.on_action("sync"))
         self.sync_button.pack(side="left")
-        self.home_action = ttk.Button(buttons, command=lambda: self.on_action(self.status.home.action))
+        self.home_action = PillButton(buttons, command=lambda: self.on_action(self.status.home.action))
         self.home_action.pack(side="left", padx=(8, 0))
         # A note or the last error, the one thing the title and its line have no room for.
         self.account_message = ttk.Label(status, wraplength=420)
@@ -334,8 +369,8 @@ class MainWindow:
         footer = ttk.Frame(status)
         footer.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(10, 0))
         footer.columnconfigure(1, weight=1)
-        ttk.Button(footer, text=main.T_VIEW_ALL, command=lambda: self.select(main.ACTIVITY)).grid(
-            row=0, column=0, sticky="w", ipadx=10, ipady=4)
+        PillButton(footer, main.T_VIEW_ALL, lambda: self.select(main.ACTIVITY), accent=True).grid(
+            row=0, column=0, sticky="w")
         self.recent_count = ttk.Label(footer, foreground=MUTED)
         self.recent_count.grid(row=0, column=1, sticky="e")
 
@@ -369,8 +404,8 @@ class MainWindow:
                 ttk.Label(self.notify_frame, text=row.detail, foreground=MUTED, wraplength=240).pack(
                     anchor="w", padx=(4, 0), pady=(0, 6))
             if items or rows:
-                ttk.Button(self.notify_frame, text=main.T_VIEW_ALL,
-                           command=lambda: self.select(main.ANNOUNCEMENTS)).pack(anchor="w", pady=(6, 0))
+                PillButton(self.notify_frame, main.T_VIEW_ALL, lambda: self.select(main.ANNOUNCEMENTS),
+                           accent=True).pack(anchor="w", pady=(6, 0))
         page = self.on_deadlines()
         today = datetime.now().astimezone().date()
         rows = deadlines.upcoming_rows(page, main.HOME_DEADLINE_ROWS)
@@ -387,8 +422,8 @@ class MainWindow:
                            command=lambda target=row.target: self.on_deadline(target)).pack(anchor="w")
                 ttk.Label(self.calendar_frame, text=f"{deadlines.when_text(row, today)} · {row.course}",
                           foreground=MUTED, wraplength=240).pack(anchor="w", padx=(4, 0), pady=(0, 6))
-            ttk.Button(self.calendar_frame, text=main.T_OPEN_CALENDAR,
-                       command=lambda: self.select(main.CALENDAR)).pack(anchor="w", pady=(6, 0))
+            PillButton(self.calendar_frame, main.T_OPEN_CALENDAR, lambda: self.select(main.CALENDAR),
+                       accent=True).pack(anchor="w", pady=(6, 0))
 
     def _attention_row(self, parent, item, wrap):
         from tkinter import ttk
@@ -454,103 +489,22 @@ class MainWindow:
         self.announcements_canvas, self.announcements_frame = self._scroll_area(page, 2)
 
     def _build_general(self, page):
+        """Settings: sections (a small title over a card of rows) on one scrolling page."""
         from tkinter import ttk
 
         self._header(page, main.T_NAV_GENERAL)
         self.form_canvas, frame = self._scroll_area(page, 1)
         frame.configure(padding=(0, 0, 16, 8))
         frame.columnconfigure(0, weight=1)
-        row = 0
-
-        def place(widget, **options):
-            nonlocal row
-            widget.grid(row=row, column=0, columnspan=2, sticky="w", **options)
-            row += 1
-            return widget
-
-        def section(text):
-            nonlocal row
-            if row:
-                ttk.Separator(frame, orient="horizontal").grid(row=row, columnspan=2, sticky="ew", pady=(4, 10))
-                row += 1
-            place(ttk.Label(frame, text=text, font=HEADING_FONT), pady=(0, 6))
-
-        def action_row(label, command):
-            """A label on the left and a fixed-width button on the right."""
-            nonlocal row
-            label.grid(row=row, column=0, sticky="w", pady=(0, 12))
-            button = ttk.Button(frame, width=ACTION_WIDTH, command=command)
-            button.grid(row=row, column=1, sticky="e", padx=(8, 0), pady=(0, 12))
-            row += 1
-            return button
-
         self.fields = {}
-        section(form.T_SECTION_ACCOUNT)
-        place(ttk.Label(frame, text=form.T_URL_LABEL))
-        self.fields["base_url"] = ttk.Entry(frame, textvariable=self.url, width=65)
-        self.fields["base_url"].grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
-        row += 1
-        place(ttk.Label(frame, text=form.T_URL_HINT, foreground=MUTED, wraplength=WRAP), pady=(0, 8))
-        self.account_label = ttk.Label(frame, wraplength=WRAP - 220)
-        self.account_button = action_row(self.account_label, self.account_pressed)
-
-        section(form.T_SECTION_FOLDER)
-        place(ttk.Label(frame, text=form.T_DEST_LABEL))
-        self.fields["dest"] = ttk.Entry(frame, textvariable=self.dest, width=65)
-        self.fields["dest"].grid(row=row, column=0, sticky="ew", pady=4)
-        ttk.Button(frame, text=form.T_CHOOSE_FOLDER, command=self.choose_folder).grid(row=row, column=1, padx=(8, 0))
-        row += 1
-        place(ttk.Label(frame, text=form.T_DEST_HINT, foreground=MUTED, wraplength=WRAP), pady=(0, 8))
-
-        section(form.T_SECTION_PAST_TERMS)
-        self.past_dropdown = ttk.Combobox(frame, textvariable=self.past_term, state="disabled")
-        self.past_dropdown.grid(row=row, column=0, sticky="ew", pady=4)
-        self.past_button = ttk.Button(frame, text=form.T_PAST_DOWNLOAD, width=ACTION_WIDTH,
-                                      command=self.download_past_term, state="disabled")
-        self.past_button.grid(row=row, column=1, sticky="e", padx=(8, 0))
-        row += 1
-        # The papers fly into the folder for as long as the term is downloading.
-        self.past_scene = SyncScene(frame, *COMPACT_SCENE, background=background_of(frame))
-        self.past_scene.canvas.grid(row=row, column=0, columnspan=2, sticky="w", pady=(4, 4))
-        self.past_scene.canvas.grid_remove()
-        row += 1
-        place(ttk.Label(frame, text=form.T_PAST_NOTE, foreground=MUTED, wraplength=WRAP))
-        self.past_label = ttk.Label(frame, wraplength=WRAP)
-        place(self.past_label, pady=(0, 8))
-
-        section(form.T_SECTION_GENERAL)
-        place(ttk.Checkbutton(frame, text=form.T_AUTOSTART, variable=self.autostart), pady=(0, 8))
-        interval_row = ttk.Frame(frame)
-        ttk.Label(interval_row, text=form.T_INTERVAL_LABEL + ":").pack(side="left", padx=(0, 8))
-        self.interval_dropdown = ttk.Combobox(
-            interval_row, textvariable=self.interval, state="readonly", width=20,
-            values=[title for _, title in form.INTERVAL_OPTIONS],
-        )
-        self.interval_dropdown.pack(side="left")
-        place(interval_row, pady=(0, 8))
-        language_row = ttk.Frame(frame)
-        ttk.Label(language_row, text=form.T_LANGUAGE_LABEL + ":").pack(side="left", padx=(0, 8))
-        self.language_dropdown = ttk.Combobox(
-            language_row, textvariable=self.language, state="readonly", width=20,
-            values=[name for _, name in form.LANGUAGE_OPTIONS],
-        )
-        self.language_dropdown.pack(side="left")
-        place(language_row, pady=(0, 12))
-
-        section(form.T_SECTION_UPDATES)
+        self.settings_rows = {}
         self.update_button = self.uninstall_button = None
-        self.version_label = ttk.Label(frame)
-        if package.is_packaged():
-            place(self.version_label, pady=(0, 8))
-            place(ttk.Label(frame, text=updater.STORE_UPDATES, wraplength=WRAP), pady=(0, 8))
-            place(ttk.Label(frame, text=uninstall.STORE_REMOVAL, wraplength=WRAP), pady=(0, 8))
-        else:
-            place(ttk.Checkbutton(frame, text=form.T_CHECK_UPDATES, variable=self.check_updates), pady=(0, 8))
-            self.update_button = action_row(self.version_label, lambda: self.on_action(self.status.form.update_action))
-            self.uninstall_button = ttk.Button(frame, text=form.T_UNINSTALL, width=ACTION_WIDTH,
-                                               command=lambda: self.on_action("uninstall"))
-            self.uninstall_button.grid(row=row, column=1, sticky="e", padx=(8, 0))
-            row += 1
+        packaged = package.is_packaged()
+        row = 0
+        for section in form.settings_sections():  # the Calendar slot has no section yet
+            if packaged and section.danger:
+                continue  # the Store removes the app; the Updates card says so
+            row = self._build_section(frame, section, row, packaged)
 
         # Only while something is not saved (or saving failed): the reason, Vazgeç and Kaydet.
         self.button_bar = bar = ttk.Frame(page, padding=(0, 10, 0, 0))
@@ -561,6 +515,141 @@ class MainWindow:
         ttk.Button(bar, text=form.T_CANCEL, command=self.discard).grid(row=0, column=1, padx=4)
         ttk.Button(bar, text=form.T_SAVE, command=lambda: self.submit(False)).grid(row=0, column=2, padx=(4, 0))
         self.window.bind("<Escape>", lambda _e: self.discard() if self.bar_visible() else None)
+
+    def _build_section(self, frame, section, row, packaged):
+        """A section's title, its card of rows and its note; returns the next free grid row."""
+        from tkinter import ttk
+
+        title = ttk.Label(frame, text=section.title, font=HEADING_FONT,
+                          foreground=WARNING if section.danger else "")
+        title.grid(row=row, column=0, sticky="w", pady=(0 if row == 0 else 16, 4))
+        outer, card = self._card(frame, section.danger)
+        outer.grid(row=row + 1, column=0, sticky="ew")
+        definitions = [r for r in section.rows if not (packaged and r.key in PACKAGED_HIDDEN_ROWS)]
+        notes = ()
+        if packaged and section.key == form.SECTION_UPDATES:
+            notes = (updater.STORE_UPDATES, uninstall.STORE_REMOVAL)
+        for index, definition in enumerate(definitions):
+            if index:
+                ttk.Separator(card, orient="horizontal").grid(row=2 * index - 1, column=0, sticky="ew")
+            self._settings_row(card, 2 * index, definition, packaged, section.danger)
+        for offset, note in enumerate(notes, start=len(definitions)):
+            ttk.Separator(card, orient="horizontal").grid(row=2 * offset - 1, column=0, sticky="ew")
+            ttk.Label(card, text=note, wraplength=WRAP, padding=(0, 10)).grid(row=2 * offset, column=0, sticky="w")
+        row += 2
+        if section.footer:
+            ttk.Label(frame, text=section.footer, foreground=MUTED, wraplength=WRAP).grid(
+                row=row, column=0, sticky="w", pady=(4, 0))
+            row += 1
+        return row
+
+    def _card(self, frame, danger):
+        """(what is placed on the page, where the rows go): a bordered frame, red for the Danger zone."""
+        import tkinter as tk
+        from tkinter import ttk
+
+        if danger:
+            outer = tk.Frame(frame, highlightthickness=1, highlightbackground=DANGER_BORDER,
+                             background=background_of(frame))
+            inner = ttk.Frame(outer, padding=(14, 0))
+            inner.pack(fill="both", expand=True)
+        else:
+            outer = inner = ttk.LabelFrame(frame, padding=(14, 0))
+        inner.columnconfigure(0, weight=1)
+        return outer, inner
+
+    def _settings_row(self, card, grid_row, definition, packaged, danger):
+        """One row: title and description on the left, the control (and a second one) on the right."""
+        from tkinter import ttk
+
+        key = definition.key
+        frame = ttk.Frame(card, padding=(0, 10))
+        frame.grid(row=grid_row, column=0, sticky="ew")
+        frame.columnconfigure(0, weight=1)
+        text = ttk.Frame(frame)
+        text.grid(row=0, column=0, sticky="ew")
+        text.columnconfigure(0, weight=1)
+        title = ttk.Label(text, text=definition.title, wraplength=ROW_WRAP)
+        title.grid(row=0, column=0, sticky="w")
+        detail = None
+        if definition.detail or key in LIVE_DETAIL_ROWS:
+            detail = ttk.Label(text, text=definition.detail, foreground=MUTED, wraplength=ROW_WRAP)
+            detail.grid(row=1, column=0, sticky="w")
+
+        def rewrap(event):  # a narrow window gives the text less room: it wraps there instead of being cut off
+            for label in (title, detail):
+                if label is not None:
+                    label.configure(wraplength=max(ROW_MIN_WRAP, event.width))
+
+        text.bind("<Configure>", rewrap)
+        control = None if (packaged and key == "update") else self._row_control(frame, definition, danger)
+        if control is not None:
+            control.grid(row=0, column=2, sticky="e", padx=(16, 0))
+        if definition.control == form.CONTROL_FIELD:
+            self.fields[key] = control
+            if definition.button:
+                ttk.Button(frame, text=definition.button, command=self.choose_folder).grid(
+                    row=0, column=3, padx=(8, 0))
+        if key == "past_download":
+            # The papers fly into the folder for as long as the term is downloading.
+            self.past_scene = SyncScene(frame, *COMPACT_SCENE, background=background_of(frame))
+            self.past_scene.canvas.grid(row=0, column=1, sticky="e", padx=(16, 0))
+            self.past_scene.canvas.grid_remove()
+        self.settings_rows[key] = SettingsRowViews(title, detail, control)
+        for attribute, widget in zip(ROW_ATTRIBUTES.get(key, ()), (control, title, detail)):
+            if attribute:
+                setattr(self, attribute, widget)
+
+    def _row_control(self, frame, definition, danger):
+        """The row's own control, not yet placed."""
+        from tkinter import ttk
+
+        key, kind = definition.key, definition.control
+        variables = {"base_url": self.url, "dest": self.dest, "autostart": self.autostart,
+                     "check_updates": self.check_updates, "interval": self.interval, "language": self.language,
+                     "past_term": self.past_term}
+        if kind == form.CONTROL_FIELD:
+            return ttk.Entry(frame, textvariable=variables[key], width=26 if definition.button else 34)
+        if kind == form.CONTROL_POPUP:
+            choices = {"interval": [title for _, title in form.INTERVAL_OPTIONS],
+                       "language": [name for _, name in form.LANGUAGE_OPTIONS]}.get(key, [])
+            return ttk.Combobox(frame, textvariable=variables[key], width=24, values=choices,
+                                state="readonly" if choices else "disabled")
+        if kind == form.CONTROL_SWITCH:
+            return ttk.Checkbutton(frame, variable=variables[key])
+        commands = {"account": self.account_pressed, "past_download": self.download_past_term,
+                    "update": lambda: self.on_action(self.status.form.update_action),
+                    "uninstall": lambda: self.on_action("uninstall")}
+        style = self._danger_button_style() if danger else None
+        options = {"style": style} if style else {}
+        return ttk.Button(frame, text=definition.button, width=ACTION_WIDTH, command=commands[key], **options)
+
+    def _danger_button_style(self):
+        """A ttk style with red text for Uninstall; None where styles cannot be made (the default look)."""
+        try:
+            from tkinter import ttk
+
+            ttk.Style(self.window).configure("Danger.TButton", foreground=WARNING)
+            return "Danger.TButton"
+        except Exception:
+            return None
+
+    def _apply_row_state(self, key, state):
+        """Show what changes while the app runs: texts, the button title, enabled and the warning color."""
+        row = self.settings_rows.get(key)
+        if row is None:
+            return
+        if state.title is not None:
+            row.title.configure(text=state.title)
+        row.title.configure(foreground=WARNING if state.warning else "")
+        if state.detail is not None and row.detail is not None:
+            row.detail.configure(text=state.detail)
+        if row.control is None:
+            return
+        if state.button is not None:
+            row.control.configure(text=state.button)
+        if key != "past_term":  # the past terms list sets its own state from the terms it holds
+            row.control.configure(state="normal" if state.enabled else "disabled")
 
     def _build_courses(self, page):
         from tkinter import ttk
@@ -729,7 +818,12 @@ class MainWindow:
         self._draw_start_message()
         # Home
         card = status.account
-        self.overview_title.configure(text=status.overview_title)
+        self.overview_title.configure(text=status.home_heading or status.overview_title)
+        self.overview_subtitle.configure(text=status.home_subtitle)
+        if status.home_subtitle:
+            self.overview_subtitle.grid()
+        else:
+            self.overview_subtitle.grid_remove()
         self.sync_button.configure(text=status.sync_title, state="normal" if status.sync_enabled else "disabled")
         home = status.home
         symbol, color = HOME_SYMBOLS.get(home.kind, HOME_SYMBOLS[main.STATE_SYNCED])
@@ -781,30 +875,18 @@ class MainWindow:
                                 fill=WARNING if card.warning else AVATAR_TEXT)
         # Genel
         form_status = status.form
-        self.account_label.configure(text=form_status.account,
-                                     foreground=WARNING if form_status.account_warning else "")
-        for button, title, enabled in (
-            (self.account_button, form_status.account_title, form_status.account_enabled),
-            (self.update_button, form_status.update_title, form_status.update_enabled),
-        ):
-            if button is not None:
-                button.configure(text=title, state="normal" if enabled else "disabled")
-        self.version_label.configure(text=form_status.version)
-        if self.uninstall_button is not None:
-            self.uninstall_button.configure(state="normal" if form_status.uninstall_enabled else "disabled")
+        for key, state in form.row_states(form_status).items():
+            self._apply_row_state(key, state)
         terms = list(form_status.past_terms)
         self.past_dropdown.configure(values=terms,
                                      state="readonly" if terms and not form_status.past_running else "disabled")
         if self.past_term.get() not in terms:
             self.past_term.set(terms[0] if terms else "")
-        self.past_button.configure(state="normal" if form_status.past_enabled else "disabled",
-                                   text=form.T_PAST_DOWNLOADING if form_status.past_running else form.T_PAST_DOWNLOAD)
         if form_status.past_running:
             self.past_scene.canvas.grid()
         else:
             self.past_scene.canvas.grid_remove()
         self._animate()
-        self.past_label.configure(text=form_status.past_message)
         self.refresh_announcements()
 
     def _build_calendar(self, page):

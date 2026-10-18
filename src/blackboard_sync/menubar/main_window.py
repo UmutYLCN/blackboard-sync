@@ -19,7 +19,9 @@ from AppKit import (
     NSAlert,
     NSAlertFirstButtonReturn,
     NSApp,
+    NSAttributedString,
     NSBackingStoreBuffered,
+    NSBezierPath,
     NSBox,
     NSBoxCustom,
     NSBoxSeparator,
@@ -29,6 +31,8 @@ from AppKit import (
     NSEventModifierFlagDeviceIndependentFlagsMask,
     NSEventTypeKeyDown,
     NSFont,
+    NSFontAttributeName,
+    NSForegroundColorAttributeName,
     NSImage,
     NSImageScaleProportionallyUpOrDown,
     NSImageSymbolConfiguration,
@@ -37,11 +41,14 @@ from AppKit import (
     NSMenu,
     NSMenuItem,
     NSModalResponseOK,
+    NSMutableParagraphStyle,
     NSNoTitle,
     NSOpenPanel,
+    NSParagraphStyleAttributeName,
     NSPopUpButton,
     NSScreen,
     NSScrollView,
+    NSSwitch,
     NSTextAlignmentCenter,
     NSTextAlignmentRight,
     NSTextField,
@@ -118,39 +125,32 @@ from blackboard_sync import announcements
 from blackboard_sync.menubar.main_window_model import ANNOUNCEMENTS
 from blackboard_sync.menubar.settings_form import (
     DEST_CHOICES,
+    CONTROL_BUTTON,
+    CONTROL_FIELD,
+    CONTROL_POPUP,
+    CONTROL_SWITCH,
     INTERVAL_OPTIONS,
     LANGUAGE_OPTIONS,
     MIN_WINDOW_HEIGHT,
     T_AUTOSTART,
     T_CANCEL,
-    T_CHECK_UPDATES,
     T_CHOOSE_FOLDER,
     T_CHOOSE_FOLDER_MESSAGE,
     T_CHOOSE_FOLDER_PROMPT,
     T_DEST_CHANGE_TITLE,
-    T_DEST_HINT,
     T_DEST_LABEL,
     T_DEST_ROOT_NOTE,
-    T_INTERVAL_LABEL,
-    T_LANGUAGE_LABEL,
-    T_PAST_DOWNLOAD,
-    T_PAST_DOWNLOADING,
-    T_PAST_NOTE,
     T_SAVE,
-    T_SECTION_ACCOUNT,
-    T_SECTION_FOLDER,
-    T_SECTION_GENERAL,
-    T_SECTION_PAST_TERMS,
-    T_SECTION_UPDATES,
-    T_UNINSTALL,
-    T_URL_HINT,
     T_URL_LABEL,
     T_URL_PLACEHOLDER,
     FormValues,
+    RowState,
     dest_change_message,
     interval_title,
     language_code,
     language_title,
+    row_states,
+    settings_sections,
     window_height,
 )
 from blackboard_sync.menubar.sync_scene_view import SyncSceneView
@@ -165,6 +165,7 @@ PAD = 28
 INNER = PAGE - 2 * PAD
 HEIGHT = 660  # the content height it opens with when the screen has room
 HEADER = 76  # a section's title row; the rest of the section scrolls below it
+HOME_SUBTITLE_SHIFT = 18  # Home's header has a second line (the due dates) when there is one
 BAR = 60  # Genel's Vazgeç/Kaydet bar
 GAP = 16
 COLUMN = (INNER - GAP) // 2
@@ -174,6 +175,15 @@ ROW_HEIGHT = 52
 # Genel, Eski dönemler: the button row is this tall and the illustration beside it this wide while a term downloads.
 PAST_ROW = 56
 PAST_SCENE_WIDTH = 96
+# Settings: a section's title, a card of rows, an optional note; a row is a title with its
+# description on the left and the control on the right.
+SETTINGS_PAD = 18  # inside a card, left and right
+ROW_PAD = 14  # above and below a row's text
+ROW_MIN = 56
+SECTION_GAP = 26
+CONTROL_GAP = 16  # between a row's text and its control
+FIELD_WIDTH, FIELD_WITH_BUTTON = 300, 230
+POPUP_WIDTH = {"interval": 190, "language": 160, "past_term": 230}
 AVATAR = 34  # the sidebar's account card
 SCENE_HEIGHT = 84  # the small illustration in Home's status card while a sync runs
 UPDATE_BANNER_HEIGHT = 86
@@ -214,6 +224,62 @@ ActionHandler = Callable[[str], None]
 class _FlippedView(NSView):
     def isFlipped(self):
         return True
+
+
+class _PillButton(NSButton):
+    """Drive's rounded button: a capsule ``PILL_H`` high with a bold 13 pt title.
+
+    ``fill`` and ``ink`` are system palette colors, resolved each time the button draws, so they
+    follow the light and dark appearance. It fades like a system button when it is disabled.
+    """
+
+    def drawRect_(self, rect):
+        bounds = self.bounds()
+        radius = bounds.size.height / 2
+        capsule = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(bounds, radius, radius)
+        self.fill.setFill()
+        capsule.fill()
+        if self.isHighlighted():  # while it is pressed
+            NSColor.labelColor().colorWithAlphaComponent_(0.1).setFill()
+            capsule.fill()
+        objc.super(_PillButton, self).drawRect_(rect)
+
+    def setTitle_(self, title):
+        objc.super(_PillButton, self).setTitle_(title)
+        style = NSMutableParagraphStyle.alloc().init()
+        style.setAlignment_(NSTextAlignmentCenter)
+        ink = getattr(self, "ink", None) or NSColor.labelColor()
+        self.setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(title, {
+            NSFontAttributeName: NSFont.boldSystemFontOfSize_(13),
+            NSForegroundColorAttributeName: ink,
+            NSParagraphStyleAttributeName: style,
+        }))
+
+    def setEnabled_(self, flag):
+        objc.super(_PillButton, self).setEnabled_(flag)
+        self.setAlphaValue_(1.0 if flag else 0.45)
+
+
+def _pill_width(button) -> float:
+    """What a ``_PillButton`` needs for its title: the text and 20 pt of padding on each side."""
+    return button.attributedTitle().size().width + 40
+
+
+def _pill_view(title: str, target, action: str, x: float, y: float, neutral: bool = False):
+    """A ``_PillButton`` at (x, y). Tinted with the accent color like Drive's "View all"; ``neutral``
+    (gray) is for the status card's own button ("Sync now", "Sign in")."""
+    button = _PillButton.alloc().initWithFrame_(NSMakeRect(x, y, 100, PILL_H))
+    button.setBordered_(False)
+    button.setTarget_(target)
+    button.setAction_(action)
+    if neutral:
+        button.ink, button.fill = NSColor.labelColor(), NSColor.labelColor().colorWithAlphaComponent_(0.1)
+    else:
+        button.ink, button.fill = (NSColor.controlAccentColor(),
+                                   NSColor.controlAccentColor().colorWithAlphaComponent_(0.22))
+    button.setTitle_(title)
+    button.setFrameSize_((_pill_width(button), PILL_H))
+    return button
 
 
 class _EditableWindow(NSWindow):
@@ -421,6 +487,46 @@ def _tone(box, warning: bool) -> None:
     else:
         box.setFillColor_(NSColor.controlBackgroundColor())
         box.setBorderColor_(NSColor.separatorColor())
+
+
+def _danger_tone(box) -> None:
+    """The Danger zone's card: a faint red fill and border, in the system's own red."""
+    box.setFillColor_(NSColor.systemRedColor().colorWithAlphaComponent_(0.06))
+    box.setBorderColor_(NSColor.systemRedColor().colorWithAlphaComponent_(0.4))
+
+
+def _hairline(x: float, y: float, width: float):
+    line = NSBox.alloc().initWithFrame_(NSMakeRect(x, y, width, 1))
+    line.setBoxType_(NSBoxSeparator)
+    return line
+
+
+class _SettingsRow:
+    """The views of one Settings row, so the app's state can reach them by the row's key."""
+
+    def __init__(self, title, detail, control):
+        self.title, self.detail, self.control = title, detail, control
+
+
+# Which attributes of the window hold a row's control, its title and its description.
+ROW_ATTRIBUTES = {
+    "base_url": ("url_field", None, None),
+    "account": ("account_button", "account_label", None),
+    "interval": ("interval_popup", None, None),
+    "autostart": ("autostart", None, None),
+    "language": ("language_popup", None, None),
+    "dest": ("dest_field", None, None),
+    "past_term": ("past_popup", None, None),
+    "past_download": ("past_button", None, "past_label"),
+    "check_updates": ("check_updates", None, None),
+    "update": ("update_button", "version_label", None),
+    "uninstall": ("uninstall_button", None, None),
+}
+# A button of a row that acts at once, and the buttons whose title changes keep one width.
+ROW_ACTIONS = {"account": "account:", "past_download": "pastTerm:", "update": "update:", "uninstall": "uninstall:"}
+ROW_BUTTON_WIDTH = {"account": ACTION_WIDTH, "update": ACTION_WIDTH, "past_download": 190}
+# Rows whose description changes while the app runs keep room for two lines.
+LIVE_DETAIL_LINES = {"past_download": 2}
 
 
 def _pill(frame, color):
@@ -803,6 +909,10 @@ class MainWindow:
 
     def _build_overview(self, page) -> None:
         self.overview_title = self._header(page, "")
+        # The line under Home's greeting: the next due dates (hidden without any).
+        self.overview_subtitle = _label("", 13, secondary=True)
+        self.overview_subtitle.setFrame_(NSMakeRect(PAD, 58, INNER - 330, 17))
+        page.addSubview_(self.overview_subtitle)
         self.overview_update_banner = self._build_update_banner(page)
 
         # Left: Drive's status card: the state in words, the last files and "View all".
@@ -812,9 +922,9 @@ class MainWindow:
         # A note or the last error, the one thing the title and its line have no room for.
         self.account_message = _label("", _small())
         content.addSubview_(self.account_message)
-        self.sync_button = NSButton.buttonWithTitle_target_action_("", self.target, "sync:")
+        self.sync_button = _pill_view("", self.target, "sync:", 0, 20, neutral=True)
         content.addSubview_(self.sync_button)
-        self.home_action = NSButton.buttonWithTitle_target_action_("", self.target, "homeAction:")
+        self.home_action = _pill_view("", self.target, "homeAction:", 0, 20, neutral=True)
         content.addSubview_(self.home_action)
         # The last files: a click opens one in its own application, "⋮" offers to show it in its folder.
         self.recent_scroll, _ = _scroll(NSMakeRect(0, 96, LEFT_W, ROW_HEIGHT), 1)
@@ -869,24 +979,11 @@ class MainWindow:
         detail.setStringValue_(home.detail)
         detail.setToolTip_(home.detail)
 
-    def _pill_button(self, content, title: str, action: str, x: float, y: float):
-        """Drive's rounded, tinted button ("View all"); returns (its box, the button)."""
-        text = _label(title, 13, bold=True)
-        width = text.fittingSize().width + 40
-        box = _pill(NSMakeRect(x, y, width, PILL_H), NSColor.controlAccentColor().colorWithAlphaComponent_(0.22))
-        text.setTextColor_(NSColor.controlAccentColor())
-        text.setAlignment_(NSTextAlignmentCenter)
-        height = text.fittingSize().height
-        text.setFrame_(NSMakeRect(0, (PILL_H - height) / 2, width, height))
-        box.contentView().addSubview_(text)
-        button = NSButton.buttonWithTitle_target_action_("", self.target, action)
-        button.setBordered_(False)
-        button.setTransparent_(True)
-        button.setAccessibilityLabel_(title)
-        button.setFrame_(NSMakeRect(0, 0, width, PILL_H))
-        box.contentView().addSubview_(button)
-        content.addSubview_(box)
-        return box, button
+    def _pill_button(self, content, title: str, action: str, x: float, y: float, neutral: bool = False):
+        """Drive's rounded button ("View all"); returns the button twice (box and button)."""
+        button = _pill_view(title, self.target, action, x, y, neutral)
+        content.addSubview_(button)
+        return button, button
 
     def show_file_menu(self, sender, path: str) -> None:
         """The "⋮" of a file row: open it, or show it in its folder."""
@@ -1030,7 +1127,7 @@ class MainWindow:
     def _layout_overview(self) -> None:
         """Left: Drive's status card with the last files; right: announcements and the next due dates."""
         status = self.status
-        top = HEADER
+        top = HEADER + (HOME_SUBTITLE_SHIFT if status.home_subtitle else 0)
         if status.update_banner is not None:
             self.overview_update_banner[0].setFrame_(NSMakeRect(PAD, top, INNER, UPDATE_BANNER_HEIGHT))
             top += UPDATE_BANNER_HEIGHT + GAP
@@ -1061,8 +1158,8 @@ class MainWindow:
             self.home_action.setTitle_(home.action_title)
         width = 0
         if button is not None:
-            width = max(button.fittingSize().width + 16, 96)
-            button.setFrame_(NSMakeRect(LEFT_W - 20 - width, 24, width, 30))
+            width = _pill_width(button)
+            button.setFrame_(NSMakeRect(LEFT_W - 20 - width, 20, width, PILL_H))
         self._place_state_header(self.state_icon, self.state_title, self.state_detail, self.scene_view,
                                  LEFT_W, right=width + 8)
         y = 92
@@ -1150,147 +1247,15 @@ class MainWindow:
         page.addSubview_(self.announcements_scroll)
 
     def _build_general(self, page) -> None:
+        """Settings: one scrolling page of sections (a small title over a card of rows)."""
         self._header(page, T_NAV_GENERAL)
         self.form_scroll, view = _scroll(NSMakeRect(0, HEADER - 8, PAGE, HEIGHT - HEADER + 8), 1)
         page.addSubview_(self.form_scroll)
-        inner = COLUMN - 40
-
-        def card(x, y, width, build):
-            box = _card(NSMakeRect(x, y, width, 100))
-            content = box.contentView()
-            height = build(content, width - 40)
-            box.setFrame_(NSMakeRect(x, y, width, height))
-            content.setFrame_(NSMakeRect(0, 0, width, height))
-            view.addSubview_(box)
-            return box, height
-
-        def heading(content, text):
-            title = _label(text, 13, bold=True)
-            title.setFrame_(NSMakeRect(20, 18, COLUMN - 40, 18))
-            content.addSubview_(title)
-            return 18 + 18 + 12
-
-        def text(content, value, y, width, small=False, secondary=False):
-            field, height = _wrapping(value, width, _small() if small else None, secondary=secondary)
-            field.setFrame_(NSMakeRect(20, y, width, height))
-            content.addSubview_(field)
-            return field, height
-
-        def account(content, width):
-            y = heading(content, T_SECTION_ACCOUNT)
-            text(content, T_URL_LABEL, y, width)
-            y += 22
-            self.url_field = NSTextField.textFieldWithString_("")
-            self.url_field.setPlaceholderString_(T_URL_PLACEHOLDER)
-            self.url_field.setDelegate_(self.target)
-            self.url_field.setFrame_(NSMakeRect(20, y, width, FIELD_HEIGHT))
-            content.addSubview_(self.url_field)
-            y += FIELD_HEIGHT + 6
-            _, height = text(content, T_URL_HINT, y, width, small=True, secondary=True)
-            y += height + 14
-            self.account_button = NSButton.buttonWithTitle_target_action_("", self.target, "account:")
-            self.account_button.setFrame_(NSMakeRect(20 + width - ACTION_WIDTH + 2, y - 4, ACTION_WIDTH, BUTTON_HEIGHT))
-            content.addSubview_(self.account_button)
-            self.account_label = NSTextField.wrappingLabelWithString_("")
-            self.account_label.setPreferredMaxLayoutWidth_(width - ACTION_WIDTH - 8)
-            self.account_label.setFrame_(NSMakeRect(20, y, width - ACTION_WIDTH - 8, 34))
-            content.addSubview_(self.account_label)
-            return y + 34 + 12
-
-        def folder(content, width):
-            y = heading(content, T_SECTION_FOLDER)
-            text(content, T_DEST_LABEL, y, width)
-            y += 22
-            choose = NSButton.buttonWithTitle_target_action_(T_CHOOSE_FOLDER, self.target, "chooseFolder:")
-            choose_width = max(choose.fittingSize().width, 70)
-            choose.setFrame_(NSMakeRect(20 + width - choose_width + 2, y - 4, choose_width, BUTTON_HEIGHT))
-            content.addSubview_(choose)
-            self.dest_field = NSTextField.textFieldWithString_("")
-            self.dest_field.setDelegate_(self.target)
-            self.dest_field.setFrame_(NSMakeRect(20, y, width - choose_width - 8, FIELD_HEIGHT))
-            content.addSubview_(self.dest_field)
-            y += FIELD_HEIGHT + 6
-            _, height = text(content, T_DEST_HINT, y, width, small=True, secondary=True)
-            return y + height + 18
-
-        def general(content, width):
-            y = heading(content, T_SECTION_GENERAL)
-            self.autostart = NSButton.checkboxWithTitle_target_action_(T_AUTOSTART, self.target, "changed:")
-            self.autostart.setFrame_(NSMakeRect(20, y, width, 18))
-            content.addSubview_(self.autostart)
-            y += 18 + 14
-            text(content, T_INTERVAL_LABEL, y, width)
-            y += 22
-            self.interval_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(18, y, width + 4, 25), False)
-            self.interval_popup.addItemsWithTitles_([title for _, title in INTERVAL_OPTIONS])
-            self.interval_popup.setTarget_(self.target)
-            self.interval_popup.setAction_("changed:")
-            content.addSubview_(self.interval_popup)
-            y += 25 + 14
-            text(content, T_LANGUAGE_LABEL, y, width)
-            y += 22
-            self.language_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(18, y, width + 4, 25), False)
-            self.language_popup.addItemsWithTitles_([name for _, name in LANGUAGE_OPTIONS])
-            self.language_popup.setTarget_(self.target)
-            self.language_popup.setAction_("changed:")
-            content.addSubview_(self.language_popup)
-            return y + 25 + 18
-
-        def past_terms(content, width):
-            y = heading(content, T_SECTION_PAST_TERMS)
-            self.past_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(18, y, width + 4, 25), False)
-            content.addSubview_(self.past_popup)
-            y += 25 + 8
-            self.past_button = NSButton.buttonWithTitle_target_action_(T_PAST_DOWNLOAD, self.target, "pastTerm:")
-            button_width = max(self.past_button.fittingSize().width + 16, 140)
-            self.past_button.setFrame_(NSMakeRect(16, y + (PAST_ROW - BUTTON_HEIGHT) / 2, button_width, BUTTON_HEIGHT))
-            content.addSubview_(self.past_button)
-            # The papers fly into the folder beside the button for as long as the term is downloading.
-            self.past_scene = SyncSceneView.alloc().initWithFrame_(
-                NSMakeRect(16 + button_width + 12, y, PAST_SCENE_WIDTH, PAST_ROW))
-            self.past_scene.setHidden_(True)
-            content.addSubview_(self.past_scene)
-            y += PAST_ROW + 4
-            _, height = text(content, T_PAST_NOTE, y, width, small=True, secondary=True)
-            y += height + 4
-            self.past_label, _ = text(content, "", y, width, small=True, secondary=True)
-            self.past_label.setFrame_(NSMakeRect(20, y, width, 30))
-            return y + 30 + 8
-
-        def updates(content, width):
-            y = heading(content, T_SECTION_UPDATES)
-            self.check_updates = NSButton.checkboxWithTitle_target_action_(T_CHECK_UPDATES, self.target, "changed:")
-            self.check_updates.setFrame_(NSMakeRect(20, y, width, 18))
-            content.addSubview_(self.check_updates)
-            y += 18 + 14
-            self.uninstall_button = NSButton.buttonWithTitle_target_action_(T_UNINSTALL, self.target, "uninstall:")
-            self.update_button = NSButton.buttonWithTitle_target_action_("", self.target, "update:")
-            x = 20 + width + 2
-            for button in (self.uninstall_button, self.update_button):
-                button_width = ACTION_WIDTH + 30 if button is self.update_button else max(
-                    button.fittingSize().width + 16, 140)
-                x -= button_width
-                button.setFrame_(NSMakeRect(x, y - 4, button_width, BUTTON_HEIGHT))
-                content.addSubview_(button)
-                x -= 8
-            self.version_label = _label("", secondary=True)
-            self.version_label.setFrame_(NSMakeRect(20, y + 3, x - 20, 17))
-            content.addSubview_(self.version_label)
-            return y + BUTTON_HEIGHT + 12
-
+        self.settings_rows = {}
         y = 8
-        left, left_height = card(PAD, y, COLUMN, account)
-        right, right_height = card(PAD + COLUMN + GAP, y, COLUMN, folder)
-        for box in (left, right):
-            box.setFrame_(NSMakeRect(box.frame().origin.x, y, COLUMN, max(left_height, right_height)))
-        y += max(left_height, right_height) + GAP
-        left, left_height = card(PAD, y, COLUMN, general)
-        right, right_height = card(PAD + COLUMN + GAP, y, COLUMN, past_terms)
-        for box in (left, right):
-            box.setFrame_(NSMakeRect(box.frame().origin.x, y, COLUMN, max(left_height, right_height)))
-        y += max(left_height, right_height) + GAP
-        _, height = card(PAD, y, INNER, updates)
-        y += height + PAD
+        for section in settings_sections():  # the Calendar slot has no section yet; a later one adds it
+            y = self._build_section(view, section, y)
+        y += PAD - SECTION_GAP
         view.setFrame_(NSMakeRect(0, 0, PAGE, y))
         self.form_height = y
 
@@ -1314,6 +1279,144 @@ class MainWindow:
         self.error_label.setFrame_(NSMakeRect(PAD, (BAR - 17) / 2, x - PAD - 8, 17))
         self.button_bar.addSubview_(self.error_label)
         page.addSubview_(self.button_bar)
+
+    def _build_section(self, view, section, y: float) -> float:
+        """A section's title, its card and its note; returns where the next one starts."""
+        title = _label(section.title, 12, bold=True, secondary=not section.danger)
+        if section.danger:
+            title.setTextColor_(NSColor.systemRedColor())
+        title.setFrame_(NSMakeRect(PAD + 4, y, INNER - 8, 16))
+        view.addSubview_(title)
+        y += 22
+        box = _card(NSMakeRect(PAD, y, INNER, 100))
+        content = box.contentView()
+        height = 0
+        for index, row in enumerate(section.rows):
+            if index:
+                content.addSubview_(_hairline(SETTINGS_PAD, height, INNER - 2 * SETTINGS_PAD))
+            height += self._settings_row(content, row, height, INNER)
+        box.setFrame_(NSMakeRect(PAD, y, INNER, height))
+        content.setFrame_(NSMakeRect(0, 0, INNER, height))
+        if section.danger:
+            _danger_tone(box)
+        view.addSubview_(box)
+        y += height
+        if section.footer:
+            note, note_height = _wrapping(section.footer, INNER - 8, _small(), secondary=True)
+            note.setFrame_(NSMakeRect(PAD + 4, y + 8, INNER - 8, note_height))
+            view.addSubview_(note)
+            y += 8 + note_height
+        return y + SECTION_GAP
+
+    def _settings_row(self, content, row, y: float, width: float) -> float:
+        """One row at ``y`` in the card's content; returns its height.
+
+        The controls sit at the right edge (a second control, such as "Choose…", to the right of the
+        field), the title and the description fill what is left of the left.
+        """
+        right = width - SETTINGS_PAD
+        control = self._row_control(row)
+        extra = None
+        if row.control != CONTROL_BUTTON and row.button:  # "Choose…" beside the path
+            extra = NSButton.buttonWithTitle_target_action_(row.button, self.target, "chooseFolder:")
+            extra.setFrameSize_((max(extra.fittingSize().width + 16, 80), BUTTON_HEIGHT))
+        controls = [view for view in (control, extra) if view is not None]
+        occupied = sum(view.frame().size.width for view in controls) + 8 * (len(controls) - 1)
+        scene_width = PAST_SCENE_WIDTH + 12 if row.key == "past_download" else 0
+        text_width = right - occupied - scene_width - CONTROL_GAP - SETTINGS_PAD
+
+        title = _label(row.title, 13)
+        title.setLineBreakMode_(NSLineBreakByTruncatingTail)
+        title.setAccessibilityLabel_(row.title) if row.title else None
+        detail = None
+        detail_height = 0
+        lines = LIVE_DETAIL_LINES.get(row.key, 0)
+        if row.detail or lines:
+            detail, detail_height = _wrapping(row.detail or " ", text_width, _small(), secondary=True)
+            detail_height = max(detail_height, lines * (_small() + 5))
+        text_height = 18 + (2 + detail_height if detail is not None else 0)
+        control_height = max(view.frame().size.height for view in controls)
+        if row.key == "past_download":
+            control_height = max(control_height, PAST_ROW)
+        height = max(ROW_MIN, 2 * ROW_PAD + text_height, 2 * ROW_PAD + control_height)
+
+        top = (height - text_height) / 2
+        title.setFrame_(NSMakeRect(SETTINGS_PAD, y + top, text_width, 18))
+        content.addSubview_(title)
+        if detail is not None:
+            detail.setFrame_(NSMakeRect(SETTINGS_PAD, y + top + 20, text_width, detail_height))
+            content.addSubview_(detail)
+        x = right
+        for view in reversed(controls):  # the last one is the rightmost
+            size = view.frame().size
+            x -= size.width
+            view.setFrame_(NSMakeRect(x, y + (height - size.height) / 2, size.width, size.height))
+            content.addSubview_(view)
+            x -= 8
+        if row.key == "past_download":
+            # The papers fly into the folder beside the button for as long as the term is downloading.
+            self.past_scene = SyncSceneView.alloc().initWithFrame_(
+                NSMakeRect(control.frame().origin.x - 12 - PAST_SCENE_WIDTH, y + (height - PAST_ROW) / 2,
+                           PAST_SCENE_WIDTH, PAST_ROW))
+            self.past_scene.setHidden_(True)
+            content.addSubview_(self.past_scene)
+        if row.title:
+            control.setAccessibilityLabel_(row.title)
+        if row.detail:
+            control.setAccessibilityHelp_(row.detail)
+        self.settings_rows[row.key] = _SettingsRow(title, detail, control)
+        for attribute, view in zip(ROW_ATTRIBUTES[row.key], (control, title, detail)):
+            if attribute:
+                setattr(self, attribute, view)
+        return height
+
+    def _row_control(self, row):
+        """The row's own control, sized but not placed."""
+        if row.control == CONTROL_FIELD:
+            field = NSTextField.textFieldWithString_("")
+            if row.placeholder:
+                field.setPlaceholderString_(row.placeholder)
+            field.setDelegate_(self.target)
+            field.setFrameSize_((FIELD_WITH_BUTTON if row.button else FIELD_WIDTH, FIELD_HEIGHT))
+            return field
+        if row.control == CONTROL_POPUP:
+            popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+                NSMakeRect(0, 0, POPUP_WIDTH[row.key], 25), False)
+            titles = {"interval": [title for _, title in INTERVAL_OPTIONS],
+                      "language": [name for _, name in LANGUAGE_OPTIONS]}.get(row.key)
+            if titles:
+                popup.addItemsWithTitles_(titles)
+                popup.setTarget_(self.target)
+                popup.setAction_("changed:")  # a form value; the past term only chooses
+            return popup
+        if row.control == CONTROL_SWITCH:
+            switch = NSSwitch.alloc().initWithFrame_(NSMakeRect(0, 0, 40, 22))
+            switch.setTarget_(self.target)
+            switch.setAction_("changed:")
+            switch.setFrameSize_(switch.fittingSize())
+            return switch
+        button = NSButton.buttonWithTitle_target_action_(row.button, self.target, ROW_ACTIONS[row.key])
+        width = ROW_BUTTON_WIDTH.get(row.key, max(button.fittingSize().width + 24, 90))
+        button.setFrameSize_((width, BUTTON_HEIGHT))
+        if row.destructive:
+            button.setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(
+                row.button, {NSForegroundColorAttributeName: NSColor.systemRedColor()}))
+        return button
+
+    def _apply_row_state(self, key: str, state: RowState) -> None:
+        """Show what changes while the app runs: the text, the button title, enabled, the warning color."""
+        row = self.settings_rows[key]
+        if state.title is not None:
+            row.title.setStringValue_(state.title)
+            row.title.setToolTip_(state.title)
+            row.control.setAccessibilityLabel_(state.title)
+        row.title.setTextColor_(NSColor.systemRedColor() if state.warning else NSColor.labelColor())
+        if state.detail is not None and row.detail is not None:
+            row.detail.setStringValue_(state.detail)
+            row.detail.setToolTip_(state.detail or None)
+        if state.button is not None:
+            row.control.setTitle_(state.button)
+        row.control.setEnabled_(state.enabled)
 
     def _build_calendar(self, page) -> None:
         self._header(page, deadlines.T_TAB)
@@ -1572,7 +1675,9 @@ class MainWindow:
         self.start_button.setEnabled_(status.start_enabled)
         self._draw_start_message()
         # Home
-        self.overview_title.setStringValue_(status.overview_title)
+        self.overview_title.setStringValue_(status.home_heading or status.overview_title)
+        self.overview_subtitle.setStringValue_(status.home_subtitle)
+        self.overview_subtitle.setHidden_(not status.home_subtitle)
         self.sync_button.setTitle_(status.sync_title)
         self.sync_button.setEnabled_(status.sync_enabled)
         self.account_message.setStringValue_(status.account.message)
@@ -1607,14 +1712,8 @@ class MainWindow:
         self.nav_items[ANNOUNCEMENTS][3].setStringValue_(str(count) if count else "")
         # Genel
         form = status.form
-        self.account_label.setStringValue_(form.account)
-        self.account_label.setTextColor_(NSColor.systemRedColor() if form.account_warning else NSColor.labelColor())
-        self.account_button.setTitle_(form.account_title)
-        self.account_button.setEnabled_(form.account_enabled)
-        self.version_label.setStringValue_(form.version)
-        self.update_button.setTitle_(form.update_title)
-        self.update_button.setEnabled_(form.update_enabled)
-        self.uninstall_button.setEnabled_(form.uninstall_enabled)
+        for key, state in row_states(form).items():
+            self._apply_row_state(key, state)
         if form.past_terms != self._past_terms:
             selected = self.past_popup.titleOfSelectedItem()
             self.past_popup.removeAllItems()
@@ -1622,13 +1721,8 @@ class MainWindow:
             if selected in form.past_terms:
                 self.past_popup.selectItemWithTitle_(selected)
             self._past_terms = form.past_terms
-        self.past_popup.setEnabled_(bool(form.past_terms) and not form.past_running)
-        self.past_button.setEnabled_(form.past_enabled)
-        self.past_button.setTitle_(T_PAST_DOWNLOADING if form.past_running else T_PAST_DOWNLOAD)
         self.past_scene.setHidden_(not form.past_running)
         self._animate()
-        self.past_label.setStringValue_(form.past_message)
-        self.past_label.setToolTip_(form.past_message or None)
         self.refresh_announcements()
 
     def _draw_recent(self) -> None:

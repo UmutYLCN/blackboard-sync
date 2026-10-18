@@ -1,10 +1,11 @@
 """What the settings show and what saving them means, without any GUI code.
 
 The settings live in the main window (``main_window_model``). Its Settings page
-has five parts: Account (school address, who is signed in, sign in or out),
-Folder (destination), Past terms (download a past term once), Sync (start
-at login, sync interval, language) and Updates (automatic checks, check now,
-version, uninstall). Dersler (``courses.py``) picks the courses that sync. The GUI layers (``main_window.py`` on macOS,
+is one scrolling page of sections, each a card of rows (``SECTIONS``, in the order of
+``SECTION_ORDER``): Account (school address, who is signed in, sign in or out), Sync
+(sync interval, start at login, language), Folder (destination), Past terms (download a
+past term once), Updates (automatic checks, check now, version) and, last, a Danger
+zone (uninstall). A slot between Sync and Folder is kept for a Calendar section. Dersler (``courses.py``) picks the courses that sync. The GUI layers (``main_window.py`` on macOS,
 ``windows/main_window.py``) only draw ``FormValues`` and ``WindowStatus`` and
 report which button was pressed.
 
@@ -82,11 +83,9 @@ T_URL_HINT = tr("If you change the address you need to sign in again for the new
 T_DEST_LABEL = tr("Folder to save files in")
 # Under the folder field: what ``system.sync_root`` does with the chosen folder.
 T_DEST_ROOT_NOTE = tr("Files are saved in the University folder inside the folder you choose.")
-T_DEST_HINT = (
-    T_DEST_ROOT_NOTE + " "
-    + tr("If you change the folder you can move the downloaded files to the new one or "
-         "download them again.")
-)
+T_DEST_CHANGE_NOTE = tr("If you change the folder you can move the downloaded files to the new one or "
+                        "download them again.")
+T_DEST_HINT = T_DEST_ROOT_NOTE + " " + T_DEST_CHANGE_NOTE
 T_PAST_DOWNLOAD = tr("Download past term")
 T_PAST_DOWNLOADING = tr("Downloading…")
 T_PAST_NOTE = tr("A past term is downloaded once and not updated.")
@@ -125,6 +124,108 @@ def window_height(content: float, chrome: float, available: float) -> int:
     left by the menu bar and Dock (the work area above the taskbar on Windows).
     """
     return int(min(content + chrome, max(available - SCREEN_MARGIN, MIN_WINDOW_HEIGHT)))
+
+
+# -- the Settings page: sections of rows -----------------------------------------------------------
+# A row is a title and a secondary description on the left and its control on the right. The
+# controls of rows with a ``field`` edit that ``FormValues`` field (saved with Save, dropped with
+# Cancel); the others act at once (a button) or only choose (the past term).
+SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER = "account", "sync", "calendar", "folder"
+SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER = "past_terms", "updates", "danger"
+# Top to bottom. SECTION_CALENDAR has no section yet: the page skips it until one is defined.
+SECTION_ORDER = (SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER, SECTION_PAST_TERMS,
+                 SECTION_UPDATES, SECTION_DANGER)
+
+CONTROL_FIELD, CONTROL_POPUP, CONTROL_SWITCH, CONTROL_BUTTON = "field", "popup", "switch", "button"
+
+T_SECTION_DANGER = tr("Danger zone")
+T_PAST_TERM_LABEL = tr("Term")
+T_PAST_DOWNLOAD_LABEL = tr("Download the selected term")
+T_INTERVAL_DETAIL = tr("How often Blackboard is checked for new files.")
+T_AUTOSTART_DETAIL = tr("Keeps syncing in the background after you sign in to the computer.")
+T_CHECK_UPDATES_DETAIL = tr("Looks for a new version once a day.")
+T_UNINSTALL_LABEL = tr("Uninstall Blackboard Sync")
+
+
+@dataclass(frozen=True)
+class SettingRow:
+    key: str
+    title: str  # "" when the row's state supplies it (``row_states``)
+    detail: str = ""
+    control: str = CONTROL_BUTTON
+    field: str = ""  # the ``FormValues`` field the control edits; "" for a control that acts at once
+    button: str = ""  # a button's title; beside a field or popup it is a second control ("Choose…")
+    placeholder: str = ""
+    destructive: bool = False
+
+
+@dataclass(frozen=True)
+class SettingsSection:
+    key: str
+    title: str
+    rows: tuple[SettingRow, ...]
+    footer: str = ""  # small text under the card
+    danger: bool = False
+
+
+SECTIONS = {section.key: section for section in (
+    SettingsSection(SECTION_ACCOUNT, T_SECTION_ACCOUNT, (
+        SettingRow("base_url", T_URL_LABEL, T_URL_HINT, CONTROL_FIELD, field="base_url",
+                   placeholder=T_URL_PLACEHOLDER),
+        SettingRow("account", "", control=CONTROL_BUTTON),  # "Signed in as …" and Sign in / Sign out
+    )),
+    SettingsSection(SECTION_SYNC, T_SECTION_GENERAL, (
+        SettingRow("interval", T_INTERVAL_LABEL, T_INTERVAL_DETAIL, CONTROL_POPUP, field="sync_interval_minutes"),
+        SettingRow("autostart", T_AUTOSTART, T_AUTOSTART_DETAIL, CONTROL_SWITCH, field="autostart"),
+        SettingRow("language", T_LANGUAGE_LABEL, T_LANGUAGE_RESTART, CONTROL_POPUP, field="language"),
+    )),
+    SettingsSection(SECTION_FOLDER, T_SECTION_FOLDER, (
+        SettingRow("dest", T_DEST_LABEL, T_DEST_ROOT_NOTE, CONTROL_FIELD, field="dest", button=T_CHOOSE_FOLDER),
+    ), footer=T_DEST_CHANGE_NOTE),
+    SettingsSection(SECTION_PAST_TERMS, T_SECTION_PAST_TERMS, (
+        SettingRow("past_term", T_PAST_TERM_LABEL, T_PAST_NOTE, CONTROL_POPUP),
+        SettingRow("past_download", T_PAST_DOWNLOAD_LABEL, "", CONTROL_BUTTON, button=T_PAST_DOWNLOAD),
+    )),
+    SettingsSection(SECTION_UPDATES, T_SECTION_UPDATES, (
+        SettingRow("check_updates", T_CHECK_UPDATES, T_CHECK_UPDATES_DETAIL, CONTROL_SWITCH, field="check_updates"),
+        SettingRow("update", "", control=CONTROL_BUTTON, button=T_CHECK_NOW),  # the version and Check now / Update
+    )),
+    SettingsSection(SECTION_DANGER, T_SECTION_DANGER, (
+        SettingRow("uninstall", T_UNINSTALL_LABEL, uninstall.MESSAGE, CONTROL_BUTTON, button=T_UNINSTALL,
+                   destructive=True),
+    ), danger=True),
+)}
+
+
+def settings_sections() -> tuple[SettingsSection, ...]:
+    """The sections the page shows, in order; the Calendar slot has none yet."""
+    return tuple(SECTIONS[key] for key in SECTION_ORDER if key in SECTIONS)
+
+
+@dataclass(frozen=True)
+class RowState:
+    """What changes in a row while the app runs; ``None`` keeps the definition's text."""
+
+    title: str | None = None
+    detail: str | None = None
+    button: str | None = None
+    enabled: bool = True
+    warning: bool = False  # the title in the warning color
+    running: bool = False  # the past term is downloading: the illustration moves
+
+
+def row_states(status: "WindowStatus") -> dict[str, RowState]:
+    """The live part of the rows (who is signed in, past terms, the update button, uninstall)."""
+    return {
+        "account": RowState(title=status.account, button=status.account_title, enabled=status.account_enabled,
+                            warning=status.account_warning),
+        "past_term": RowState(enabled=bool(status.past_terms) and not status.past_running),
+        "past_download": RowState(detail=status.past_message,
+                                  button=T_PAST_DOWNLOADING if status.past_running else T_PAST_DOWNLOAD,
+                                  enabled=status.past_enabled, running=status.past_running),
+        "update": RowState(title=status.version, button=status.update_title, enabled=status.update_enabled),
+        "uninstall": RowState(enabled=status.uninstall_enabled),
+    }
 
 
 def dest_change_message(old: Path, new: Path, files: int) -> str:

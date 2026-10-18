@@ -261,7 +261,13 @@ does not fit scrolls.
 ### Settings
 
 The settings are the **Settings** page of the [main window](#the-main-window)
-(which courses sync is chosen on **Courses**). **Settings** has five parts:
+(which courses sync is chosen on **Courses**). It is one scrolling page of sections, each a
+small title over a rounded card whose rows have a title and a description on the left and
+their control on the right (switches for the on/off settings on macOS, check boxes in the
+Windows window; the Store build has no update or uninstall controls and no Danger zone). The sections, their rows and
+the texts that follow the app are data in `settings_form.py` (`SECTIONS`, `SECTION_ORDER`,
+`row_states`); a slot between Sync and Folder is kept for a later Calendar section. They
+are, in order, Account, Sync, Folder, Past terms, Updates and a red Danger zone:
 
 - **Account** — **Your school's Blackboard address**, prefilled with
   `https://blackboard.istun.edu.tr`; students of another university type their
@@ -292,8 +298,8 @@ The settings are the **Settings** page of the [main window](#the-main-window)
   `settings.json` and read when the app starts (`i18n.py`; the Turkish texts are in
   `locale_tr.py`), so saving a new one offers to restart the app right away.
 - **Updates** — **Check for updates automatically**, ticked by default,
-  **Check now** and the version number (see [Updates](#updates)), then
-  **Uninstall app…**, which asks first and removes the app and its data
+  **Check now** and the version number (see [Updates](#updates)).
+- **Danger zone** — **Uninstall app…**, which asks first and removes the app and its data
   (downloaded course files are kept unless you tick the box).
 
 A bar with **Cancel** and **Save** appears under **Settings** once a field or

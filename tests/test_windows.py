@@ -480,6 +480,172 @@ def test_windows_recent_badges_track_viewport_and_return_visit(monkeypatch, tmp_
     assert model.recent_seen.snapshot is None and window._recent_after is None
 
 
+def test_windows_home_header_and_pill_buttons(monkeypatch, tmp_path):
+    from datetime import timedelta
+    from blackboard_sync import deadlines
+    from blackboard_sync.menubar.main_window_model import T_NAV_OVERVIEW, greeting, main_status
+    from blackboard_sync.menubar.model import RunOutcome
+    from blackboard_sync.windows import main_window as module
+    from blackboard_sync.windows.pill_button import ACCENT, NEUTRAL, PillButton
+
+    fake_tk(monkeypatch, tmp_path)
+    pills = []
+
+    class Recorded(PillButton):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            pills.append(self)
+
+    monkeypatch.setattr(module, 'PillButton', Recorded)
+    now = datetime.now(timezone.utc)
+    model = AppModel(tmp_path, now, configured=True, last=RunOutcome('ok', finished_at=now),
+                     session={'saved_at': now.timestamp(), 'user': {'displayName': 'Ada Student'}})
+    row = deadlines.DeadlineRow('Homework', 'CSE303', now + timedelta(days=2), 'https://school.edu/x')
+    page = deadlines.DeadlinePage((deadlines.DeadlineDay(row.due.date(), 'x', False, (row,)),), '')
+    window = module.MainWindow(None, FormValues('https://school.edu', str(tmp_path), True), main_status(model, now),
+                               lambda *a: None, lambda *a: None, lambda: None, on_deadlines=lambda: page)
+
+    # With due dates: a greeting and the line under it.
+    window.update_status(main_status(model, now, page, timezone.utc))
+    assert window.overview_title.options['text'] == greeting('Ada Student', now, timezone.utc)
+    assert window.overview_subtitle.options['text'] == '1 deadline this week' and not window.overview_subtitle.removed
+    assert window.nav[module.main.OVERVIEW].options['text'] == T_NAV_OVERVIEW  # the sidebar keeps "Home"
+
+    # Without them: the plain title and no line.
+    window.update_status(main_status(model, now))
+    assert window.overview_title.options['text'] == T_NAV_OVERVIEW
+    assert window.overview_subtitle.options['text'] == '' and window.overview_subtitle.removed
+
+    # The card's own buttons are gray pills, "View all" and "Open calendar" carry the accent tint.
+    assert isinstance(window.sync_button, PillButton) and window.sync_button.palette is NEUTRAL
+    assert window.home_action.palette is NEUTRAL
+    assert window.sync_button.options['text'] == 'Sync now' and window.sync_button.enabled
+    tinted = {button.options['text'] for button in pills if button.palette is ACCENT}
+    assert {'View all', 'Open calendar'} <= tinted
+    actions = []
+    window.on_action = actions.append
+    window.sync_button.invoke()
+    assert actions == ['sync']
+
+
+def settings_window(monkeypatch, tmp_path, packaged=False, signed_in=True):
+    """A main window on the fake Tk, and its model."""
+    from blackboard_sync.menubar.main_window_model import main_status
+    from blackboard_sync.menubar.model import RunOutcome
+    from blackboard_sync.windows import main_window as module
+
+    widgets = fake_tk(monkeypatch, tmp_path)
+    monkeypatch.setattr(module.package, 'is_packaged', lambda: packaged)
+    now = datetime.now(timezone.utc)
+    session = {'saved_at': now.timestamp(), 'user': {'displayName': 'Ada Student'}} if signed_in else None
+    model = AppModel(tmp_path, now, configured=True, session=session, last=RunOutcome('ok', finished_at=now))
+    actions = []
+    window = module.MainWindow(None, FormValues('https://school.edu', str(tmp_path), True), main_status(model, now),
+                               lambda *a: None, actions.append, lambda: None)
+    return window, model, widgets, actions
+
+
+def test_windows_settings_are_sections_of_rows(monkeypatch, tmp_path):
+    from blackboard_sync.menubar import settings_form as form_module
+    from blackboard_sync.menubar.main_window_model import main_status
+
+    window, model, widgets, actions = settings_window(monkeypatch, tmp_path)
+    now = datetime.now(timezone.utc)
+    window.update_status(main_status(model, now))
+    heading = [w.options['text'] for w in widgets if w.options.get('font') == ("Segoe UI", 11, "bold") and w.options.get('text')]
+    titles = ['Account', 'Sync', 'Folder', 'Past terms', 'Updates', 'Danger zone']  # no Calendar yet
+    assert [text for text in heading if text in titles] == titles
+    assert set(window.settings_rows) == {row.key for section in form_module.settings_sections()
+                                         for row in section.rows}
+    danger = next(w for w in widgets if w.options.get('text') == 'Danger zone')
+    assert danger.options['foreground'] == '#b00020'
+
+    # The form's controls edit the form's variables; Save and Cancel keep working on them.
+    assert set(window.fields) == {'base_url', 'dest'}
+    assert window.fields['base_url'].options['textvariable'] is window.url
+    for key, variable in (('autostart', window.autostart), ('check_updates', window.check_updates)):
+        assert window.settings_rows[key].control.options['variable'] is variable
+    assert window.interval_dropdown.options['textvariable'] is window.interval
+    assert window.language_dropdown.options['values'] == ['English', 'Türkçe']
+    choose = next(w for w in widgets if w.options.get('text') == 'Choose…')
+    assert choose.options['command'] == window.choose_folder
+    window.autostart.set(False)
+    assert not window.button_bar.removed and window.values().autostart is False
+    window.discard()
+    assert window.button_bar.removed and window.values().autostart is True
+
+    # Buttons that act at once.
+    window.account_button.options['command']()
+    window.update_button.options['command']()
+    window.uninstall_button.options['command']()
+    assert actions == ['logout', 'check_updates', 'uninstall']
+    assert 'style' not in window.uninstall_button.options  # the fake Tk has no styles: the default look
+
+
+def test_windows_settings_rows_follow_the_app_state(monkeypatch, tmp_path):
+    from blackboard_sync.menubar.main_window_model import main_status
+    from blackboard_sync.menubar.model import RunOutcome
+
+    window, model, _, _ = settings_window(monkeypatch, tmp_path, signed_in=False)
+    now = datetime.now(timezone.utc)
+    window.update_status(main_status(model, now))
+    assert window.account_label.options['text'] == 'Not signed in yet.'
+    assert window.account_button.options['text'] == 'Sign in' and window.account_button.options['state'] == 'normal'
+    assert window.past_label.options['text'] == 'Sign in to see past terms.'
+    assert window.past_button.options['state'] == 'disabled' and window.past_dropdown.options['state'] == 'disabled'
+    assert window.version_label.options['text'].startswith('Version ')
+    model.session = {'saved_at': now.timestamp(), 'user': {'displayName': 'Ada Student'}}
+    window.update_status(main_status(model, now))
+    assert window.account_label.options['text'] == 'Signed in as Ada Student'
+    assert window.account_button.options['text'] == 'Sign out' and window.uninstall_button.options['state'] == 'normal'
+    model.begin('sync')  # the job slot is taken
+    window.update_status(main_status(model, now))
+    assert window.account_button.options['state'] == 'disabled'
+    assert window.uninstall_button.options['state'] == 'disabled'
+    model.busy = None
+
+    # A past term: the list, then the download with the papers flying.
+    model.finish_past_terms(['2025-2026 Bahar'], RunOutcome('ok'))
+    window.update_status(main_status(model, now))
+    assert window.past_dropdown.options['values'] == ['2025-2026 Bahar']
+    assert window.past_dropdown.options['state'] == 'readonly' and window.past_button.options['state'] == 'normal'
+    assert window.past_scene.canvas.removed
+    assert model.select_past_term('2025-2026 Bahar')
+    model.begin('past_term')
+    window.update_status(main_status(model, now))
+    assert window.past_button.options['text'] == 'Downloading…' and window.past_dropdown.options['state'] == 'disabled'
+    assert not window.past_scene.canvas.removed and 'Downloading' in window.past_label.options['text']
+
+
+def test_windows_settings_text_wraps_at_the_width_it_gets(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from blackboard_sync.windows.main_window import ROW_MIN_WRAP, ROW_WRAP
+
+    window, _, _, _ = settings_window(monkeypatch, tmp_path)
+    row = window.settings_rows['base_url']
+    assert row.title.options['wraplength'] == row.detail.options['wraplength'] == ROW_WRAP
+    row.title.parent.bindings['<Configure>'](SimpleNamespace(width=240))
+    assert row.title.options['wraplength'] == row.detail.options['wraplength'] == 240
+    row.title.parent.bindings['<Configure>'](SimpleNamespace(width=10))  # never narrower than a few words
+    assert row.title.options['wraplength'] == ROW_MIN_WRAP
+
+
+def test_windows_store_settings_have_no_update_or_uninstall_rows(monkeypatch, tmp_path):
+    from blackboard_sync import uninstall, updater
+    from blackboard_sync.menubar.main_window_model import main_status
+
+    window, model, widgets, _ = settings_window(monkeypatch, tmp_path, packaged=True)
+    window.update_status(main_status(model, datetime.now(timezone.utc)))
+    texts = [w.options.get('text') for w in widgets]
+    assert 'Danger zone' not in texts  # the Store removes the app
+    assert 'Check for updates automatically' not in texts
+    assert updater.STORE_UPDATES in texts and uninstall.STORE_REMOVAL in texts
+    assert window.update_button is None and window.uninstall_button is None
+    assert 'check_updates' not in window.settings_rows and 'uninstall' not in window.settings_rows
+    assert window.version_label.options['text'].startswith('Version ')  # the version is still shown
+    assert window.account_button.options['text'] == 'Sign out'
+
+
 def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_path):
     from blackboard_sync.courses import CourseRow
     from blackboard_sync.menubar.main_window_model import (ACTIVITY, ANNOUNCEMENTS, COURSES, GENERAL, OVERVIEW,
@@ -617,10 +783,10 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     model.pause()
     window.update_status(main_status(model, now))
     assert window.pause_button.options['text'] == '▶' and window.state_title.options['text'] == 'Paused'
-    assert not window.sync_button.packed and not window.home_action.packed
+    assert not window.sync_button.canvas.packed and not window.home_action.canvas.packed
     model.resume(now)
     window.update_status(main_status(model, now))
-    assert window.pause_button.options['text'] == '⏸' and window.sync_button.packed
+    assert window.pause_button.options['text'] == '⏸' and window.sync_button.canvas.packed
 
     # Dersler: the mirror explained, one checkbox per course; ticking one saves it.
     from blackboard_sync import courses

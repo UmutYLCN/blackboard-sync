@@ -33,11 +33,11 @@ follow Google Drive's. Every text goes through ``i18n.tr`` (English or Turkish).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, tzinfo
 from pathlib import Path, PurePosixPath
 
 from blackboard_sync import __version__, announcements, courses, deadlines, updater
-from blackboard_sync.i18n import tr
+from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     T_LOGGING_IN,
@@ -159,6 +159,64 @@ def last_sync_text(model: AppModel, now: datetime) -> str:
         return T_NEVER_SYNCED
     when = day_time(last.finished_at or now, now)
     return (tr("Last synced: {time}") if last.status == "ok" else tr("Last attempt: {time}")).format(time=when)
+
+
+# Home's heading follows the local hour: morning until 12:00, afternoon until 18:00, then evening.
+AFTERNOON_FROM_HOUR = 12
+EVENING_FROM_HOUR = 18
+
+
+def first_name(name: str) -> str:
+    """The first word of the signed-in name, as Blackboard wrote it ("" without a name).
+
+    The letters are not changed: upper-casing or title-casing would need Turkish i/İ rules.
+    """
+    words = name.split()
+    return words[0] if words else ""
+
+
+def greeting(name: str, now: datetime, zone: tzinfo | None = None) -> str:
+    """"Good morning, Umut" by the local hour of ``now``; without a name just "Good morning"."""
+    hour = now.astimezone(zone).hour
+    if hour < AFTERNOON_FROM_HOUR:
+        text = tr("Good morning")
+    elif hour < EVENING_FROM_HOUR:
+        text = tr("Good afternoon")
+    else:
+        text = tr("Good evening")
+    first = first_name(name)
+    return f"{text}, {first}" if first else text
+
+
+def deadline_subtitle(page: deadlines.DeadlinePage, now: datetime, zone: tzinfo | None = None) -> str:
+    """"1 deadline today · 3 this week"; "" while no due dates were synced yet.
+
+    "This week" is the next 7 days (``deadlines.THIS_WEEK``) and includes today. Nothing today
+    shows only the week's count, and when every one of them is today only today's.
+    """
+    if page.message == deadlines.T_NOT_SYNCED:
+        return ""
+    today, week = deadlines.count_due(page, now, zone)
+    if not week:
+        return tr("No deadlines this week")
+    if not today:
+        return ntr("{n} deadline this week", "{n} deadlines this week", week).format(n=week)
+    text = ntr("{n} deadline today", "{n} deadlines today", today).format(n=today)
+    if week > today:
+        text += " · " + tr("{n} this week").format(n=week)
+    return text
+
+
+def home_header(name: str | None, overview_title: str, page: deadlines.DeadlinePage | None, now: datetime,
+                zone: tzinfo | None = None) -> tuple[str, str]:
+    """(heading, subtitle) of the Home page; the plain title and no subtitle when nobody is signed in
+    or no due dates were synced yet."""
+    if name is None or page is None:
+        return overview_title, ""
+    subtitle = deadline_subtitle(page, now, zone)
+    if not subtitle:
+        return overview_title, ""
+    return greeting(name, now, zone), subtitle
 
 
 def initials(name: str) -> str:
@@ -285,6 +343,10 @@ class MainStatus:
     pause_enabled: bool = False
     activity: tuple[ActivityRow, ...] = ()
     attention: tuple[AttentionItem, ...] = ()
+    # The Home page's own header (the sidebar keeps ``overview_title``): a greeting and one line
+    # about the next due dates; the plain title and no line without them.
+    home_heading: str = ""
+    home_subtitle: str = ""
 
     @property
     def overview_title(self) -> str:
@@ -397,7 +459,8 @@ def recent_rows(model: AppModel, now: datetime) -> tuple[RecentRow, ...]:
     return tuple(rows)
 
 
-def main_status(model: AppModel, now: datetime) -> MainStatus:
+def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.DeadlinePage | None = None,
+                zone: tzinfo | None = None) -> MainStatus:
     name, _expired = model.account()
     idle = model.busy is None and model.updates.busy != "download"
     if model.busy == "login":
@@ -405,8 +468,10 @@ def main_status(model: AppModel, now: datetime) -> MainStatus:
     else:
         start_message = model.note
     scene, scene_line = sync_scene(model)
+    first_run = is_first_run(model)
+    heading, subtitle = home_header(name, T_NAV_START if first_run else T_NAV_OVERVIEW, deadlines_page, now, zone)
     return MainStatus(
-        first_run=is_first_run(model),
+        first_run=first_run,
         account=account_card(model, now),
         sync_title=T_SYNCING if model.busy == "sync" else T_SYNC_NOW,
         sync_enabled=idle and model.configured and name is not None and not model.paused,
@@ -425,6 +490,8 @@ def main_status(model: AppModel, now: datetime) -> MainStatus:
         pause_enabled=model.configured and not is_first_run(model),
         activity=activity_rows(model, now),
         attention=attention_items(model),
+        home_heading=heading,
+        home_subtitle=subtitle,
     )
 
 
