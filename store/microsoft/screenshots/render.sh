@@ -9,7 +9,7 @@
 # For each capture in src/shots.js the app image is src/windows/<id>.png when it
 # exists (final image: <id>.png). Otherwise it is src/draft-input/<id>.png, or a
 # placeholder when there is none, and the image is a draft: draft-<id>.png,
-# marked TASLAK on the image.
+# marked DRAFT on the image.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
