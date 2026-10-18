@@ -20,8 +20,8 @@ installed by Setup, but with package identity.
 | `scripts/build-msix.ps1` | Freezes the app and runs `makeappx pack` |
 | `scripts/smoke-test-msix.ps1` | CI: sideloads a test-signed copy and checks it |
 
-The package version is the app version with a fourth part of 0 (`1.5.1` →
-`1.5.1.0`); the Store reserves the fourth part. A pre-release suffix is dropped
+The package version is the app version with a fourth part of 0 (`1.6.2` →
+`1.6.2.0`); the Store reserves the fourth part. A pre-release suffix is dropped
 (`1.6.0rc1` → `1.6.0.0`).
 
 ## Build
@@ -32,10 +32,29 @@ On Windows with Python 3.12 and the Windows 10/11 SDK (for `makeappx.exe`):
 ./scripts/build-msix.ps1
 ```
 
-This writes `dist\Blackboard-Sync-<version>-x64.msix`, unsigned. CI builds the
-same file on every pull request and push to `main` (the `msix` job in
-`.github/workflows/ci.yml`) and keeps it as the `msix` workflow artifact. It is
-not attached to releases and nothing is submitted to the Store.
+This writes `dist\Blackboard-Sync-<version>-x64.msix`, unsigned. Ordinary CI
+builds a test package on pull requests and pushes to `main`, without production
+Google OAuth metadata. **Do not upload the ordinary `msix` CI artifact to the Store.**
+
+For a submission, run **Microsoft Store package** (`.github/workflows/store.yml`)
+on `main`. This manual workflow requires the existing
+`GOOGLE_CALENDAR_OAUTH_CLIENT_JSON` repository secret, checks the bundled
+configuration both before packaging and inside the installed package, and runs
+the normal MSIX smoke tests. Only after they pass does it upload the
+`microsoft-store` artifact with the unsigned package, `SHA256SUMS.txt` and the
+source commit in `BUILD.txt`:
+
+```sh
+gh workflow run store.yml --ref main
+gh run list --workflow store.yml --limit 5
+gh run download <successful-run-id> --name microsoft-store --dir store/microsoft/out/msix
+```
+
+This builds the package only; it does not publish or submit to Partner Center.
+For an equivalent local production build, provide the gitignored Desktop client
+JSON described in `docs/GOOGLE_CALENDAR_SETUP.md`, set
+`BBSYNC_REQUIRE_GOOGLE_OAUTH=1`, then run the build and
+`./scripts/smoke-test-msix.ps1 -RequireGoogleCalendar` on Windows.
 
 ## Sideload test on your own PC
 

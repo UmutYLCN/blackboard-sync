@@ -21,7 +21,7 @@ Blackboard’daki ders dosyalarını, duyuruları ve notları arka planda kendil
 
 ## Description
 
-Limit 10,000, plain text, no URLs (Microsoft asks for links in their own fields). 2,456 characters.
+Limit 10,000, plain text, no URLs (Microsoft asks for links in their own fields).
 
 ```text
 Blackboard’daki ders içeriklerini otomatik olarak bilgisayarına indirir. Her seferinde siteye girip dosyaları tek tek indirmen gerekmez.
@@ -44,6 +44,9 @@ Dosyalar seçtiğin klasörün içindeki University klasörüne, Blackboard’da
 GENEL BAKIŞ
 Ana pencerede son indirilen dosyaları görür, tek tıkla açarsın. “Şimdi senkronize et” ile istediğin an kontrol edebilir, “Klasörü aç” ile University klasörüne gidebilirsin. Pencereyi kapatınca uygulama saatin yanındaki simgeyle çalışmaya devam eder.
 
+TAKVİM VE DUYURULAR
+Yaklaşan ödev teslim tarihlerini ve ders duyurularını uygulamada görürsün. Ayarlar’dan isteğe bağlı Google Takvim bağlantısını açarak teslim tarihlerini ayrı bir Blackboard Deadlines takviminde güncel tutabilirsin. Diğer takvimlerin gizli kalır.
+
 SİLİNENLER
 Daha önce indirip klasörden sildiğin dosyaları seçip yeniden indirebilirsin. Listeden kaldırdığın dosyalar bir daha önerilmez.
 
@@ -54,28 +57,27 @@ AYARLAR
 • Otomatik senkron: her 30 dakikada, her saat, her 3 saatte ya da yalnızca elle.
 • Bilgisayar açılınca başlat: açılışta pencere açmadan arka planda başlar. Windows Görev Yöneticisi’ndeki Başlangıç uygulamaları bölümünden de kapatılabilir.
 • Güncellemeler Microsoft Store üzerinden yüklenir.
+• Açık, koyu veya sistem teması; Türkçe ve İngilizce arayüz seçenekleri.
 
 GİZLİLİK
 • Şifreni yalnızca okulunun kendi giriş sayfasına yazarsın; uygulama şifreni görmez ve kaydetmez.
 • Giriş oturumu, ayarlar ve indirme kayıtları yalnızca kendi bilgisayarında tutulur.
-• Uygulama okulunun Blackboard adresine ve yönlendirdiği giriş/dosya adreslerine bağlanır. İsteğe bağlı Google Takvim bağlantısını komut satırından açarsan, ayrı Blackboard Deadlines takvimini yönetmek için Google’a da bağlanır; ana takvimine erişmez.
+• Uygulama okulunun Blackboard adresine ve yönlendirdiği giriş/dosya adreslerine bağlanır. İsteğe bağlı Google Takvim bağlantısını Ayarlar’dan açarsan, ayrı Blackboard Deadlines takvimini yönetmek için Google’a da bağlanır; ana takvimine erişmez.
 • Analiz, reklam veya kullanım takibi yoktur; hesap açman gerekmez.
 
 GEREKSİNİMLER
 • Okulunun Blackboard Learn hesabı.
-• Uygulamanın arayüzü Türkçedir.
+• Türkçe ve İngilizce arayüz seçenekleri.
 
 Ücretsiz ve açık kaynaklıdır (MIT Lisansı).
 ```
 
 ## What's new in this version
 
-Limit 1,500. Microsoft: "If this is the first time you're submitting your app, leave this
-field blank." Leave it empty for the first submission; use this from the first update on,
-edited to that release:
+Limit 1,500. Update from the published Store version 1.5.1 to 1.6.2:
 
 ```text
-İlk Microsoft Store sürümü. Güncellemeler artık Microsoft Store üzerinden yüklenir; uygulamayı Windows Ayarlar → Uygulamalar bölümünden kaldırabilirsin.
+1.6.2 ile Windows arayüzü yenilendi. Açık, koyu ve sistem temaları; yaklaşan teslim tarihleri ve ders duyuruları eklendi. Google Takvim’i doğrudan Ayarlar’dan bağlayarak ödev teslim tarihlerini güncel tutabilirsin. Türkçe ve İngilizce arayüz seçenekleri sunulur. Eski dönem indirme bölümü yeniden tasarlanırken Çok yakında olarak gösterilir. Güncellemeler Microsoft Store üzerinden yüklenmeye devam eder.
 ```
 
 ## Product features
@@ -88,6 +90,9 @@ Yeni ders dosyalarını arka planda kendiliğinden indirir
 Duyuruları, bağlantıları ve sayfaları Markdown notu olarak kaydeder
 Dönem ve ders klasörleriyle düzenli University klasörü
 Yeni dosya inince Windows bildirimi
+Yaklaşan teslim tarihleri ve ders duyuruları uygulamada
+Ayarlar’dan isteğe bağlı Google Takvim bağlantısı
+Açık, koyu ve sistem temaları; Türkçe ve İngilizce arayüz
 Otomatik senkron: her 30 dakikada, her saat, her 3 saatte ya da yalnızca elle
 Silinenler: klasörden sildiğin dosyaları seçip geri indir
 Eski dönem indirme: çok yakında
@@ -159,4 +164,4 @@ Umut Yalçın
 
 ## İsteğe bağlı Google Takvim gizliliği
 
-Google’a etkinlik başlığı, ders adı, teslim zamanı ve Blackboard bağlantısı gönderilir. Token Windows Kimlik Bilgisi Yöneticisi’nde; eşleme ve durum özel uygulama veri klasöründe saklanır. `calendar disconnect` erişimi iptal edip yerel Takvim verilerini siler; `--delete-calendar` takvimi de siler. Takvimi korursan, yeniden bağlantı için yalnızca gizli olmayan takvim kimliği yerelde tutulur. https://myaccount.google.com/connections üzerinden de erişimi kaldırabilirsin. Windows arayüzünde bağlantı düğmeleri henüz yoktur. Google API kullanımı, Limited Use dahil Google API Services User Data Policy’ye uyar.
+Ayarlar’dan bağlandığında Google’a etkinlik başlığı, ders adı, teslim zamanı ve Blackboard bağlantısı gönderilir. Token Windows Kimlik Bilgisi Yöneticisi’nde; eşleme ve durum özel uygulama veri klasöründe saklanır. Ayarlar’dan bağlantıyı kesmek erişimi iptal edip yerel Takvim verilerini siler; isteğe bağlı olarak özel takvimi de silebilirsin. Takvimi korursan yeniden bağlantı için yalnızca gizli olmayan takvim kimliği yerelde tutulur. https://myaccount.google.com/connections üzerinden de erişimi kaldırabilirsin. Google API kullanımı, Limited Use dahil Google API Services User Data Policy’ye uyar.
