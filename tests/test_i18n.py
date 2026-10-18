@@ -118,7 +118,8 @@ def test_app_texts_follow_the_saved_language(tmp_path):
     (tmp_path / "settings.json").write_text(json.dumps({
         "base_url": "https://bb.example.edu", "dest": str(tmp_path / "Docs"), "language": "tr"}), encoding="utf-8")
     env = {k: v for k, v in os.environ.items() if k != i18n.LANGUAGE_ENV}
-    env.update(BBSYNC_DATA_DIR=str(tmp_path), PYTHONPATH=str(SRC.parent))
+    # UTF-8 output: a Windows console code page cannot print every Turkish letter.
+    env.update(BBSYNC_DATA_DIR=str(tmp_path), PYTHONPATH=str(SRC.parent), PYTHONIOENCODING="utf-8")
     code = (
         "from datetime import date\n"
         "from blackboard_sync.menubar import main_window_model as m, model, settings_form as f\n"
@@ -126,7 +127,9 @@ def test_app_texts_follow_the_saved_language(tmp_path):
         "print(m.T_NAV_OVERVIEW, m.T_STATE_TITLES[m.STATE_PAUSED], model.T_SYNC_NOW, f.T_SECTION_UPDATES,"
         " deadlines.month_day(date(2026, 10, 15), '09:00'), model.files(2), sep='|')\n"
     )
-    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True).stdout
+    proc = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout
     assert out.strip().split("|") == ["Ana sayfa", "Duraklatıldı", "Şimdi senkronize et", "Güncellemeler",
                                       "15 Ekim 09:00", "2 dosya"]
 
