@@ -216,6 +216,29 @@ def upcoming_rows(page: DeadlinePage, limit: int) -> tuple[DeadlineRow, ...]:
     return tuple(rows[:limit])
 
 
+# "This week" on Home is the next 7 days counted from now, not the calendar week, so the
+# count does not drop to nothing on a Sunday evening.
+THIS_WEEK = timedelta(days=7)
+
+
+def count_due(page: DeadlinePage, now: datetime, zone: tzinfo | None = None) -> tuple[int, int]:
+    """(due today, due within the next 7 days) among the dates that have not passed yet.
+
+    Today's dates are part of the week's count. ``zone`` makes the day boundary
+    deterministic in tests; by default it is the system zone.
+    """
+    local_today = now.astimezone(zone).date()
+    today = week = 0
+    for day in page.days:
+        for row in day.rows:
+            if not now <= row.due < now + THIS_WEEK:
+                continue
+            week += 1
+            if row.due.astimezone(zone).date() == local_today:
+                today += 1
+    return today, week
+
+
 def when_text(row: DeadlineRow, today: date) -> str:
     """"today 14:30", "tomorrow 09:00" or "October 15 09:00": when a due date is, for a small row."""
     day = row.due.date()
