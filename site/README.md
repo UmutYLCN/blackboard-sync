@@ -1,6 +1,6 @@
 # Blackboard Sync promotional site
 
-A single Turkish page with local assets, plain HTML/CSS/JavaScript, and no build or dependencies.
+A single English promotional page with local assets, plain HTML/CSS/JavaScript, and no build or dependencies.
 
 Preview from the repository root:
 
@@ -21,6 +21,10 @@ Keeping local state outside `site/` stops the dev server from reloading on its o
 
 The privacy policy is `privacy.html`, in English, served at `/privacy`. `_redirects` sends the old Turkish address `/gizlilik` (and `/gizlilik.html`) there with a 301. Extensionless paths and redirects are handled by Cloudflare's asset server, so check them with `wrangler dev` rather than `python3 -m http.server`.
 
+The production site is served at <https://blackboardsyncapp.com/>. The root domain is
+attached to the existing Cloudflare Worker as a custom domain; `/privacy` serves
+`privacy.html`, and `/mac` and `/windows` remain the short download routes.
+
 Cloudflare Workers Builds settings:
 
 - Root directory: `/site`
@@ -31,4 +35,4 @@ Cloudflare Workers Builds settings:
 
 `_headers` applies security headers and a one-day asset cache; HTML/CSS/JS revalidate because their filenames are not versioned. The 59-second MP4 is hosted as a GitHub user attachment and loaded by the page. Native video controls allow pausing and sound; reduced-motion preferences disable automatic playback when JavaScript is enabled.
 
-The social card references the existing public repository banner by absolute URL, so sharing works before a custom site domain is chosen. Page assets are local except for the hosted video. Header and footer logos use 128 px PNGs with 256 px retina variants; the favicon is a separate 32 px PNG. Review screenshots are linked from an earlier commit in the pull request and are not included in the deployed folder.
+The social card references the existing public repository banner by absolute URL. The page declares `https://blackboardsyncapp.com/` as its canonical URL. Page assets are local except for the hosted video. Header and footer logos use 128 px PNGs with 256 px retina variants; the favicon is a separate 32 px PNG. Review screenshots are linked from an earlier commit in the pull request and are not included in the deployed folder.
