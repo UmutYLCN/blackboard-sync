@@ -256,13 +256,13 @@ def test_other_pages_carry_their_rows_and_ids():
     assert first["page"] == "start" and first["start"]["button"]["login"] is True
 
 
-def test_theme_is_saved_and_kept_across_save():
+def test_theme_is_saved_and_kept_across_save(tmp_path):
     from blackboard_sync.menubar.settings_form import FormValues, submit
-    from blackboard_sync.settings import Settings, load_settings, normalize_theme, save_settings
+    from blackboard_sync.settings import Settings, normalize_theme
 
     assert normalize_theme("dark") == "dark" and normalize_theme("purple") == "system"
-    current = Settings("https://bb.example", Path("/home/u/Documents"), theme="dark")
-    submission = submit(FormValues("https://bb.example", "/home/u/Documents", True), current)
+    current = Settings("https://bb.example", tmp_path, theme="dark")  # a real absolute path on every system
+    submission = submit(FormValues("https://bb.example", str(tmp_path), True), current)
     assert submission.settings.theme == "dark"  # the form does not carry it; saving keeps it
 
 
