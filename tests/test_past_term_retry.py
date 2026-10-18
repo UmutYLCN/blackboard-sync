@@ -81,3 +81,12 @@ def test_a_running_download_locks_the_list_and_the_button_says_so(tmp_path):
 
     model.finish_sync(RunOutcome("ok", past_term=PAST), NOW)
     assert not window_status(model).past_running
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def retained_archive_engine(monkeypatch):
+    """Exercise the retained archive engine; release-default guards have their own tests."""
+    monkeypatch.setattr("blackboard_sync.menubar.model.PAST_TERMS_AVAILABLE", True)

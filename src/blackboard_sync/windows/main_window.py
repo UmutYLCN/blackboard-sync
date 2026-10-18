@@ -501,7 +501,9 @@ class MainWindow:
         self.update_button = self.uninstall_button = None
         packaged = package.is_packaged()
         row = 0
-        for section in form.settings_sections():  # the Calendar slot has no section yet
+        for section in form.settings_sections():
+            if section.key == form.SECTION_CALENDAR:
+                continue  # Connection controls currently macOS/CLI only.
             if packaged and section.danger:
                 continue  # the Store removes the app; the Updates card says so
             row = self._build_section(frame, section, row, packaged)
@@ -876,6 +878,8 @@ class MainWindow:
         # Genel
         form_status = status.form
         for key, state in form.row_states(form_status).items():
+            if key.startswith("google_calendar"):
+                continue
             self._apply_row_state(key, state)
         terms = list(form_status.past_terms)
         self.past_dropdown.configure(values=terms,

@@ -555,7 +555,7 @@ def test_windows_settings_are_sections_of_rows(monkeypatch, tmp_path):
     heading = [w.options['text'] for w in widgets if w.options.get('font') == ("Segoe UI", 11, "bold") and w.options.get('text')]
     titles = ['Account', 'Sync', 'Folder', 'Past terms', 'Updates', 'Danger zone']  # no Calendar yet
     assert [text for text in heading if text in titles] == titles
-    assert set(window.settings_rows) == {row.key for section in form_module.settings_sections()
+    assert set(window.settings_rows) == {row.key for section in form_module.settings_sections() if section.key != form_module.SECTION_CALENDAR
                                          for row in section.rows}
     danger = next(w for w in widgets if w.options.get('text') == 'Danger zone')
     assert danger.options['foreground'] == '#b00020'
@@ -1367,3 +1367,9 @@ def test_tray_menu_filters_stale_updater_actions_only_for_store(tmp_path, monkey
     app.refresh()
     assert any(entry.action == 'update' for entry in app.drawn.entries) is not packaged
     assert any(entry.action == 'settings' for entry in app.drawn.entries)
+
+
+@pytest.fixture(autouse=True)
+def retained_archive_engine(monkeypatch):
+    """Exercise the retained archive engine; release-default guards have their own tests."""
+    monkeypatch.setattr("blackboard_sync.menubar.model.PAST_TERMS_AVAILABLE", True)

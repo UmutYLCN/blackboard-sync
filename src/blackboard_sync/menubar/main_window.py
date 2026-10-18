@@ -150,6 +150,7 @@ from blackboard_sync.menubar.settings_form import (
     language_code,
     language_title,
     row_states,
+    calendar_presentation,
     settings_sections,
     window_height,
 )
@@ -322,6 +323,15 @@ class _Target(NSObject):
         index = int(sender.tag())
         if 0 <= index < len(rows):
             self.owner.on_open_announcement(rows[index])
+
+    def googleCalendar_(self, _sender):
+        self.owner.on_action("calendar_connect")
+
+    def googleCalendarSync_(self, _sender):
+        self.owner.on_action("calendar_sync")
+
+    def googleCalendarDisconnect_(self, _sender):
+        self.owner.on_action("calendar_disconnect")
 
     def showCalendar_(self, _sender):
         self.owner.select(CALENDAR)
@@ -512,6 +522,9 @@ class _SettingsRow:
 ROW_ATTRIBUTES = {
     "base_url": ("url_field", None, None),
     "account": ("account_button", "account_label", None),
+    "google_calendar": (None, None, None),
+    "google_calendar_sync": (None, None, None),
+    "google_calendar_disconnect": (None, None, None),
     "interval": ("interval_popup", None, None),
     "autostart": ("autostart", None, None),
     "language": ("language_popup", None, None),
@@ -523,10 +536,11 @@ ROW_ATTRIBUTES = {
     "uninstall": ("uninstall_button", None, None),
 }
 # A button of a row that acts at once, and the buttons whose title changes keep one width.
-ROW_ACTIONS = {"account": "account:", "past_download": "pastTerm:", "update": "update:", "uninstall": "uninstall:"}
-ROW_BUTTON_WIDTH = {"account": ACTION_WIDTH, "update": ACTION_WIDTH, "past_download": 190}
+ROW_ACTIONS = {"google_calendar": "googleCalendar:", "google_calendar_sync": "googleCalendarSync:",
+               "google_calendar_disconnect": "googleCalendarDisconnect:", "account": "account:", "past_download": "pastTerm:", "update": "update:", "uninstall": "uninstall:"}
+ROW_BUTTON_WIDTH = {"google_calendar": 210, "account": ACTION_WIDTH, "update": ACTION_WIDTH, "past_download": 190}
 # Rows whose description changes while the app runs keep room for two lines.
-LIVE_DETAIL_LINES = {"past_download": 2}
+LIVE_DETAIL_LINES = {"past_download": 2, "google_calendar": 3}
 
 
 def _pill(frame, color):
@@ -783,6 +797,12 @@ class MainWindow:
         settings = menu.addItemWithTitle_action_keyEquivalent_(T_NAV_GENERAL, "gear:", "")
         settings.setTarget_(self.target)
         menu.popUpMenuPositioningItem_atLocation_inView_(None, (0, CTRL + 4), sender)
+
+    def show_calendar_settings(self):
+        self.show(GENERAL)
+        row = self.settings_rows["google_calendar"].title
+        point = row.convertPoint_toView_((0, 0), self.form_scroll.documentView())
+        self.form_scroll.documentView().scrollPoint_(point)
 
     def run_attention(self, index: int) -> None:
         items = self.status.attention
@@ -1253,7 +1273,7 @@ class MainWindow:
         page.addSubview_(self.form_scroll)
         self.settings_rows = {}
         y = 8
-        for section in settings_sections():  # the Calendar slot has no section yet; a later one adds it
+        for section in settings_sections():
             y = self._build_section(view, section, y)
         y += PAD - SECTION_GAP
         view.setFrame_(NSMakeRect(0, 0, PAGE, y))
@@ -1291,10 +1311,13 @@ class MainWindow:
         box = _card(NSMakeRect(PAD, y, INNER, 100))
         content = box.contentView()
         height = 0
-        for index, row in enumerate(section.rows):
-            if index:
-                content.addSubview_(_hairline(SETTINGS_PAD, height, INNER - 2 * SETTINGS_PAD))
-            height += self._settings_row(content, row, height, INNER)
+        if section.key == "calendar":
+            height = self._build_google_calendar(content, section)
+        else:
+            for index, row in enumerate(section.rows):
+                if index:
+                    content.addSubview_(_hairline(SETTINGS_PAD, height, INNER - 2 * SETTINGS_PAD))
+                height += self._settings_row(content, row, height, INNER)
         box.setFrame_(NSMakeRect(PAD, y, INNER, height))
         content.setFrame_(NSMakeRect(0, 0, INNER, height))
         if section.danger:
@@ -1307,6 +1330,52 @@ class MainWindow:
             view.addSubview_(note)
             y += 8 + note_height
         return y + SECTION_GAP
+
+    def _build_google_calendar(self, content, section) -> float:
+        """A compact card shared by connected, disconnected and reconnect states.
+
+        The action group wraps at native button boundaries on smaller widths;
+        status is text, never a disabled button duplicating the heading.
+        """
+        width = INNER - 2 * SETTINGS_PAD
+        title = _label("", 13, bold=True)
+        title.setFrame_(NSMakeRect(SETTINGS_PAD, 16, width, 20))
+        detail, _ = _wrapping(" ", width, _small(), secondary=True)
+        detail.setFrame_(NSMakeRect(SETTINGS_PAD, 40, width, 42))
+        content.addSubview_(title)
+        content.addSubview_(detail)
+        self._google_calendar_content = content
+        for row in section.rows:
+            button = self._row_control(row)
+            button.setHidden_(True)
+            content.addSubview_(button)
+            self.settings_rows[row.key] = _SettingsRow(title, detail, button)
+        return 144
+
+    def _update_google_calendar(self, form) -> None:
+        state = calendar_presentation(form.calendar, form.calendar_busy, form.calendar_paused)
+        row = self.settings_rows["google_calendar"]
+        row.title.setStringValue_(state.title)
+        row.title.setTextColor_(NSColor.systemOrangeColor() if state.warning else NSColor.labelColor())
+        row.detail.setStringValue_(state.detail)
+        row.detail.setToolTip_(state.detail or None)
+        actions = (("google_calendar", state.show_connect, state.button, state.enabled),
+                   ("google_calendar_sync", state.show_sync, state.sync_button, state.sync_enabled),
+                   ("google_calendar_disconnect", state.show_disconnect, tr("Disconnect"), state.disconnect_enabled))
+        x, y = SETTINGS_PAD, 94
+        for key, visible, text, enabled in actions:
+            button = self.settings_rows[key].control
+            button.setHidden_(not visible)
+            button.setEnabled_(enabled)
+            if not visible:
+                continue
+            button.setTitle_(text)
+            button.setAccessibilityLabel_(text)
+            width = max(button.fittingSize().width + 20, 90)
+            if x > SETTINGS_PAD and x + width > INNER - SETTINGS_PAD:
+                x, y = SETTINGS_PAD, y + BUTTON_HEIGHT + 6
+            button.setFrame_(NSMakeRect(x, y, width, BUTTON_HEIGHT))
+            x += width + 8
 
     def _settings_row(self, content, row, y: float, width: float) -> float:
         """One row at ``y`` in the card's content; returns its height.
@@ -1713,7 +1782,9 @@ class MainWindow:
         # Genel
         form = status.form
         for key, state in row_states(form).items():
-            self._apply_row_state(key, state)
+            if not key.startswith("google_calendar"):
+                self._apply_row_state(key, state)
+        self._update_google_calendar(form)
         if form.past_terms != self._past_terms:
             selected = self.past_popup.titleOfSelectedItem()
             self.past_popup.removeAllItems()
@@ -2001,6 +2072,23 @@ def ask_uninstall(dest: Path) -> bool | None:
     view.addSubview_(label)
     alert.setAccessoryView_(view)
     NSApp.activateIgnoringOtherApps_(True)
+    if alert.runModal() != NSAlertFirstButtonReturn:
+        return None
+    return bool(checkbox.state())
+
+
+def ask_calendar_disconnect() -> bool | None:
+    """Immediate disconnect; checkbox opt-in deletes the dedicated calendar."""
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_(tr("Disconnect Google Calendar?"))
+    alert.setInformativeText_(tr("Access will be revoked and local Calendar connection data removed."))
+    alert.addButtonWithTitle_(tr("Disconnect"))
+    alert.addButtonWithTitle_(tr("Cancel"))
+    checkbox = NSButton.checkboxWithTitle_target_action_(
+        tr("Also delete the Blackboard Deadlines calendar from Google"), None, None)
+    checkbox.setFrame_(NSMakeRect(0, 0, 460, 30))
+    checkbox.setState_(0)
+    alert.setAccessoryView_(checkbox)
     if alert.runModal() != NSAlertFirstButtonReturn:
         return None
     return bool(checkbox.state())

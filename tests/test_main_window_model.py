@@ -160,7 +160,9 @@ def test_signed_in_card_shows_the_last_sync_once():
 
 
 @pytest.mark.parametrize("job", ["sync", "past_term", "move"])
-def test_while_syncing_the_card_keeps_the_last_sync_time(job):
+def test_while_syncing_the_card_keeps_the_last_sync_time(job, monkeypatch):
+    if job == "past_term":
+        monkeypatch.setattr("blackboard_sync.menubar.model.PAST_TERMS_AVAILABLE", True)
     model = synced()
     model.begin(job)
     card = main_status(model, NOW).account

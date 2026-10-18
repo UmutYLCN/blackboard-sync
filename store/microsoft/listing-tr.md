@@ -48,7 +48,7 @@ SİLİNENLER
 Daha önce indirip klasörden sildiğin dosyaları seçip yeniden indirebilirsin. Listeden kaldırdığın dosyalar bir daha önerilmez.
 
 ESKİ DÖNEMLER
-Geçmiş bir dönemin dosyalarını tek seferde indirebilirsin. Eski dönem bir kez indirilir, güncellenmez.
+Eski dönem indirme özelliği yeniden tasarlanıyor. Bölüm şu anda Çok yakında olarak gösterilir; önceden indirdiğin dosyalar korunur.
 
 AYARLAR
 • Otomatik senkron: her 30 dakikada, her saat, her 3 saatte ya da yalnızca elle.
@@ -58,7 +58,7 @@ AYARLAR
 GİZLİLİK
 • Şifreni yalnızca okulunun kendi giriş sayfasına yazarsın; uygulama şifreni görmez ve kaydetmez.
 • Giriş oturumu, ayarlar ve indirme kayıtları yalnızca kendi bilgisayarında tutulur.
-• Uygulama yalnızca okulunun Blackboard adresine (ve onun yönlendirdiği giriş ve dosya adreslerine) bağlanır.
+• Uygulama okulunun Blackboard adresine ve yönlendirdiği giriş/dosya adreslerine bağlanır. İsteğe bağlı Google Takvim bağlantısını komut satırından açarsan, ayrı Blackboard Deadlines takvimini yönetmek için Google’a da bağlanır; ana takvimine erişmez.
 • Analiz, reklam veya kullanım takibi yoktur; hesap açman gerekmez.
 
 GEREKSİNİMLER
@@ -90,7 +90,7 @@ Dönem ve ders klasörleriyle düzenli University klasörü
 Yeni dosya inince Windows bildirimi
 Otomatik senkron: her 30 dakikada, her saat, her 3 saatte ya da yalnızca elle
 Silinenler: klasörden sildiğin dosyaları seçip geri indir
-Eski dönemlerin dosyalarını tek seferde indir
+Eski dönem indirme: çok yakında
 Bilgisayar açılınca arka planda başlayabilir
 Şifreni görmez; oturumun yalnızca kendi bilgisayarında kalır
 Analiz, reklam ve kullanım takibi yok
@@ -152,3 +152,7 @@ Optional, 255 characters.
 ```text
 Umut Yalçın
 ```
+
+## İsteğe bağlı Google Takvim gizliliği
+
+Google’a etkinlik başlığı, ders adı, teslim zamanı ve Blackboard bağlantısı gönderilir. Token Windows Kimlik Bilgisi Yöneticisi’nde; eşleme ve durum özel uygulama veri klasöründe saklanır. `calendar disconnect` erişimi iptal edip yerel Takvim verilerini siler; `--delete-calendar` takvimi de siler. Takvimi korursan, yeniden bağlantı için yalnızca gizli olmayan takvim kimliği yerelde tutulur. https://myaccount.google.com/connections üzerinden de erişimi kaldırabilirsin. Windows arayüzünde bağlantı düğmeleri henüz yoktur. Google API kullanımı, Limited Use dahil Google API Services User Data Policy’ye uyar.

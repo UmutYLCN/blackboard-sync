@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, IO
 
-from blackboard_sync import courses, deadlines, relocate, runtime, signout
+from blackboard_sync import courses, deadlines, gcal, relocate, runtime, signout
 from blackboard_sync.config import Config
 from blackboard_sync.errors import EXIT_ERROR, LoginRequired
 from blackboard_sync.i18n import tr
@@ -171,6 +171,29 @@ def run_sync_guarded(job: str, settings: Settings, term_name: str = "", term_id:
         return RunOutcome(status="error", message=str(exc), finished_at=utcnow())
 
 
+def run_calendar_guarded(config: Config, action: str = "sync", *, cancel=None, **options) -> gcal.CalendarStatus:
+    """Calendar failures never change the Blackboard outcome; workers always report back."""
+    try:
+        gcal.perform(config, action, cancel=cancel, **options)
+    except Exception as exc:
+        from dataclasses import replace
+        from blackboard_sync.errors import BlackboardSyncError, CalendarAuthExpired
+        saved = gcal.status(config)
+        return replace(saved, last_error=str(exc) if isinstance(exc, BlackboardSyncError)
+                       else tr("Google Calendar operation failed."),
+                       needs_reconnect=saved.needs_reconnect or isinstance(exc, CalendarAuthExpired))
+    return gcal.status(config)
+
+
+def calendar_after_sync(config: Config, model: AppModel, outcome: RunOutcome) -> bool:
+    """Called on the UI thread; reserves a separate worker, never waits for Google."""
+    model.calendar = gcal.status(config)
+    if outcome.status != "ok" or model.paused or model.calendar_busy or not model.calendar.connected or model.calendar.needs_reconnect:
+        return False
+    model.calendar_busy = "sync"
+    return True
+
+
 def run_login_guarded(settings: Settings) -> tuple[bool, str]:
     """``run_login`` that turns any unexpected exception into a failed login."""
     try:
@@ -314,6 +337,7 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
     model.paused = bool((saved or {}).get("paused"))
     model.activity_log = load_activity((saved or {}).get("activity"))
     model.restore_pending((saved or {}).get("pending"))  # a move or download the last run never got to
+    model.calendar = gcal.status(config)
     refresh_hidden_folders(config, model)
     refresh_session(config, model, settings)
     if saved is None and last is not None and last.status == "ok":

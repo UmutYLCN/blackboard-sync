@@ -354,10 +354,44 @@ def build_app(config: Config, show_window: bool = False):
             self.start_sync(job="past_term")
             return True
 
+        def start_calendar(self, action="sync", **options):
+            if self.model.calendar_busy:
+                if action == "connect" and self.model.calendar_busy == "connect":
+                    self._calendar_cancel.set()
+                return
+            if action == "sync" and self.model.paused:
+                return
+            self.model.calendar_busy = action
+            self._calendar_cancel = threading.Event()
+            self.refresh()
+            def worker():
+                result = jobs.run_calendar_guarded(self.config, action, cancel=self._calendar_cancel, **options)
+                AppHelper.callAfter(self._calendar_done, result)
+            threading.Thread(target=worker, daemon=True).start()
+
+        def _calendar_done(self, result):
+            self.model.calendar_busy = None
+            self.model.calendar = result
+            self._save()
+            self.refresh()
+
+        def disconnect_calendar(self):
+            from blackboard_sync.menubar.main_window import ask_calendar_disconnect
+            choice = ask_calendar_disconnect()
+            if choice is not None:
+                self.start_calendar("disconnect", delete_calendar=choice)
+
+        def open_calendar_settings(self):
+            self.open_settings()
+            self._window.show_calendar_settings()
+
         def _sync_done(self, outcome: RunOutcome) -> None:
             log.info("sync finished: %s %s", outcome.status, outcome.message)
             for note in self.model.finish_sync(outcome, jobs.utcnow()):
                 self.notify(note)
+            if jobs.calendar_after_sync(self.config, self.model, outcome):
+                self.model.calendar_busy = None
+                self.start_calendar()
             jobs.refresh_hidden_folders(self.config, self.model)  # the sync may have found new courses
             self._save()
             if self._login_after_job:
@@ -629,6 +663,9 @@ def build_app(config: Config, show_window: bool = False):
         def window_action(self, action: str) -> None:
             """A button in the main window that acts right away instead of saving."""
             {
+                "calendar_connect": lambda: self.start_calendar("connect"),
+                "calendar_sync": self.start_calendar, "calendar_disconnect": self.disconnect_calendar,
+                "calendar_settings": self.open_calendar_settings,
                 "sync": self.start_sync, "folder": self.open_school_folder, "login": self.start_login,
                 "logout": self.logout,
                 "check_updates": self.start_update_check, "update": self.start_update,
@@ -725,7 +762,7 @@ def build_app(config: Config, show_window: bool = False):
         def start_uninstall(self, _sender=None) -> None:
             from blackboard_sync.menubar.main_window import ask_uninstall
 
-            if self.model.busy or self.model.updates.busy:
+            if self.model.busy or self.model.updates.busy or self.model.calendar_busy:
                 rumps.alert("Blackboard Sync", uninstall.BUSY)
                 return
             self._uninstalling = True  # modal dialogs also run timers/wake events
@@ -774,6 +811,8 @@ def build_app(config: Config, show_window: bool = False):
                 self.tick()
                 return
             self.model.pause()
+            if self.model.calendar_busy == "sync":
+                self._calendar_cancel.set()
             log.info("sync paused")
             if self.model.busy in ("sync", "past_term"):
                 jobs.stop_sync()  # the worker reports "paused" and frees the job slot

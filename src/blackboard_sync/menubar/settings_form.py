@@ -5,7 +5,7 @@ is one scrolling page of sections, each a card of rows (``SECTIONS``, in the ord
 ``SECTION_ORDER``): Account (school address, who is signed in, sign in or out), Sync
 (sync interval, start at login, language), Folder (destination), Past terms (download a
 past term once), Updates (automatic checks, check now, version) and, last, a Danger
-zone (uninstall). A slot between Sync and Folder is kept for a Calendar section. Dersler (``courses.py``) picks the courses that sync. The GUI layers (``main_window.py`` on macOS,
+zone (uninstall). Calendar connection actions sit between Sync and Folder. Dersler (``courses.py``) picks the courses that sync. The GUI layers (``main_window.py`` on macOS,
 ``windows/main_window.py``) only draw ``FormValues`` and ``WindowStatus`` and
 report which button was pressed.
 
@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from blackboard_sync import __version__, uninstall
+from blackboard_sync.gcal import CalendarStatus
+from blackboard_sync.deadlines import parse_due
 from blackboard_sync.i18n import DEFAULT_LANGUAGE, LANGUAGES, language_name, normalize_language, ntr, tr
 from blackboard_sync.menubar.model import (
     DEST_MOVE,
@@ -87,6 +89,8 @@ T_DEST_CHANGE_NOTE = tr("If you change the folder you can move the downloaded fi
                         "download them again.")
 T_DEST_HINT = T_DEST_ROOT_NOTE + " " + T_DEST_CHANGE_NOTE
 T_PAST_DOWNLOAD = tr("Download past term")
+T_COMING_SOON = tr("Coming soon")
+T_PAST_COMING_SOON = tr("Past-term downloads are being redesigned and will return soon.")
 T_PAST_DOWNLOADING = tr("Downloading…")
 T_PAST_NOTE = tr("A past term is downloaded once and not updated.")
 T_PAST_EMPTY = tr("No past terms to download.")
@@ -132,7 +136,7 @@ def window_height(content: float, chrome: float, available: float) -> int:
 # Cancel); the others act at once (a button) or only choose (the past term).
 SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER = "account", "sync", "calendar", "folder"
 SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER = "past_terms", "updates", "danger"
-# Top to bottom. SECTION_CALENDAR has no section yet: the page skips it until one is defined.
+# Top to bottom; Calendar actions are immediate, outside the saved form.
 SECTION_ORDER = (SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER, SECTION_PAST_TERMS,
                  SECTION_UPDATES, SECTION_DANGER)
 
@@ -179,6 +183,11 @@ SECTIONS = {section.key: section for section in (
         SettingRow("autostart", T_AUTOSTART, T_AUTOSTART_DETAIL, CONTROL_SWITCH, field="autostart"),
         SettingRow("language", T_LANGUAGE_LABEL, T_LANGUAGE_RESTART, CONTROL_POPUP, field="language"),
     )),
+    SettingsSection(SECTION_CALENDAR, tr("Google Calendar"), (
+        SettingRow("google_calendar", "", detail=" ", button=tr("Connect Google Calendar")),
+        SettingRow("google_calendar_sync", tr("Sync calendar now"), button=tr("Sync calendar now")),
+        SettingRow("google_calendar_disconnect", tr("Disconnect Google Calendar"), button=tr("Disconnect")),
+    ), footer=tr("Sends deadlines to a dedicated Blackboard Deadlines calendar. Your other calendars stay private.")),
     SettingsSection(SECTION_FOLDER, T_SECTION_FOLDER, (
         SettingRow("dest", T_DEST_LABEL, T_DEST_ROOT_NOTE, CONTROL_FIELD, field="dest", button=T_CHOOSE_FOLDER),
     ), footer=T_DEST_CHANGE_NOTE),
@@ -198,7 +207,7 @@ SECTIONS = {section.key: section for section in (
 
 
 def settings_sections() -> tuple[SettingsSection, ...]:
-    """The sections the page shows, in order; the Calendar slot has none yet."""
+    """The sections the page shows, in order."""
     return tuple(SECTIONS[key] for key in SECTION_ORDER if key in SECTIONS)
 
 
@@ -216,16 +225,69 @@ class RowState:
 
 def row_states(status: "WindowStatus") -> dict[str, RowState]:
     """The live part of the rows (who is signed in, past terms, the update button, uninstall)."""
+    calendar = calendar_presentation(status.calendar, status.calendar_busy, status.calendar_paused)
     return {
+        "google_calendar": RowState(title=calendar.title, detail=calendar.detail, button=calendar.button,
+                                     enabled=calendar.enabled, warning=calendar.warning),
+        "google_calendar_sync": RowState(button=calendar.sync_button, enabled=calendar.sync_enabled),
+        "google_calendar_disconnect": RowState(enabled=calendar.disconnect_enabled),
         "account": RowState(title=status.account, button=status.account_title, enabled=status.account_enabled,
                             warning=status.account_warning),
-        "past_term": RowState(enabled=bool(status.past_terms) and not status.past_running),
+        "past_term": RowState(enabled=status.past_available and bool(status.past_terms) and not status.past_running),
         "past_download": RowState(detail=status.past_message,
-                                  button=T_PAST_DOWNLOADING if status.past_running else T_PAST_DOWNLOAD,
-                                  enabled=status.past_enabled, running=status.past_running),
+                                  button=(T_COMING_SOON if not status.past_available else
+                                          T_PAST_DOWNLOADING if status.past_running else T_PAST_DOWNLOAD),
+                                  enabled=status.past_available and status.past_enabled,
+                                  running=status.past_available and status.past_running),
         "update": RowState(title=status.version, button=status.update_title, enabled=status.update_enabled),
         "uninstall": RowState(enabled=status.uninstall_enabled),
     }
+
+
+@dataclass(frozen=True)
+class CalendarPresentation:
+    """One stable card: status, explanation, and only the relevant actions."""
+    title: str
+    detail: str
+    button: str
+    enabled: bool = True
+    warning: bool = False
+    show_connect: bool = True
+    show_sync: bool = False
+    show_disconnect: bool = False
+    sync_button: str = ""
+    sync_enabled: bool = False
+    disconnect_enabled: bool = False
+
+
+def calendar_presentation(status: CalendarStatus, busy: str | None = None,
+                          paused: bool = False) -> CalendarPresentation:
+    reconnect = status.needs_reconnect or bool(status.last_error)
+    connect = not status.connected or reconnect or busy == "connect"
+    controls = dict(show_connect=connect, show_sync=status.connected and not connect,
+                    show_disconnect=status.connected,
+                    sync_button=tr("Syncing…") if busy == "sync" else tr("Sync calendar now"),
+                    sync_enabled=status.connected and not reconnect and not busy and not paused,
+                    disconnect_enabled=status.connected and not busy)
+    if busy:
+        return CalendarPresentation(tr("Google Calendar operation in progress…"),
+                                    tr("You can cancel while authorization is waiting in the browser.")
+                                    if busy == "connect" else tr("Please wait for the calendar operation to finish."),
+                                    tr("Cancel"), busy == "connect", **controls)
+    if reconnect:
+        return CalendarPresentation(tr("Google Calendar needs to be reconnected") if status.needs_reconnect
+                                    else tr("Google Calendar error"), status.last_error or "",
+                                    tr("Reconnect"), warning=True, **controls)
+    if status.connected:
+        instant = parse_due(status.last_sync)
+        when = instant.astimezone().strftime("%Y-%m-%d %H:%M") if instant else None
+        return CalendarPresentation(tr("Connected"),
+                                    tr("Last calendar sync: {time}").format(time=when)
+                                    if when else tr("Calendar has not synced yet."),
+                                    "", False, **controls)
+    return CalendarPresentation(tr("Not connected"),
+                                tr("Connect to see Blackboard deadlines in Google Calendar."),
+                                tr("Connect Google Calendar"), **controls)
 
 
 def dest_change_message(old: Path, new: Path, files: int) -> str:
@@ -300,11 +362,17 @@ class WindowStatus:
     # A past term is downloading: the button says so, the list is locked and the illustration moves
     # until the download is complete.
     past_running: bool = False
+    past_available: bool = False
     uninstall_enabled: bool = False
+    calendar: CalendarStatus = CalendarStatus()
+    calendar_busy: str | None = None
+    calendar_paused: bool = False
 
 
 def past_term_status(model: AppModel) -> tuple[tuple[str, ...], str, bool]:
     """(terms, message, download enabled) for the Eski dönemler section."""
+    if not model.past_terms_available:
+        return (T_COMING_SOON,), T_PAST_COMING_SOON, False
     if not model.configured or model.account()[0] is None:
         return (), T_PAST_SIGN_IN, False
     if model.busy == "past_terms" or (not model.past_terms_loaded and model.past_terms_retry_at is None):
@@ -341,6 +409,7 @@ def window_status(model: AppModel) -> WindowStatus:
         update_title, update_action = T_CHECK_NOW, "check_updates"
     past_terms, past_message, past_enabled = past_term_status(model)
     return WindowStatus(
+        calendar=model.calendar, calendar_busy=model.calendar_busy, calendar_paused=model.paused,
         account=account,
         account_warning=expired and model.busy != "login",
         account_title=title,
@@ -353,8 +422,9 @@ def window_status(model: AppModel) -> WindowStatus:
         past_terms=past_terms,
         past_message=past_message,
         past_enabled=past_enabled,
-        past_running=model.busy == "past_term",
-        uninstall_enabled=idle and updates.busy is None,
+        past_running=model.past_terms_available and model.busy == "past_term",
+        past_available=model.past_terms_available,
+        uninstall_enabled=idle and updates.busy is None and model.calendar_busy is None,
     )
 
 

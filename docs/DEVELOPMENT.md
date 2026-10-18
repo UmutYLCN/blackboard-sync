@@ -958,3 +958,102 @@ then exit after launching it. Installation waits until sync/sign-in is idle and
 blocks new jobs while downloading. Update-toast clicks use the current user's
 `HKCU\Software\Classes\blackboard-sync` URI registration to forward a fixed
 update action to the running tray; no URI-supplied command is executed.
+
+## Optional Google Calendar integration
+
+`gcal.py` is GUI-free and uses `requests` plus stdlib only. `calendar
+connect|status|sync|disconnect` is a separate CLI group; `sync.py` and `deadlines.py`
+have no Google dependency or implicit Google network calls. See
+[GOOGLE_CALENDAR_SETUP.md](GOOGLE_CALENDAR_SETUP.md) for client creation and manual
+acceptance checks. The public Desktop client ID is set in `gcal.CLIENT_ID`; development clients can
+override it with `BBSYNC_GOOGLE_CLIENT_ID`.
+
+OAuth uses the system browser, an IPv4 loopback listener on a random port,
+state verification, PKCE S256 and offline access. The only scope is
+`https://www.googleapis.com/auth/calendar.app.created`, verified against Google's
+current scope/method documentation: it permits creating and managing the app's
+secondary calendars without granting access to the user's main calendar. No user
+calendar list is fetched. Tokens and OAuth callback URLs must never be logged.
+Native credential stores hold refresh tokens (macOS security CLI over stdin;
+Windows pywin32); other platforms use `session.write_private_json`. An explicit
+vault failure is an error, not a silent fallback to plaintext. Access tokens live
+in memory. Profile-specific vault names prevent separate data directories from
+sharing credentials accidentally.
+
+A dedicated `Blackboard Deadlines` secondary calendar ID is saved privately.
+Missing calendars (404/410) are recreated. Source is `State.deadline_courses`,
+excluding `courses.load_disabled`, keyed like `due_reminders`: course ID plus
+column ID. Event times are UTC, ending at the due instant, starting 30 minutes
+earlier. Google reminders default off (opt-in parameter). Every managed event has
+private `bbKey`, `bbHash` and `bbManaged` properties. Only events filtered by
+`bbManaged=1` in the dedicated calendar are read, with pagination. The mapping is
+reconstructed from these properties on each run, so loss of the mapping or a
+crash after a remote write is recoverable. Each insertion gets a fresh random event ID, reused across its HTTP retries.
+This makes ambiguous insert conflicts recoverable without reusing deleted IDs
+when a hidden course is enabled again (Google may retain deleted tombstones). A key's mapping is saved atomically after each successful
+write; partial failure never throws away successful work.
+
+The source hash covers title, normalized due instant, Blackboard link, course
+name and reminder choice. An unchanged run has zero event writes. Removed keys
+and hidden courses are deleted; elapsed due times alone never cause deletion.
+New events older than 14 days are skipped. An unreadable/missing Blackboard cache
+must not be interpreted as removal of every deadline. Requests are sequential,
+time bounded, and retry 429, 5xx and rate-limit reasons with bounded backoff.
+Cross-process locking serializes Calendar actions separately from Blackboard.
+`CalendarAuthExpired` belongs to the existing user-facing exception hierarchy;
+it does not sign the student out of Blackboard.
+
+Both desktop apps call `jobs.calendar_after_sync` after successful Blackboard
+runs (including scheduled/manual/Resume), then launch an independent Calendar
+worker. Calendar failures do not replace the successful Blackboard outcome.
+`AppModel.calendar` is a `CalendarStatus` (connected, last_sync, last_error,
+needs_reconnect); it is persisted with app state, with durable Calendar metadata
+in `google-calendar.json`. `calendar_busy` and cancellation belong to this worker,
+independent of the Blackboard slot. Pause cancels Calendar sync between requests
+and prevents new automatic work. A revoked grant creates a Home attention item
+whose action opens the macOS Calendar settings section. `settings_form` provides
+GUI-free row presentation for every state. Connection and disconnection act
+immediately and never modify the Save/Cancel form values. Windows shares the
+worker but not the native connection controls yet; see the setup guide.
+
+Disconnect deletes the dedicated calendar only on explicit opt-in, then revokes
+the refresh token and clears local connection/mapping/credential state. Keeping
+the Google calendar retains just its ID in private `google-calendar-target.json`,
+so reconnect can reuse/delete the original calendar without creating another one.
+If no ID is known, a delete request fails explicitly before revocation; it never
+reports deletion as successful. Do not broaden the OAuth scope to enumerate the
+user's calendar list. Older orphaned calendars require manual cleanup in Google.
+The macOS section uses one stable compact card with a status, a local-time last
+sync, and a single action group: Connect; Sync/Disconnect; or Reconnect/Disconnect.
+A connected status is text rather than a disabled duplicate action. If
+Google cannot be reached, report failure so revocation can be retried. A revoked
+grant cannot delete a remote calendar: reconnect or delete it in Google settings.
+The data sent is described in the README, usage guide, privacy policy and Store
+listing drafts. No site publication or Store submission is part of this change.
+
+Suggested commit message:
+
+```text
+Add optional Google Calendar deadline sync and desktop background integration
+
+Use calendar.app.created: the narrow scope supports creating and managing only
+app-created secondary calendars, without access to the user's primary calendar.
+```
+
+
+## Release 1.6.0 controls
+
+Desktop archive downloads are temporarily unavailable behind the default-false
+`PAST_TERMS_AVAILABLE` product switch. The shared model rejects archive and lookup
+jobs; Settings displays a disabled Coming soon state and opening it causes no
+archive HTTP request. Tests of the retained engine explicitly opt in to exercise
+its scheduling and retry behavior for later reintroduction; release-default tests
+verify the unavailable presentation and job guards. CLI archive operations are
+unchanged.
+
+Desktop OAuth metadata comes from the gitignored local JSON for source/local
+builds, and from the Actions repository secret for release builds. PyInstaller
+uses `packaging/google_oauth_bundle.py` on both platforms. It writes only client
+ID/secret metadata to a private build file and includes it in the bundle; it never
+packages a user's Google token or Blackboard session. Release CI requires valid
+metadata and never includes it in test-job environments or tracked source.

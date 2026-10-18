@@ -16,7 +16,7 @@ CHECK_LOGIN_RUNTIME = "--check-login-runtime"
 CHECK_PACKAGE = "--check-package"
 # Hidden self-test used by CI: draws a PDF note with the bundled fonts.
 CHECK_NOTE_PDF = "--check-note-pdf"
-CLI_COMMANDS = {"login", "sync", "check", "past-terms", "uninstall", "--version", "-h", "--help"}
+CLI_COMMANDS = {"login", "sync", "check", "past-terms", "uninstall", "calendar", "--version", "-h", "--help"}
 # CLI options that come before the subcommand; the menu bar app passes the
 # school from its settings window as ``--base-url URL sync ...``.
 CLI_GLOBAL_OPTIONS = {"--base-url", "--data-dir", "-v", "--verbose"}

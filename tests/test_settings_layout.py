@@ -32,12 +32,12 @@ def all_rows():
 def test_the_sections_come_in_the_planned_order_with_a_slot_for_the_calendar():
     assert SECTION_ORDER == (SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER, SECTION_PAST_TERMS,
                              SECTION_UPDATES, SECTION_DANGER)
-    # The calendar has its place between Sync and Folder but no section yet: the page skips it.
-    assert SECTION_CALENDAR not in SECTIONS
+    # The immediate Calendar controls occupy the reserved slot.
+    assert SECTION_CALENDAR in SECTIONS
     assert [section.key for section in settings_sections()] == [
-        SECTION_ACCOUNT, SECTION_SYNC, SECTION_FOLDER, SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER]
+        SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER, SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER]
     assert [section.title for section in settings_sections()] == [
-        "Account", "Sync", "Folder", "Past terms", "Updates", "Danger zone"]
+        "Account", "Sync", "Google Calendar", "Folder", "Past terms", "Updates", "Danger zone"]
 
 
 def test_the_rows_of_each_section():
@@ -45,6 +45,7 @@ def test_the_rows_of_each_section():
     assert rows == {
         SECTION_ACCOUNT: ["base_url", "account"],
         SECTION_SYNC: ["interval", "autostart", "language"],
+        SECTION_CALENDAR: ["google_calendar", "google_calendar_sync", "google_calendar_disconnect"],
         SECTION_FOLDER: ["dest"],
         SECTION_PAST_TERMS: ["past_term", "past_download"],
         SECTION_UPDATES: ["check_updates", "update"],
@@ -69,11 +70,13 @@ def test_controls_match_what_they_edit():
     # What acts at once (or only chooses) has no field, so Save and Cancel never touch it.
     immediate = {row.key: row.control for row in all_rows() if not row.field}
     assert immediate == {"account": CONTROL_BUTTON, "past_term": CONTROL_POPUP, "past_download": CONTROL_BUTTON,
-                         "update": CONTROL_BUTTON, "uninstall": CONTROL_BUTTON}
+                         "update": CONTROL_BUTTON, "uninstall": CONTROL_BUTTON,
+                         "google_calendar": CONTROL_BUTTON, "google_calendar_sync": CONTROL_BUTTON,
+                         "google_calendar_disconnect": CONTROL_BUTTON}
 
 
 def test_every_row_has_a_description_or_a_live_one():
-    live = {"account", "update", "past_download"}  # the status supplies their text
+    live = {"account", "update", "past_download", "google_calendar"}  # the status supplies their text
     for row in all_rows():
         assert row.title or row.key in live, row.key
         if row.key not in live:
@@ -95,7 +98,7 @@ def test_the_folder_note_and_the_hint_say_what_they_said_before():
 
 
 def status(**kwargs):
-    values = dict(account="Signed in as Ada", account_warning=False, account_title="Sign out", account_action="logout",
+    values = dict(past_available=True, account="Signed in as Ada", account_warning=False, account_title="Sign out", account_action="logout",
                   account_enabled=True, version="Version 1.5.5", update_title="Check now", update_action="check_updates",
                   update_enabled=True)
     values.update(kwargs)

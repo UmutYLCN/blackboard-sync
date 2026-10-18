@@ -257,3 +257,9 @@ def test_gui_starts_the_download_with_the_listed_term_id(tmp_path):
     runner = fake_runner(stdout=json.dumps({"status": "ok", "past_term": "Ek Dönem"}))
     jobs.run_sync("past_term", settings, runner=runner, term_name=model.past_term, term_id=model.past_term_id)
     assert runner.calls[0][0][-2:] == ["--term-id", "_41_1"]
+
+
+@pytest.fixture(autouse=True)
+def retained_archive_engine(monkeypatch):
+    """Exercise the retained archive engine; release-default guards have their own tests."""
+    monkeypatch.setattr("blackboard_sync.menubar.model.PAST_TERMS_AVAILABLE", True)

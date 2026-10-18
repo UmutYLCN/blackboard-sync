@@ -206,6 +206,12 @@ class TrayApp:
             self.post(self.job_done, job, result)
         threading.Thread(target=worker, daemon=True).start()
 
+    def calendar_done(self, status):
+        self.model.calendar_busy = None
+        self.model.calendar = status
+        self.save()
+        self.refresh()
+
     def job_done(self, job, result):
         if job == "login":
             self.model.finish_login(*result, jobs.utcnow())
@@ -216,6 +222,13 @@ class TrayApp:
         else:
             for note in self.model.finish_sync(result, jobs.utcnow()):
                 threading.Thread(target=self.notify, args=(note,), daemon=True).start()
+            if jobs.calendar_after_sync(self.config, self.model, result):
+                cancel = threading.Event()
+                self.calendar_cancel = cancel
+                def worker():
+                    status = jobs.run_calendar_guarded(self.config, cancel=cancel)
+                    self.post(self.calendar_done, status)
+                threading.Thread(target=worker, daemon=True).start()
             jobs.refresh_hidden_folders(self.config, self.model)  # the sync may have found new courses
         self.save()
         if self.login_after_job:
@@ -303,6 +316,8 @@ class TrayApp:
             self.start_next()
             return
         self.model.pause()
+        if self.model.calendar_busy == "sync":
+            self.calendar_cancel.set()
         if self.model.busy in ("sync", "past_term"):
             jobs.stop_sync()  # the worker reports "paused" and frees the job slot
         self.save()
@@ -362,7 +377,7 @@ class TrayApp:
             return
         elif action == "pause":
             self.toggle_pause()
-        elif action == "settings":
+        elif action in ("settings", "calendar_settings"):
             self.show_window(GENERAL)
         elif action == "deadline":
             if value.startswith(self.config.base_url.rstrip("/") + "/"):
