@@ -79,13 +79,14 @@ class CredentialStore:
     A vault failure is reported, never silently downgraded to plaintext.
     Each data directory has a separate credential, including isolated CLI profiles.
     """
-    def __init__(self, directory: Path):
+    def __init__(self, directory: Path, *, platform: str | None = None):
+        self.platform = platform or sys.platform
         self.path = directory / "google-token.json"
         self.account = hashlib.sha256(str(directory.resolve()).encode()).hexdigest()
         self.service = "blackboard-sync.google-calendar"
 
     def get(self) -> str | None:
-        if sys.platform == "darwin":
+        if self.platform == "darwin":
             result = subprocess.run(["/usr/bin/security", "find-generic-password", "-s", self.service,
                                      "-a", self.account, "-w"], capture_output=True, text=True)
             if result.returncode == 44:
@@ -93,7 +94,7 @@ class CredentialStore:
             if result.returncode:
                 raise BlackboardSyncError(tr("Could not access the Google Calendar credential store."))
             return result.stdout.strip() or None
-        if sys.platform == "win32":
+        if self.platform == "win32":
             import win32cred
             import pywintypes
             try:
@@ -107,7 +108,7 @@ class CredentialStore:
         return _read(self.path).get("refresh_token")
 
     def set(self, token: str) -> None:
-        if sys.platform == "darwin":
+        if self.platform == "darwin":
             # Send the token over stdin, never in argv or a log message.
             command = shlex.join(["add-generic-password", "-U", "-s", self.service,
                                   "-a", self.account, "-w", token]) + "\n"
@@ -115,7 +116,7 @@ class CredentialStore:
                                     capture_output=True, text=True)
             if result.returncode:
                 raise BlackboardSyncError(tr("Could not access the Google Calendar credential store."))
-        elif sys.platform == "win32":
+        elif self.platform == "win32":
             import win32cred
             win32cred.CredWrite({"Type": win32cred.CRED_TYPE_GENERIC,
                                 "TargetName": self.service + self.account,
@@ -125,12 +126,12 @@ class CredentialStore:
             write_private_json(self.path, {"refresh_token": token})
 
     def clear(self) -> None:
-        if sys.platform == "darwin":
+        if self.platform == "darwin":
             result = subprocess.run(["/usr/bin/security", "delete-generic-password", "-s", self.service,
                                      "-a", self.account], capture_output=True)
             if result.returncode not in (0, 44):
                 raise BlackboardSyncError(tr("Could not access the Google Calendar credential store."))
-        elif sys.platform == "win32":
+        elif self.platform == "win32":
             import win32cred
             import pywintypes
             try:

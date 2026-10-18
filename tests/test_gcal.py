@@ -354,10 +354,9 @@ def test_insert_conflict_uses_same_stable_id(client):
     assert event['summary'] == '[CSE101] Essay'
 
 
-def test_fallback_credentials_are_private(tmp_path, monkeypatch):
+def test_fallback_credentials_are_private(tmp_path):
     from tests.conftest import assert_owner_only
-    monkeypatch.setattr(gcal.sys, 'platform', 'linux')
-    store = gcal.CredentialStore(tmp_path)
+    store = gcal.CredentialStore(tmp_path, platform='linux')
     assert store.get() is None
     store.set('refresh-private')
     assert store.get() == 'refresh-private'
