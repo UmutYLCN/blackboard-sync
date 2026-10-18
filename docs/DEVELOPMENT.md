@@ -955,6 +955,45 @@ text through pystray, so expiry uses the shared warning label and a red icon.
 Idle is green, syncing blue, and errors orange. Settings saves and exit wait
 until a running sync/sign-in finishes. For packaged installation, see the [README](../README.md).
 
+#### The WebView2 main window (in progress)
+
+The Tk main window is being replaced by a page shown in Microsoft Edge WebView2
+through pywebview (already shipped for the in-app sign-in). It draws Home, the
+sidebar and the top bar so far; the other pages still show a placeholder, so it
+is off unless you start the app with `BLACKBOARD_SYNC_UI=web`:
+
+```powershell
+$env:BLACKBOARD_SYNC_UI = "web"; .\.venv\Scripts\python.exe -m blackboard_sync.windows
+```
+
+Without WebView2 the app logs why and opens the Tk window. How it is put together:
+
+- `windows/webui/` holds `index.html`, `app.css` (light and dark follow the Windows
+  setting), `app.js` and a subset of Material Symbols Rounded icons (Apache-2.0,
+  `webui/icons/LICENSE`). There is no build step, CDN or network access.
+- `windows/webui_page.py` puts them into one document. Its Content-Security-Policy
+  lets only the style and script with this launch's nonce run; `'unsafe-eval'` is
+  there because pywebview's own bridge needs it. `app.js` sets every text with
+  `textContent`, never as markup (`tests/test_webui.py` checks for the unsafe calls).
+- `windows/webui_state.py` turns the shared `MainStatus` into JSON. A click sends back
+  only an id from that state, and `windows/web_window.py` checks it before acting:
+  the page cannot name a file or address of its own.
+- Threads: pywebview's GUI loop owns the main thread; `TrayApp` runs on its own
+  thread with `windows/loop.py`'s `EventLoop`, which offers what it used of the Tk
+  root (`after`, `event_generate`, `mainloop`). The page asks for new states itself
+  (`Bridge.next_state` waits until there is one), so the app never waits on the GUI.
+  Closing the window hides it; Quit destroys it and pywebview's loop ends.
+- Questions (sign out, quit while busy, language restart) are native Windows message boxes.
+
+To see the page without Windows, render invented states in Chromium:
+
+```sh
+PYTHONPATH=src python scripts/webui-preview.py --out /tmp/webui [--lang tr] [--font Inter.woff2]
+```
+
+It writes an HTML file per state and screenshots in light and dark at 1024×720 and
+1280×900 (`docs/screenshots/windows-webui/` has a few).
+
 The Windows tray also uses the shared daily update checker. Settings include
 **Check for updates automatically**; the version row checks manually even when
 that setting is off. Source checkouts open the release page for updates.

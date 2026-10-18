@@ -118,7 +118,8 @@ def test_update_banner_only_where_the_updater_runs():
 def test_document_is_self_contained_and_every_script_and_style_carries_the_nonce():
     html = webui_page.document("abc123")
     assert "{{" not in html
-    assert "script-src 'nonce-abc123'" in html and "style-src 'nonce-abc123'" in html
+    assert "script-src 'nonce-abc123' 'unsafe-eval';" in html and "style-src 'nonce-abc123';" in html
+    assert "unsafe-inline" not in html
     assert "default-src 'none'" in html
     assert re.findall(r"<script(?: [^>]*)?>", html) == ['<script nonce="abc123">']
     assert re.findall(r"<style(?: [^>]*)?>", html) == ['<style nonce="abc123">']

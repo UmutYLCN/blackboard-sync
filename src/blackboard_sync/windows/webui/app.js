@@ -340,9 +340,28 @@
 
   window.app = { render };
 
+  // Python answers next_state as soon as there is a state newer than the one drawn
+  // (or with null after a while), so the page is redrawn without Python calling in.
+  async function follow() {
+    let revision = 0;
+    for (;;) {
+      try {
+        const next = await call("next_state", revision);
+        if (next && next.revision > revision) {
+          revision = next.revision;
+          render(next.state);
+        }
+      } catch (error) {
+        await new Promise((resume) => setTimeout(resume, 1000)); // the app is busy quitting or restarting
+      }
+    }
+  }
+
   if (window.__PREVIEW_STATE__) {
     render(window.__PREVIEW_STATE__);
+  } else if (window.pywebview && window.pywebview.api) {
+    follow();
   } else {
-    window.addEventListener("pywebviewready", () => call("ready").then((first) => first && render(first)));
+    window.addEventListener("pywebviewready", follow, { once: true });
   }
 })();

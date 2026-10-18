@@ -22,7 +22,14 @@ _PATH = re.compile(r'<path d="([^"]+)"')
 
 
 def csp(nonce: str) -> str:
-    return (f"default-src 'none'; style-src 'nonce-{nonce}'; script-src 'nonce-{nonce}'; "
+    """No markup can bring a script, style or request of its own.
+
+    'unsafe-eval' is there for pywebview alone: its bridge builds the ``api`` functions with
+    ``new Function`` and returns every result through ``evaluate_js``, which is an ``eval``.
+    That reaches only code already running (ours and pywebview's); ``app.js`` never evaluates
+    a string (``tests/test_webui.py`` checks).
+    """
+    return (f"default-src 'none'; style-src 'nonce-{nonce}'; script-src 'nonce-{nonce}' 'unsafe-eval'; "
             "img-src data:; font-src data:; base-uri 'none'; form-action 'none'")
 
 
