@@ -43,6 +43,8 @@ jobs:
       # sign-in window needs WebKit.
       - name: Check the app can start the sign-in runtime
         run: dist/"Blackboard Sync.app"/Contents/MacOS/"Blackboard Sync" --check-login-runtime
+      - name: Check bundled Google Calendar client metadata
+        run: dist/"Blackboard Sync.app"/Contents/MacOS/"Blackboard Sync" --check-google-calendar
       - name: Check the app can draw a PDF note
         run: dist/"Blackboard Sync.app"/Contents/MacOS/"Blackboard Sync" --check-note-pdf
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -238,6 +240,8 @@ jobs:
           BBSYNC_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.GOOGLE_CALENDAR_OAUTH_CLIENT_JSON }}
           BBSYNC_REQUIRE_GOOGLE_OAUTH: "1"
         run: ./scripts/build-windows.ps1
+      - name: Check bundled Google Calendar client metadata
+        run: '& "dist/Blackboard Sync/blackboard-sync-cli.exe" --check-google-calendar'
       # Install it the way the updater does (silently), check the installed app,
       # then uninstall and check nothing but the app was removed.
       - name: Smoke-test the installer

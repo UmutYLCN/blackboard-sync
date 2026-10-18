@@ -94,3 +94,20 @@ def test_release_build_cannot_silently_omit_credentials(tmp_path):
     with pytest.raises(ValueError) as error:
         module.oauth_datas(tmp_path, {'BBSYNC_GOOGLE_OAUTH_CLIENT_JSON': 'private-invalid-input'})
     assert 'private-invalid-input' not in str(error.value)
+
+
+def test_packaged_metadata_self_check_never_prints_secret(tmp_path, monkeypatch, capsys):
+    import sys
+    entry_path = Path(__file__).resolve().parents[1] / 'packaging/app_entry.py'
+    spec = importlib.util.spec_from_file_location('test_release_entry', entry_path)
+    entry = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(entry)
+    metadata_file = tmp_path / 'desktop.json'
+    metadata_file.write_text(json.dumps(METADATA))
+    monkeypatch.setenv('BBSYNC_GOOGLE_OAUTH_CLIENT_FILE', str(metadata_file))
+    monkeypatch.setattr(sys, 'argv', ['Blackboard Sync', '--check-google-calendar'])
+    assert entry.main() == 0
+    assert capsys.readouterr().out == 'Google Calendar client configuration OK.\n'
+    metadata_file.unlink()
+    assert entry.main() == 1
+    assert 'missing' in capsys.readouterr().err
