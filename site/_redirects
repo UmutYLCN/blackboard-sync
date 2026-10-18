@@ -1,4 +1,4 @@
-# The privacy page moved from /gizlilik (PR #75) to /privacy.
-/gizlilik /privacy 301
-/gizlilik.html /privacy 301
-/gizlilik/ /privacy 301
+# Keep the original Turkish privacy addresses in Turkish.
+/gizlilik /tr/privacy 301
+/gizlilik.html /tr/privacy 301
+/gizlilik/ /tr/privacy 301

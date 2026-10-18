@@ -1,6 +1,6 @@
 # Blackboard Sync promotional site
 
-A single English promotional page with local assets, plain HTML/CSS/JavaScript, and no build or dependencies.
+English and Turkish promotional pages with local assets, plain HTML/CSS/JavaScript, and no build or dependencies.
 
 Preview from the repository root:
 
@@ -19,7 +19,24 @@ npx wrangler@4.149.0 dev --persist-to ../.wrangler/state
 
 Keeping local state outside `site/` stops the dev server from reloading on its own writes.
 
-The privacy policy is `privacy.html`, in English, served at `/privacy`. `_redirects` sends the old Turkish address `/gizlilik` (and `/gizlilik.html`) there with a 301. Extensionless paths and redirects are handled by Cloudflare's asset server, so check them with `wrangler dev` rather than `python3 -m http.server`.
+Browser checks run in the Website GitHub Actions workflow against Wrangler's
+real asset server, including EN/TR navigation without JavaScript, narrow screens,
+download API failures and the legacy privacy redirects. With the server above
+running and pytest/Playwright plus Chromium installed, run
+`python -m pytest -q site/tests` from the repository root. Screenshots are attached
+to the workflow run; tests and test caches are excluded from published assets.
+
+English stays at `/` and `/privacy`. Turkish is served at `/tr/` and `/tr/privacy`
+from `tr/index.html` and `tr/privacy.html`. The EN/TR links in the header switch to
+the corresponding page, and internal links keep the current language. These are
+complete HTML pages with translated metadata and alternate-language links; they
+work without JavaScript or browser storage. Both languages use the same CSS,
+download-link script, video and images. The header scrolls with the page.
+
+`_redirects` sends the old Turkish address `/gizlilik` (and `/gizlilik.html`) to
+`/tr/privacy` with a 301. Extensionless paths and redirects are handled by
+Cloudflare's asset server, so check them with `wrangler dev` rather than
+`python3 -m http.server`.
 
 The production site is served at <https://blackboardsyncapp.com/>. The root domain is
 attached to the existing Cloudflare Worker as a custom domain; `/privacy` serves
