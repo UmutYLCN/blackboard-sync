@@ -1,12 +1,9 @@
 # Microsoft Store submission
 
-Everything for the first Microsoft Store submission of the Windows app: a checklist that
-follows Partner Center's submission sections, the listing text, Store images and the
-trailer. The maintainer tests the package on a real Windows PC and submits it in Partner
-Center; nothing here submits anything.
-
-**Deadline:** send the submission before early January 2027, or the reservation of the
-name `blackboard-sync` lapses.
+Files for Microsoft Store submissions and updates: the Partner Center checklist,
+listing text, Windows screenshots and artwork. Version 1.5.1 was the first Store
+submission; the current update targets **1.6.2** (MSIX **1.6.2.0**). The maintainer
+uploads media and submits in Partner Center; nothing here submits automatically.
 
 The package identity is already in the repository (`packaging/msix/identity.toml`,
 `docs/MSIX.md`): `UmutYLCN.blackboard-sync`, publisher display name `UmutYLCN`, reserved
@@ -38,7 +35,7 @@ Chrome), Node.js for the screenshot manifest, and `ffmpeg` for the trailer.
 
 ## Before you start
 
-1. Download the package from CI (see [4. Packages](#4-packages)).
+1. Build the submission package with the manual Store workflow (see [4. Packages](#4-packages)).
 2. Do the manual test in `docs/MSIX.md` ("Manual Windows verification still required")
    with that exact `.msix`, signed with the test certificate as described there.
 3. Use the nine final Store images in [Screenshots](#screenshots). Capture additional
@@ -74,8 +71,7 @@ Items marked **Decide** are the maintainer's call; all are collected again under
   Microsoft Store builds. Its "Microsoft Store build" section covers the package's data
   folder (`%LOCALAPPDATA%\Packages\<family name>\LocalCache\Roaming\blackboard-sync`),
   the startup task (instead of the `HKCU\…\Run` value), no GitHub contact or self-update,
-  removal through Windows Settings > Apps, and separate data from the Setup build. The old
-  `/gizlilik` address redirects to it.
+  removal through Windows Settings > Apps, and separate data from the Setup build. The `/gizlilik` address redirects to the Turkish privacy page at `/tr/privacy`.
 - [ ] **Website:** `https://blackboardsyncapp.com/`.
 - [ ] **Support contact info:** **Decide.** `https://github.com/UmutYLCN/blackboard-sync/issues`
   (what the privacy page names) or an email address. Required only for Xbox.
@@ -117,24 +113,27 @@ rating in most regions; IARC decides.
 
 ### 4. Packages
 
-The Store signs the package, so upload the **unsigned** `.msix` from CI, not the test-signed
-copy.
+The Store signs the package, so upload the **unsigned** `.msix` from the
+**Microsoft Store package** workflow. Ordinary CI artifacts omit production Google
+OAuth metadata and are for testing only.
 
-1. Pick the `main` commit you tested. The `msix` job of the **CI** workflow builds it on
-   every push to `main` and keeps it as the workflow artifact `msix`
-   (`Blackboard-Sync-<version>-x64.msix`). Artifacts expire (GitHub's default is 90 days),
-   so download it soon after the push.
-2. Download it:
+1. Run the workflow on the tested `main` commit. It requires the existing
+   `GOOGLE_CALENDAR_OAUTH_CLIENT_JSON` secret, checks Calendar configuration inside
+   the installed package and exercises startup, tray activation and package behavior.
+2. Download the artifact after the workflow succeeds:
 
    ```sh
-   gh run list --workflow ci.yml --branch main --status success --limit 5
-   gh run download <run-id> --name msix --dir store/microsoft/out/msix
+   gh workflow run store.yml --ref main
+   gh run list --workflow store.yml --status success --limit 5
+   gh run download <run-id> --name microsoft-store --dir store/microsoft/out/msix
    ```
 
-   Or: GitHub > Actions > CI > the run for that commit > Artifacts > `msix`.
-3. Partner Center > Packages: upload `Blackboard-Sync-<version>-x64.msix`. The version is
-   the app version with a fourth part of 0 (`1.5.1` → `1.5.1.0`). Each later submission
-   needs a higher version.
+   Or: GitHub > Actions > Microsoft Store package > the successful run > Artifacts >
+   `microsoft-store`. It includes the unsigned MSIX, checksum and source commit.
+3. Partner Center > Packages: replace the previous `1.5.1` package with
+   `Blackboard-Sync-1.6.2-x64.msix`. The manifest version is `1.6.2.0`, higher than
+   `1.5.1.0`. Keep the production package unsigned; never upload the smoke test's
+   test-signed copy.
 4. **Device family availability:** Windows 10/11 Desktop only (the manifest's
    `Windows.Desktop`); leave the others off.
 5. Partner Center reports the package's languages (`en-US`, the default, and `tr-TR`), the restricted capability
@@ -146,7 +145,7 @@ copy.
   needed (`listing-en.md` and `listing-tr.md`).
 - [ ] **Text:** paste from `listing-tr.md` (and `listing-en.md`): description, short
   description, product features, keywords, copyright and trademark info, developed by.
-  Leave "What's new in this version" empty for the first submission. The non-affiliation
+  Use the 1.6.2 text in "What's new in this version" for this update. The non-affiliation
   sentence is the second paragraph of the description and part of the copyright line.
 - [ ] **Screenshots:** upload `01-tek-tek.png` to `09-tepsi-menusu.png` in order, with the
   captions from the listing file. The problem card comes first, followed by the eight Windows
@@ -183,7 +182,7 @@ copy.
   explanation and a link to the demo video. Suggested text for the second case (date it):
 
   ```text
-  [date] This app downloads course files from a university's Blackboard Learn system. Signing in requires the student's own school account on the school's sign-in page, so we cannot provide a shared test account. Without an account testers can: open the app from Start (the "Get started" first-run page appears; the UI is English, with Turkish under Settings > Language), enter any Blackboard address and choose a folder, open Settings (the gear; automatic sync interval, language, start at sign-in, the note that updates come from the Microsoft Store), and close the window to see the app keep running in the notification area. A demo of a full sync: https://github.com/user-attachments/assets/d7e1e0a7-a25b-4412-824b-52ee71d25b03 . The app has no analytics. It contacts the Blackboard address the user enters and its redirects; optional Calendar sync also contacts Google. Calendar connection is currently CLI-only on Windows.
+  [date] This app downloads course files from a university's Blackboard Learn system. Signing in requires the student's own school account on the school's sign-in page, so we cannot provide a shared test account. Without an account testers can: open the app from Start (the "Get started" first-run page appears; the UI is English, with Turkish under Settings > Language), enter any Blackboard address and choose a folder, open Settings (the gear; automatic sync interval, language, start at sign-in, the note that updates come from the Microsoft Store), and close the window to see the app keep running in the notification area. The Windows screenshots and optional Windows trailer in this submission illustrate the main screens. Full sync still requires a valid school account. The app has no analytics. It contacts the Blackboard address the user enters and its redirects; optional Calendar sync also contacts Google. Optional Google Calendar connection is available in Settings; it opens the Google consent page in the default browser and manages only a dedicated Blackboard Deadlines calendar.
   ```
 
 - [ ] **Submission notification audience:** the account owner is notified by default; add

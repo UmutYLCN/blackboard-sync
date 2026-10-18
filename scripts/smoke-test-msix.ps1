@@ -3,6 +3,8 @@
 # then remove the package and the certificate. Meant for CI: it trusts the
 # certificate machine-wide, which needs an administrator. The .msix in dist
 # stays unsigned.
+param([switch]$RequireGoogleCalendar)
+
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 . (Join-Path $PSScriptRoot "windows-sdk.ps1")
@@ -78,6 +80,10 @@ try {
   Check ($out -match "login runtime ok \(Playwright, WebView2\)") "the sign-in runtimes (Playwright driver, WebView2 window) load"
   $out = Invoke-InPackage "--check-note-pdf"
   Check ($out -match "note pdf ok") "notes are drawn as PDF with the bundled fonts"
+  if ($RequireGoogleCalendar) {
+    $out = Invoke-InPackage "--check-google-calendar"
+    Check ($out -match "Google Calendar client configuration OK\.") "Google Calendar configuration loads inside the installed package"
+  }
   $out = Invoke-InPackage "--check-package"
   Check ($out -match "package ok \(.+\)") "package identity and the startup task work"
   Check ($out -match "updater off") "the packaged self-updater is off"

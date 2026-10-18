@@ -1,14 +1,11 @@
 # Store listing: English (en-US)
 
-An additional listing. The package declares only `tr-TR`, so add English under
-**Add/remove languages > Manage additional languages** (Microsoft allows listings in
-languages the package does not support). The app's interface is Turkish only, and the
-description says so. Limits as in `listing-tr.md`; the character counts below were measured.
+The English listing. The package declares `en-US` and `tr-TR`; the app supports
+English and Turkish in Settings. Limits as in `listing-tr.md`.
 
 ## Product name
 
-`blackboard-sync`. For a language without a package, Partner Center asks you to pick one
-of the reserved names; pick this one.
+`blackboard-sync` (the reserved Store name).
 
 ## Short description
 
@@ -20,7 +17,7 @@ Downloads the course files, announcements and notes from your school's Blackboar
 
 ## Description
 
-Limit 10,000, plain text, no URLs. 2,441 characters.
+Limit 10,000, plain text, no URLs.
 
 ```text
 Downloads your Blackboard course content to your computer automatically, so you no longer have to open the site and download files one by one.
@@ -43,6 +40,9 @@ Files are saved in a University folder inside the folder you choose, by term and
 OVERVIEW
 The main window lists your latest downloads; open any of them with a click. "Sync now" checks right away and "Open folder" takes you to the University folder. Closing the window keeps the app running from its icon next to the clock.
 
+CALENDAR AND ANNOUNCEMENTS
+See upcoming assignment due dates and course announcements in the app. Optionally connect Google Calendar from Settings to keep due dates in a separate Blackboard Deadlines calendar. Other calendars stay private.
+
 DELETED FILES
 Pick files you downloaded and later removed from the folder, and download them again. Files you dismiss are not suggested again.
 
@@ -53,6 +53,7 @@ SETTINGS
 • Automatic sync: every 30 minutes, every hour, every 3 hours, or manual only.
 • Start when the computer starts: the app starts in the background without opening its window. You can also turn this off in Task Manager under Startup apps.
 • Updates are installed through the Microsoft Store.
+• Light, dark or system appearance; English and Turkish interface options.
 
 PRIVACY
 • You type your password only on your school's own sign-in page; the app never sees or stores it.
@@ -62,18 +63,17 @@ PRIVACY
 
 REQUIREMENTS
 • A Blackboard Learn account at your school.
-• The app's interface is in Turkish.
+• English and Turkish interface options.
 
 Free and open source (MIT License).
 ```
 
 ## What's new in this version
 
-Limit 1,500. Leave it empty for the first submission (Microsoft's guidance); for later
-updates, for example:
+Limit 1,500. Update from the published Store version 1.5.1 to 1.6.2:
 
 ```text
-First Microsoft Store release. Updates now come through the Microsoft Store, and you can remove the app from Windows Settings > Apps.
+Version 1.6.2 brings a redesigned Windows interface, light/dark/system themes, upcoming due dates and course announcements. Connect Google Calendar directly from Settings to keep assignment due dates up to date. English and Turkish interface options are available. Past-term downloads show Coming soon while this feature is redesigned. Updates continue through the Microsoft Store.
 ```
 
 ## Product features
@@ -86,6 +86,9 @@ Also downloads attachments in assignment instructions
 Saves announcements, links and pages as Markdown notes
 A tidy University folder, by term and course
 A Windows notification when new files arrive
+Upcoming due dates and course announcements in the app
+Optional Google Calendar connection from Settings
+Light, dark and system themes; English and Turkish interface options
 Automatic sync every 30 minutes, every hour, every 3 hours, or manual only
 Deleted: pick files you removed and download them again
 Past-term downloads: coming soon
@@ -152,4 +155,4 @@ Umut Yalçın
 
 ## Optional Google Calendar privacy
 
-CLI connection enables automatic deadline updates to a dedicated Blackboard Deadlines calendar. Google receives event titles, course names, due times and Blackboard links. Tokens are stored in Windows Credential Manager; mapping and status stay in the private app data folder. Run `calendar disconnect` to revoke access and clear local Calendar data, optionally with `--delete-calendar` (keeping the calendar retains only its non-secret ID for reconnection), or revoke at https://myaccount.google.com/connections. Windows connection controls are not yet available in the GUI. Google API use follows the Google API Services User Data Policy, including Limited Use.
+Connect from Settings to enable automatic deadline updates to a dedicated Blackboard Deadlines calendar. Google receives event titles, course names, due times and Blackboard links. Tokens are stored in Windows Credential Manager; mapping and status stay in the private app data folder. Disconnect in Settings to revoke access and clear local Calendar data, optionally deleting the dedicated calendar too. Keeping the calendar retains only its non-secret ID for reconnection. Access can also be revoked at https://myaccount.google.com/connections. Google API use follows the Google API Services User Data Policy, including Limited Use.
