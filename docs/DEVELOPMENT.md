@@ -194,26 +194,27 @@ even when the menu bar icon is hidden (a crowded menu bar, the notch). While
 the window is open, or minimized, the app has a Dock icon and an app menu on
 macOS (a taskbar button on Windows). Closing the window does not quit: the
 menu bar / tray icon, the schedule and a running sync go on, and the Dock icon
-leaves with the window. **Çık** in the menu bar icon's menu (or ⌘Q while the
+leaves with the window. **Quit** in the menu bar icon's menu (or ⌘Q while the
 window is in front) quits. The start at login (`--background`) stays quiet: no
-window. The menu bar icon's menu is the same as before; **Ayarlar…** in it
-opens the main window on **Ayarlar**.
+window. The menu bar icon's menu is the same as before; **Settings…** in it
+opens the main window on **Settings**.
 
 The window is laid out like Google Drive's desktop window (the names Home, Sync
-activity and Announcements follow Drive's). **Klasörü aç** sits above the sidebar. Three
-round buttons at the top right of every page: **Duraklat / Devam et**, **Ayarlar** (the
+activity and Announcements follow Drive's). **Open folder** sits above the sidebar. Three
+round buttons at the top right of every page: **Pause / Resume**, **Settings** (the
 gear) and the account (initials; a small menu with who is signed in, sign out or in, and
-Ayarlar). A sidebar switches between the sections:
+Settings). A sidebar switches between the sections:
 
-- **Başlangıç** until you first sign in: three steps and a short form (school
-  address, folder, **Bilgisayar açılınca başlat**) with **Giriş yap**, which
+- **Get started** until you first sign in: three steps and a short form (school
+  address, folder, **Start when the computer starts**) with **Sign in**, which
   saves the form and opens the sign-in. Afterwards this section is **Home**,
-  a compact summary in two columns. On the left, a status card (**Güncel**,
-  **Senkronize ediliyor…**, **Duraklatıldı**, **Giriş gerekli** or
-  **Senkron tamamlanamadı**, with when the last sync ran, **Şimdi senkronize et** and
-  **Sürdür** / **Giriş yap** when they apply) and **Son indirilenler**, the last 10
+  a compact summary in two columns. On the left, a status card (**Up to date**,
+  **Syncing…**, **Paused**, **Sign-in needed** or
+  **Sync did not finish**, with when the last sync ran, **Sync now** and
+  **Sign in** when it applies; a paused card has no button of its own, as in Drive: the
+  top bar's play button resumes) and **Recent downloads**, the last 10
   files, notes and announcements; a click opens one in its own
-  application. Unseen downloads have a **YENİ** pill at the right end of the
+  application. Unseen downloads have a **NEW** pill at the right end of the
   row. A row is marked seen after three continuous seconds on screen while
   the window is active; its pill stays for that visit and disappears when you
   return to Home or reopen the window. Opening the file removes the
@@ -223,26 +224,26 @@ Ayarlar). A sidebar switches between the sections:
   symbol in the card. It is drawn natively (AppKit / Tk canvas), moves only while Home is
   in view and stands still with reduce motion (macOS) or animations turned off
   (Windows). On the right, **Announcements** (what needs attention, then the newest announcements, three
-  in all, or "Her şey yolunda!") and **Yaklaşan teslimler** (the next four due dates).
+  in all, or "You're all caught up!") and **Upcoming deadlines** (the next four due dates).
 - **Sync activity**: what each sync brought (files, notes, announcements), newest first,
   up to 300, with size and status like Drive's table (`menubar.json` `activity`); a click
   opens the file.
 - **Announcements**: Drive's notifications and the course announcements in one page — what
   needs attention (signed out, an update, a failed sync, warnings or unreadable courses;
   `main_window_model.attention_items`) on top, then every synced current-term announcement.
-- **Ayarlar** (the gear, not in the sidebar): the [settings](#settings).
-- **Takvim**: due dates grouped by local day, upcoming first and elapsed dates
+- **Settings** (the gear, not in the sidebar): the [settings](#settings).
+- **Calendar**: due dates grouped by local day, upcoming first and elapsed dates
   separately. Clicking opens an existing downloaded note or Blackboard. The
   app also notifies 24 hours and 1 hour
   before a due date (`deadlines.due_reminders`, `menubar.jobs.check_reminders`,
   looked up every 5 minutes); what was shown is kept in `menubar.json` under
   `reminders`, so a restart never repeats it. A job a folder change queued
   (`pending`, `move_from`) is kept there too and runs again after a restart.
-- **Dersler**: one check box per current-term course (code, title and term),
+- **Courses**: one check box per current-term course (code, title and term),
   with a line explaining that the folder mirrors Blackboard. Every course is
   ticked by default, also one that appears later. An unticked course is not
   synced at all: no request for its contents, attachments, announcements or due
-  dates, and it disappears from **Takvim**, **Announcements** and Son indirilenler
+  dates, and it disappears from **Calendar**, **Announcements** and Recent downloads
   at once; its files stay on disk. Ticking it again starts a sync that fills in
   what is missing. The choice is saved as the unticked Blackboard course
   primary keys (`_13004_1`) in `courses.json` in the data folder; every sync,
@@ -259,54 +260,56 @@ does not fit scrolls.
 
 ### Settings
 
-The settings are the **Ayarlar** page of the [main window](#the-main-window)
-(which courses sync is chosen on **Dersler**). **Ayarlar** has five parts:
+The settings are the **Settings** page of the [main window](#the-main-window)
+(which courses sync is chosen on **Courses**). **Settings** has five parts:
 
-- **Hesap** — **Okulunuzun Blackboard adresi**, prefilled with
+- **Account** — **Your school's Blackboard address**, prefilled with
   `https://blackboard.istun.edu.tr`; students of another university type their
   school's Blackboard address instead (it must be `https://`; a pasted course
   link is reduced to the site address). Below it, who is signed in and
-  **Giriş yap** (saves the window and opens the Blackboard sign-in window) or
-  **Hesaptan çıkış yap** (asks first; removes the session and all login browser data, so the next sign-in asks for the school credentials again; downloaded files, settings and sync state are kept).
-- **Klasör** — **Dosyaların kaydedileceği klasör**, prefilled with
-  `~/Documents/University`; **Seç…** opens a folder picker. The files go into
+  **Sign in** (saves the window and opens the Blackboard sign-in window) or
+  **Sign out** (asks first; removes the session and all login browser data, so the next sign-in asks for the school credentials again; downloaded files, settings and sync state are kept).
+- **Folder** — **Folder to save files in**, prefilled with
+  `~/Documents/University`; **Choose…** opens a folder picker. The files go into
   the **University** folder inside the chosen one (created when needed), or
   into the chosen folder itself when it is already named University (any case);
   the note under the field says so. Files an older version put directly into the
   chosen folder are moved into University once, at the next app start or sync
   (`relocate.migrate_to_root`); a file that cannot be moved stays and is reported.
-- **Eski dönemler** — a list of past terms (newest first, never the current
-  one) and **Eski dönemi indir**, which downloads the chosen term once into
+- **Past terms** — a list of past terms (newest first, never the current
+  one) and **Download past term**, which downloads the chosen term once into
   the same folder; it is not updated afterwards. The list is looked up in the
-  background the first time **Ayarlar** is shown after the window opens, while you
+  background the first time **Settings** is shown after the window opens, while you
   are signed in; until then it
-  says it is loading (a lookup that met a running sync tries again by itself), and **İndirilebilecek eski dönem yok.** when there is none.
-- **Senkron** — **Bilgisayar açılınca başlat**, ticked by default (see
-  [Start at login](#start-at-login)), and **Otomatik senkron**: every 30
-  minutes, **every hour** (default), every 3 hours or **Yalnızca elle** (no
-  automatic sync; the menu says "otomatik senkron kapalı" and no notifications
-  arrive until you choose **Şimdi senkronize et**). There is deliberately no
+  says it is loading (a lookup that met a running sync tries again by itself), and **No past terms to download.** when there is none.
+- **Sync** — **Start when the computer starts**, ticked by default (see
+  [Start at login](#start-at-login)), and **Automatic sync**: every 30
+  minutes, **every hour** (default), every 3 hours or **Only manually** (no
+  automatic sync; the menu says "automatic sync off" and no notifications
+  arrive until you choose **Sync now**). There is deliberately no
   shorter choice: an idle sync is a few hundred requests to the school.
-- **Güncellemeler** — **Güncellemeleri otomatik denetle**, ticked by default,
-  **Şimdi denetle** and the version number (see [Updates](#updates)), then
-  **Uygulamayı kaldır…**, which asks first and removes the app and its data
+  Below it, **Language**: English (default) or Türkçe. The choice is saved in
+  `settings.json` and read when the app starts (`i18n.py`; the Turkish texts are in
+  `locale_tr.py`), so saving a new one offers to restart the app right away.
+- **Updates** — **Check for updates automatically**, ticked by default,
+  **Check now** and the version number (see [Updates](#updates)), then
+  **Uninstall app…**, which asks first and removes the app and its data
   (downloaded course files are kept unless you tick the box).
 
-A bar with **Vazgeç** and **Kaydet** appears under **Ayarlar** once a field or
-check box was changed (**Kaydedilmemiş değişiklikler**). **Kaydet** saves them
-and the window stays open; **Vazgeç** (or Escape) puts back what is saved, and
-closing the window drops unsaved changes. **Giriş yap**, **Hesaptan çıkış
-yap**, **Eski dönemi indir**, **Şimdi denetle** and
-**Uygulamayı kaldır…** act right away. The buttons that need the app's single job
+A bar with **Cancel** and **Save** appears under **Settings** once a field or
+check box was changed (**Unsaved changes**). **Save** saves them
+and the window stays open; **Cancel** (or Escape) puts back what is saved, and
+closing the window drops unsaved changes. **Sign in**, **Sign out**, **Download past term**, **Check now** and
+**Uninstall app…** act right away. The buttons that need the app's single job
 slot (sign in, sign out, download a past term, uninstall) are greyed out while a sync or sign-in runs. Nothing is synced
-on a schedule until the settings have been saved once (on **Başlangıç** with
-**Giriş yap**, or with **Kaydet**). When you save later:
+on a schedule until the settings have been saved once (on **Get started** with
+**Sign in**, or with **Save**). When you save later:
 
 - A different school address requires signing in again; the sign-in window
   opens as soon as you save.
 - A different folder, when the old one holds downloaded files, asks what to do
   with them:
-  - **Taşı** (the default) moves every downloaded file to the same place in
+  - **Move** (the default) moves every downloaded file to the same place in
     the new folder without downloading it again. A file that cannot be moved
     (a different file of that name is already there, or it is open in another
     program) stays in the old folder and is reported; nothing is overwritten.
@@ -318,11 +321,11 @@ on a schedule until the settings have been saved once (on **Başlangıç** with
     are verified before the original is removed.
     A destination link that only points back to the original file also leaves
     the original in place and is reported.
-  - **Yeniden indir** leaves the old folder untouched and starts a sync
+  - **Download again** leaves the old folder untouched and starts a sync
     (once you are signed in) that downloads everything again into the new
     folder.
 
-  **Vazgeç** (or closing the question) keeps the old folder and saves nothing.
+  **Cancel** (or closing the question) keeps the old folder and saves nothing.
   While a sync runs the folder cannot be changed; wait for it to finish.
 
 The choices are stored in `settings.json` in the data folder (see
@@ -334,21 +337,21 @@ options still override it for the terminal.
 ### Updates
 
 Once a day the app asks GitHub whether a newer release exists (only while
-**Güncellemeleri otomatik denetle** is ticked) and posts one notification per
-new version, "Blackboard Sync 1.1.0 hazır — Güncelle". The menu then shows
-**Güncelleme var: 1.1.0 — Güncelle** above **Ayarlar…** (the row is absent
-while there is no update). **Şimdi denetle** in **Ayarlar** checks
+**Check for updates automatically** is ticked) and posts one notification per
+new version, "Blackboard Sync 1.1.0 is ready — Update". The menu then shows
+**Update available: 1.1.0 — Update** above **Settings…** (the row is absent
+while there is no update). **Check now** in **Settings** checks
 right away and answers with a notification; with an update waiting it reads
-**1.1.0 sürümüne güncelle** instead.
+**Update to 1.1.0** instead.
 
-The home page (**Başlangıç / Home**) also shows a version banner with
-a primary **Güncelle** button, directly above **Son indirilenler** on the overview.
-It uses the same update action as **Ayarlar**, stays visible while downloading with
+The home page (**Get started / Home**) also shows a version banner with
+a primary **Update** button, directly above **Recent downloads** on the overview.
+It uses the same update action as **Settings**, stays visible while downloading with
 its button disabled, and disappears when no newer release is available. The
 Microsoft Store build has no Store update detection or Store update action, so
 it keeps the existing **STORE_UPDATES** explanation without a home banner.
 
-On macOS **Güncelle** updates the app in place (`update_macos.py`). It
+On macOS **Update** updates the app in place (`update_macos.py`). It
 downloads `Blackboard-Sync-<version>.dmg` into a temporary folder, checks it
 against the release's `SHA256SUMS.txt`, attaches it hidden and read-only, and
 checks the app on it the way `install.sh` does: this release's bundle
@@ -358,14 +361,14 @@ app and says why in a notification. The verified app is copied with `ditto`
 to a hidden sibling of the running one, the image is detached, and the app
 quits; a detached shell helper waits for it to exit, swaps the new app in
 (the old one is restored if a step fails) and opens it again, which then
-posts "Blackboard Sync X sürümüne güncellendi". No update starts while a
+posts "Blackboard Sync was updated to X". No update starts while a
 sync or folder move runs (the run lock is held throughout).
 
 Where the app cannot replace itself (it runs from the mounted image or a
 translocated path, its folder is not writable, or it is an unsigned build)
-**Güncelle** downloads the `.dmg` into Downloads, opens it and explains the
+**Update** downloads the `.dmg` into Downloads, opens it and explains the
 last step: quit Blackboard Sync and drag the new app over the old one in
-Applications. Run from a checkout, **Güncelle** opens the release page
+Applications. Run from a checkout, **Update** opens the release page
 instead.
 
 Checking needs the GitHub repository to be public: without signing in, GitHub
@@ -375,30 +378,30 @@ no update. No account data is sent; the request is an anonymous call to
 
 ### Start at login
 
-Tick **Bilgisayar açılınca başlat** in **Ayarlar** (or run
+Tick **Start when the computer starts** in **Settings** (or run
 `.venv/bin/blackboard-sync-menubar --enable-autostart`). This writes a per-user
 LaunchAgent, `~/Library/LaunchAgents/io.github.umutylcn.blackboard-sync.menubar.plist`,
 that starts the app with `--background` every time you log in: the menu bar
 icon only, no window. A login item written by an older version (without
 `--background`) is rewritten the next time the app starts. macOS may show a
 "Background item added" notice for Python. Untick it (or `--disable-autostart`) to remove the
-file; the change takes effect when you press **Kaydet**. No administrator rights are needed and nothing is installed outside your
+file; the change takes effect when you press **Save**. No administrator rights are needed and nothing is installed outside your
 user account.
 
 ### What the menu shows
 
 | Item | What it does |
 | --- | --- |
-| `✓ UMUT YALÇIN · 14:05 senkronize edildi` | Who is signed in and when the last sync ran (greyed out, information only). When the session expired, a red **⚠ Oturum sona erdi — Giriş yap** row takes its place; when nobody is signed in, **Giriş yap**. Either opens the Blackboard sign-in window (same as `blackboard-sync login`); as soon as you are in, a sync starts. |
+| `✓ UMUT YALÇIN · synced at 14:05` | Who is signed in and when the last sync ran (greyed out, information only). When the session expired, a red **⚠ Session expired — Sign in** row takes its place; when nobody is signed in, **Sign in**. Either opens the Blackboard sign-in window (same as `blackboard-sync login`); as soon as you are in, a sync starts. |
 | `14 yeni dosya, 2 yeni not · sonraki: 14:19` | What the last sync brought (or the error) and when the next one is due. While a sync or sign-in runs it says so instead. |
-| **Şimdi senkronize et** | Sync right away instead of waiting for the next hourly run. Greyed out while a sync or sign-in is running. |
-| **Senkronu duraklat / sürdür** | Pause stops a running sync at once and no sync runs by itself until you resume (saved across restarts); resume syncs right away. Sync now is greyed out while paused. The icon shows a pause symbol. |
-| **Dersler** | The courses of the term; click one to open its folder. |
-| **Son indirilenler** | The last 10 files, notes and announcements that came in. Click one to open it (or its folder, if you moved the file). |
-| **University klasörünü aç** | Opens the University folder inside the folder chosen in **Ayarlar…** in Finder; the item carries that folder's name. |
-| **Güncelleme var: X — Güncelle** | Only when a new version is available: download and install it (see [Updates](#updates)). |
-| **Ayarlar…** | Opens the [main window](#the-main-window) on **Ayarlar**: account, folder, start at login, updates. |
-| **Çık** | Quit the app. |
+| **Sync now** | Sync right away instead of waiting for the next hourly run. Greyed out while a sync or sign-in is running. |
+| **Pause syncing / Resume syncing** | Pause stops a running sync at once and no sync runs by itself until you resume (saved across restarts); resume syncs right away. Sync now is greyed out while paused. The icon shows a pause symbol. |
+| **Courses** | The courses of the term; click one to open its folder. |
+| **Recent downloads** | The last 10 files, notes and announcements that came in. Click one to open it (or its folder, if you moved the file). |
+| **Open University folder** | Opens the University folder inside the folder chosen in **Settings…** in Finder; the item carries that folder's name. |
+| **Update available: X — Update** | Only when a new version is available: download and install it (see [Updates](#updates)). |
+| **Settings…** | Opens the [main window](#the-main-window) on **Settings**: account, folder, start at login, updates. |
+| **Quit** | Quit the app. |
 
 The icon tells you the state at a glance:
 
@@ -406,7 +409,7 @@ The icon tells you the state at a glance:
 | --- | --- |
 | graduation cap | Everything fine. |
 | circling arrows | A sync is running. |
-| **red** person with an exclamation mark | Your Blackboard session expired: choose **Giriş yap**. |
+| **red** person with an exclamation mark | Your Blackboard session expired: choose **Sign in**. |
 | **orange** warning triangle | The last sync failed (e.g. no internet); it retries in 10 minutes. |
 
 ### When it syncs and notifies
@@ -517,10 +520,10 @@ On Windows a few more rules apply there only (see
   `/courses/{courseId}/gradebook/columns` endpoint and uses only `grading.due`.
   Dates update independently of content `modified`. Removed dates disappear
   on the next successful fetch; a failed fetch keeps the prior list and marks
-  the calendar incomplete. Opening **Takvim** only reads this local cache.
+  the calendar incomplete. Opening **Calendar** only reads this local cache.
   Archive downloads leave the calendar alone.
 - `courses`: the current-term courses the last normal sync found (code, title,
-  term, folder), the unticked ones too, for **Dersler**.
+  term, folder), the unticked ones too, for **Courses**.
 
 The source is documented in [Anthology's REST schema](https://developer.anthology.com/assets/lib/swagger-ui/swagger-index.html).
 Enrolled students can read `grading.due` when the course's My Grades tool and
@@ -565,7 +568,7 @@ SHA-256: other bytes under the recorded modification time are damage and are
 replaced. Records written before modification times were kept only treat empty
 files as damaged. Videos and audio an older version downloaded are not brought
 back (they are links in the note now). Older versions had a Silinenler page
-whose **Listeden kaldır** marked files `dismissed`; those flags are dropped,
+whose **Remove from list** marked files `dismissed`; those flags are dropped,
 so such files come back once. `sync --refetch-missing` is still accepted and
 does nothing extra.
 
@@ -586,7 +589,7 @@ and exit with status **3**. `login` reuses its own browser profile, so signing
 in again is often just a click. Cookies that Blackboard refreshes during a run
 are saved back, which keeps a regularly used session alive longer.
 In the menu bar app the icon turns red and one notification asks you to sign
-in; choose **Giriş yap** there instead of typing `login`.
+in; choose **Sign in** there instead of typing `login`.
 
 ## For the scheduler: single-run contract
 
@@ -706,12 +709,12 @@ notifications that do not open a folder when clicked; the Python from
 python.org or Homebrew works.
 
 **The icon stays red after signing in from the terminal.** It turns back to
-normal after the next successful sync; choose **Şimdi senkronize et** to do it
+normal after the next successful sync; choose **Sync now** to do it
 right away.
 
 **"Start at login" does nothing after moving the repository.** The login item
 points at this checkout's `.venv` (or at the app, if you moved the app). Untick
-and tick **Bilgisayar açılınca başlat** again.
+and tick **Start when the computer starts** again.
 
 ## Privacy
 
@@ -726,7 +729,7 @@ and tick **Bilgisayar açılınca başlat** again.
   browser profile.
 - Nothing is sent anywhere except to Blackboard itself, and, for the menu
   bar app's update check, an anonymous request to GitHub for this project's
-  latest release (switch it off with **Güncellemeleri otomatik denetle**).
+  latest release (switch it off with **Check for updates automatically**).
 - Session data, sync state and course material are never stored in this
   repository; `.gitignore` also blocks them as a safety net.
 - To remove everything: delete
@@ -854,7 +857,7 @@ Start Menu shortcut and starts the app. It closes a running copy before an
 upgrade and starts it again afterwards, also with `/VERYSILENT`, which is how
 the updater runs it. The uninstaller removes the app and its start-at-login
 entry, never the downloaded files or `%APPDATA%` data. The installer is
-unsigned: Windows SmartScreen shows "Ek bilgi > Yine de çalıştır" once.
+unsigned: Windows SmartScreen shows "More info > Run anyway" once.
 `scripts/smoke-test-windows.ps1` (run by the workflow) installs, checks the
 installed app and `--version`, checks the GUI (within 45 s `windows-tray.log`
 exists, the app runs and its main window "Blackboard Sync" is visible; closed,
@@ -882,7 +885,7 @@ verify its SHA-256 checksum and install it. A macOS release signed with the
 Developer ID must also pass `install.sh`'s signature, team and notarization
 checks or nothing is installed. For an unsigned release only the installed
 app's quarantine attribute is removed, which makes the first-open right click →
-**Aç** step unnecessary. No Python is needed: sign-in uses an
+**Open** step unnecessary. No Python is needed: sign-in uses an
 installed Chromium-based browser (Chrome, Edge, Brave, Opera, Vivaldi) or, if
 there is none, the app's own window.
 
@@ -904,8 +907,8 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m blackboard_sync.windows
 ```
 
-The first launch opens the main window on **Başlangıç**: enter your school's Blackboard URL, choose a
-folder (default: `Documents\University`), and select **Giriş yap**. Complete sign-in in
+The first launch opens the main window on **Get started**: enter your school's Blackboard URL, choose a
+folder (default: `Documents\University`), and select **Sign in**. Complete sign-in in
 the window that opens. Right-click the tray icon next to the clock (possibly inside the
 hidden-icons arrow) for the shared menu. Later, launch without a console with:
 
@@ -913,7 +916,7 @@ hidden-icons arrow) for the shared menu. Later, launch without a console with:
 .\.venv\Scripts\pythonw.exe -m blackboard_sync.windows
 ```
 
-**Bilgisayar açılınca başlat** toggles only the current user's
+**Start when the computer starts** toggles only the current user's
 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\BlackboardSync` value,
 which starts the app with `--background` (tray only). Any other start (the
 installer's last page, the Start Menu) opens the [main window](#the-main-window)
@@ -942,7 +945,7 @@ Idle is green, syncing blue, and errors orange. Settings saves and exit wait
 until a running sync/sign-in finishes. For packaged installation, see the [README](../README.md).
 
 The Windows tray also uses the shared daily update checker. Settings include
-**Güncellemeleri otomatik denetle**; the version row checks manually even when
+**Check for updates automatically**; the version row checks manually even when
 that setting is off. Source checkouts open the release page for updates.
 Packaged builds download and verify the Windows installer on a worker thread,
 then exit after launching it. Installation waits until sync/sign-in is idle and
