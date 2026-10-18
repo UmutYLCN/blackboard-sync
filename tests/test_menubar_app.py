@@ -360,6 +360,66 @@ def test_pause_button_and_menu(tmp_path):
         window.window.close()
 
 
+def test_home_header_greets_and_the_card_buttons_are_pills(tmp_path):
+    from datetime import timedelta, timezone
+
+    from blackboard_sync import deadlines
+    from blackboard_sync.menubar.main_window import HEADER, HOME_SUBTITLE_SHIFT, PILL_H, _pill_width, _PillButton
+    from blackboard_sync.menubar.main_window_model import OVERVIEW, T_NAV_OVERVIEW, greeting, main_status
+
+    window, model, _ = make_window(tmp_path)
+    try:
+        signed_in(model)
+        row = deadlines.DeadlineRow('Homework', 'CSE303', NOW + timedelta(days=2), 'https://bb.example.edu/x')
+        page = deadlines.DeadlinePage((deadlines.DeadlineDay(row.due.date(), 'x', False, (row,)),), '')
+        window.show(OVERVIEW)
+
+        # With due dates: the greeting and a line under it; the cards move down to make room.
+        window.update_status(main_status(model, NOW, page, timezone.utc))
+        assert str(window.overview_title.stringValue()) == greeting('Ada Student', NOW, timezone.utc)
+        assert str(window.overview_subtitle.stringValue()) == '1 deadline this week'
+        assert not window.overview_subtitle.isHidden()
+        subtitle = window.overview_subtitle.frame()
+        assert window.status_card.frame().origin.y == HEADER + HOME_SUBTITLE_SHIFT
+        assert window.notify_card.frame().origin.y == HEADER + HOME_SUBTITLE_SHIFT
+        assert subtitle.origin.y + subtitle.size.height <= window.status_card.frame().origin.y  # no overlap
+        assert str(window.nav_items[OVERVIEW][2].stringValue()) == T_NAV_OVERVIEW  # the sidebar keeps "Home"
+
+        # Without a page: the plain title, no line, the cards where they were.
+        window.update_status(main_status(model, NOW))
+        assert str(window.overview_title.stringValue()) == T_NAV_OVERVIEW
+        assert window.overview_subtitle.isHidden()
+        assert window.status_card.frame().origin.y == HEADER
+
+        # "Sync now", the state's button and "View all" are one kind of pill, 36 pt high; the card's
+        # buttons are gray and "View all" carries the accent color.
+        for button in (window.sync_button, window.home_action, window.recent_all):
+            assert isinstance(button, _PillButton)
+        window.update_status(main_status(model, NOW))
+        assert not window.sync_button.isHidden() and window.home_action.isHidden()
+        assert window.sync_button.frame().size.height == PILL_H == window.recent_all.frame().size.height
+        assert window.sync_button.frame().size.width == _pill_width(window.sync_button)
+        assert not window.sync_button.fill.isEqual_(window.recent_all.fill)
+        assert window.sync_button.fill.isEqual_(window.home_action.fill)
+        # It stays inside the card and clear of the title it shares the row with.
+        card_width = window.status_card.frame().size.width
+        assert window.sync_button.frame().origin.x + window.sync_button.frame().size.width <= card_width
+        assert window.state_title.frame().origin.x + window.state_title.frame().size.width <= \
+            window.sync_button.frame().origin.x
+
+        # Its title and enabled state follow the model, and the button fades while it is disabled.
+        model.begin('sync')
+        window.update_status(main_status(model, NOW))
+        assert str(window.sync_button.title()) == 'Syncing…' and not window.sync_button.isEnabled()
+        assert window.sync_button.alphaValue() < 1
+        assert window.sync_button.frame().size.width == _pill_width(window.sync_button)
+        model.busy = None
+        window.update_status(main_status(model, NOW))
+        assert window.sync_button.isEnabled() and window.sync_button.alphaValue() == 1
+    finally:
+        window.window.close()
+
+
 def test_sync_activity_lists_files_with_size_and_status(tmp_path):
     from blackboard_sync.menubar.main_window_model import ACTIVITY, main_status
     from blackboard_sync.menubar.model import CourseChange, RunOutcome

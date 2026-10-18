@@ -19,7 +19,9 @@ from AppKit import (
     NSAlert,
     NSAlertFirstButtonReturn,
     NSApp,
+    NSAttributedString,
     NSBackingStoreBuffered,
+    NSBezierPath,
     NSBox,
     NSBoxCustom,
     NSBoxSeparator,
@@ -29,6 +31,8 @@ from AppKit import (
     NSEventModifierFlagDeviceIndependentFlagsMask,
     NSEventTypeKeyDown,
     NSFont,
+    NSFontAttributeName,
+    NSForegroundColorAttributeName,
     NSImage,
     NSImageScaleProportionallyUpOrDown,
     NSImageSymbolConfiguration,
@@ -37,8 +41,10 @@ from AppKit import (
     NSMenu,
     NSMenuItem,
     NSModalResponseOK,
+    NSMutableParagraphStyle,
     NSNoTitle,
     NSOpenPanel,
+    NSParagraphStyleAttributeName,
     NSPopUpButton,
     NSScreen,
     NSScrollView,
@@ -165,6 +171,7 @@ PAD = 28
 INNER = PAGE - 2 * PAD
 HEIGHT = 660  # the content height it opens with when the screen has room
 HEADER = 76  # a section's title row; the rest of the section scrolls below it
+HOME_SUBTITLE_SHIFT = 18  # Home's header has a second line (the due dates) when there is one
 BAR = 60  # Genel's Vazgeç/Kaydet bar
 GAP = 16
 COLUMN = (INNER - GAP) // 2
@@ -214,6 +221,62 @@ ActionHandler = Callable[[str], None]
 class _FlippedView(NSView):
     def isFlipped(self):
         return True
+
+
+class _PillButton(NSButton):
+    """Drive's rounded button: a capsule ``PILL_H`` high with a bold 13 pt title.
+
+    ``fill`` and ``ink`` are system palette colors, resolved each time the button draws, so they
+    follow the light and dark appearance. It fades like a system button when it is disabled.
+    """
+
+    def drawRect_(self, rect):
+        bounds = self.bounds()
+        radius = bounds.size.height / 2
+        capsule = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(bounds, radius, radius)
+        self.fill.setFill()
+        capsule.fill()
+        if self.isHighlighted():  # while it is pressed
+            NSColor.labelColor().colorWithAlphaComponent_(0.1).setFill()
+            capsule.fill()
+        objc.super(_PillButton, self).drawRect_(rect)
+
+    def setTitle_(self, title):
+        objc.super(_PillButton, self).setTitle_(title)
+        style = NSMutableParagraphStyle.alloc().init()
+        style.setAlignment_(NSTextAlignmentCenter)
+        ink = getattr(self, "ink", None) or NSColor.labelColor()
+        self.setAttributedTitle_(NSAttributedString.alloc().initWithString_attributes_(title, {
+            NSFontAttributeName: NSFont.boldSystemFontOfSize_(13),
+            NSForegroundColorAttributeName: ink,
+            NSParagraphStyleAttributeName: style,
+        }))
+
+    def setEnabled_(self, flag):
+        objc.super(_PillButton, self).setEnabled_(flag)
+        self.setAlphaValue_(1.0 if flag else 0.45)
+
+
+def _pill_width(button) -> float:
+    """What a ``_PillButton`` needs for its title: the text and 20 pt of padding on each side."""
+    return button.attributedTitle().size().width + 40
+
+
+def _pill_view(title: str, target, action: str, x: float, y: float, neutral: bool = False):
+    """A ``_PillButton`` at (x, y). Tinted with the accent color like Drive's "View all"; ``neutral``
+    (gray) is for the status card's own button ("Sync now", "Sign in")."""
+    button = _PillButton.alloc().initWithFrame_(NSMakeRect(x, y, 100, PILL_H))
+    button.setBordered_(False)
+    button.setTarget_(target)
+    button.setAction_(action)
+    if neutral:
+        button.ink, button.fill = NSColor.labelColor(), NSColor.labelColor().colorWithAlphaComponent_(0.1)
+    else:
+        button.ink, button.fill = (NSColor.controlAccentColor(),
+                                   NSColor.controlAccentColor().colorWithAlphaComponent_(0.22))
+    button.setTitle_(title)
+    button.setFrameSize_((_pill_width(button), PILL_H))
+    return button
 
 
 class _EditableWindow(NSWindow):
@@ -803,6 +866,10 @@ class MainWindow:
 
     def _build_overview(self, page) -> None:
         self.overview_title = self._header(page, "")
+        # The line under Home's greeting: the next due dates (hidden without any).
+        self.overview_subtitle = _label("", 13, secondary=True)
+        self.overview_subtitle.setFrame_(NSMakeRect(PAD, 58, INNER - 330, 17))
+        page.addSubview_(self.overview_subtitle)
         self.overview_update_banner = self._build_update_banner(page)
 
         # Left: Drive's status card: the state in words, the last files and "View all".
@@ -812,9 +879,9 @@ class MainWindow:
         # A note or the last error, the one thing the title and its line have no room for.
         self.account_message = _label("", _small())
         content.addSubview_(self.account_message)
-        self.sync_button = NSButton.buttonWithTitle_target_action_("", self.target, "sync:")
+        self.sync_button = _pill_view("", self.target, "sync:", 0, 20, neutral=True)
         content.addSubview_(self.sync_button)
-        self.home_action = NSButton.buttonWithTitle_target_action_("", self.target, "homeAction:")
+        self.home_action = _pill_view("", self.target, "homeAction:", 0, 20, neutral=True)
         content.addSubview_(self.home_action)
         # The last files: a click opens one in its own application, "⋮" offers to show it in its folder.
         self.recent_scroll, _ = _scroll(NSMakeRect(0, 96, LEFT_W, ROW_HEIGHT), 1)
@@ -869,24 +936,11 @@ class MainWindow:
         detail.setStringValue_(home.detail)
         detail.setToolTip_(home.detail)
 
-    def _pill_button(self, content, title: str, action: str, x: float, y: float):
-        """Drive's rounded, tinted button ("View all"); returns (its box, the button)."""
-        text = _label(title, 13, bold=True)
-        width = text.fittingSize().width + 40
-        box = _pill(NSMakeRect(x, y, width, PILL_H), NSColor.controlAccentColor().colorWithAlphaComponent_(0.22))
-        text.setTextColor_(NSColor.controlAccentColor())
-        text.setAlignment_(NSTextAlignmentCenter)
-        height = text.fittingSize().height
-        text.setFrame_(NSMakeRect(0, (PILL_H - height) / 2, width, height))
-        box.contentView().addSubview_(text)
-        button = NSButton.buttonWithTitle_target_action_("", self.target, action)
-        button.setBordered_(False)
-        button.setTransparent_(True)
-        button.setAccessibilityLabel_(title)
-        button.setFrame_(NSMakeRect(0, 0, width, PILL_H))
-        box.contentView().addSubview_(button)
-        content.addSubview_(box)
-        return box, button
+    def _pill_button(self, content, title: str, action: str, x: float, y: float, neutral: bool = False):
+        """Drive's rounded button ("View all"); returns the button twice (box and button)."""
+        button = _pill_view(title, self.target, action, x, y, neutral)
+        content.addSubview_(button)
+        return button, button
 
     def show_file_menu(self, sender, path: str) -> None:
         """The "⋮" of a file row: open it, or show it in its folder."""
@@ -1030,7 +1084,7 @@ class MainWindow:
     def _layout_overview(self) -> None:
         """Left: Drive's status card with the last files; right: announcements and the next due dates."""
         status = self.status
-        top = HEADER
+        top = HEADER + (HOME_SUBTITLE_SHIFT if status.home_subtitle else 0)
         if status.update_banner is not None:
             self.overview_update_banner[0].setFrame_(NSMakeRect(PAD, top, INNER, UPDATE_BANNER_HEIGHT))
             top += UPDATE_BANNER_HEIGHT + GAP
@@ -1061,8 +1115,8 @@ class MainWindow:
             self.home_action.setTitle_(home.action_title)
         width = 0
         if button is not None:
-            width = max(button.fittingSize().width + 16, 96)
-            button.setFrame_(NSMakeRect(LEFT_W - 20 - width, 24, width, 30))
+            width = _pill_width(button)
+            button.setFrame_(NSMakeRect(LEFT_W - 20 - width, 20, width, PILL_H))
         self._place_state_header(self.state_icon, self.state_title, self.state_detail, self.scene_view,
                                  LEFT_W, right=width + 8)
         y = 92
@@ -1572,7 +1626,9 @@ class MainWindow:
         self.start_button.setEnabled_(status.start_enabled)
         self._draw_start_message()
         # Home
-        self.overview_title.setStringValue_(status.overview_title)
+        self.overview_title.setStringValue_(status.home_heading or status.overview_title)
+        self.overview_subtitle.setStringValue_(status.home_subtitle)
+        self.overview_subtitle.setHidden_(not status.home_subtitle)
         self.sync_button.setTitle_(status.sync_title)
         self.sync_button.setEnabled_(status.sync_enabled)
         self.account_message.setStringValue_(status.account.message)

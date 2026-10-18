@@ -590,14 +590,14 @@ def build_app(config: Config, show_window: bool = False):
 
                 self._window = MainWindow(
                     self.form_values(),
-                    main_status(self.model, jobs.utcnow()),
+                    self.window_status(),
                     on_submit=self.settings_submitted,
                     on_action=self.window_action,
                     on_close=self._window_closed,
                     on_values=self.form_values,
                     on_open=self.open_recent,
                     on_reveal=self.reveal_file,
-                    on_deadlines=lambda: deadlines.load_calendar(self.config, self.settings.dest),
+                    on_deadlines=self.deadline_page,
                     on_deadline=self.open_deadline,
                     on_announcements=lambda: announcements.load_rows(self.config),
                     on_open_announcement=self.open_announcement,
@@ -792,6 +792,13 @@ def build_app(config: Config, show_window: bool = False):
                 )
                 subprocess.Popen(["osascript", "-e", script], stdin=subprocess.DEVNULL)
 
+        def deadline_page(self):
+            return deadlines.load_calendar(self.config, self.settings.dest)
+
+        def window_status(self):
+            """What the main window draws; Home's greeting line counts the saved due dates."""
+            return main_status(self.model, jobs.utcnow(), self.deadline_page())
+
         def refresh(self) -> None:
             jobs.refresh_session(self.config, self.model, self.settings)
             self.model.autostart = launchagent.is_installed()
@@ -799,7 +806,7 @@ def build_app(config: Config, show_window: bool = False):
                 self.start_past_terms()
             self._draw_icon(self.model.icon())
             if self.window_open:
-                self._window.update_status(main_status(self.model, jobs.utcnow()))
+                self._window.update_status(self.window_status())
             menu = self.model.menu(jobs.utcnow())
             if menu == self._drawn:
                 return
