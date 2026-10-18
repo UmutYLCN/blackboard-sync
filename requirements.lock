@@ -21,6 +21,7 @@ tomli==2.4.1
 typing_extensions==4.16.0
 urllib3==2.8.0
 pystray==0.19.5; sys_platform == 'win32'
+ttkbootstrap==2.2.3; sys_platform == 'win32'
 Pillow==11.3.0
 six==1.17.0; sys_platform == 'win32'
 bottle==0.13.4; sys_platform == 'win32'

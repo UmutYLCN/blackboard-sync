@@ -699,6 +699,10 @@ def main(argv=None):
             log.exception("Could not register update-toast activation or login item")
         root = tk.Tk()
         root.withdraw()
+        if sys.platform == "win32":
+            from blackboard_sync.windows.theme import apply_theme
+
+            apply_theme(root)
         root.report_callback_exception = lambda *exc: log.error("Tk callback failed", exc_info=exc)
         app = TrayApp(config, root, show_window)
         app.lifetime_lock = lock

@@ -404,6 +404,7 @@ def test_package_family_api_reads_identity_and_fails_closed(monkeypatch, result)
 def test_store_protocol_activation_shows_packaged_app(config, monkeypatch, already_running):
     from types import SimpleNamespace
     from blackboard_sync.windows import app as module
+    from blackboard_sync.windows import theme as windows_theme
 
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(package, "is_packaged", lambda: True)
@@ -417,6 +418,7 @@ def test_store_protocol_activation_shows_packaged_app(config, monkeypatch, alrea
     # Real packaged registration/legacy guards must not access the registry.
     monkeypatch.setitem(sys.modules, "winreg", None)
     monkeypatch.setitem(sys.modules, "tkinter", SimpleNamespace(Tk=lambda: SimpleNamespace(withdraw=lambda: None)))
+    monkeypatch.setattr(windows_theme, "apply_theme", lambda _root: None)
 
     class App:
         def __init__(self, config, root, show_window):

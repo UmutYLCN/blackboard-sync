@@ -756,6 +756,11 @@ py -3 -m venv .venv
 .venv\Scripts\blackboard-sync sync
 ```
 
+The tray window uses ttkbootstrap for its controls and selects a light or dark
+theme from Windows' app appearance setting when it starts. Restart the app after
+changing that setting. The theme dependency is installed only on Windows and its
+assets are included in the frozen installer and Microsoft Store package.
+
 Requirements: Python 3.10 or newer from python.org. `login` picks Chrome if it
 is installed, otherwise Edge, Brave, Vivaldi, Opera, Opera GX or Chromium
 (`--browser chrome|edge|brave|vivaldi|opera|operagx|chromium` to choose), and
