@@ -797,6 +797,151 @@ def test_dersler_lists_courses_with_a_checkbox_and_saves_a_change(tmp_path):
         window.window.close()
 
 
+def settings_texts(window):
+    """Every text on the Settings page as (top, text), from the top down."""
+    found = []
+
+    def walk(view, top):
+        for child in view.subviews():
+            y = top + child.frame().origin.y
+            if hasattr(child, 'stringValue'):
+                found.append((y, str(child.stringValue())))
+            walk(child.contentView() if hasattr(child, 'contentView') and child.contentView() is not None
+                 and hasattr(child, 'boxType') else child, y)
+
+    walk(window.form_scroll.documentView(), 0)
+    return sorted((entry for entry in found if entry[1]), key=lambda entry: entry[0])
+
+
+def test_settings_page_is_sections_of_rows(tmp_path):
+    from AppKit import NSAppearance, NSBoxSeparator, NSSwitch, NSButton, NSPopUpButton, NSTextField
+    from blackboard_sync.menubar.main_window import INNER, SETTINGS_PAD
+    from blackboard_sync.menubar.main_window_model import GENERAL, main_status
+    from blackboard_sync.menubar.settings_form import SECTION_CALENDAR, SECTIONS, settings_sections
+
+    window, model, _ = make_window(tmp_path)
+    try:
+        window.select(GENERAL)
+        signed_in(model)
+        window.update_status(main_status(model, NOW))
+        texts = settings_texts(window)
+        by_text = {text: top for top, text in texts}
+
+        # Sections top to bottom, each with its rows' titles under its own title; no Calendar yet.
+        expected = []
+        for section in settings_sections():
+            expected.append(section.title)
+            expected += [row.title for row in section.rows if row.title]
+        order = [text for _, text in texts if text in expected]
+        assert order == expected
+        assert SECTION_CALENDAR not in SECTIONS and 'Calendar' not in by_text
+        above = [t for t in expected if t not in ('Danger zone', 'Uninstall Blackboard Sync')]
+        assert max(by_text[t] for t in above) < by_text['Danger zone'] < by_text['Uninstall Blackboard Sync']  # last
+
+        # The right controls for the right fields.
+        assert isinstance(window.autostart, NSSwitch) and isinstance(window.check_updates, NSSwitch)
+        assert isinstance(window.interval_popup, NSPopUpButton) and isinstance(window.language_popup, NSPopUpButton)
+        assert isinstance(window.url_field, NSTextField) and isinstance(window.dest_field, NSTextField)
+        assert str(window.account_label.stringValue()) == 'Signed in as Ada Student'
+        assert str(window.account_button.title()) == 'Sign out' and str(window.version_label.stringValue()).startswith('Version ')
+
+        # Every row: the control at the card's right edge, clear of the row's text.
+        edge = INNER - SETTINGS_PAD
+        for key in ('base_url', 'account', 'interval', 'autostart', 'language', 'past_term', 'past_download',
+                    'check_updates', 'update', 'uninstall'):
+            row = window.settings_rows[key]
+            frame = row.control.frame()
+            assert round(frame.origin.x + frame.size.width) == edge, key
+            if key != 'account':  # its title is the live "Signed in as …"
+                assert row.title.frame().origin.x + row.title.frame().size.width <= frame.origin.x, key
+        # The folder row has its Choose… button at the edge and the field before it.
+        field = window.dest_field.frame()
+        choose = next(v for v in window.dest_field.superview().subviews()
+                      if isinstance(v, NSButton) and str(v.title()) == 'Choose…')
+        assert round(choose.frame().origin.x + choose.frame().size.width) == edge
+        assert field.origin.x + field.size.width < choose.frame().origin.x
+
+        # Hairlines between the rows of a card, none around a single row.
+        def lines(card):
+            return sum(1 for v in card.subviews() if hasattr(v, 'boxType') and v.boxType() == NSBoxSeparator)
+        cards = {key: window.settings_rows[key].control.superview() for key in ('base_url', 'interval', 'dest')}
+        assert lines(cards['base_url']) == 1 and lines(cards['interval']) == 2 and lines(cards['dest']) == 0
+
+        # Accessibility: controls are named after their rows.
+        assert str(window.autostart.accessibilityLabel()) == 'Start when the computer starts'
+        assert str(window.interval_popup.accessibilityLabel()) == 'Automatic sync'
+        assert str(window.check_updates.accessibilityLabel()) == 'Check for updates automatically'
+        assert str(window.url_field.accessibilityLabel()) == "Your school's Blackboard address"
+        assert 'Danger zone' in by_text and str(window.uninstall_button.attributedTitle().string()) == 'Uninstall app…'
+
+        # Both appearances draw.
+        for name in ('NSAppearanceNameAqua', 'NSAppearanceNameDarkAqua'):
+            window.window.setAppearance_(NSAppearance.appearanceNamed_(name))
+            doc = window.form_scroll.documentView()
+            rep = doc.bitmapImageRepForCachingDisplayInRect_(doc.bounds())
+            doc.cacheDisplayInRect_toBitmapImageRep_(doc.bounds(), rep)
+            assert rep.pixelsHigh() > 0
+        assert window.form_height == window.form_scroll.documentView().frame().size.height
+    finally:
+        window.window.close()
+
+
+def test_settings_switches_keep_the_save_and_cancel_semantics(tmp_path):
+    from blackboard_sync.menubar.main_window_model import GENERAL
+
+    submitted = []
+    window, model, _ = make_window(tmp_path, on_submit=lambda values, login: submitted.append(values) or None)
+    try:
+        window.select(GENERAL)
+        assert window.button_bar.isHidden() and window.autostart.state() == 1
+        window.autostart.setState_(0)
+        window.target.changed_(window.autostart)  # what clicking the switch sends
+        assert not window.button_bar.isHidden() and window.values().autostart is False
+        # The Get started form's check box is the same draft.
+        assert window.start_autostart.state() == 0
+        window.target.cancel_(None)
+        assert window.button_bar.isHidden() and window.autostart.state() == 1 and window.start_autostart.state() == 1
+        window.check_updates.setState_(0)
+        window.target.changed_(window.check_updates)
+        window.target.save_(None)
+        assert submitted[-1].check_updates is False and submitted[-1].autostart is True
+        assert window.button_bar.isHidden()  # saved: back to nothing unsaved
+    finally:
+        window.window.close()
+
+
+def test_settings_rows_follow_the_app_state(tmp_path):
+    from blackboard_sync.menubar.main_window_model import GENERAL, main_status
+
+    window, model, _ = make_window(tmp_path)
+    try:
+        window.select(GENERAL)
+        window.update_status(main_status(model, NOW))
+        assert str(window.account_button.title()) == 'Sign in' and window.past_scene.isHidden()
+        assert str(window.past_label.stringValue()) == 'Sign in to see past terms.'
+        signed_in(model)
+        window.update_status(main_status(model, NOW))
+        assert str(window.account_button.title()) == 'Sign out' and window.account_button.isEnabled()
+        assert window.uninstall_button.isEnabled()
+        model.begin('sync')  # the job slot is taken: sign out, update and uninstall wait
+        window.update_status(main_status(model, NOW))
+        assert not window.account_button.isEnabled() and not window.uninstall_button.isEnabled()
+        model.busy = None
+
+        # A past term downloading: the list is locked, the button says so and the papers fly.
+        from blackboard_sync.menubar.model import RunOutcome
+        model.finish_past_terms(['2025-2026 Bahar'], RunOutcome('ok'))
+        window.update_status(main_status(model, NOW))
+        assert window.past_popup.isEnabled() and window.past_button.isEnabled() and window.past_scene.isHidden()
+        assert model.select_past_term('2025-2026 Bahar')
+        model.begin('past_term')
+        window.update_status(main_status(model, NOW))
+        assert str(window.past_button.title()) == 'Downloading…' and not window.past_popup.isEnabled()
+        assert not window.past_scene.isHidden() and 'Downloading' in str(window.past_label.stringValue())
+    finally:
+        window.window.close()
+
+
 def test_genel_past_terms_section_and_uninstall_button(tmp_path):
     from blackboard_sync.menubar.main_window_model import main_status
     from blackboard_sync.menubar.model import RunOutcome
@@ -804,10 +949,10 @@ def test_genel_past_terms_section_and_uninstall_button(tmp_path):
     actions, downloads = [], []
     window, model, _ = make_window(tmp_path, on_action=actions.append, on_past_term=downloads.append)
     try:
-        labels = [str(view.stringValue()) for box in window.form_scroll.documentView().subviews()
-                  for view in box.contentView().subviews() if hasattr(view, 'stringValue')]
-        sections = [label for label in labels if label in ('Account', 'Folder', 'Past terms', 'Sync', 'Updates')]
-        assert sections == ['Account', 'Folder', 'Sync', 'Past terms', 'Updates']
+        labels = [text for _, text in settings_texts(window)]
+        sections = [label for label in labels if label in ('Account', 'Folder', 'Past terms', 'Sync', 'Updates',
+                                                           'Danger zone')]
+        assert sections == ['Account', 'Sync', 'Folder', 'Past terms', 'Updates', 'Danger zone']
         assert 'A past term is downloaded once and not updated.' in labels
         assert str(window.past_button.title()) == 'Download past term'
         assert str(window.past_label.stringValue()) == 'Sign in to see past terms.'
