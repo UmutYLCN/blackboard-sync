@@ -18,6 +18,7 @@ from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
 from blackboard_sync.i18n import tr
 from blackboard_sync.menubar.model import T_RECENT_EMPTY
+from blackboard_sync.windows.pill_button import PillButton
 from blackboard_sync.windows.sync_scene_view import SyncScene, background_of
 
 log = logging.getLogger(__name__)
@@ -301,7 +302,14 @@ class MainWindow:
         page.columnconfigure(0, weight=3, uniform="home")
         page.columnconfigure(1, weight=2, uniform="home")
         page.rowconfigure(3, weight=1)
-        self.overview_title = self._header(page, "")
+        # Home's header: a greeting, and under it one line about the next due dates (hidden without any).
+        header = ttk.Frame(page)
+        header.grid(row=0, column=0, sticky="w", pady=(0, 12))
+        self.overview_title = ttk.Label(header, font=TITLE_FONT)
+        self.overview_title.grid(row=0, column=0, sticky="w")
+        self.overview_subtitle = ttk.Label(header, foreground=MUTED)
+        self.overview_subtitle.grid(row=1, column=0, sticky="w")
+        self.overview_subtitle.grid_remove()
         self.overview_update_banner = self._build_update_banner(page, 1)
         background = background_of(page)
 
@@ -319,9 +327,10 @@ class MainWindow:
         self.state_detail.grid(row=1, column=1, sticky="nw")
         buttons = ttk.Frame(status)
         buttons.grid(row=0, column=2, rowspan=2, sticky="ne")
-        self.sync_button = ttk.Button(buttons, command=lambda: self.on_action("sync"))
+        # Drive's pills: gray for the card's own buttons, tinted for "View all".
+        self.sync_button = PillButton(buttons, command=lambda: self.on_action("sync"))
         self.sync_button.pack(side="left")
-        self.home_action = ttk.Button(buttons, command=lambda: self.on_action(self.status.home.action))
+        self.home_action = PillButton(buttons, command=lambda: self.on_action(self.status.home.action))
         self.home_action.pack(side="left", padx=(8, 0))
         # A note or the last error, the one thing the title and its line have no room for.
         self.account_message = ttk.Label(status, wraplength=420)
@@ -334,8 +343,8 @@ class MainWindow:
         footer = ttk.Frame(status)
         footer.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(10, 0))
         footer.columnconfigure(1, weight=1)
-        ttk.Button(footer, text=main.T_VIEW_ALL, command=lambda: self.select(main.ACTIVITY)).grid(
-            row=0, column=0, sticky="w", ipadx=10, ipady=4)
+        PillButton(footer, main.T_VIEW_ALL, lambda: self.select(main.ACTIVITY), accent=True).grid(
+            row=0, column=0, sticky="w")
         self.recent_count = ttk.Label(footer, foreground=MUTED)
         self.recent_count.grid(row=0, column=1, sticky="e")
 
@@ -369,8 +378,8 @@ class MainWindow:
                 ttk.Label(self.notify_frame, text=row.detail, foreground=MUTED, wraplength=240).pack(
                     anchor="w", padx=(4, 0), pady=(0, 6))
             if items or rows:
-                ttk.Button(self.notify_frame, text=main.T_VIEW_ALL,
-                           command=lambda: self.select(main.ANNOUNCEMENTS)).pack(anchor="w", pady=(6, 0))
+                PillButton(self.notify_frame, main.T_VIEW_ALL, lambda: self.select(main.ANNOUNCEMENTS),
+                           accent=True).pack(anchor="w", pady=(6, 0))
         page = self.on_deadlines()
         today = datetime.now().astimezone().date()
         rows = deadlines.upcoming_rows(page, main.HOME_DEADLINE_ROWS)
@@ -387,8 +396,8 @@ class MainWindow:
                            command=lambda target=row.target: self.on_deadline(target)).pack(anchor="w")
                 ttk.Label(self.calendar_frame, text=f"{deadlines.when_text(row, today)} · {row.course}",
                           foreground=MUTED, wraplength=240).pack(anchor="w", padx=(4, 0), pady=(0, 6))
-            ttk.Button(self.calendar_frame, text=main.T_OPEN_CALENDAR,
-                       command=lambda: self.select(main.CALENDAR)).pack(anchor="w", pady=(6, 0))
+            PillButton(self.calendar_frame, main.T_OPEN_CALENDAR, lambda: self.select(main.CALENDAR),
+                       accent=True).pack(anchor="w", pady=(6, 0))
 
     def _attention_row(self, parent, item, wrap):
         from tkinter import ttk
@@ -729,7 +738,12 @@ class MainWindow:
         self._draw_start_message()
         # Home
         card = status.account
-        self.overview_title.configure(text=status.overview_title)
+        self.overview_title.configure(text=status.home_heading or status.overview_title)
+        self.overview_subtitle.configure(text=status.home_subtitle)
+        if status.home_subtitle:
+            self.overview_subtitle.grid()
+        else:
+            self.overview_subtitle.grid_remove()
         self.sync_button.configure(text=status.sync_title, state="normal" if status.sync_enabled else "disabled")
         home = status.home
         symbol, color = HOME_SYMBOLS.get(home.kind, HOME_SYMBOLS[main.STATE_SYNCED])

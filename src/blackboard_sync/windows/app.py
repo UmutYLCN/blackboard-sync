@@ -313,6 +313,10 @@ class TrayApp:
         except (OSError, subprocess.SubprocessError):
             log.exception("Windows notification failed")
 
+    def window_status(self):
+        """What the main window draws; Home's greeting line counts the saved due dates."""
+        return main_status(self.model, jobs.utcnow(), deadlines.load_calendar(self.config, self.settings.dest))
+
     def refresh(self):
         import pystray
 
@@ -332,7 +336,7 @@ class TrayApp:
             self.icon.icon = icon_image(state)
             self.drawn_icon = state
         if self.window_open:
-            self.window.update_status(main_status(self.model, jobs.utcnow()))
+            self.window.update_status(self.window_status())
         menu = self.model.menu(jobs.utcnow())
         if package.is_packaged():
             menu.entries = [entry for entry in menu.entries if entry.action not in UPDATE_ACTIONS]
@@ -516,7 +520,7 @@ class TrayApp:
             return
         if self.window is None:
             log.info("Opening the main window (first run %s)", not self.model.configured)
-            self.window = MainWindow(self.root, self.form_values(), main_status(self.model, jobs.utcnow()),
+            self.window = MainWindow(self.root, self.form_values(), self.window_status(),
                                      self.settings_submitted, self.dispatch, self.window_closed,
                                      on_values=self.form_values,
                                      on_open=lambda path: self.dispatch("open", path),

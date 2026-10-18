@@ -480,6 +480,54 @@ def test_windows_recent_badges_track_viewport_and_return_visit(monkeypatch, tmp_
     assert model.recent_seen.snapshot is None and window._recent_after is None
 
 
+def test_windows_home_header_and_pill_buttons(monkeypatch, tmp_path):
+    from datetime import timedelta
+    from blackboard_sync import deadlines
+    from blackboard_sync.menubar.main_window_model import T_NAV_OVERVIEW, greeting, main_status
+    from blackboard_sync.menubar.model import RunOutcome
+    from blackboard_sync.windows import main_window as module
+    from blackboard_sync.windows.pill_button import ACCENT, NEUTRAL, PillButton
+
+    fake_tk(monkeypatch, tmp_path)
+    pills = []
+
+    class Recorded(PillButton):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            pills.append(self)
+
+    monkeypatch.setattr(module, 'PillButton', Recorded)
+    now = datetime.now(timezone.utc)
+    model = AppModel(tmp_path, now, configured=True, last=RunOutcome('ok', finished_at=now),
+                     session={'saved_at': now.timestamp(), 'user': {'displayName': 'Ada Student'}})
+    row = deadlines.DeadlineRow('Homework', 'CSE303', now + timedelta(days=2), 'https://school.edu/x')
+    page = deadlines.DeadlinePage((deadlines.DeadlineDay(row.due.date(), 'x', False, (row,)),), '')
+    window = module.MainWindow(None, FormValues('https://school.edu', str(tmp_path), True), main_status(model, now),
+                               lambda *a: None, lambda *a: None, lambda: None, on_deadlines=lambda: page)
+
+    # With due dates: a greeting and the line under it.
+    window.update_status(main_status(model, now, page, timezone.utc))
+    assert window.overview_title.options['text'] == greeting('Ada Student', now, timezone.utc)
+    assert window.overview_subtitle.options['text'] == '1 deadline this week' and not window.overview_subtitle.removed
+    assert window.nav[module.main.OVERVIEW].options['text'] == T_NAV_OVERVIEW  # the sidebar keeps "Home"
+
+    # Without them: the plain title and no line.
+    window.update_status(main_status(model, now))
+    assert window.overview_title.options['text'] == T_NAV_OVERVIEW
+    assert window.overview_subtitle.options['text'] == '' and window.overview_subtitle.removed
+
+    # The card's own buttons are gray pills, "View all" and "Open calendar" carry the accent tint.
+    assert isinstance(window.sync_button, PillButton) and window.sync_button.palette is NEUTRAL
+    assert window.home_action.palette is NEUTRAL
+    assert window.sync_button.options['text'] == 'Sync now' and window.sync_button.enabled
+    tinted = {button.options['text'] for button in pills if button.palette is ACCENT}
+    assert {'View all', 'Open calendar'} <= tinted
+    actions = []
+    window.on_action = actions.append
+    window.sync_button.invoke()
+    assert actions == ['sync']
+
+
 def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_path):
     from blackboard_sync.courses import CourseRow
     from blackboard_sync.menubar.main_window_model import (ACTIVITY, ANNOUNCEMENTS, COURSES, GENERAL, OVERVIEW,
@@ -617,10 +665,10 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     model.pause()
     window.update_status(main_status(model, now))
     assert window.pause_button.options['text'] == '▶' and window.state_title.options['text'] == 'Paused'
-    assert not window.sync_button.packed and not window.home_action.packed
+    assert not window.sync_button.canvas.packed and not window.home_action.canvas.packed
     model.resume(now)
     window.update_status(main_status(model, now))
-    assert window.pause_button.options['text'] == '⏸' and window.sync_button.packed
+    assert window.pause_button.options['text'] == '⏸' and window.sync_button.canvas.packed
 
     # Dersler: the mirror explained, one checkbox per course; ticking one saves it.
     from blackboard_sync import courses
