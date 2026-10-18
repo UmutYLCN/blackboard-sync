@@ -50,7 +50,7 @@ def test_home_layout_downloads_and_scrolling(browser, locale, path, heading, wid
     with context_for(browser, width=width) as context:
         page = context.new_page()
         errors, missing = [], []
-        page.on('pageerror', errors.append)
+        page.on('pageerror', lambda error: errors.append(error))
         page.on('response', lambda response: missing.append(response.url)
                 if response.url.startswith(BASE) and response.status >= 400 else None)
         assert page.goto(BASE + path).status == 200
