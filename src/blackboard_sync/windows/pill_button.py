@@ -18,6 +18,11 @@ NEUTRAL = {"fill": "#e6e8ec", "hover": "#dadde3", "pressed": "#cdd1d9", "ink": "
 ACCENT = {"fill": "#dce7f5", "hover": "#cfdff3", "pressed": "#bed3ee", "ink": "#1f5fae",
           "off_fill": "#e8eef6", "off_ink": "#8fa6c4"}
 FOCUS = "#1f5fae"
+DARK_NEUTRAL = {"fill": "#303742", "hover": "#394350", "pressed": "#475569", "ink": "#f3f4f6",
+                "off_fill": "#262d37", "off_ink": "#909aa8"}
+DARK_ACCENT = {"fill": "#263f67", "hover": "#31517e", "pressed": "#3c6090", "ink": "#b6d0fa",
+               "off_fill": "#293444", "off_ink": "#859ab8"}
+DARK_FOCUS = "#8ab4f8"
 
 
 def pill_width(text_width: float) -> int:
@@ -42,14 +47,17 @@ class PillButton:
     def __init__(self, parent, text: str = "", command=None, accent: bool = False, background: str | None = None):
         import tkinter as tk
 
-        from blackboard_sync.windows.sync_scene_view import background_of
+        from blackboard_sync.windows.sync_scene_view import background_of, is_dark
 
-        self.palette = ACCENT if accent else NEUTRAL
         self.options = {"text": text, "state": "normal", "command": command}
         self.hovered = self.pressed = self.focused = False
         self.width = pill_width(len(text) * GLYPH_WIDTH)
+        canvas_background = background or background_of(parent)
+        dark = is_dark(canvas_background)
+        self.palette = (DARK_ACCENT if dark else ACCENT) if accent else (DARK_NEUTRAL if dark else NEUTRAL)
+        self.focus_color = DARK_FOCUS if dark else FOCUS
         self.canvas = tk.Canvas(parent, height=PILL_HEIGHT, width=self.width, highlightthickness=0, borderwidth=0,
-                                background=background or background_of(parent), cursor="hand2", takefocus=1)
+                                background=canvas_background, cursor="hand2", takefocus=1)
         for sequence, handler in (
             ("<Enter>", lambda _e: self._set(hovered=True)),
             ("<Leave>", lambda _e: self._set(hovered=False, pressed=False)),
@@ -105,7 +113,7 @@ class PillButton:
         self.width = pill_width(box[2] - box[0] if box else len(text) * GLYPH_WIDTH)
         canvas.configure(width=self.width, cursor="hand2" if self.enabled else "arrow")
         if self.focused:  # a ring: the capsule in the focus color, the real one inset by 2 px
-            self._capsule(0, 0, self.width, PILL_HEIGHT, FOCUS)
+            self._capsule(0, 0, self.width, PILL_HEIGHT, self.focus_color)
             self._capsule(2, 2, self.width - 2, PILL_HEIGHT - 2, fill)
         else:
             self._capsule(0, 0, self.width, PILL_HEIGHT, fill)

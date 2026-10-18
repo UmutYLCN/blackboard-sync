@@ -205,7 +205,7 @@ class MainWindow:
             row=2, column=0, sticky="ew", ipady=6, pady=(0, 14))
         self.nav = {}
         for row, section in enumerate(main.NAV_SECTIONS, start=3):
-            button = ttk.Radiobutton(bar, style="Toolbutton", variable=self.section_var, value=section,
+            button = ttk.Radiobutton(bar, style="Navigation.TRadiobutton", variable=self.section_var, value=section,
                                      width=22, command=lambda s=section: self.select(s))
             button.grid(row=row, column=0, sticky="ew", pady=2)
             self.nav[section] = button
@@ -302,7 +302,8 @@ class MainWindow:
             row=4, column=0, columnspan=2, sticky="w", pady=(0, 10))
         ttk.Checkbutton(card, text=form.T_AUTOSTART, variable=self.autostart).grid(
             row=5, column=0, columnspan=2, sticky="w", pady=(0, 12))
-        self.start_button = ttk.Button(card, command=lambda: self.submit(self.status.start_login))
+        self.start_button = ttk.Button(card, style="Accent.TButton",
+                                       command=lambda: self.submit(self.status.start_login))
         self.start_button.grid(row=6, column=0, columnspan=2, sticky="ew")
         self.start_message = ttk.Label(card, wraplength=300)
         self.start_message.grid(row=7, column=0, columnspan=2, sticky="w", pady=(8, 0))
@@ -317,7 +318,7 @@ class MainWindow:
         title.grid(row=0, column=0, sticky="w")
         ttk.Label(card, text=main.T_UPDATE_INTRO, wraplength=WRAP - 160).grid(
             row=1, column=0, sticky="w", pady=(4, 0))
-        button = ttk.Button(card, default="active", width=14,
+        button = ttk.Button(card, style="Accent.TButton", default="active", width=14,
                             command=lambda: self.on_action(self.status.form.update_action))
         button.grid(row=0, column=1, rowspan=2, padx=(16, 0))
         return card, title, button
