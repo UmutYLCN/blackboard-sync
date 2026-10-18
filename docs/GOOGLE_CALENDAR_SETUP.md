@@ -18,8 +18,10 @@ that terminal. Never put downloaded OAuth credentials or refresh tokens in Git.
    your user support email and developer contact email. Choose **External** for
    personal Gmail accounts or users outside your Workspace organization; finish
    the initial setup. Do not select Internal for a publicly distributed app.
-4. Under **Branding**, set the app homepage and privacy policy URLs to your
-   published project pages. For production, use domains you own and can verify.
+4. Under **Branding**, set the production app homepage to
+   `https://blackboardsyncapp.com/` and privacy policy to
+   `https://blackboardsyncapp.com/privacy`. For a separate development project,
+   use development pages on a domain you own and can verify.
 5. Open **Audience**. Keep the development project in **Testing**. Under
    **Test users → Add users**, add the exact Google account email(s) you will
    authorize with and save. Workspace administrators may still block consent.
@@ -67,8 +69,10 @@ that terminal. Never put downloaded OAuth credentials or refresh tokens in Git.
 
 Use separate development and production Cloud projects. Before distributing the
 Calendar integration, configure accurate Branding (app identity, support contact,
-homepage, privacy policy and authorized domains), and verify domain ownership as
-requested. In **Audience**, publish the production app to **In production**.
+homepage `https://blackboardsyncapp.com/`, privacy policy
+`https://blackboardsyncapp.com/privacy`, and authorized domain
+`blackboardsyncapp.com`), and verify domain ownership as requested. In **Audience**,
+publish the production app to **In production**.
 Complete the branding and scope verification required by the **Verification
 Center**; publishing alone does not mean the app is verified. If Google marks a
 requested scope sensitive/restricted, submit its justification and the requested

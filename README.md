@@ -45,7 +45,7 @@ Optional Google Calendar sends event titles, course names, due times and Blackbo
 
 Blackboard Sync's use and transfer of information received from Google APIs adhere to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements.
 
-🌐 **Website:** [blackboard-sync.umutyalcin.workers.dev](https://blackboard-sync.umutyalcin.workers.dev)
+🌐 **Website:** [blackboardsyncapp.com](https://blackboardsyncapp.com/)
 
 ![Visitors](https://visitor-badge.laobi.icu/badge?page_id=UmutYLCN.blackboard-sync&left_text=visitors)
 

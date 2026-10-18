@@ -68,14 +68,14 @@ Items marked **Decide** are the maintainer's call; all are collected again under
 - [ ] **Privacy:** "Does this product access, collect or transmit personal information?"
   **Yes.** The app stores the Blackboard session cookies, user ID, user name and display
   name on the PC and sends the cookies to the school's Blackboard server.
-- [ ] **Privacy policy URL:** `https://blackboard-sync.umutyalcin.workers.dev/privacy`.
+- [ ] **Privacy policy URL:** `https://blackboardsyncapp.com/privacy`.
   The page is in English and says which statements apply to the macOS, Windows Setup and
   Microsoft Store builds. Its "Microsoft Store build" section covers the package's data
   folder (`%LOCALAPPDATA%\Packages\<family name>\LocalCache\Roaming\blackboard-sync`),
   the startup task (instead of the `HKCU\…\Run` value), no GitHub contact or self-update,
   removal through Windows Settings > Apps, and separate data from the Setup build. The old
   `/gizlilik` address redirects to it.
-- [ ] **Website:** `https://blackboard-sync.umutyalcin.workers.dev`.
+- [ ] **Website:** `https://blackboardsyncapp.com/`.
 - [ ] **Support contact info:** **Decide.** `https://github.com/UmutYLCN/blackboard-sync/issues`
   (what the privacy page names) or an email address. Required only for Xbox.
 - [ ] **Contact details:** required only for company accounts.
