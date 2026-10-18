@@ -389,7 +389,8 @@ function cursorPath(t) {
   }
   if (t >= 51.0 && t <= 54.0) {
     const [sx, sy, sw, sh] = onStage('[data-key="select-theme"]');
-    return { path: [[51.0, 980, 1250], [51.6, sx + sw * 0.6, sy + sh * 0.55], [52.4, sx + sw * 0.6, sy + sh * 0.55], [52.85, sx + 60, sy + sh + 8 + 25 + 2 * 50]],
+    const koyu = [sx + 60, sy + sh + 8 + 25 + 2 * 50];
+    return { path: [[51.0, 980, 1250], [51.6, sx + sw * 0.6, sy + sh * 0.55], [52.4, sx + sw * 0.6, sy + sh * 0.55], [52.85, ...koyu], [53.1, ...koyu], [53.9, 1000, 1330]],
              clicks: [51.65, 52.9] };
   }
   return null;
