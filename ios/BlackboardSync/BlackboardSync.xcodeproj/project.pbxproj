@@ -45,6 +45,7 @@
 				"013DC1F6FB8EA57122A74F78",
 				"8760D0FEC1303D3FBE9C4E6B",
 				"6D890825794BE505638A5398",
+				"5A11E0C0AB5E4F6B9D2C7E32",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
@@ -254,6 +255,7 @@
 				"2147951C35956BF46675BF5B",
 				"7918085B07C278A76905C5DE",
 				"04EDDDB9DF0587D8145D444E",
+				"5A11E0C0AB5E4F6B9D2C7E31",
 			);
 			"sourceTree" = "<group>";
 		};
@@ -650,6 +652,16 @@
 		"6D890825794BE505638A5398" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "04EDDDB9DF0587D8145D444E";
+		};
+		"5A11E0C0AB5E4F6B9D2C7E31" = {
+			"isa" = "PBXFileReference";
+			"path" = "PauseAndAccountTests.swift";
+			"sourceTree" = "<group>";
+			"lastKnownFileType" = "sourcecode.swift";
+		};
+		"5A11E0C0AB5E4F6B9D2C7E32" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "5A11E0C0AB5E4F6B9D2C7E31";
 		};
 		"161BF44FAF57AD5B7FA380E2" = {
 			"isa" = "XCLocalSwiftPackageReference";

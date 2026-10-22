@@ -13,6 +13,10 @@ final class AppModel: ObservableObject {
     @Published var syncOnOpen = UserDefaults.standard.bool(forKey: "syncOnOpen") {
         didSet { UserDefaults.standard.set(syncOnOpen, forKey: "syncOnOpen") }
     }
+    /// Pause / Resume at the top right, as on the Mac: nothing syncs, by hand or on app open, until resumed.
+    @Published private(set) var paused = UserDefaults.standard.bool(forKey: "paused") {
+        didSet { UserDefaults.standard.set(paused, forKey: "paused") }
+    }
     @Published var tenantText = SyncLogic.defaultTenant
     @Published var accountName = ""
     @Published var terms: [Term] = []
@@ -49,7 +53,11 @@ final class AppModel: ObservableObject {
     var featureCourses: [FeatureCourse] {
         courses.filter { selected.contains($0.id) }.map { FeatureCourse(id: $0.id, name: $0.name) }
     }
-    var canSync: Bool { api != nil && hasSession && !needsSignIn && !busy && !selected.isEmpty && store != nil }
+    var canSync: Bool { api != nil && hasSession && !needsSignIn && !busy && !selected.isEmpty && store != nil && !paused }
+    /// Like the Mac, Pause waits for the first sign-in; a pause already set can always be lifted.
+    var canTogglePause: Bool { !signingOut && (paused || hasSession || hasStoredSession || needsSignIn) }
+    /// Home's status headline: a pause shows unless a sync is still winding down.
+    var displayStatus: String { paused && !syncing ? "Paused" : status }
     func text(_ key: String) -> String { L10n.text(key, language: language) }
 
     func start(restoreSession: Bool = true) async {
@@ -70,7 +78,7 @@ final class AppModel: ObservableObject {
                 install(tenant: tenant, cookies: saved.cookies.compactMap(\.cookie))
                 run { [self] in
                     try await verifyAndDiscover()
-                    if syncOnOpen && !selected.isEmpty { try await performSync() }
+                    if syncOnOpen && !selected.isEmpty && !paused { try await performSync() }
                 }
             }
         } catch { fail(error) }
@@ -239,6 +247,18 @@ final class AppModel: ObservableObject {
         status = result.failed > 0 ? "Sync did not finish" : "Up to date"
     }
     func cancel() { operation?.cancel() }
+
+    /// Pause also ends a sync that is running right now; Resume syncs right away when Sync on app open is on.
+    func togglePause() {
+        guard canTogglePause else { return }
+        if paused {
+            paused = false
+            if syncOnOpen { syncNow() }
+        } else {
+            paused = true
+            if syncing { cancel() }
+        }
+    }
     func reloadLibrary() async {
         if let store { library = await store.snapshot(); libraryRevision += 1 }
     }
@@ -264,6 +284,12 @@ final class AppModel: ObservableObject {
             signingOut = false; busy = false; syncing = false
             await reloadLibrary()
         }
+    }
+
+    /// The account control's initials, as on the Mac: the first letters of the first two words.
+    nonisolated static func initials(_ name: String, language: String) -> String {
+        let letters = name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined()
+        return letters.isEmpty ? "?" : letters.uppercased(with: Locale(identifier: language))
     }
 
     var greeting: String {
