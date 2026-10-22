@@ -60,7 +60,7 @@ private struct ReconnectBar: View {
     }
 }
 
-/// Home's two small cards, as on the Mac's main window: the newest announcements and the next due dates.
+/// Home's two small cards, as on the Mac's main window: the newest announcements and the next four due dates.
 struct HomeFeatureCards: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
@@ -95,11 +95,7 @@ private struct HomeAnnouncements: View {
     let page: AnnouncementsViewModel
     var body: some View {
         Card {
-            HStack {
-                Label(page.strings.announcementsTab, systemImage: "megaphone").font(.headline)
-                Spacer()
-                NavigationLink(model.text("View all")) { AnnouncementsPage() }.font(.caption.weight(.semibold))
-            }
+            Label(page.strings.announcementsTab, systemImage: "megaphone").font(.headline)
             let latest = page.announcements.prefix(3)
             if latest.isEmpty {
                 HomeCardState(phase: page.phase, message: page.message, empty: page.strings.announcementsEmpty,
@@ -114,6 +110,17 @@ private struct HomeAnnouncements: View {
                 }.accessibilityElement(children: .combine)
                 Divider()
             }
+            ViewAllButton(page: .announcements)
+        }
+    }
+}
+
+/// Home's line under the greeting: "1 deadline today · 3 this week" once the due dates are in.
+struct HomeSubtitle: View {
+    let page: DeadlinesViewModel
+    var body: some View {
+        if page.phase == .loaded, !page.subtitle.isEmpty {
+            Text(page.subtitle).font(.title3).foregroundStyle(.secondary).padding(.top, -12)
         }
     }
 }
@@ -123,15 +130,8 @@ private struct HomeDeadlines: View {
     let page: DeadlinesViewModel
     var body: some View {
         Card {
-            HStack {
-                Label(page.strings.upcomingDeadlines, systemImage: "calendar").font(.headline)
-                Spacer()
-                NavigationLink(model.text("View all")) { DeadlinesPage() }.font(.caption.weight(.semibold))
-            }
-            let next = DeadlineCalendar.upcomingRows(page.page, limit: 3)
-            if page.phase == .loaded, !page.subtitle.isEmpty {
-                Text(page.subtitle).font(.callout).foregroundStyle(.secondary)
-            }
+            Label(page.strings.upcomingDeadlines, systemImage: "calendar").font(.headline)
+            let next = DeadlineCalendar.upcomingRows(page.page, limit: 4)
             if next.isEmpty {
                 HomeCardState(phase: page.phase, message: page.error, empty: page.strings.noUpcomingDeadlines,
                               loading: page.strings.loading)
@@ -149,6 +149,7 @@ private struct HomeDeadlines: View {
                 }.accessibilityElement(children: .combine)
                 Divider()
             }
+            ViewAllButton(page: .calendar, title: "Open calendar")
         }
     }
 }
