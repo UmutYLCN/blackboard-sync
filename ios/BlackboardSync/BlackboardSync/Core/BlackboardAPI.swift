@@ -123,7 +123,8 @@ final class BlackboardAPI: MirrorAPI {
             throw SyncFailure(message: "Session expired. Sign in again.", authRequired: true)
         }
         guard (200...299).contains(http.statusCode) else {
-            throw SyncFailure(message: "\(label): HTTP \(http.statusCode)\(http.statusCode == 403 ? " (access denied)" : ""); body redacted.")
+            throw SyncFailure(message: "\(label): HTTP \(http.statusCode)\(http.statusCode == 403 ? " (access denied)" : ""); body redacted.",
+                              status: http.statusCode)
         }
         return http
     }
@@ -147,6 +148,20 @@ final class BlackboardAPI: MirrorAPI {
             throw SyncFailure(message: "Session expired or non-JSON response. Sign in again.", authRequired: true)
         }
         return object
+    }
+
+    /// The raw JSON body for the announcements and due-date pages, with the same cookies, origin
+    /// checks and sign-in detection as `json`. A 2xx answer that is not JSON keeps its status.
+    func jsonData(_ path: String, label: String) async throws -> Data {
+        let (data, response) = try await session.data(for: transport.request(try url(path), json: true))
+        let http = try record(response, label: label)
+        if SyncLogic.looksLikeHTML(mime: http.mimeType, prefix: data) {
+            throw SyncFailure(message: "Session expired or non-JSON response. Sign in again.", authRequired: true)
+        }
+        guard http.mimeType?.lowercased().contains("json") == true else {
+            throw SyncFailure(message: "\(label): non-JSON response; body redacted.", status: http.statusCode)
+        }
+        return data
     }
 
     func paged(_ path: String, label: String, attachmentListing: Bool = false) async throws -> [[String: Any]] {

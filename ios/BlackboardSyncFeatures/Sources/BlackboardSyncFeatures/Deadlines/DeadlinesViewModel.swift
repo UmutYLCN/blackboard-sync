@@ -50,6 +50,11 @@ public final class DeadlinesViewModel {
         return "\(DeadlineCalendar.dayTitle(row.day, today: today, strings: strings)) \(row.time)"
     }
 
+    /// "today 14:30", "tomorrow 09:00" or "October 15 09:00": a Home row's due time.
+    public func whenText(for row: DeadlineRow) -> String {
+        DeadlineCalendar.whenText(row, today: LocalTime(now(), timeZone).day, strings: strings)
+    }
+
     public func loadIfNeeded() async {
         if phase == .idle { await refresh() }
     }

@@ -191,6 +191,7 @@ final class DeadlinesViewModelTests: XCTestCase {
         let row = try XCTUnwrap(model.page.days.first?.rows.first)
         model.selection = row.id
         XCTAssertEqual(model.dueText(for: row), "Today · October 13, 2026 21:00")
+        XCTAssertEqual(model.whenText(for: row), "today 21:00")
 
         fake.set(secondPage, .failure(.status(500)))
         await model.refresh()

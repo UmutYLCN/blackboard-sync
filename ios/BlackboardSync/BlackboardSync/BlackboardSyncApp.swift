@@ -17,6 +17,9 @@ struct BlackboardSyncApp: App {
                     let restoreSession = true
                     #endif
                     await model.start(restoreSession: restoreSession)
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("--ui-testing-features") { model.showSampleFeatures() }
+                    #endif
                 }
                 .onChange(of: phase) { _, phase in
                     if phase == .active {

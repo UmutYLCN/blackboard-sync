@@ -50,6 +50,9 @@ fake Blackboard answers.
 
 ## Wiring it into the shell
 
+The app in `ios/BlackboardSync` is wired this way: see its `Features/FeatureBridge.swift` and
+`Views/FeatureViews.swift`. The steps below describe the contract.
+
 Add the package to the app project (File ▸ Add Package Dependencies ▸ Add Local…, choose
 `ios/BlackboardSyncFeatures`) and link the `BlackboardSyncFeatures` library.
 
@@ -131,7 +134,7 @@ case .calendar:      DeadlinesView(model: models.deadlines)
 - `.featureTheme(FeatureTheme(...))` on any ancestor applies the shell's colors; the default uses
   system semantic colors that match the Mac app's cards.
 - For Home: `DeadlineCalendar.upcomingRows(models.deadlines.page, limit: 3)`,
-  `models.deadlines.subtitle` and `DeadlineCalendar.whenText(_:today:strings:)`.
+  `models.deadlines.subtitle` and `models.deadlines.whenText(for:)` ("tomorrow 09:00").
 
 `PreviewData` gives fake-backed models for SwiftUI previews (`#Preview` blocks are in
 `Fakes/PreviewData.swift`), and `FakeBlackboardHTTP` answers from a table for tests.

@@ -1,7 +1,7 @@
 import SwiftUI
 import QuickLook
 
-private enum Page: String, Hashable { case home, activity, courses, library }
+private enum Page: String, Hashable { case home, activity, announcements, courses, calendar, library }
 
 struct RootView: View {
     @EnvironmentObject var model: AppModel
@@ -22,9 +22,11 @@ struct RootView: View {
                     Section {
                         NavigationLink(value: Page.home) { Label(model.text("Home"), systemImage: "house") }
                         NavigationLink(value: Page.activity) { Label(model.text("Sync activity"), systemImage: "arrow.triangle.2.circlepath") }
-                        ComingSoon(title: "Announcements", symbol: "megaphone", compact: true)
+                        NavigationLink(value: Page.announcements) { Label(model.text("Announcements"), systemImage: "megaphone") }
+                            .accessibilityIdentifier("sidebar.announcements")
                         NavigationLink(value: Page.courses) { Label(model.text("Courses"), systemImage: "books.vertical") }
-                        ComingSoon(title: "Calendar", symbol: "calendar", compact: true)
+                        NavigationLink(value: Page.calendar) { Label(model.text("Calendar"), systemImage: "calendar") }
+                            .accessibilityIdentifier("sidebar.calendar")
                     }
                 }.listStyle(.sidebar)
                 VStack(alignment: .leading, spacing: 10) {
@@ -44,7 +46,9 @@ struct RootView: View {
                     switch page ?? .home {
                     case .home: HomeView()
                     case .activity: ActivityView()
+                    case .announcements: AnnouncementsPage()
                     case .courses: CoursesView()
+                    case .calendar: DeadlinesPage()
                     case .library: FileBrowser(folder: "", title: model.text("University"))
                     }
                 }
@@ -60,7 +64,8 @@ struct RootView: View {
                 }
             }
         }
-        .tint(Color(red: 0.15, green: 0.36, blue: 0.95))
+        .tint(Color.appAccent)
+        .featureTheme(.app)
         .sheet(isPresented: $model.showingSettings, onDismiss: {
             if model.loginAfterSettings { model.loginAfterSettings = false; model.signIn() }
         }) { SettingsView().environmentObject(model) }
@@ -72,25 +77,12 @@ struct ComingSoon: View {
     @EnvironmentObject var model: AppModel
     let title: String
     let symbol: String
-    var compact = false
-    private var badge: some View {
-        Text(model.text("Coming soon")).font(.caption2.weight(.medium)).padding(.horizontal, 7).padding(.vertical, 4)
-            .background(.quaternary, in: Capsule())
-    }
     var body: some View {
-        Group {
-            if compact {
-                VStack(alignment: .leading, spacing: 5) {
-                    Label(model.text(title), systemImage: symbol).lineLimit(1).minimumScaleFactor(0.85)
-                    badge.padding(.leading, 28)
-                }.padding(.vertical, 3)
-            } else {
-                HStack(spacing: 10) {
-                    Label(model.text(title), systemImage: symbol)
-                    Spacer(minLength: 8)
-                    badge
-                }
-            }
+        HStack(spacing: 10) {
+            Label(model.text(title), systemImage: symbol)
+            Spacer(minLength: 8)
+            Text(model.text("Coming soon")).font(.caption2.weight(.medium)).padding(.horizontal, 7).padding(.vertical, 4)
+                .background(.quaternary, in: Capsule())
         }.foregroundStyle(.secondary).opacity(0.75)
             .accessibilityElement(children: .combine).accessibilityAddTraits(.isStaticText)
             .allowsHitTesting(false)
@@ -200,18 +192,7 @@ struct HomeView: View {
             if let previewError { Text(model.text(previewError)).font(.caption).foregroundStyle(.orange) }
         }
     }
-    private var upcoming: some View {
-        VStack(spacing: 20) {
-            Card {
-                ComingSoon(title: "Announcements", symbol: "megaphone")
-                Text(model.text("Things that need your attention will show up here.")).font(.callout).foregroundStyle(.secondary)
-            }
-            Card {
-                ComingSoon(title: "Upcoming deadlines", symbol: "calendar")
-                Text(model.text("Deadlines and calendar are coming to iPad.")).font(.callout).foregroundStyle(.secondary)
-            }
-        }
-    }
+    private var upcoming: some View { HomeFeatureCards() }
 }
 
 struct WelcomeCard: View {

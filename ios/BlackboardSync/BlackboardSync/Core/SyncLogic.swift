@@ -3,6 +3,8 @@ import Foundation
 struct SyncFailure: LocalizedError {
     let message: String
     var authRequired = false
+    /// The HTTP status when the server answered but the answer was unusable.
+    var status: Int?
     var errorDescription: String? { message }
 }
 

@@ -44,6 +44,7 @@
 				"A2124F8137702DEADB2FDCA0",
 				"013DC1F6FB8EA57122A74F78",
 				"8760D0FEC1303D3FBE9C4E6B",
+				"6D890825794BE505638A5398",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
@@ -79,6 +80,7 @@
 				"TARGETED_DEVICE_FAMILY" = "2";
 				"CLANG_ENABLE_MODULES" = "YES";
 				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
 				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
 				"CODE_SIGN_STYLE" = "Automatic";
@@ -107,6 +109,8 @@
 				"1AD7CC3D0A162AB0CD3DDB0E",
 				"CE799DEDBF35F1A4C88EFAEF",
 				"60391A1488AEED42A3FEAF39",
+				"2B663098590A4824AF30D4FD",
+				"2161241336154040BD774EA6",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
@@ -147,6 +151,9 @@
 			"hasScannedForEncodings" = "0";
 			"projectRoot" = "";
 			"mainGroup" = "000000000000000000000017";
+			"packageReferences" = (
+				"161BF44FAF57AD5B7FA380E2",
+			);
 		};
 		"00000000000000000000001C" = {
 			"isa" = "XCBuildConfiguration";
@@ -246,6 +253,7 @@
 				"3ACC7691F2BD01A4EA9A9352",
 				"2147951C35956BF46675BF5B",
 				"7918085B07C278A76905C5DE",
+				"04EDDDB9DF0587D8145D444E",
 			);
 			"sourceTree" = "<group>";
 		};
@@ -289,6 +297,8 @@
 				"18F1CA8BD24118184E86EC02",
 				"66435EBE37C773298DE42699",
 				"F11F93AAD86633826F9F71D8",
+				"F99BE33389CA63AB458F0CA2",
+				"44494B2659F553EB63B85C15",
 			);
 			"sourceTree" = "<group>";
 		};
@@ -300,9 +310,13 @@
 			"isa" = "PBXNativeTarget";
 			"buildPhases" = (
 				"000000000000000000000012",
+				"91F4914132D890F6E1E64EFB",
 				"41D311A605520FC7B8B9A980",
 			);
 			"dependencies" = (
+			);
+			"packageProductDependencies" = (
+				"34331919F3F885930A8657AA",
 			);
 			"name" = "BlackboardSync";
 			"buildRules" = (
@@ -606,6 +620,57 @@
 			);
 			"buildRules" = (
 			);
+		};
+		"F99BE33389CA63AB458F0CA2" = {
+			"isa" = "PBXFileReference";
+			"path" = "Features/FeatureBridge.swift";
+			"sourceTree" = "<group>";
+			"lastKnownFileType" = "sourcecode.swift";
+		};
+		"2B663098590A4824AF30D4FD" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "F99BE33389CA63AB458F0CA2";
+		};
+		"44494B2659F553EB63B85C15" = {
+			"isa" = "PBXFileReference";
+			"path" = "Views/FeatureViews.swift";
+			"sourceTree" = "<group>";
+			"lastKnownFileType" = "sourcecode.swift";
+		};
+		"2161241336154040BD774EA6" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "44494B2659F553EB63B85C15";
+		};
+		"04EDDDB9DF0587D8145D444E" = {
+			"isa" = "PBXFileReference";
+			"path" = "FeatureWiringTests.swift";
+			"sourceTree" = "<group>";
+			"lastKnownFileType" = "sourcecode.swift";
+		};
+		"6D890825794BE505638A5398" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "04EDDDB9DF0587D8145D444E";
+		};
+		"161BF44FAF57AD5B7FA380E2" = {
+			"isa" = "XCLocalSwiftPackageReference";
+			"relativePath" = "../BlackboardSyncFeatures";
+		};
+		"34331919F3F885930A8657AA" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "161BF44FAF57AD5B7FA380E2";
+			"productName" = "BlackboardSyncFeatures";
+		};
+		"0F765F79708C1E9752EF3781" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "34331919F3F885930A8657AA";
+		};
+		"91F4914132D890F6E1E64EFB" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = (
+				"0F765F79708C1E9752EF3781",
+			);
+			"runOnlyForDeploymentPostprocessing" = "0";
 		};
 	};
 	"rootObject" = "000000000000000000000025";
