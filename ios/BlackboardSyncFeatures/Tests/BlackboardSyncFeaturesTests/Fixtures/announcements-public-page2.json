@@ -1,0 +1,7 @@
+{
+  "results": [
+    {"id": "later", "title": "Later", "created": "2026-10-01T08:00:00Z", "body": "<p>Exam <strong>rooms</strong> &amp; times.</p><p>Be early.</p>"},
+    {"id": "unknown", "title": "Undated", "created": "bad"},
+    {"id": "_n1_1", "title": "Welcome to CSE303", "created": "2026-09-20T07:00:00.000Z", "body": {"displayText": "<p>Welcome!</p>"}}
+  ]
+}

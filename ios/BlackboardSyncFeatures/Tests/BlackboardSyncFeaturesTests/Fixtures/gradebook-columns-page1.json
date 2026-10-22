@@ -1,0 +1,10 @@
+{
+  "results": [
+    {"id": "tomorrow", "name": "Ödev 1", "grading": {"due": "2026-10-13T22:30:00Z"}, "contentId": "_c4_1", "score": {"possible": 100}},
+    {"id": "past", "name": "Ödev 0", "grading": {"due": "2026-10-13T11:59:00Z"}, "score": {"possible": 12.5}},
+    {"id": "hidden", "name": "Hidden", "grading": {"due": "2026-10-14T10:00:00Z"}, "availability": {"available": "No"}},
+    {"id": "naive", "name": "Naive", "grading": {"due": "2026-10-13T19:00:00"}},
+    {"id": "nodue", "name": "Participation", "grading": {"type": "Calculated"}}
+  ],
+  "paging": {"nextPage": "/learn/api/public/v2/courses/_13004_1/gradebook/columns?offset=200&limit=200"}
+}
