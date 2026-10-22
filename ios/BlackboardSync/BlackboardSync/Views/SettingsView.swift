@@ -14,7 +14,7 @@ struct SettingsView: View {
                     if model.hasSession || model.needsSignIn || model.hasStoredSession {
                         Button(model.text("Sign out"), role: .destructive) { model.signOut() }.disabled(model.busy && !model.syncing)
                     } else {
-                        Button(model.text("Sign in to Blackboard")) { dismiss(); model.signIn() }.disabled(model.busy)
+                        Button(model.text("Sign in to Blackboard")) { model.loginAfterSettings = true; dismiss() }.disabled(model.busy)
                     }
                     Text(model.text("Signing out removes the app's session. Downloaded files stay on this iPad.")).font(.caption).foregroundStyle(.secondary)
                     if let error = model.errorMessage { Text(model.text(error)).font(.caption).foregroundStyle(.orange) }

@@ -4,7 +4,7 @@ final class NavigationTests: XCTestCase {
     @MainActor
     func testLandscapeNavigationAndPortraitLayout() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-language", "en"]
+        app.launchArguments = ["--ui-testing", "-language", "en"]
         XCUIDevice.shared.orientation = .landscapeLeft
         app.launch()
         XCTAssertTrue(app.staticTexts["Your course files start here."].waitForExistence(timeout: 20))
@@ -28,7 +28,7 @@ final class NavigationTests: XCTestCase {
     @MainActor
     func testTurkishOnboardingAndDisabledFeatures() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-language", "tr"]
+        app.launchArguments = ["--ui-testing", "-language", "tr"]
         XCUIDevice.shared.orientation = .landscapeLeft
         app.launch()
         XCTAssertTrue(app.staticTexts["Ders dosyalarınız burada başlayacak."].waitForExistence(timeout: 20))

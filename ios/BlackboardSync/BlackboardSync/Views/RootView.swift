@@ -22,9 +22,9 @@ struct RootView: View {
                     Section {
                         NavigationLink(value: Page.home) { Label(model.text("Home"), systemImage: "house") }
                         NavigationLink(value: Page.activity) { Label(model.text("Sync activity"), systemImage: "arrow.triangle.2.circlepath") }
-                        ComingSoon(title: "Announcements", symbol: "megaphone")
+                        ComingSoon(title: "Announcements", symbol: "megaphone", compact: true)
                         NavigationLink(value: Page.courses) { Label(model.text("Courses"), systemImage: "books.vertical") }
-                        ComingSoon(title: "Calendar", symbol: "calendar")
+                        ComingSoon(title: "Calendar", symbol: "calendar", compact: true)
                     }
                 }.listStyle(.sidebar)
                 VStack(alignment: .leading, spacing: 10) {
@@ -61,7 +61,9 @@ struct RootView: View {
             }
         }
         .tint(Color(red: 0.15, green: 0.36, blue: 0.95))
-        .sheet(isPresented: $model.showingSettings) { SettingsView().environmentObject(model) }
+        .sheet(isPresented: $model.showingSettings, onDismiss: {
+            if model.loginAfterSettings { model.loginAfterSettings = false; model.signIn() }
+        }) { SettingsView().environmentObject(model) }
         .sheet(isPresented: $model.showingLogin) { SignInView().environmentObject(model) }
     }
 }
@@ -70,14 +72,27 @@ struct ComingSoon: View {
     @EnvironmentObject var model: AppModel
     let title: String
     let symbol: String
+    var compact = false
+    private var badge: some View {
+        Text(model.text("Coming soon")).font(.caption2.weight(.medium)).padding(.horizontal, 7).padding(.vertical, 4)
+            .background(.quaternary, in: Capsule())
+    }
     var body: some View {
-        HStack(spacing: 10) {
-            Label(model.text(title), systemImage: symbol)
-            Spacer(minLength: 8)
-            Text(model.text("Coming soon")).font(.caption2.weight(.medium)).padding(.horizontal, 7).padding(.vertical, 4)
-                .background(.quaternary, in: Capsule())
+        Group {
+            if compact {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label(model.text(title), systemImage: symbol).lineLimit(1).minimumScaleFactor(0.85)
+                    badge.padding(.leading, 28)
+                }.padding(.vertical, 3)
+            } else {
+                HStack(spacing: 10) {
+                    Label(model.text(title), systemImage: symbol)
+                    Spacer(minLength: 8)
+                    badge
+                }
+            }
         }.foregroundStyle(.secondary).opacity(0.75)
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .combine).accessibilityAddTraits(.isStaticText)
             .allowsHitTesting(false)
     }
 }

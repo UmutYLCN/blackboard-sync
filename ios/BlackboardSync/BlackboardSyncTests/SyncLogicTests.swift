@@ -265,4 +265,10 @@ final class SyncLogicTests: XCTestCase {
         XCTAssertNil(terms.first?.start)
     }
 
+    func testTurkishDiagnosticsKeepCodesAndTranslateErrorTemplates() {
+        XCTAssertEqual(L10n.text("Keychain error (OSStatus -34018).", language: "tr"), "Anahtar Zinciri hatası (OSStatus -34018).")
+        XCTAssertEqual(L10n.text("Download: HTTP 403 (access denied); body redacted.", language: "tr"), "İndirme: HTTP 403 (erişim reddedildi); yanıt içeriği gizlendi.")
+        XCTAssertEqual(L10n.text("Network error (NSURLErrorDomain -1009).", language: "en"), "Network error (NSURLErrorDomain -1009).")
+    }
+
 }

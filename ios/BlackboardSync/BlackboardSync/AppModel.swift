@@ -27,6 +27,7 @@ final class AppModel: ObservableObject {
     @Published var library = LibraryState()
     @Published var libraryRevision = 0
     @Published var showingSettings = false
+    var loginAfterSettings = false
     private(set) var store: LibraryStore?
     private(set) var scope = UserDefaults.standard.string(forKey: "libraryScope") ?? ""
     private var api: BlackboardAPI?
@@ -36,9 +37,9 @@ final class AppModel: ObservableObject {
     let websiteStore = WKWebsiteDataStore(forIdentifier: UUID(uuidString: "1A1FAFC3-8243-4C32-81A1-026D23F22B6D")!)
     var courses: [Course] { terms.flatMap(\.courses).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
     var canSync: Bool { api != nil && hasSession && !needsSignIn && !busy && !selected.isEmpty && store != nil }
-    func text(_ key: String) -> String { language == "tr" ? (L10n.turkish[key] ?? key) : key }
+    func text(_ key: String) -> String { L10n.text(key, language: language) }
 
-    func start() async {
+    func start(restoreSession: Bool = true) async {
         guard !started else { return }
         started = true
         do {
@@ -49,7 +50,7 @@ final class AppModel: ObservableObject {
             terms = library.cachedScope == scope ? library.terms : []
             selected = library.selected[scope] ?? []
             status = library.interrupted ? "Previous sync was interrupted. Sync now to continue." : "Not signed in"
-            if let saved = try SessionVault.load() {
+            if restoreSession, let saved = try SessionVault.load() {
                 let tenant = try SyncLogic.tenant(saved.tenant)
                 tenantText = tenant.absoluteString
                 hasStoredSession = true

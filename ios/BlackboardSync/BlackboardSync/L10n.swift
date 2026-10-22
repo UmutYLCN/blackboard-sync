@@ -1,5 +1,36 @@
+import Foundation
+
 // Shared wording comes from the desktop locale_tr catalog. iPad-specific copy is translated here.
 enum L10n {
+    static func text(_ key: String, language: String) -> String {
+        guard language == "tr" else { return key }
+        if let translated = turkish[key] { return translated }
+        // Diagnostics are constructed from fixed templates plus safe HTTP/OS error codes.
+        let fragments = [
+            ("Sign-in web process terminated. Close and reopen Sign in to retry.", "Giriş işlemi sonlandı. Tekrar denemek için giriş ekranını kapatıp açın."),
+            ("Enter an HTTPS tenant origin, without a path, query, or credentials.", "Yol, sorgu veya kimlik bilgisi içermeyen bir HTTPS okul adresi girin."),
+            ("Rejected an API link outside the HTTPS tenant origin.", "Okulun HTTPS adresi dışındaki API bağlantısı reddedildi."),
+            ("repeated page or 100-page safety limit reached.", "yinelenen sayfa veya 100 sayfalık güvenlik sınırı."),
+            ("JSON has no results array.", "JSON yanıtında sonuç listesi yok."),
+            ("no HTTP response.", "HTTP yanıtı yok."),
+            ("Sign-in navigation:", "Giriş sayfası:"),
+            ("Network error", "Ağ hatası"),
+            ("Keychain error", "Anahtar Zinciri hatası"),
+            ("Operation failed (error code ", "İşlem başarısız (hata kodu "),
+            ("response details redacted.", "yanıt ayrıntıları gizlendi."),
+            ("(access denied)", "(erişim reddedildi)"),
+            ("body redacted.", "yanıt içeriği gizlendi."),
+            ("Top-level contents:", "Üst düzey içerik:"),
+            ("Folder children:", "Klasör içeriği:"),
+            ("Attachments:", "Ekler:"),
+            ("Memberships:", "Ders kayıtları:"),
+            ("Course detail:", "Ders ayrıntısı:"),
+            ("Download:", "İndirme:"),
+            ("Account:", "Hesap:")
+        ]
+        return fragments.reduce(key) { $0.replacingOccurrences(of: $1.0, with: $1.1) }
+    }
+
     static let turkish: [String: String] = [
         "1. Sign in to Blackboard\n2. Choose your courses\n3. Sync now and open your files offline": "1. Blackboard’a giriş yapın\n2. Derslerinizi seçin\n3. Senkronize edip dosyalarınızı çevrimdışı açın",
         "About & privacy": "Hakkında ve gizlilik",

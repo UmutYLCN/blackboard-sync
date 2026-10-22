@@ -11,7 +11,12 @@ struct BlackboardSyncApp: App {
                 .environment(\.locale, Locale(identifier: model.language))
                 .task {
                     guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
-                    await model.start()
+                    #if DEBUG
+                    let restoreSession = !ProcessInfo.processInfo.arguments.contains("--ui-testing")
+                    #else
+                    let restoreSession = true
+                    #endif
+                    await model.start(restoreSession: restoreSession)
                 }
                 .onChange(of: phase) { _, phase in
                     if phase == .active {
