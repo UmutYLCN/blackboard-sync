@@ -11,6 +11,75 @@ final class ProofLogicTests: XCTestCase {
         return HTTPCookie(properties: props)!
     }
 
+    func testNoAttachmentsRequiresExpectedStatusAndStructuredMessage() throws {
+        let expected = try JSONSerialization.data(withJSONObject: ["message": "This content DOES NOT SUPPORT FILE ATTACHMENTS."])
+        for status in [400, 403, 404] {
+            XCTAssertTrue(ProofLogic.noAttachments(status: status, data: expected))
+        }
+        for status in [200, 401, 500] {
+            XCTAssertFalse(ProofLogic.noAttachments(status: status, data: expected))
+        }
+        for body in ["{\"message\":\"Access denied\"}", "{\"message\":\"Session expired\"}",
+                     "{\"other\":\"does not support file attachments\"}",
+                     "<html>does not support file attachments</html>", "invalid JSON"] {
+            XCTAssertFalse(ProofLogic.noAttachments(status: 403, data: Data(body.utf8)))
+        }
+    }
+
+    @MainActor
+    func testFolderChildrenPagingAndAttachmentContentIDs() async throws {
+        let root = "/learn/api/public/v1/courses/course/contents"
+        let first = root + "/folder/children?limit=200"
+        let second = root + "/folder/children?offset=200&limit=200"
+        var requested: [String] = []
+        let pages: [String: [String: Any]] = [
+            first: ["results": [["id": "notes", "title": "Notes", "hasChildren": true,
+                                 "contentHandler": ["id": "resource/x-bb-folder"]]],
+                    "paging": ["nextPage": second]],
+            second: ["results": [["id": "file", "title": "Slides", "contentHandler": ["id": "resource/x-bb-file"]]]],
+            root + "/notes/attachments": ["results": []],
+            root + "/file/attachments": ["results": [["id": "attachment", "fileName": "slides.pdf"]],
+                                         "paging": ["nextPage": root + "/file/attachments?offset=1"]],
+            root + "/file/attachments?offset=1": ["results": [["id": "attachment2", "fileName": "notes.pdf"]]],
+            root + "/notes/children?limit=200": ["results": [["id": "web", "contentHandler": ["id": "resource/x-bb-externallink"]]]]
+        ]
+        let api = BlackboardAPI(tenant: tenant, cookies: [], pageLoader: { path in
+            requested.append(path)
+            return try XCTUnwrap(pages[path], "Unexpected API path")
+        }, log: { _ in })
+        defer { api.cancel() }
+        let items = try await api.contents(courseID: "course", parentID: "folder")
+        XCTAssertEqual(items.map(\.id), ["notes", "file"])
+        XCTAssertTrue(items[0].hasChildren)
+        XCTAssertEqual(items[0].handlerID, "resource/x-bb-folder")
+        XCTAssertEqual(items[1].attachments.map(\.contentID), ["file", "file"])
+        XCTAssertEqual(items[1].attachments.map(\.name), ["slides.pdf", "notes.pdf"])
+        XCTAssertTrue(requested.contains(second))
+        let nested = try await api.contents(courseID: "course", parentID: "notes")
+        XCTAssertEqual(nested.first?.note, "No attachments for this content type.")
+        XCTAssertFalse(requested.contains(root + "/web/attachments"))
+    }
+
+    @MainActor
+    func testChildrenPagingRejectsRepeatedAndForeignPages() async throws {
+        for next in ["/learn/api/public/v1/courses/course/contents/folder/children?limit=200",
+                     "https://attacker.test/children"] {
+            var count = 0
+            let api = BlackboardAPI(tenant: tenant, cookies: [], pageLoader: { _ in
+                count += 1
+                return ["results": [], "paging": ["nextPage": next]]
+            }, log: { _ in })
+            do {
+                _ = try await api.contents(courseID: "course", parentID: "folder")
+                XCTFail("Unsafe/repeated page should fail")
+            } catch {
+                XCTAssertTrue(error is ProofFailure)
+            }
+            XCTAssertEqual(count, 1)
+            api.cancel()
+        }
+    }
+
     func testHostOnlyCookieAndDomainBoundaries() {
         let hostOnly = cookie()
         XCTAssertTrue(ProofLogic.matchesHost(hostOnly, "blackboard.example.edu"))

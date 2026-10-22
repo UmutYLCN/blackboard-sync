@@ -71,11 +71,15 @@ final class BlackboardAPI {
     private let transport: CookieTransport
     private let session: URLSession
     private let log: (String) -> Void
+    private let pageLoader: ((String) async throws -> [String: Any])?
 
-    init(tenant: URL, cookies: [HTTPCookie], log: @escaping (String) -> Void) {
+    init(tenant: URL, cookies: [HTTPCookie],
+         pageLoader: ((String) async throws -> [String: Any])? = nil,
+         log: @escaping (String) -> Void) {
         self.tenant = tenant
         self.transport = CookieTransport(tenant: tenant, cookies: cookies)
         self.log = log
+        self.pageLoader = pageLoader
         let config = URLSessionConfiguration.ephemeral
         config.httpCookieStorage = nil
         config.httpShouldSetCookies = false
@@ -116,8 +120,18 @@ final class BlackboardAPI {
         return http
     }
 
-    func json(_ path: String, label: String) async throws -> [String: Any] {
+    func json(_ path: String, label: String, attachmentListing: Bool = false) async throws -> [String: Any] {
+        if let pageLoader { return try await pageLoader(path) }
         let (data, response) = try await session.data(for: transport.request(try url(path), json: true))
+        // Inspect only the structured message, never include the body in diagnostics.
+        if attachmentListing, let http = response as? HTTPURLResponse,
+           ProofLogic.noAttachments(status: http.statusCode, data: data) {
+            transport.receive(http)
+            try SessionVault.save(tenant: tenant, cookies: transport.cookies)
+            for message in transport.takeMessages() { log(message) }
+            log("Attachments: no attachment collection for this item.")
+            return ["results": [[String: Any]]()]
+        }
         let http = try record(response, label: label)
         guard http.mimeType?.lowercased().contains("json") == true,
               !ProofLogic.looksLikeHTML(mime: http.mimeType, prefix: data),
@@ -127,7 +141,7 @@ final class BlackboardAPI {
         return object
     }
 
-    func paged(_ path: String, label: String) async throws -> [[String: Any]] {
+    func paged(_ path: String, label: String, attachmentListing: Bool = false) async throws -> [[String: Any]] {
         var next: String? = path
         var visited: Set<URL> = []
         var results: [[String: Any]] = []
@@ -136,7 +150,7 @@ final class BlackboardAPI {
             guard visited.insert(pageURL).inserted, visited.count <= 100 else {
                 throw ProofFailure(message: "\(label): repeated page or 100-page proof limit reached.")
             }
-            let page = try await json(path, label: label)
+            let page = try await json(path, label: label, attachmentListing: attachmentListing)
             guard let rows = page["results"] as? [[String: Any]] else {
                 throw ProofFailure(message: "\(label): JSON has no results array.")
             }
@@ -184,16 +198,24 @@ final class BlackboardAPI {
         return Term.current(terms)
     }
 
-    func contents(courseID: String) async throws -> [ContentItem] {
+    func contents(courseID: String, parentID: String? = nil) async throws -> [ContentItem] {
         let root = "/learn/api/public/v1/courses/\(Self.segment(courseID))/contents"
-        let rows = try await paged(root + "?limit=200", label: "Top-level contents")
+        let path = parentID.map { root + "/\(Self.segment($0))/children" } ?? root
+        let rows = try await paged(path + "?limit=200", label: parentID == nil ? "Top-level contents" : "Folder children")
         var contents: [ContentItem] = []
         for row in rows {
             guard let id = row["id"] as? String else { continue }
             var item = ContentItem(id: id, title: row["title"] as? String ?? id,
-                                   hasChildren: row["hasChildren"] as? Bool ?? false, attachments: [])
+                                   hasChildren: row["hasChildren"] as? Bool ?? false,
+                                   handlerID: (row["contentHandler"] as? [String: Any])?["id"] as? String,
+                                   attachments: [])
+            if ProofLogic.noAttachmentHandlers.contains(item.handlerID ?? "") {
+                item.note = "No attachments for this content type."
+                contents.append(item)
+                continue
+            }
             do {
-                let attachments = try await paged(root + "/\(Self.segment(id))/attachments", label: "Attachments")
+                let attachments = try await paged(root + "/\(Self.segment(id))/attachments", label: "Attachments", attachmentListing: true)
                 item.attachments = attachments.compactMap {
                     guard let attachmentID = $0["id"] as? String else { return nil }
                     return Attachment(id: attachmentID, contentID: id, name: $0["fileName"] as? String ?? "attachment")

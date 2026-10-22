@@ -13,6 +13,8 @@ final class ProofModel: ObservableObject {
     @Published var courses: [Course] = []
     @Published var selectedCourseID = ""
     @Published var contents: [ContentItem] = []
+    @Published var folderPath: [ContentItem] = []
+    private var parentContents: [[ContentItem]] = []
     @Published var files: [URL] = []
     @Published var lines: [String] = ["iPad proof: diagnostics redact cookies, credentials, response bodies and URLs."]
     @Published var hasSession = false
@@ -48,7 +50,7 @@ final class ProofModel: ObservableObject {
         hasSession = true
         userID = nil
         identity = "Not verified"
-        courses = []; selectedCourseID = ""; contents = []
+        courses = []; selectedCourseID = ""; contents = []; folderPath = []; parentContents = []
     }
 
     func run(_ label: String, operation: @escaping @MainActor () async throws -> Void) {
@@ -105,7 +107,7 @@ final class ProofModel: ObservableObject {
     func verify() {
         run("Verify stored session") { [self] in
             guard let api else { throw ProofFailure(message: "Sign in and capture cookies first.") }
-            userID = nil; identity = "Verification in progress"; courses = []; contents = []
+            userID = nil; identity = "Verification in progress"; courses = []; contents = []; folderPath = []; parentContents = []
             let me = try await api.json("/learn/api/public/v1/users/me", label: "Verify users/me")
             guard let id = me["id"] as? String else { throw ProofFailure(message: "Verify: JSON has no user id.") }
             let name = me["name"] as? [String: Any] ?? [:]
@@ -120,7 +122,7 @@ final class ProofModel: ObservableObject {
     func listCourses() {
         run("List current-term courses") { [self] in
             guard let api, let userID else { throw ProofFailure(message: "Verify the session first.") }
-            courses = []; contents = []; selectedCourseID = ""
+            courses = []; contents = []; folderPath = []; parentContents = []; selectedCourseID = ""
             let terms = try await api.courses(userID: userID)
             courses = terms.flatMap(\.courses).sorted { $0.name < $1.name }
             selectedCourseID = courses.first?.id ?? ""
@@ -132,11 +134,36 @@ final class ProofModel: ObservableObject {
     func listContents() {
         run("List top-level contents and attachments") { [self] in
             guard let api, let course = selectedCourse else { throw ProofFailure(message: "Select a course first.") }
-            contents = []
+            contents = []; folderPath = []; parentContents = []
             contents = try await api.contents(courseID: course.id)
-            status = "Found \(contents.count) top-level items. Nested folders are marked; this proof lists top-level attachments only."
+            status = "Found \(contents.count) top-level items. Open a folder to find its files."
             log("Contents: \(contents.count) top-level items, \(contents.reduce(0) { $0 + $1.attachments.count }) attachments.")
         }
+    }
+
+    func resetContents() {
+        contents = []; folderPath = []; parentContents = []
+    }
+
+    func openFolder(_ item: ContentItem) {
+        guard item.hasChildren, folderPath.count < 5 else { return }
+        run("List folder children and attachments") { [self] in
+            guard let api, let course = selectedCourse else { throw ProofFailure(message: "Select a course first.") }
+            let children = try await api.contents(courseID: course.id, parentID: item.id)
+            try Task.checkCancellation()
+            parentContents.append(contents)
+            folderPath.append(item)
+            contents = children
+            status = "Found \(children.count) items in folder (depth \(folderPath.count) of 5)."
+            log("Folder children: \(children.count) items, \(children.reduce(0) { $0 + $1.attachments.count }) attachments.")
+        }
+    }
+
+    func backToParent() {
+        guard !busy, let parent = parentContents.popLast() else { return }
+        folderPath.removeLast()
+        contents = parent
+        status = "Returned to \(folderPath.isEmpty ? "top-level contents" : "parent folder")."
     }
 
     func download(_ attachment: Attachment) {
@@ -174,7 +201,7 @@ final class ProofModel: ObservableObject {
             for cookie in cookies { await websiteStore.httpCookieStore.deleteCookie(cookie) }
             await websiteStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
             api = nil; hasSession = false; userID = nil
-            identity = "Not verified"; courses = []; contents = []; selectedCourseID = ""
+            identity = "Not verified"; courses = []; contents = []; folderPath = []; parentContents = []; selectedCourseID = ""
             status = keychainError.map { "Web data cleared; Keychain removal failed: " + ProofLogic.safeError($0) }
                 ?? "Signed out: Keychain, HTTP session, and all app web data cleared. Downloaded files remain."
             log(status)

@@ -6,6 +6,15 @@ struct ProofFailure: LocalizedError {
 }
 
 enum ProofLogic {
+    static let noAttachmentHandlers: Set<String> = ["resource/x-bb-externallink", "resource/x-bb-courselink"]
+
+    static func noAttachments(status: Int, data: Data) -> Bool {
+        guard [400, 403, 404].contains(status),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let message = object["message"] as? String else { return false }
+        return message.lowercased().contains("does not support file attachments")
+    }
+
     static let defaultTenant = "https://blackboard.istun.edu.tr"
 
     static func tenant(_ text: String) throws -> URL {
@@ -133,6 +142,7 @@ struct ContentItem: Identifiable {
     let id: String
     let title: String
     let hasChildren: Bool
+    let handlerID: String?
     var attachments: [Attachment]
     var note: String?
 }

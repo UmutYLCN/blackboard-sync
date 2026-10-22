@@ -35,19 +35,30 @@ struct ProofView: View {
                         Picker("Course", selection: $model.selectedCourseID) {
                             ForEach(model.courses) { course in Text(course.name).tag(course.id) }
                         }.disabled(model.busy)
-                            .onChange(of: model.selectedCourseID) { _, _ in model.contents = [] }
+                            .onChange(of: model.selectedCourseID) { _, _ in model.resetContents() }
                         Button("List top-level contents + attachments") { model.listContents() }.disabled(model.busy)
                     }
                 }
                 Section("4 · Download one attachment") {
+                    if !model.folderPath.isEmpty {
+                        Text("Top level / " + model.folderPath.map(\.title).joined(separator: " / "))
+                            .font(.caption)
+                        Button("Back to parent") { model.backToParent() }.disabled(model.busy)
+                    }
                     ForEach(model.contents) { content in
                         VStack(alignment: .leading, spacing: 8) {
                             Text(content.title).font(.headline)
-                            if content.hasChildren { Text("Folder: nested children are outside this proof.").font(.caption) }
+                            if let handler = content.handlerID { Text("Handler: " + handler).font(.caption) }
+                            if content.hasChildren {
+                                Button("Open folder") { model.openFolder(content) }
+                                    .buttonStyle(.bordered)
+                                    .disabled(model.busy || model.folderPath.count >= 5)
+                                if model.folderPath.count >= 5 { Text("Five-level folder limit reached.").font(.caption) }
+                            }
                             if let note = content.note { Text(note).font(.caption) }
-                            if content.attachments.isEmpty { Text("No top-level attachments listed.").font(.caption) }
+                            if content.attachments.isEmpty && content.note == nil { Text("No attachments for this item.").font(.caption) }
                             ForEach(content.attachments) { attachment in
-                                Button("Download: " + attachment.name) { model.download(attachment) }.disabled(model.busy)
+                                Button("Download: " + attachment.name) { model.download(attachment) }.buttonStyle(.bordered).disabled(model.busy)
                             }
                         }
                     }
