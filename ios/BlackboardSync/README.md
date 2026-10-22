@@ -1,8 +1,8 @@
 # Blackboard Sync for iPad — foreground pilot
 
-A native SwiftUI iPadOS 17+ app, developed separately from the desktop app and the untouched `prototypes/ipad-proof/`. Open **BlackboardSync.xcodeproj** in Xcode 26 and select the shared **BlackboardSync** scheme. No packages, project generator, server, or desktop companion are needed.
+A native SwiftUI iPadOS 17+ app, developed separately from the desktop app and the untouched `prototypes/ipad-proof/`. Open **BlackboardSync.xcodeproj** in Xcode 26 and select the shared **BlackboardSync** scheme. The only package is the local `../BlackboardSyncFeatures` (announcements and due dates), which Xcode resolves from the repository; no remote packages, project generator, server, or desktop companion are needed.
 
-The app uses the desktop icon, blue accent, system typography, sidebar order, greeting, status/recent-download cards, and English/Turkish wording. Home, Sync activity, Courses, Settings, and the offline file browser work. Announcements, deadlines/calendar, Google Calendar, automatic background sync, notes PDFs, past terms, and choosing another destination are visibly labelled **Coming soon / Çok yakında** and have no tap actions.
+The app uses the desktop icon, blue accent, system typography, sidebar order, greeting, status/recent-download cards, and English/Turkish wording. Home, Sync activity, Announcements, Calendar (due dates), Courses, Settings, and the offline file browser work. Google Calendar, automatic background sync, notes PDFs, past terms, and choosing another destination are visibly labelled **Coming soon / Çok yakında** and have no tap actions.
 
 ## Install on a physical iPad
 
@@ -18,13 +18,22 @@ This target has a different bundle ID and dedicated WebKit store from the proof.
 ## Sync and storage behavior
 
 - Current-term discovery uses memberships, expanded courses with detail fallback, public/private term metadata, a 30-day lead, latest-started term, then newest-course fallback. Unavailable memberships/courses and courses without a term are excluded. Recognized English/Turkish academic semester aliases merge as on desktop, using the Turkish semester name for folder stability.
-- Files go to `Documents/University/<term>/<course>/…`. Names follow macOS conventions where practical: readable Unicode/NFC, course code without section suffix, safe path components, extension preservation, and bounded UTF-8 component size. Allocated term/course folders are stable across renames/relaunch and disambiguated across collisions and accounts. Nested folders, attachment collections, and content-body/description/instructor-instruction collection links are crawled. No announcements, submissions, grades, or student attempts are queried.
+- Files go to `Documents/University/<term>/<course>/…`. Names follow macOS conventions where practical: readable Unicode/NFC, course code without section suffix, safe path components, extension preservation, and bounded UTF-8 component size. Allocated term/course folders are stable across renames/relaunch and disambiguated across collisions and accounts. Nested folders, attachment collections, and content-body/description/instructor-instruction collection links are crawled. File sync queries no announcements, submissions, grades, or student attempts.
 - Three concurrent file transfers at most; folder discovery is serial. Discovery guards recursion at 40 levels or 10,000 already-visited items per course and limits each collection to 100 pages, with explicit errors. Repeated or foreign pagination is rejected. Progress shows discovery, completed/total files, downloads, unchanged files, skips and errors. Sync activity retains up to 1,000 entries. A failing collection/file leaves an error while other files continue; **Retry sync** makes a fresh scan of selected courses and reuses successful checkpoints.
 - A private atomic manifest in Application Support records selected IDs, stable paths, SHA-256, remote metadata fingerprints, ETags and Last-Modified values. Secrets and signed embedded URLs are excluded. Completed files checkpoint individually. Interrupted runs are rediscovered on relaunch/retry; completed records avoid duplicate downloads. Temporary response files live outside Documents and are removed on failure/cancellation.
 - Unchanged remote content fingerprints skip body requests. Without usable content modification metadata, conditional requests use ETag/Last-Modified and a 304 downloads no body. Servers lacking both metadata and validators require a body request; hashing then avoids replacing an identical copy. A locally missing file is downloaded again. The app does not claim zero network bytes when the server offers no way to verify freshness.
 - Files stream to private staging with bounded memory. Audio/video are skipped by name or MIME type; the desktop's decimal **500,000,000-byte** cap is checked against headers and streamed byte count. HTML/XHTML MIME types and HTML-looking prefixes are rejected even when labelled PDF; these responses request reconnection. API 401/redirect/non-JSON responses request sign-in; access-denied 403 errors remain distinct. Validated bytes are committed only after the full response arrives.
 - A changed remote file replaces only an unchanged local copy. Local edits/annotations are hashed and preserved; the new remote version is saved beside them as `name (2).ext`, then tracked there. Hash-identical remote bytes leave local annotations alone. File coordination and a second hash check guard save-time edits; an edit race produces a retryable error. Existing untracked files are preserved too. Paths reject traversal and symlinks.
 - This pilot preserves local files when remote content disappears, a course is deselected, a school/account changes, or the student signs out. It does not implement deletion propagation or archive migration. Different accounts allocate separate collision-safe folders, while the root file browser can show all files retained on the device.
+
+## Announcements and calendar
+
+The **Announcements** and **Calendar** pages come from `ios/BlackboardSyncFeatures` (see its README for the desktop behavior they follow). `Features/FeatureBridge.swift` hands the package the app's own signed-in `BlackboardAPI` (same cookie transport, tenant-origin checks and sign-in detection as sync; no extra networking, cookie or Keychain code) and the ticked current-term courses from **Courses**. Views get the app's accent and cards through `FeatureTheme.app`.
+
+- The pages read Blackboard live when first shown and on pull-to-refresh: announcements from the public endpoint, then the private one; due dates from gradebook column metadata only. Nothing is stored on disk. With room, the list and the selected item sit side by side; in a narrow split the item opens as a sheet.
+- Home shows the three newest announcements and the next three due dates (with "1 deadline today · 3 this week") and links to both pages.
+- Changing the course selection reloads pages already shown; changing English/Türkçe or signing in with another account rebuilds them in the new language or account. Signing out clears them.
+- States: loading, no courses selected, empty, a course that could not be updated (earlier items kept), Blackboard unreachable/offline ("pull down to try again"), and signed out (a sign-in button). An expired session (401, a login redirect, or HTML instead of JSON) puts the app in the same **Reconnect** state as a sync that hits it; the page shows a Reconnect bar and reloads after reconnecting.
 
 ## Session and privacy
 
@@ -34,18 +43,24 @@ Tenant-bound cookie records are stored in a when-unlocked, device-only Keychain 
 
 ## Simulator build and tests
 
-From this folder, the following exact command was used on the installed iPad Air 11-inch (M3) simulator (iPadOS 18.4):
+From this folder, the following exact commands were used on the installed iPad Air 11-inch (M3) simulator (iPadOS 18.4). The first builds the app with the package and runs the app's unit and UI tests; the second runs the package's own tests:
 
 ```sh
 xcodebuild -project BlackboardSync.xcodeproj -scheme BlackboardSync \
   -destination 'platform=iOS Simulator,id=6A750041-BCF4-4A81-93D2-6208BB031259' -destination-timeout 60 \
   -derivedDataPath /tmp/bbsync-ipad-app-derived \
   CODE_SIGNING_ALLOWED=NO test
+
+(cd ../BlackboardSyncFeatures && xcodebuild test -scheme BlackboardSyncFeatures \
+  -destination 'platform=iOS Simulator,id=6A750041-BCF4-4A81-93D2-6208BB031259' \
+  -derivedDataPath /tmp/bbsync-ipad-features-derived)
 ```
+
+`swift test` in `../BlackboardSyncFeatures` also runs the package tests on the Mac host.
 
 For another Mac, use `xcrun simctl list devices available` and replace the destination ID, or use `-destination 'platform=iOS Simulator,name=iPad (A16),OS=latest'`. Use `build` instead of `test` for a simulator-only build. Derived data/test results stay outside the repository. The checked-in project and shared scheme build directly; there is no XcodeGen step.
 
-Unit tests use synthetic cookies, a fake paged API, a fake mirror service and a URLProtocol transport; no school requests run. They cover naming/byte limits/Turkish course codes, traversal/symlinks, stable folder allocation, current-term selection and aliases, state restoration, explicit empty selections, SHA-256/change detection, modified-local conflicts, missing/untracked files, conditional requests, MIME/size policies, HTML-instead-of-file detection, redaction, cookie boundaries/rotation/redirect isolation, nested content/attachment pagination, embedded files, selected-course filtering, bounded concurrency, per-file retry, cancellation/checkpoint recovery, and session expiry. The hosted test app skips startup/session restoration under XCTest. A separate UI test target checks English/Turkish onboarding, navigation, inert placeholders, and portrait/landscape layouts; screenshots are attached to the `.xcresult` outside the repository. Debug UI smoke tests pass `--ui-testing` to skip Keychain session restoration; unsigned simulator launches can otherwise report OSStatus -34018. Release builds ignore this flag. Session persistence and sign-out require the signed physical-iPad checklist.
+Unit tests use synthetic cookies, a fake paged API, a fake mirror service and a URLProtocol transport; no school requests run. They cover naming/byte limits/Turkish course codes, traversal/symlinks, stable folder allocation, current-term selection and aliases, state restoration, explicit empty selections, SHA-256/change detection, modified-local conflicts, missing/untracked files, conditional requests, MIME/size policies, HTML-instead-of-file detection, redaction, cookie boundaries/rotation/redirect isolation, nested content/attachment pagination, embedded files, selected-course filtering, bounded concurrency, per-file retry, cancellation/checkpoint recovery, and session expiry. Feature-wiring tests drive the real `BlackboardAPI` through the URLProtocol transport (JSON, paging links, 401/login redirect/HTML → reconnect, 403/404/5xx, non-JSON, foreign links) and an `AppModel` with the package's fake Blackboard (only ticked courses are read, language switch, refresh after a selection change, sign-out, expired session → Reconnect, unreachable course). The hosted test app skips startup/session restoration under XCTest. A separate UI test target checks English/Turkish onboarding, navigation, signed-out Announcements/Calendar pages, the remaining inert placeholders, and portrait/landscape layouts; Debug-only `--ui-testing-features` fills Announcements, Calendar and Home from the package's sample Blackboard so the real pages are exercised in both languages; screenshots are attached to the `.xcresult` outside the repository. Debug UI smoke tests pass `--ui-testing` to skip Keychain session restoration; unsigned simulator launches can otherwise report OSStatus -34018. Release builds ignore this flag. Session persistence and sign-out require the signed physical-iPad checklist.
 
 ## Owner's physical-iPad checklist
 
@@ -59,8 +74,10 @@ Record iPad model, OS and app version plus pass/fail notes. Do not capture passw
 - [ ] Confirm audio/video and a file over 500 MB are skipped and not exported. Check a login/HTML response never becomes a PDF in the mirror.
 - [ ] Disconnect Wi-Fi during a multi-file sync. Review errors and Retry sync after reconnecting. Cancel mid-sync, then sync again; successful files should be reused. Lock/switch apps, force-quit during sync, relaunch and Sync now; partial transfers must not appear as completed files.
 - [ ] Preview and Share from a course folder. Find the same nested files in Files, open in another reader, then repeat in airplane mode.
-- [ ] Change English ↔ Türkçe in Settings; labels update immediately. Verify every Coming soon / Çok yakında row is inert, including announcements, calendar, background sync, Google Calendar, notes PDFs and past terms.
-- [ ] Turn Sync on app open on/off, relaunch and verify the chosen behavior. Course selection (including selecting none) survives relaunch. Test a late session expiry: the app must offer Reconnect, with existing offline files retained.
+- [ ] Open Announcements and Calendar. Compare with Blackboard and the Mac app: newest announcement first, body text, attached files and **Open in Blackboard**; due dates grouped by day with Upcoming before Past due, in the iPad's local time. Untick a course and confirm its items disappear after the pages reload. Check Home's newest announcements and next due dates.
+- [ ] Change English ↔ Türkçe in Settings; labels, Announcements and Calendar update immediately. Verify every remaining Coming soon / Çok yakında row is inert: background sync, Google Calendar, choosing another folder, notes PDFs and past terms.
+- [ ] Open Announcements in airplane mode (expect "Blackboard could not be reached"), then reconnect and pull down.
+- [ ] Turn Sync on app open on/off, relaunch and verify the chosen behavior. Course selection (including selecting none) survives relaunch. Test a late session expiry: the app must offer Reconnect (also from Announcements/Calendar), with existing offline files retained.
 - [ ] Sign out while idle and during a sync. Confirm the native session and app WebKit state clear, no transfer continues saving files, and offline documents remain. Relaunch without a session; no school API request should start until sign-in. A school/IdP may independently retain device-wide SSO.
 
 ## Pilot limits and parity follow-ups

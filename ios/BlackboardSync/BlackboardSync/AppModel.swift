@@ -1,10 +1,14 @@
 import SwiftUI
 import WebKit
+import BlackboardSyncFeatures
 
 @MainActor
 final class AppModel: ObservableObject {
     @Published var language = UserDefaults.standard.string(forKey: "language") ?? "en" {
-        didSet { UserDefaults.standard.set(language, forKey: "language") }
+        didSet {
+            UserDefaults.standard.set(language, forKey: "language")
+            if language != oldValue, features != nil { connectFeatures() }
+        }
     }
     @Published var syncOnOpen = UserDefaults.standard.bool(forKey: "syncOnOpen") {
         didSet { UserDefaults.standard.set(syncOnOpen, forKey: "syncOnOpen") }
@@ -27,6 +31,8 @@ final class AppModel: ObservableObject {
     @Published var library = LibraryState()
     @Published var libraryRevision = 0
     @Published var showingSettings = false
+    /// Announcements and due dates for the signed-in account; nil while signed out.
+    @Published private(set) var features: FeatureModels?
     var loginAfterSettings = false
     private(set) var store: LibraryStore?
     private(set) var scope = UserDefaults.standard.string(forKey: "libraryScope") ?? ""
@@ -34,8 +40,15 @@ final class AppModel: ObservableObject {
     private var operation: Task<Void, Never>?
     private var signingOut = false
     private var started = false
+    private var featureHTTP: (any BlackboardHTTP)?
+    private var featureTenant: URL?
+    private var featureRefreshPending = false
+    private(set) var featureRefresh: Task<Void, Never>?
     let websiteStore = WKWebsiteDataStore(forIdentifier: UUID(uuidString: "1A1FAFC3-8243-4C32-81A1-026D23F22B6D")!)
     var courses: [Course] { terms.flatMap(\.courses).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
+    var featureCourses: [FeatureCourse] {
+        courses.filter { selected.contains($0.id) }.map { FeatureCourse(id: $0.id, name: $0.name) }
+    }
     var canSync: Bool { api != nil && hasSession && !needsSignIn && !busy && !selected.isEmpty && store != nil }
     func text(_ key: String) -> String { L10n.text(key, language: language) }
 
@@ -131,6 +144,7 @@ final class AppModel: ObservableObject {
         let display = [name["given"] as? String, name["family"] as? String].compactMap { $0 }.joined(separator: " ")
         let newScope = MirrorPaths.digest(api.tenant.absoluteString + ":" + id)
         try Task.checkCancellation()
+        let accountChanged = scope != newScope || features == nil
         if scope != newScope { terms = []; selected = [] }
         scope = newScope
         UserDefaults.standard.set(scope, forKey: "libraryScope")
@@ -150,6 +164,53 @@ final class AppModel: ObservableObject {
         }
         await reloadLibrary()
         status = found.isEmpty ? "No current-term courses found." : "Ready to sync"
+        if accountChanged {
+            connectFeatures(http: ShellHTTP { [weak self] in self?.api }, tenant: api.tenant)
+        } else {
+            refreshFeatures()
+        }
+    }
+
+    /// (Re)creates the announcements and due-date pages; a new account or language starts them afresh.
+    func connectFeatures(http: (any BlackboardHTTP)? = nil, tenant: URL? = nil) {
+        if let http { featureHTTP = http }
+        if let tenant { featureTenant = tenant }
+        guard let featureHTTP, let featureTenant else { features = nil; return }
+        let courses = ShellCourses { [weak self] in self?.featureCourses ?? [] }
+        features = FeatureModels(http: featureHTTP, courses: courses, tenant: featureTenant, language: language) {
+            [weak self] in self?.featureSessionExpired()
+        }
+    }
+
+    #if DEBUG
+    /// UI tests only (`--ui-testing-features`): the pages over the package's sample Blackboard.
+    func showSampleFeatures() {
+        let courses = PreviewData.courses.map { Course(id: $0.id, name: $0.name, termID: "sample", created: nil) }
+        terms = [Term(id: "sample", name: "Sample term", start: nil, end: nil, courses: courses)]
+        selected = Set(courses.map(\.id))
+        connectFeatures(http: PreviewData.http(), tenant: PreviewData.baseURL)
+    }
+    #endif
+
+    /// Reloads the pages already shown once, after the selection changes or a reconnect. Requests
+    /// made while a refresh runs are folded into one more refresh after it.
+    func refreshFeatures() {
+        guard features != nil else { return }
+        featureRefreshPending = true
+        guard featureRefresh == nil else { return }
+        featureRefresh = Task { [weak self] in
+            while let self, self.featureRefreshPending, let features = self.features {
+                self.featureRefreshPending = false
+                await features.refreshLoaded()
+            }
+            self?.featureRefresh = nil
+        }
+    }
+
+    /// The pages found the session expired: the same Reconnect state as a sync that hit it.
+    private func featureSessionExpired() {
+        guard hasSession, !signingOut else { return }
+        fail(SyncFailure(message: "Session expired. Sign in again.", authRequired: true))
     }
 
     func refreshCourses() { run { [self] in try await verifyAndDiscover() } }
@@ -162,6 +223,7 @@ final class AppModel: ObservableObject {
             do { try await store?.select(ids, scope: scope); await reloadLibrary() }
             catch { fail(error) }
         }
+        refreshFeatures()
     }
 
     func syncNow() {
@@ -187,6 +249,7 @@ final class AppModel: ObservableObject {
         signingOut = true; busy = true
         showingLogin = false; webView?.stopLoading(); webView = nil
         operation?.cancel(); api?.cancel()
+        featureRefreshPending = false; featureHTTP = nil; featureTenant = nil; features = nil
         let previous = operation
         Task {
             await previous?.value
