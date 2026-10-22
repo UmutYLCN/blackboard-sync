@@ -144,6 +144,7 @@ final class LibraryStoreTests: XCTestCase {
         let files = EmbeddedFiles.find(html)
         XCTAssertEqual(files.map(\.id), ["123_1", "456_1"])
         XCTAssertEqual(files.map(\.name), ["Week 1.pdf", "Slides.pdf"])
+        guard files.count == 2 else { return }
         XCTAssertTrue(files[1].path.contains("signature=FAKE"))
         XCTAssertEqual(files[1].mime, "application/pdf")
         XCTAssertEqual(EmbeddedFiles.body(["rawText":"<p>Instructions</p>"]), "<p>Instructions</p>")

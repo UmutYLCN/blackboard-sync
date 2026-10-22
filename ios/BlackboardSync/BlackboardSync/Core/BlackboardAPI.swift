@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 // Delegate callbacks are off the main actor. The lock protects the private cookie jar/diagnostics.
 final class CookieTransport: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
@@ -199,7 +200,8 @@ final class BlackboardAPI: MirrorAPI {
                     if Task.isCancelled || (error as? SyncFailure)?.authRequired == true { throw error }
                     log("Term dates unavailable; newest-course fallback may apply. " + SyncLogic.safeError(error)) }
             }
-            let duration = (raw["availability"] as? [String: Any])?["duration"] as? [String: Any] ?? [:]
+            var duration = (raw["availability"] as? [String: Any])?["duration"] as? [String: Any] ?? [:]
+            if let type = duration["type"] as? String, type != "DateRange" { duration = [:] }
             terms.append(Term(id: id, name: raw["name"] as? String ?? id,
                 start: SyncLogic.date(duration["start"] as? String),
                 end: SyncLogic.date(duration["end"] as? String), courses: groups[id] ?? []))
@@ -304,6 +306,12 @@ final class BlackboardAPI: MirrorAPI {
             throw SyncFailure(message: "Incomplete download. Retry sync.")
         }
         keep = true
-        return .file(temporary, etag: response.value(forHTTPHeaderField: "ETag"), lastModified: response.value(forHTTPHeaderField: "Last-Modified"))
+        var suggested = response.suggestedFilename
+        if let value = suggested, (value as NSString).pathExtension.isEmpty,
+           let mime = response.mimeType, let ext = UTType(mimeType: mime)?.preferredFilenameExtension {
+            suggested = value + "." + ext
+        }
+        return .file(temporary, etag: response.value(forHTTPHeaderField: "ETag"),
+                     lastModified: response.value(forHTTPHeaderField: "Last-Modified"), suggestedName: suggested)
     }
 }

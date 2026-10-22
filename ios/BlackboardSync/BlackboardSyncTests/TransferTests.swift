@@ -42,7 +42,7 @@ final class TransferTests: XCTestCase {
         FixtureProtocol.handler = { _ in (200, ["Content-Type": "application/pdf", "ETag": "v2", "Content-Length": "\(body.count)"], body) }
         let api = client(); defer { api.cancel() }
         let result = try await api.fetch(path: "/file", name: "notes.pdf", previous: nil)
-        guard case .file(let url, let etag, _) = result else { return XCTFail("Expected file") }
+        guard case .file(let url, let etag, _, _) = result else { return XCTFail("Expected file") }
         defer { try? FileManager.default.removeItem(at: url) }
         XCTAssertEqual(try Data(contentsOf: url), body)
         XCTAssertEqual(etag, "v2")

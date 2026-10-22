@@ -34,7 +34,7 @@ enum EmbeddedFiles {
     }
 
     static func find(_ html: String) -> [EmbeddedFile] {
-        let tags = try! NSRegularExpression(pattern: #"(?is)<(?:a|img|iframe|object|embed|source)\b([^>]*?)(?:>(.*?)</a\s*>|>)"#)
+        let tags = try! NSRegularExpression(pattern: #"(?is)<(a|img|iframe|object|embed|source)\b((?:"[^"]*"|'[^']*'|[^'">])*)>"#)
         let attrs = try! NSRegularExpression(pattern: #"(?is)([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#)
         let identity = try! NSRegularExpression(pattern: #"(?:xid-|rid-)(\d+_\d+)"#)
         let upload = try! NSRegularExpression(pattern: #"/sessions/[^/]+/[^/]+/([0-9a-fA-F]{32})/"#)
@@ -42,7 +42,7 @@ enum EmbeddedFiles {
         var files: [EmbeddedFile] = []
         let ns = html as NSString
         for tag in tags.matches(in: html, range: NSRange(html.startIndex..., in: html)) {
-            let raw = ns.substring(with: tag.range(at: 1))
+            let raw = ns.substring(with: tag.range(at: 2))
             var attributes: [String: String] = [:]
             for attr in attrs.matches(in: raw, range: NSRange(raw.startIndex..., in: raw)) {
                 let key = (raw as NSString).substring(with: attr.range(at: 1)).lowercased()
@@ -63,8 +63,13 @@ enum EmbeddedFiles {
                 id = "upload-" + (rawURL as NSString).substring(with: match.range(at: 1))
             }
             guard let id, seen.insert(id).inserted else { continue }
-            let text = tag.range(at: 2).location == NSNotFound ? "" : ns.substring(with: tag.range(at: 2))
-                .replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+            var text = ""
+            if ns.substring(with: tag.range(at: 1)).lowercased() == "a" {
+                let tail = ns.substring(from: NSMaxRange(tag.range))
+                if let closing = tail.range(of: "</a", options: .caseInsensitive) {
+                    text = String(tail[..<closing.lowerBound]).replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+                }
+            }
             let name = [meta["displayName"] as? String, meta["linkName"] as? String, meta["fileName"] as? String, attributes["alt"], text.isEmpty ? nil : entities(text)].compactMap { $0 }.first ?? "file-\(id)"
             files.append(EmbeddedFile(id: id, name: name, path: path, mime: meta["mimeType"] as? String))
         }

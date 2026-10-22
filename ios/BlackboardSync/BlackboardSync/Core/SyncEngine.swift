@@ -4,7 +4,7 @@ enum TransferResult {
     static let sizeCap: Int64 = 500_000_000
     case unchanged
     case skipped(String)
-    case file(URL, etag: String?, lastModified: String?)
+    case file(URL, etag: String?, lastModified: String?, suggestedName: String? = nil)
 }
 
 @MainActor
@@ -54,6 +54,7 @@ final class SyncEngine {
                 for course in term.courses where selected.contains(course.id) {
                     try Task.checkCancellation()
                     let folder = try await store.courseFolder(course, term: term, scope: scope)
+                    try await store.ensureFolder(folder)
                     var visited: Set<String> = []
                     try await discover(course: course, parent: nil, folder: folder, depth: 0, visited: &visited, plan: &plan)
                 }
@@ -96,6 +97,7 @@ final class SyncEngine {
                           visited: inout Set<String>, plan: inout [PlannedFile]) async throws {
         try Task.checkCancellation()
         guard depth <= 40, visited.count < 10_000 else { throw SyncFailure(message: "Course exceeds the folder safety limit.") }
+        try await store.ensureFolder(folder)
         let items: [ContentItem]
         do { items = try await api.contents(courseID: course.id, parentID: parent) }
         catch {
@@ -157,10 +159,14 @@ final class SyncEngine {
                 guard let previous, try await store.exists(previous) else { throw SyncFailure(message: "Local file is missing. Retry sync.") }
                 return Activity(id: file.key, name: file.name, relativePath: previous.relativePath, status: .unchanged)
             case .skipped(let reason): return Activity(id: file.key, name: file.name, status: .skipped, error: reason)
-            case .file(let temporary, let etag, let lastModified):
+            case .file(let temporary, let etag, let lastModified, let suggestedName):
                 defer { try? FileManager.default.removeItem(at: temporary) }
                 try Task.checkCancellation()
-                return try await store.install(key: file.key, desired: file.desired, temporary: temporary,
+                var desired = file.desired
+                if (file.name as NSString).pathExtension.isEmpty, let suggestedName, !(suggestedName as NSString).pathExtension.isEmpty {
+                    desired = (file.desired as NSString).deletingLastPathComponent + "/" + MirrorPaths.name(suggestedName)
+                }
+                return try await store.install(key: file.key, desired: desired, temporary: temporary,
                                                fingerprint: file.fingerprint, etag: etag, lastModified: lastModified)
             }
         } catch {

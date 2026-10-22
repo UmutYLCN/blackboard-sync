@@ -27,6 +27,7 @@ struct LibraryState: Codable {
     var folders: [String: String] = [:]
     var selected: [String: Set<String>] = [:]
     var terms: [Term] = []
+    var cachedScope: String?
     var activities: [Activity] = []
     var lastSync: Date?
     var interrupted = false
@@ -59,7 +60,7 @@ actor LibraryStore {
     private func save() throws {
         try JSONEncoder().encode(state).write(to: stateURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
-    func setTerms(_ terms: [Term]) throws { state.terms = terms; try save() }
+    func setTerms(_ terms: [Term], scope: String) throws { state.terms = terms; state.cachedScope = scope; try save() }
     func select(_ ids: Set<String>, scope: String) throws { state.selected[scope] = ids; try save() }
 
     func courseFolder(_ course: Course, term: Term, scope: String) throws -> String {
@@ -81,10 +82,14 @@ actor LibraryStore {
         while try taken.contains(relative.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en"))) || fm.fileExists(atPath: url(relative).path) {
             relative = MirrorPaths.numbered(desired, n); n += 1
         }
-        try fm.createDirectory(at: try url(relative), withIntermediateDirectories: true)
+        _ = try url(relative)
         state.folders[key] = relative
         try save()
         return relative
+    }
+
+    func ensureFolder(_ relative: String) throws {
+        try fm.createDirectory(at: try url(relative), withIntermediateDirectories: true)
     }
 
     func folder(courseID: String, scope: String) -> String? { state.folders[scope + ":course:" + courseID] }

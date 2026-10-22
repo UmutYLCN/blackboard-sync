@@ -221,4 +221,48 @@ final class SyncLogicTests: XCTestCase {
                      Term(id: "b", name: "B", start: nil, end: nil, courses: [recent])]
         XCTAssertEqual(Term.current(terms).map(\.id), ["b"])
     }
+    func testBilingualAcademicAliasesMergeWithDesktopFolderName() {
+        let now = Date()
+        let a = Course(id: "a", name: "A", termID: "english", created: now)
+        let b = Course(id: "b", name: "B", termID: "turkish", created: now)
+        let terms = [Term(id: "english", name: "2026-2027 Fall", start: now.addingTimeInterval(-100), end: now.addingTimeInterval(100), courses: [a]),
+                     Term(id: "turkish", name: "2026/2027 Güz Dönemi", start: now.addingTimeInterval(-200), end: now.addingTimeInterval(200), courses: [b])]
+        let current = Term.current(terms, now: now)
+        XCTAssertEqual(current.count, 1)
+        XCTAssertEqual(current.first?.id, "turkish")
+        XCTAssertEqual(current.first?.name, "2026/2027 Güz Dönemi")
+        XCTAssertEqual(current.first?.courses.map(\.termID), ["turkish", "turkish"])
+        XCTAssertEqual(Term.mergeAliases([terms[0]]).first?.name, "2026-2027 Güz")
+    }
+
+    func testNonoverlappingSemesterRecordsAreNeverMerged() {
+        let course = Course(id: "a", name: "A", termID: "1", created: nil)
+        let terms = [Term(id: "1", name: "2026-2027 Fall", start: Date(timeIntervalSince1970: 0), end: Date(timeIntervalSince1970: 10), courses: [course]),
+                     Term(id: "2", name: "2026-2027 Güz", start: Date(timeIntervalSince1970: 20), end: Date(timeIntervalSince1970: 30), courses: [course])]
+        XCTAssertEqual(Term.mergeAliases(terms).count, 2)
+    }
+
+    @MainActor
+    func testCurrentCourseDiscoveryFiltersUnavailableAndUnassignedMemberships() async throws {
+        let api = BlackboardAPI(tenant: tenant, cookies: [], pageLoader: { path in
+            if path.contains("/users/") {
+                return ["results": [
+                    ["course": ["id": "active", "name": "CSE101 Algorithms", "courseId": "CSE101-1", "termId": "t"]],
+                    ["availability": ["available": "No"], "course": ["id": "inactive", "termId": "t"]],
+                    ["course": ["id": "hidden", "termId": "t", "availability": ["available": "No"]]],
+                    ["course": ["id": "no-term"]]
+                ]]
+            }
+            if path.contains("/terms/") {
+                return ["id": "t", "name": "2026-2027 Fall", "availability": ["duration": ["type": "Continuous", "start": "2000-01-01T00:00:00Z", "end": "2100-01-01T00:00:00Z"]]]
+            }
+            throw SyncFailure(message: "Unexpected fixture request")
+        }, log: { _ in })
+        defer { api.cancel() }
+        let terms = try await api.courses(userID: "me")
+        XCTAssertEqual(terms.flatMap(\.courses).map(\.id), ["active"])
+        XCTAssertEqual(terms.first?.courses.first?.code, "CSE101-1")
+        XCTAssertNil(terms.first?.start)
+    }
+
 }

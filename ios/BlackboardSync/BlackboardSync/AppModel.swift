@@ -46,7 +46,7 @@ final class AppModel: ObservableObject {
             store = try LibraryStore(documents: fm.urls(for: .documentDirectory, in: .userDomainMask)[0],
                                      support: fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0])
             await reloadLibrary()
-            terms = library.terms
+            terms = library.cachedScope == scope ? library.terms : []
             selected = library.selected[scope] ?? []
             status = library.interrupted ? "Previous sync was interrupted. Sync now to continue." : "Not signed in"
             if let saved = try SessionVault.load() {
@@ -130,6 +130,7 @@ final class AppModel: ObservableObject {
         let display = [name["given"] as? String, name["family"] as? String].compactMap { $0 }.joined(separator: " ")
         let newScope = MirrorPaths.digest(api.tenant.absoluteString + ":" + id)
         try Task.checkCancellation()
+        if scope != newScope { terms = []; selected = [] }
         scope = newScope
         UserDefaults.standard.set(scope, forKey: "libraryScope")
         accountName = display.isEmpty ? (me["userName"] as? String ?? "Blackboard") : display
@@ -141,7 +142,7 @@ final class AppModel: ObservableObject {
         let ids = Set(found.flatMap(\.courses).map(\.id))
         selected = (snapshot.selected[scope] ?? ids).intersection(ids)
         terms = found
-        try await store.setTerms(found)
+        try await store.setTerms(found, scope: scope)
         try await store.select(selected, scope: scope)
         for term in found {
             for course in term.courses { _ = try await store.courseFolder(course, term: term, scope: scope) }

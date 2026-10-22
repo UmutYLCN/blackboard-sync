@@ -117,8 +117,46 @@ struct Term: Codable, Hashable, Identifiable {
     let end: Date?
     var courses: [Course]
 
+    // The desktop folds bilingual records of one academic semester into one folder.
+    static func academicName(_ name: String) -> (key: String, turkish: Bool)? {
+        let pattern = #"(?i)^(\d{4})\s*[-–/]\s*(\d{4})\s*[-–:]?\s*(\w+)(?:\s+(?:dönemi|yarıyılı|okulu|term|semester|school))?$"#
+        let regex = try! NSRegularExpression(pattern: pattern)
+        let text = name.trimmingCharacters(in: .whitespacesAndNewlines).precomposedStringWithCanonicalMapping
+        guard let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
+        let ns = text as NSString
+        let season = ns.substring(with: match.range(at: 3)).lowercased()
+        let seasons = ["güz": "Güz", "fall": "Güz", "autumn": "Güz", "bahar": "Bahar", "spring": "Bahar", "yaz": "Yaz", "summer": "Yaz"]
+        guard let canonical = seasons[season] else { return nil }
+        return (ns.substring(with: match.range(at: 1)) + "-" + ns.substring(with: match.range(at: 2)) + " " + canonical,
+                ["güz", "bahar", "yaz"].contains(season))
+    }
+
+    static func mergeAliases(_ terms: [Term]) -> [Term] {
+        var merged: [Term] = []
+        for term in terms {
+            guard !term.id.isEmpty, let name = academicName(term.name) else { merged.append(term); continue }
+            let index = merged.firstIndex { other in
+                guard academicName(other.name)?.key == name.key else { return false }
+                if let a = other.start, let b = other.end, let c = term.start, let d = term.end { return a <= d && c <= b }
+                return true
+            }
+            if let index {
+                let other = merged[index]
+                let prefer = name.turkish && academicName(other.name)?.turkish != true ? term : other
+                merged[index] = Term(id: prefer.id, name: prefer.name,
+                    start: [other.start, term.start].compactMap { $0 }.min(),
+                    end: [other.end, term.end].compactMap { $0 }.max(), courses: other.courses + term.courses)
+            } else { merged.append(term) }
+        }
+        return merged.map { term in
+            guard let name = academicName(term.name) else { return term }
+            return Term(id: term.id, name: name.turkish ? term.name : name.key, start: term.start, end: term.end,
+                        courses: term.courses.map { Course(id: $0.id, name: $0.name, termID: term.id, created: $0.created, code: $0.code) })
+        }
+    }
+
     static func current(_ terms: [Term], now: Date = Date()) -> [Term] {
-        let eligible = terms.filter { !$0.id.isEmpty && !$0.courses.isEmpty }
+        let eligible = mergeAliases(terms).filter { !$0.id.isEmpty && !$0.courses.isEmpty }
         let active = eligible.filter {
             guard let start = $0.start, let end = $0.end else { return false }
             return start.addingTimeInterval(-30 * 86400) <= now && now <= end
@@ -150,6 +188,6 @@ struct ContentItem: Identifiable {
     var modified: String?
     var embedded: [EmbeddedFile] = []
     var isFolder: Bool {
-        ["resource/x-bb-folder", "resource/x-bb-learningmodule"].contains(handlerID ?? "") || (hasChildren && !["resource/x-bb-file", "resource/x-bb-externallink", "resource/x-bb-courselink"].contains(handlerID ?? ""))
+        ["resource/x-bb-folder", "resource/x-bb-lesson", "resource/x-bb-module-page", "resource/x-bb-learningmodule"].contains(handlerID ?? "") || (hasChildren && !["resource/x-bb-file", "resource/x-bb-externallink", "resource/x-bb-courselink"].contains(handlerID ?? ""))
     }
 }
