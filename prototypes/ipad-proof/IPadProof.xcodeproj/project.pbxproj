@@ -1,0 +1,353 @@
+// !$*UTF8*$!
+{
+	"classes" = {
+	};
+	"objectVersion" = "56";
+	"archiveVersion" = "1";
+	"objects" = {
+		"000000000000000000000006" = {
+			"path" = "IPadProofApp.swift";
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"sourceTree" = "<group>";
+		};
+		"00000000000000000000001E" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf";
+				"TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/IPadProof.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/IPadProof";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.example.BlackboardIPadProofTests";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"ENABLE_TESTABILITY" = "YES";
+				"BUNDLE_LOADER" = "$(TEST_HOST)";
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+			};
+			"name" = "Debug";
+		};
+		"000000000000000000000019" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"CLANG_ENABLE_MODULES" = "YES";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
+				"SWIFT_COMPILATION_MODE" = "wholemodule";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
+				"SUPPORTS_MACCATALYST" = "NO";
+				"SWIFT_VERSION" = "5.0";
+				"SDKROOT" = "iphoneos";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"TARGETED_DEVICE_FAMILY" = "2";
+			};
+			"name" = "Release";
+		};
+		"000000000000000000000013" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = (
+				"000000000000000000000011",
+			);
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"000000000000000000000020" = {
+			"isa" = "XCConfigurationList";
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+			"buildConfigurations" = (
+				"00000000000000000000001E",
+				"00000000000000000000001F",
+			);
+		};
+		"00000000000000000000000A" = {
+			"path" = "IPadProofTests.xctest";
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.cfbundle";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+		};
+		"000000000000000000000005" = {
+			"path" = "LoginBrowser.swift";
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"sourceTree" = "<group>";
+		};
+		"00000000000000000000001D" = {
+			"isa" = "XCConfigurationList";
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+			"buildConfigurations" = (
+				"00000000000000000000001B",
+				"00000000000000000000001C",
+			);
+		};
+		"000000000000000000000018" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf";
+				"TARGETED_DEVICE_FAMILY" = "2";
+				"CLANG_ENABLE_MODULES" = "YES";
+				"ENABLE_TESTABILITY" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"SDKROOT" = "iphoneos";
+				"SWIFT_VERSION" = "5.0";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
+				"SUPPORTS_MACCATALYST" = "NO";
+			};
+			"name" = "Debug";
+		};
+		"000000000000000000000012" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = (
+				"00000000000000000000000B",
+				"00000000000000000000000C",
+				"00000000000000000000000D",
+				"00000000000000000000000E",
+				"00000000000000000000000F",
+				"000000000000000000000010",
+			);
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"00000000000000000000000F" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "000000000000000000000005";
+		};
+		"000000000000000000000025" = {
+			"buildConfigurationList" = "00000000000000000000001A";
+			"targets" = (
+				"000000000000000000000021",
+				"000000000000000000000024",
+			);
+			"developmentRegion" = "en";
+			"knownRegions" = (
+				"en",
+				"Base",
+			);
+			"isa" = "PBXProject";
+			"compatibilityVersion" = "Xcode 14.0";
+			"productRefGroup" = "000000000000000000000016";
+			"projectDirPath" = "";
+			"attributes" = {
+				"LastUpgradeCheck" = "2630";
+				"BuildIndependentTargetsInParallel" = "YES";
+				"TargetAttributes" = {
+					"000000000000000000000021" = {
+						"CreatedOnToolsVersion" = "26.3";
+					};
+					"000000000000000000000024" = {
+						"TestTargetID" = "000000000000000000000021";
+						"CreatedOnToolsVersion" = "26.3";
+					};
+				};
+			};
+			"hasScannedForEncodings" = "0";
+			"projectRoot" = "";
+			"mainGroup" = "000000000000000000000017";
+		};
+		"000000000000000000000004" = {
+			"path" = "ProofModel.swift";
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"sourceTree" = "<group>";
+		};
+		"00000000000000000000001C" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"GENERATE_INFOPLIST_FILE" = "NO";
+				"MARKETING_VERSION" = "0.1";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
+				"SWIFT_COMPILATION_MODE" = "wholemodule";
+				"INFOPLIST_FILE" = "IPadProof/Info.plist";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.example.BlackboardIPadProof";
+				"CURRENT_PROJECT_VERSION" = "1";
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+			};
+			"name" = "Release";
+		};
+		"000000000000000000000017" = {
+			"isa" = "PBXGroup";
+			"sourceTree" = "<group>";
+			"children" = (
+				"000000000000000000000014",
+				"000000000000000000000015",
+				"000000000000000000000016",
+			);
+		};
+		"000000000000000000000011" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "000000000000000000000008";
+		};
+		"00000000000000000000000E" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "000000000000000000000004";
+		};
+		"000000000000000000000024" = {
+			"buildConfigurationList" = "000000000000000000000020";
+			"productReference" = "00000000000000000000000A";
+			"productType" = "com.apple.product-type.bundle.unit-test";
+			"productName" = "IPadProofTests";
+			"isa" = "PBXNativeTarget";
+			"buildPhases" = (
+				"000000000000000000000013",
+			);
+			"dependencies" = (
+				"000000000000000000000023",
+			);
+			"name" = "IPadProofTests";
+			"buildRules" = (
+			);
+		};
+		"000000000000000000000009" = {
+			"path" = "IPadProof.app";
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.application";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+		};
+		"000000000000000000000003" = {
+			"path" = "BlackboardAPI.swift";
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"sourceTree" = "<group>";
+		};
+		"00000000000000000000001B" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"GENERATE_INFOPLIST_FILE" = "NO";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"MARKETING_VERSION" = "0.1";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf";
+				"INFOPLIST_FILE" = "IPadProof/Info.plist";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.example.BlackboardIPadProof";
+				"ENABLE_TESTABILITY" = "YES";
+				"CURRENT_PROJECT_VERSION" = "1";
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+			};
+			"name" = "Debug";
+		};
+		"000000000000000000000016" = {
+			"isa" = "PBXGroup";
+			"name" = "Products";
+			"children" = (
+				"000000000000000000000009",
+				"00000000000000000000000A",
+			);
+			"sourceTree" = "<group>";
+		};
+		"000000000000000000000010" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "000000000000000000000006";
+		};
+		"00000000000000000000000D" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "000000000000000000000003";
+		};
+		"000000000000000000000023" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "000000000000000000000021";
+			"targetProxy" = "000000000000000000000022";
+		};
+		"000000000000000000000008" = {
+			"path" = "ProofLogicTests.swift";
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"sourceTree" = "<group>";
+		};
+		"000000000000000000000002" = {
+			"path" = "SessionVault.swift";
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"sourceTree" = "<group>";
+		};
+		"00000000000000000000001A" = {
+			"isa" = "XCConfigurationList";
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+			"buildConfigurations" = (
+				"000000000000000000000018",
+				"000000000000000000000019",
+			);
+		};
+		"000000000000000000000015" = {
+			"path" = "IPadProofTests";
+			"isa" = "PBXGroup";
+			"children" = (
+				"000000000000000000000008",
+			);
+			"sourceTree" = "<group>";
+		};
+		"00000000000000000000000C" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "000000000000000000000002";
+		};
+		"000000000000000000000022" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "000000000000000000000025";
+			"remoteGlobalIDString" = "000000000000000000000021";
+			"remoteInfo" = "IPadProof";
+			"proxyType" = "1";
+		};
+		"000000000000000000000007" = {
+			"path" = "Info.plist";
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.xml";
+			"sourceTree" = "<group>";
+		};
+		"000000000000000000000001" = {
+			"path" = "ProofLogic.swift";
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"sourceTree" = "<group>";
+		};
+		"00000000000000000000001F" = {
+			"isa" = "XCBuildConfiguration";
+			"buildSettings" = {
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
+				"TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/IPadProof.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/IPadProof";
+				"SWIFT_COMPILATION_MODE" = "wholemodule";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.example.BlackboardIPadProofTests";
+				"BUNDLE_LOADER" = "$(TEST_HOST)";
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+			};
+			"name" = "Release";
+		};
+		"000000000000000000000014" = {
+			"path" = "IPadProof";
+			"isa" = "PBXGroup";
+			"children" = (
+				"000000000000000000000001",
+				"000000000000000000000002",
+				"000000000000000000000003",
+				"000000000000000000000004",
+				"000000000000000000000005",
+				"000000000000000000000006",
+				"000000000000000000000007",
+			);
+			"sourceTree" = "<group>";
+		};
+		"00000000000000000000000B" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "000000000000000000000001";
+		};
+		"000000000000000000000021" = {
+			"buildConfigurationList" = "00000000000000000000001D";
+			"productReference" = "000000000000000000000009";
+			"productType" = "com.apple.product-type.application";
+			"productName" = "IPadProof";
+			"isa" = "PBXNativeTarget";
+			"buildPhases" = (
+				"000000000000000000000012",
+			);
+			"dependencies" = (
+			);
+			"name" = "IPadProof";
+			"buildRules" = (
+			);
+		};
+	};
+	"rootObject" = "000000000000000000000025";
+}
