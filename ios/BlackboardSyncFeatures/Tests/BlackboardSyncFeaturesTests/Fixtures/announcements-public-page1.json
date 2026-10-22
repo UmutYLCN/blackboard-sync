@@ -1,0 +1,15 @@
+{
+  "results": [
+    {
+      "id": "_n3_1",
+      "title": "Sınav &amp; ders",
+      "draft": false,
+      "created": "2026-09-01T09:00:00Z",
+      "modified": "2026-10-01T08:00:00.000Z",
+      "availability": {"duration": {"type": "Restricted", "start": "2026-10-01T09:00:00+03:00"}},
+      "body": {"rawText": "<style>hidden</style><script>hidden</script><p>Rooms are attached.</p><p><a href=\"https://blackboard.example.edu/bbcswebdav/pid-700-dt-asiobject-rid-911_1/xid-911_1?token=T\" data-bbfile=\"{&quot;displayName&quot;:&quot;exam-rooms.pdf&quot;,&quot;fileName&quot;:&quot;exam-rooms.pdf&quot;,&quot;mimeType&quot;:&quot;application/pdf&quot;}\">exam-rooms.pdf</a></p><p>Recording: <a href=\"/bbcswebdav/xid-912_1\">lecture.mp4</a></p>"}
+    },
+    {"id": "draft", "title": "Draft", "draft": true, "created": "2026-10-05T08:00:00Z"}
+  ],
+  "paging": {"nextPage": "/learn/api/public/v1/courses/_13004_1/announcements?offset=100&limit=100"}
+}
