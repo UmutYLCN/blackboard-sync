@@ -5,7 +5,7 @@ A throwaway, foreground-only SwiftUI iPad app for the Stage 0 authentication gat
 ## Open and install
 
 1. Open `IPadProof.xcodeproj` in Xcode 26. Select the shared **IPadProof** scheme. Requires iPadOS 17 or later; no packages or XcodeGen needed.
-2. In **IPadProof → Signing & Capabilities**, choose your Apple Developer **Team**, enable automatic signing, and replace `com.example.BlackboardIPadProof` with a unique bundle identifier owned by your team (for example, `your.reverse.domain.BlackboardIPadProof`). For device tests, also set the **IPadProofTests** team and a matching unique identifier ending in `Tests`.
+2. In this folder, copy `Signing.local.xcconfig.example` to `Signing.local.xcconfig` (gitignored) and set `DEVELOPMENT_TEAM` to your Apple Developer Team ID and `IPAD_PROOF_BUNDLE_ID` to a unique bundle identifier owned by your team (for example, `your.reverse.domain.BlackboardIPadProof`) instead of `com.example.BlackboardIPadProof`. No change in **Signing & Capabilities** is needed; automatic signing is already on and **IPadProofTests** gets the same team and the identifier plus `Tests`.
 3. Connect and trust the physical iPad, enable **Settings → Privacy & Security → Developer Mode**, select the iPad as the run destination, and press Run. Approve developer trust if iPadOS asks. No special entitlements are required.
 4. Default tenant: `https://blackboard.istun.edu.tr`, taken from `src/blackboard_sync/config.py`. Edit it before signing in; use an HTTPS origin only. Sign out before switching tenants.
 

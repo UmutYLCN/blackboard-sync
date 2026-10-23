@@ -1,0 +1,8 @@
+// Copy to Signing.local.xcconfig (gitignored) and fill in your own values.
+// The test targets reuse the bundle ID with a Tests/UITests suffix.
+
+// Your Apple Developer Team ID (Xcode → Settings → Accounts, or developer.apple.com → Membership).
+DEVELOPMENT_TEAM = ABCDE12345
+
+// A bundle ID you own and that no one else on your team uses.
+BLACKBOARD_SYNC_BUNDLE_ID = your.reverse.domain.BlackboardSync

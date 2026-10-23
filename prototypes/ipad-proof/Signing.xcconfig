@@ -1,0 +1,8 @@
+// Code-signing settings shared by every target in this project.
+// Do not edit these values for your own device: copy Signing.local.xcconfig.example
+// to Signing.local.xcconfig (gitignored) and set your Team ID and bundle ID there.
+
+DEVELOPMENT_TEAM =
+IPAD_PROOF_BUNDLE_ID = com.example.BlackboardIPadProof
+
+#include? "Signing.local.xcconfig"
