@@ -5,6 +5,12 @@
 	"objectVersion" = "56";
 	"archiveVersion" = "1";
 	"objects" = {
+		"5C1A7E0D2F3B4A6C8E9D0B12" = {
+			"path" = "Signing.xcconfig";
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.xcconfig";
+			"sourceTree" = "<group>";
+		};
 		"000000000000000000000006" = {
 			"path" = "IPadProofApp.swift";
 			"isa" = "PBXFileReference";
@@ -18,7 +24,7 @@
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
 				"TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/IPadProof.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/IPadProof";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.example.BlackboardIPadProofTests";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "$(IPAD_PROOF_BUNDLE_ID)Tests";
 				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
 				"ENABLE_TESTABILITY" = "YES";
 				"BUNDLE_LOADER" = "$(TEST_HOST)";
@@ -28,6 +34,7 @@
 		};
 		"000000000000000000000019" = {
 			"isa" = "XCBuildConfiguration";
+			"baseConfigurationReference" = "5C1A7E0D2F3B4A6C8E9D0B12";
 			"buildSettings" = {
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
 				"CLANG_ENABLE_MODULES" = "YES";
@@ -82,6 +89,7 @@
 		};
 		"000000000000000000000018" = {
 			"isa" = "XCBuildConfiguration";
+			"baseConfigurationReference" = "5C1A7E0D2F3B4A6C8E9D0B12";
 			"buildSettings" = {
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
@@ -161,7 +169,7 @@
 				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
 				"SWIFT_COMPILATION_MODE" = "wholemodule";
 				"INFOPLIST_FILE" = "IPadProof/Info.plist";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.example.BlackboardIPadProof";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "$(IPAD_PROOF_BUNDLE_ID)";
 				"CURRENT_PROJECT_VERSION" = "1";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 			};
@@ -171,6 +179,7 @@
 			"isa" = "PBXGroup";
 			"sourceTree" = "<group>";
 			"children" = (
+				"5C1A7E0D2F3B4A6C8E9D0B12",
 				"000000000000000000000014",
 				"000000000000000000000015",
 				"000000000000000000000016",
@@ -221,7 +230,7 @@
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
 				"INFOPLIST_FILE" = "IPadProof/Info.plist";
 				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.example.BlackboardIPadProof";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "$(IPAD_PROOF_BUNDLE_ID)";
 				"ENABLE_TESTABILITY" = "YES";
 				"CURRENT_PROJECT_VERSION" = "1";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
@@ -309,7 +318,7 @@
 				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
 				"TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/IPadProof.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/IPadProof";
 				"SWIFT_COMPILATION_MODE" = "wholemodule";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "com.example.BlackboardIPadProofTests";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "$(IPAD_PROOF_BUNDLE_ID)Tests";
 				"BUNDLE_LOADER" = "$(TEST_HOST)";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 			};
