@@ -109,6 +109,28 @@ final class NavigationTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
+    @MainActor
+    func testSendToNotebookLMAndCancelKeepsFilesListed() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-testing-features", "--ui-testing-notebook", "-language", "en"]
+        XCUIDevice.shared.orientation = .landscapeLeft
+        app.launch()
+        XCTAssertTrue(app.staticTexts["1 course has new files."].waitForExistence(timeout: 20))
+        capture("Home-NotebookLM-card")
+        app.buttons["notebook.open"].tap()
+        XCTAssertTrue(app.staticTexts["2 new files"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["All sent"].exists)
+        capture("Send-to-NotebookLM")
+        app.buttons["notebook.send"].tap()
+        XCTAssertTrue(app.otherElements["ActivityListView"].waitForExistence(timeout: 10))
+        capture("Send-to-NotebookLM-share-sheet")
+        app.otherElements["PopoverDismissRegion"].tap()
+        XCTAssertTrue(app.otherElements["ActivityListView"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["2 new files"].exists, "a cancelled share leaves the files listed")
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+    }
+
     @MainActor private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways

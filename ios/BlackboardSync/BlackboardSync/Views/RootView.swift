@@ -1,7 +1,7 @@
 import SwiftUI
 import QuickLook
 
-enum AppPage: String, Hashable { case home, activity, announcements, courses, calendar, library }
+enum AppPage: String, Hashable { case home, activity, announcements, courses, calendar, library, notebooklm }
 
 private struct OpenPageKey: EnvironmentKey { static let defaultValue: (AppPage) -> Void = { _ in } }
 extension EnvironmentValues {
@@ -62,6 +62,7 @@ struct RootView: View {
                     case .courses: CoursesView()
                     case .calendar: DeadlinesPage()
                     case .library: FileBrowser(folder: "", title: model.text("University"))
+                    case .notebooklm: NotebookSendPage()
                     }
                 }
                 .toolbar {
@@ -306,13 +307,13 @@ struct HomeView: View {
                 // The line under the greeting, as on the Mac: the next due dates.
                 if let deadlines = model.features?.deadlines { HomeSubtitle(page: deadlines) }
                 if !model.hasSession && !model.needsSignIn && !model.busy { WelcomeCard() }
-                // Left: the status card with the last files; right: announcements and the next due dates.
+                // Left: the status card with the last files, then NotebookLM; right: announcements and the next due dates.
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 20) {
-                        StatusCard(recent: true).frame(minWidth: 340)
+                        VStack(spacing: 20) { StatusCard(recent: true); NotebookCard() }.frame(minWidth: 340)
                         HomeFeatureCards().frame(minWidth: 260, maxWidth: 380)
                     }
-                    VStack(spacing: 20) { StatusCard(recent: true); HomeFeatureCards() }
+                    VStack(spacing: 20) { StatusCard(recent: true); NotebookCard(); HomeFeatureCards() }
                 }
             }.padding(24).frame(maxWidth: 1150)
                 .frame(maxWidth: .infinity)

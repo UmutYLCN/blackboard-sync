@@ -19,6 +19,7 @@ struct BlackboardSyncApp: App {
                     await model.start(restoreSession: restoreSession)
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--ui-testing-features") { model.showSampleFeatures() }
+                    if ProcessInfo.processInfo.arguments.contains("--ui-testing-notebook") { await model.showSampleNotebookFiles() }
                     #endif
                 }
                 .onChange(of: phase) { _, phase in
