@@ -684,4 +684,45 @@ CATALOG = {
         "Tarayıcı başlatılamadı. Önceki denemeden kalan bir giriş penceresi açıksa kapatıp yeniden deneyin.",
     "NotebookLM needs Chrome, Edge or Brave to sign in to Google; install one and try again.":
         "NotebookLM, Google'da oturum açmak için Chrome, Edge veya Brave gerektirir; birini kurup yeniden deneyin.",
+
+    # NotebookLM: files that may be there already, and duplicates
+    "{n} file may already be in NotebookLM, so it was not added.":
+        "{n} dosya NotebookLM'de zaten olabilir, bu yüzden eklenmedi.",
+    "{n} files may already be in NotebookLM, so they were not added.":
+        "{n} dosya NotebookLM'de zaten olabilir, bu yüzden eklenmedi.",
+    "{n} held back": "{n} bekletildi",
+    "Find duplicates": "Yinelenenleri bul",
+    "Remove": "Kaldır",
+    "Lists sources that are in a notebook twice. Nothing is removed unless you confirm it.":
+        "Bir not defterinde iki kez bulunan kaynakları listeler. Siz onaylamadan hiçbir şey kaldırılmaz.",
+    "Looking through the notebooks…": "Not defterlerine bakılıyor…",
+    "No duplicates in your notebooks.": "Not defterlerinizde yinelenen kaynak yok.",
+    "{n} file is in a notebook more than once.": "{n} dosya bir not defterinde birden çok kez var.",
+    "{n} files are in a notebook more than once.": "{n} dosya bir not defterinde birden çok kez var.",
+    "same content, can be removed": "içerik aynı, kaldırılabilir",
+    "the file changed since then, both stay": "dosya o zamandan beri değişti, ikisi de kalır",
+    "not added by this app, stays": "bu uygulama eklemedi, kalır",
+    "cannot be compared, stays": "karşılaştırılamıyor, kalır",
+    "same content, this app added it: can be removed": "içerik aynı, bu uygulama ekledi: kaldırılabilir",
+    "the file changed since the older copy: both stay": "dosya eski kopyadan sonra değişti: ikisi de kalır",
+    "not added by this app: stays": "bu uygulama eklemedi: kalır",
+    "cannot be compared: stays": "karşılaştırılamıyor: kalır",
+    "older: {time}": "eski: {time}",
+    "newer: {time}": "yeni: {time}",
+    "older": "eski",
+    "newer": "yeni",
+    "{groups} duplicated, {removable} can be removed.": "{groups} yinelenen, {removable} kaldırılabilir.",
+    "Remove {n} newer copies from NotebookLM? [y/N] ": "{n} yeni kopya NotebookLM'den kaldırılsın mı? [e/H] ",
+    "Nothing was removed.": "Hiçbir şey kaldırılmadı.",
+    "{n} removed, {failed} failed.": "{n} kaldırıldı, {failed} başarısız.",
+    "Remove {n} copy…": "{n} kopyayı kaldır…",
+    "Remove {n} copies…": "{n} kopyayı kaldır…",
+    "Remove {n} copy from NotebookLM?": "{n} kopya NotebookLM'den kaldırılsın mı?",
+    "Remove {n} copies from NotebookLM?": "{n} kopya NotebookLM'den kaldırılsın mı?",
+    "Only newer copies this app added are removed, and only with the same content as the older copy. "
+    "The older copy stays. This cannot be undone.":
+        "Yalnızca bu uygulamanın eklediği ve eski kopyayla içeriği aynı olan yeni kopyalar kaldırılır. "
+        "Eski kopya kalır. Bu işlem geri alınamaz.",
+    "Could not look through NotebookLM.": "NotebookLM'e bakılamadı.",
+    "Duplicates removed.": "Yinelenenler kaldırıldı.",
 }

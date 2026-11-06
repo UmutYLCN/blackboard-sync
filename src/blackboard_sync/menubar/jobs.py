@@ -352,6 +352,22 @@ def run_notebooklm_guarded(config: Config, action: str, settings: Settings, auto
         return replace(notebooklm_store.status(config), error=True, message=str(exc))
 
 
+def run_notebooklm_duplicates(source_ids: list[str] | None = None) -> dict:
+    """List the duplicates, or remove these confirmed copies; the child's result, whatever happened."""
+    arguments = ["notebooklm", "duplicates", "--json"]
+    if source_ids is not None:
+        arguments = ["notebooklm", "remove-duplicates", "--json", "--yes"]
+        arguments += [argument for source_id in source_ids for argument in ("--source", source_id)]
+    try:
+        proc = subprocess.run(cli_command(*arguments), stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              timeout=NOTEBOOKLM_TIMEOUT)
+        report = json.loads(proc.stdout.strip().splitlines()[-1])
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError) as exc:
+        log.exception("NotebookLM duplicates job failed")
+        return {"status": "error", "message": str(exc)}
+    return report if isinstance(report, dict) else {"status": "error", "message": ""}
+
+
 def run_login_guarded(settings: Settings) -> tuple[bool, str]:
     """``run_login`` that turns any unexpected exception into a failed login."""
     try:

@@ -51,11 +51,13 @@ from AppKit import (
     NSProgressIndicator,
     NSProgressIndicatorStyleBar,
     NSScreen,
+    NSBezelBorder,
     NSScrollView,
     NSSwitch,
     NSTextAlignmentCenter,
     NSTextAlignmentRight,
     NSTextField,
+    NSTextView,
     NSView,
     NSViewHeightSizable,
     NSViewMinYMargin,
@@ -131,7 +133,7 @@ from blackboard_sync.menubar.main_window_model import (
     reopen_hint,
 )
 from blackboard_sync.menubar.model import T_RECENT_EMPTY
-from blackboard_sync.i18n import tr
+from blackboard_sync.i18n import ntr, tr
 from blackboard_sync import announcements
 from blackboard_sync.menubar.main_window_model import ANNOUNCEMENTS
 from blackboard_sync.menubar.settings_form import (
@@ -344,6 +346,9 @@ class _Target(NSObject):
 
     def notebooklmDisconnect_(self, _sender):
         self.owner.on_action("notebooklm_disconnect")
+
+    def notebooklmDuplicates_(self, _sender):
+        self.owner.on_action("notebooklm_duplicates")
 
     def windowDidResize_(self, _notification):
         self.owner.reflow_overview()
@@ -567,6 +572,7 @@ ROW_ATTRIBUTES = {
     "language": ("language_popup", None, None),
     "dest": ("dest_field", None, None),
     "notebooklm_auto": ("notebooklm_switch", None, None),
+    "notebooklm_duplicates": (None, None, None),
     "notebooklm_disconnect": (None, None, None),
     "past_term": ("past_popup", None, None),
     "past_download": ("past_button", None, "past_label"),
@@ -577,7 +583,7 @@ ROW_ATTRIBUTES = {
 # A button of a row that acts at once, and the buttons whose title changes keep one width.
 ROW_ACTIONS = {"google_calendar": "googleCalendar:", "google_calendar_sync": "googleCalendarSync:",
                "google_calendar_disconnect": "googleCalendarDisconnect:", "account": "account:", "past_download": "pastTerm:", "update": "update:", "uninstall": "uninstall:",
-               "notebooklm_disconnect": "notebooklmDisconnect:"}
+               "notebooklm_disconnect": "notebooklmDisconnect:", "notebooklm_duplicates": "notebooklmDuplicates:"}
 ROW_BUTTON_WIDTH = {"google_calendar": 210, "account": ACTION_WIDTH, "update": ACTION_WIDTH, "past_download": 190}
 # Rows whose description changes while the app runs keep room for two lines.
 LIVE_DETAIL_LINES = {"past_download": 2, "google_calendar": 3}
@@ -1963,6 +1969,7 @@ class MainWindow:
                 self._apply_row_state(key, state)
         self._update_google_calendar(form)
         self._apply_row_state("notebooklm_disconnect", notebooklm_disconnect_state(form))
+        self._apply_row_state("notebooklm_duplicates", notebooklm_disconnect_state(form))
         if form.past_terms != self._past_terms:
             selected = self.past_popup.titleOfSelectedItem()
             self.past_popup.removeAllItems()
@@ -2265,6 +2272,52 @@ def ask_notebooklm_disconnect() -> bool:
     alert.addButtonWithTitle_(T_CANCEL).setKeyEquivalent_("\x1b")
     NSApp.activateIgnoringOtherApps_(True)
     return alert.runModal() == NSAlertFirstButtonReturn
+
+
+def _scrolling_text(text: str):
+    """A list too long for an alert's own text, in a box that scrolls."""
+    scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, 520, 280))
+    scroll.setHasVerticalScroller_(True)
+    scroll.setBorderType_(NSBezelBorder)
+    view = NSTextView.alloc().initWithFrame_(NSMakeRect(0, 0, 505, 280))
+    view.setEditable_(False)
+    view.setString_(text)
+    view.textContainer().setWidthTracksTextView_(True)
+    scroll.setDocumentView_(view)
+    return scroll
+
+
+def show_notebooklm_duplicates(title: str, text: str, removable: int) -> bool:
+    """The list; True when the student asks to remove the copies that can go (they confirm once more)."""
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_(title)
+    alert.setAccessoryView_(_scrolling_text(text))
+    if removable:
+        alert.addButtonWithTitle_(ntr("Remove {n} copy…", "Remove {n} copies…", removable).format(n=removable))
+    alert.addButtonWithTitle_(tr("Close")).setKeyEquivalent_("\x1b")
+    NSApp.activateIgnoringOtherApps_(True)
+    return alert.runModal() == NSAlertFirstButtonReturn and removable > 0
+
+
+def ask_notebooklm_remove_duplicates(removable: int) -> bool:
+    """Deleting cannot be undone from here, so it takes this second, plain question."""
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_(ntr("Remove {n} copy from NotebookLM?", "Remove {n} copies from NotebookLM?",
+                              removable).format(n=removable))
+    alert.setInformativeText_(tr("Only newer copies this app added are removed, and only with the same content as "
+                                 "the older copy. The older copy stays. This cannot be undone."))
+    alert.addButtonWithTitle_(tr("Remove"))
+    alert.addButtonWithTitle_(T_CANCEL).setKeyEquivalent_("\x1b")
+    NSApp.activateIgnoringOtherApps_(True)
+    return alert.runModal() == NSAlertFirstButtonReturn
+
+
+def tell_notebooklm(title: str, text: str) -> None:
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_(title)
+    alert.setInformativeText_(text)
+    NSApp.activateIgnoringOtherApps_(True)
+    alert.runModal()
 
 
 def ask_calendar_disconnect() -> bool | None:

@@ -104,6 +104,13 @@ def build_parser() -> argparse.ArgumentParser:
     notebooklm_sync.add_argument("--dest", type=Path, help="the folder the course files were saved in")
     notebooklm_sync.add_argument("--auto", action="store_true", help="after a sync: only look at the courses with something new")
     commands.add_parser("status", help="show the connection and the last run as JSON")
+    duplicates = commands.add_parser("duplicates", help="list sources that are in a notebook twice; deletes nothing")
+    duplicates.add_argument("--json", action="store_true", help="print the list as JSON")
+    remove = commands.add_parser("remove-duplicates",
+                                 help="remove the newer copies this app added, after asking; the older copy stays")
+    remove.add_argument("--yes", action="store_true", help="do not ask: for scripts, after reading the list")
+    remove.add_argument("--source", action="append", metavar="ID", help="only this copy; repeatable")
+    remove.add_argument("--json", action="store_true", help="print the outcome as JSON")
     commands.add_parser("disconnect", help="delete the stored Google session")
     return parser
 
@@ -319,11 +326,67 @@ def cmd_notebooklm(args, config: Config) -> int:
         result = runner.run(config, auto=args.auto, events=emit)
         emit({"event": "result", **result.last_run()})
         return runner.EXIT_CODES[result.status]
+    elif args.notebooklm_action in ("duplicates", "remove-duplicates"):
+        return _notebooklm_duplicates(args, config)
     elif args.notebooklm_action == "disconnect":
         for path in store.disconnect(config):
             print(tr("Could not delete app data: {path}").format(path=path), file=sys.stderr)
     emit({"event": "result", **asdict(store.status(config))})
     return EXIT_OK
+
+
+def _print_duplicates(report) -> None:
+    from blackboard_sync.notebooklm import duplicates
+
+    notes = {duplicates.IDENTICAL: tr("same content, this app added it: can be removed"),
+             duplicates.CHANGED: tr("the file changed since the older copy: both stay"),
+             duplicates.NOT_ADDED_BY_APP: tr("not added by this app: stays"),
+             duplicates.UNVERIFIED: tr("cannot be compared: stays")}
+    for course in report.courses:
+        if course.duplicates:
+            print(f"{course.course}:")
+        for duplicate in course.duplicates:
+            print(f"  {duplicate.name}")
+            print(f"    {tr('older')}: {duplicate.older.created_at[:16]} ({duplicate.older.origin})")
+            for copy in duplicate.newer:
+                print(f"    {tr('newer')}: {copy.created_at[:16]} ({copy.origin}) - {notes[copy.verdict]}")
+    print(tr("{groups} duplicated, {removable} can be removed.").format(
+        groups=sum(len(course.duplicates) for course in report.courses),
+        removable=sum(len(course.removable) for course in report.courses)))
+
+
+def _confirmed(count: int) -> bool:
+    """A script has no one to ask, so without ``--yes`` the answer there is no."""
+    if not sys.stdin.isatty():
+        return False
+    answer = input(tr("Remove {n} newer copies from NotebookLM? [y/N] ").format(n=count))
+    return answer.strip().lower() in ("y", "yes", "e", "evet")
+
+
+def _notebooklm_duplicates(args, config: Config) -> int:
+    from blackboard_sync.notebooklm import duplicates, runner
+
+    report = duplicates.find(config)
+    removing = args.notebooklm_action == "remove-duplicates"
+    if report.status == "ok" and removing:
+        offered = [copy.id for course in report.courses for copy, _older in course.removable]
+        chosen = [id_ for id_ in offered if not args.source or id_ in args.source]
+        if not args.json:
+            _print_duplicates(report)
+        if chosen and not (args.yes or _confirmed(len(chosen))):
+            print(tr("Nothing was removed."), file=sys.stderr)
+            return EXIT_ERROR
+        if chosen:
+            report = duplicates.remove(config, chosen)
+    if args.json:
+        print(json.dumps(report.as_dict(), ensure_ascii=False))
+    elif report.status != "ok":
+        print(report.message, file=sys.stderr)
+    elif removing:
+        print(tr("{n} removed, {failed} failed.").format(n=len(report.removed), failed=len(report.failed)))
+    else:
+        _print_duplicates(report)
+    return runner.EXIT_CODES[report.status]
 
 
 def _utf8_output() -> None:

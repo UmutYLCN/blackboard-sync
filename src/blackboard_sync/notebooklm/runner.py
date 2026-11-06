@@ -13,7 +13,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Collection
 
 from blackboard_sync import courses
 from blackboard_sync.config import Config
@@ -59,6 +59,7 @@ class RunResult:
     added: list[str] = field(default_factory=list)
     adopted: list[str] = field(default_factory=list)
     modified: list[str] = field(default_factory=list)
+    held: list[tuple[str, str]] = field(default_factory=list)  # file, why it may be there already
     failed: list[tuple[str, str]] = field(default_factory=list)
     blocked: list[tuple[str, int, int]] = field(default_factory=list)  # title, overflow, limit
     ambiguous: list[str] = field(default_factory=list)
@@ -81,6 +82,10 @@ class RunResult:
         if failed:
             return ntr("{n} file could not be added; the next sync tries again.",
                        "{n} files could not be added; the next sync tries again.", failed).format(n=failed)
+        if self.held:
+            return ntr("{n} file may already be in NotebookLM, so it was not added.",
+                       "{n} files may already be in NotebookLM, so they were not added.",
+                       len(self.held)).format(n=len(self.held))
         return ""
 
     def last_run(self) -> dict:
@@ -91,6 +96,8 @@ class RunResult:
             "skipped": self.skipped,
             "modified": len(self.modified),
             "blocked": len(self.blocked),
+            "held": len(self.held),
+            "held_files": [f"{label}: {reason}" for label, reason in self.held],
             "failed": len(self.failed) + len(self.processing_errors),
             "message": self.message or self.notice(),
         }
@@ -140,11 +147,13 @@ class CourseGate:
 
 
 async def upload_with_retry(gateway, notebook_id: str, action: FileAction, sleep: Sleep,
-                            on_rate_limit: Callable[[], None] = lambda: None) -> str:
+                            on_rate_limit: Callable[[], None] = lambda: None,
+                            seen: Collection[str] = frozenset()) -> str:
     """Add one file, retrying only passing failures.
 
     A failed add can still have landed, and adding it again would make a duplicate, so the
-    notebook is looked at before each retry. It may still carry the bare file name then.
+    notebook is looked at before each retry. It may still carry the bare file name then, and
+    may not be ready yet. Only a source that was not ``seen`` before this add can be that add.
     """
     title = action.file.rel
     for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -157,9 +166,9 @@ async def upload_with_retry(gateway, notebook_id: str, action: FileAction, sleep
                 raise
             log.warning("attempt %d of %d failed: %s", attempt, MAX_ATTEMPTS, exc)
             await sleep(wait_seconds(attempt))
-            names = {title, action.file.path.name}
             for source in await gateway.list_sources(notebook_id):
-                if source.title in names and source.status in ("ready", "processing"):
+                if (source.id not in seen and source.status != "error"
+                        and planner.name_key(source.title) in planner.name_variants(title)):
                     return source.id
     raise AssertionError("unreachable")
 
@@ -204,13 +213,15 @@ class _Execution:
 
 async def _upload(run: _Execution, plan: CoursePlan, action: FileAction, notebook_id: str,
                   added: dict[str, str]) -> None:
+    """``added`` counts as seen too: a file of this run can have the same name in another folder."""
     scan, info = plan.course, action.file
     label = f"{scan.title}/{info.rel}"
     run.started += 1
     run.progress(scan.title, info.rel)
     try:
         digest = action.sha256 or await asyncio.to_thread(store.sha256_file, info.path)
-        source_id = await upload_with_retry(run.gateway, notebook_id, action, run.sleep, run.gate.slow_down)
+        source_id = await upload_with_retry(run.gateway, notebook_id, action, run.sleep, run.gate.slow_down,
+                                            plan.seen | added.keys())
     except (NotebookLMTransient, NotebookLMPermanent, OSError) as exc:
         run.result.failed.append((label, str(exc)))
     else:
@@ -248,15 +259,18 @@ async def _course(run: _Execution, plan: CoursePlan) -> None:
             await run.commit(lambda: state.refresh(scan.folder, info.rel, size=info.size, mtime_ns=info.mtime_ns))
         elif action.action == planner.MODIFIED:
             result.modified.append(label)
+        elif action.action == planner.HOLD:
+            log.warning("held back, may already be in the notebook: %s (%s)", label, action.reason)
+            result.held.append((label, action.reason))
         elif action.action == planner.ADOPT:
             try:
-                digest = await asyncio.to_thread(store.sha256_file, info.path)
+                digest = action.sha256 or await asyncio.to_thread(store.sha256_file, info.path)
             except OSError as exc:
                 result.failed.append((label, str(exc)))
                 continue
             await run.commit(lambda: state.record(scan.folder, info.rel, notebook_id=notebook_id,
                                                   source_id=action.source_id, size=info.size, mtime_ns=info.mtime_ns,
-                                                  sha256=digest))
+                                                  sha256=digest, adopted=True))
             result.adopted.append(label)
         elif action.action == planner.UPLOAD:
             await run.gate.step(scan.folder)
@@ -340,6 +354,7 @@ async def _run(config: Config, auto: bool, events: Events, opener, sleep: Sleep)
     scans = planner.scan_courses(State.load(config.state_file, backup=False), config.root,
                                  courses.load_disabled(config))
     state = store.UploadState.load(store.state_file(config))
+    state.import_legacy([scan.folder for scan in scans], config.notebooklm_legacy_state)
     result = RunResult(skipped=sum(len(scan.skipped) for scan in scans))
     todo = [scan for scan in scans if planner.has_new_files(scan, state)] if auto else scans
     if auto and not todo:

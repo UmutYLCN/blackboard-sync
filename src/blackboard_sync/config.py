@@ -20,6 +20,8 @@ DEFAULT_BASE_URL = "https://blackboard.istun.edu.tr"
 DEFAULT_DEST = default_dest()
 DEFAULT_DATA_DIR = default_data_dir()
 DEFAULT_ANNOUNCEMENTS_FOLDER = "Duyurular"
+# Read-only: the uploads of the dersler-notebooklm tool that filled the notebooks before this app.
+DEFAULT_NOTEBOOKLM_LEGACY_STATE = Path.home() / "Documents" / "My Cave" / "Garage" / "dersler-notebooklm" / "state.json"
 
 
 @dataclass
@@ -28,11 +30,13 @@ class Config:
     dest: Path = DEFAULT_DEST
     data_dir: Path = DEFAULT_DATA_DIR
     announcements_folder: str = DEFAULT_ANNOUNCEMENTS_FOLDER
+    notebooklm_legacy_state: Path = DEFAULT_NOTEBOOKLM_LEGACY_STATE
 
     def __post_init__(self) -> None:
         self.base_url = self.base_url.rstrip("/")
         self.dest = Path(self.dest).expanduser()
         self.data_dir = Path(self.data_dir).expanduser()
+        self.notebooklm_legacy_state = Path(self.notebooklm_legacy_state).expanduser()
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None, data_dir: Path | None = None) -> "Config":
@@ -51,6 +55,7 @@ class Config:
             announcements_folder=env.get(
                 "BBSYNC_ANNOUNCEMENTS_FOLDER", DEFAULT_ANNOUNCEMENTS_FOLDER
             ),
+            notebooklm_legacy_state=Path(env.get("BBSYNC_NOTEBOOKLM_LEGACY_STATE") or DEFAULT_NOTEBOOKLM_LEGACY_STATE),
         )
 
     @property

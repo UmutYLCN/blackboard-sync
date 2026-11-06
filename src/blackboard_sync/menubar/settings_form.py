@@ -160,6 +160,7 @@ T_UNINSTALL_LABEL = tr("Uninstall Blackboard Sync")
 T_SECTION_APPEARANCE = tr("Appearance")
 T_NOTEBOOKLM_AUTO = tr("Add new files to NotebookLM after each sync")
 T_NOTEBOOKLM_DISCONNECT = tr("Disconnect NotebookLM")
+T_NOTEBOOKLM_DUPLICATES = tr("Find duplicates")
 T_THEME_LABEL = tr("Theme")
 T_THEME_DETAIL = tr("System follows the light or dark mode chosen in Windows.")
 # (value, menu text); applies at once, outside the Save/Cancel form.
@@ -210,6 +211,9 @@ SECTIONS = {section.key: section for section in (
     SettingsSection(SECTION_NOTEBOOKLM, "NotebookLM", (
         SettingRow("notebooklm_auto", T_NOTEBOOKLM_AUTO, tr("Files already there are not added again."), CONTROL_SWITCH,
                    field="notebooklm_auto"),
+        SettingRow("notebooklm_duplicates", T_NOTEBOOKLM_DUPLICATES,
+                   tr("Lists sources that are in a notebook twice. Nothing is removed unless you confirm it."),
+                   CONTROL_BUTTON, button=T_NOTEBOOKLM_DUPLICATES),
         SettingRow("notebooklm_disconnect", T_NOTEBOOKLM_DISCONNECT,
                    tr("Deletes the Google session on this computer. Files in NotebookLM stay there."),
                    CONTROL_BUTTON, button=tr("Disconnect")),

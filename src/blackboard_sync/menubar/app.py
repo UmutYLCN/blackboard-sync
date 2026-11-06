@@ -22,10 +22,19 @@ from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.i18n import tr
 from blackboard_sync.menubar import jobs, launchagent, settings_form
-from blackboard_sync.menubar.main_window_model import GENERAL, main_status, notebooklm_progress, shows_window_at_launch
+from blackboard_sync.menubar.main_window_model import (
+    GENERAL,
+    duplicates_text,
+    duplicates_title,
+    main_status,
+    notebooklm_progress,
+    removable_ids,
+    shows_window_at_launch,
+)
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     NOTEBOOKLM_CONNECT,
+    NOTEBOOKLM_DUPLICATES,
     NOTEBOOKLM_SYNC,
     SESSION_JOB,
     AppModel,
@@ -450,8 +459,40 @@ def build_app(config: Config, show_window: bool = False):
             result = status.outcome or ("login required" if status.needs_login else "error" if status.error else "ok")
             log.info("NotebookLM %s finished: %s %s", action, result, status.message if status.error else "")
             if self.model.finish_notebooklm(status):
-                self.start_notebooklm(auto=action == NOTEBOOKLM_SYNC)
+                self.start_notebooklm(auto=action != NOTEBOOKLM_CONNECT)
             self.refresh()
+
+        def find_notebooklm_duplicates(self, source_ids: list[str] | None = None) -> None:
+            """List the duplicates, or remove the copies just confirmed; both take the NotebookLM slot."""
+            if not self.model.begin_notebooklm(NOTEBOOKLM_DUPLICATES):
+                return
+            self.refresh()
+
+            def work() -> None:
+                report = jobs.run_notebooklm_duplicates(source_ids)
+                AppHelper.callAfter(self._notebooklm_duplicates_done, report, source_ids is not None)
+
+            threading.Thread(target=work, daemon=True).start()
+
+        def _notebooklm_duplicates_done(self, report: dict, removed: bool) -> None:
+            from blackboard_sync.menubar.main_window import (
+                ask_notebooklm_remove_duplicates,
+                show_notebooklm_duplicates,
+                tell_notebooklm,
+            )
+
+            self._notebooklm_done(NOTEBOOKLM_DUPLICATES, notebooklm_store.status(self.config))
+            if report.get("status") != "ok":
+                log.warning("NotebookLM duplicates: %s %s", report.get("status"), report.get("message"))
+                tell_notebooklm(tr("Could not look through NotebookLM."), report.get("message") or "")
+            elif removed:
+                tell_notebooklm(tr("Duplicates removed."), tr("{n} removed, {failed} failed.").format(
+                    n=len(report.get("removed", ())), failed=len(report.get("failed", ()))))
+            else:
+                ids = removable_ids(report)
+                if (show_notebooklm_duplicates(duplicates_title(report), duplicates_text(report), len(ids))
+                        and ask_notebooklm_remove_duplicates(len(ids))):
+                    self.find_notebooklm_duplicates(ids)
 
         def disconnect_notebooklm(self) -> None:
             from blackboard_sync.menubar.main_window import ask_notebooklm_disconnect
@@ -762,6 +803,7 @@ def build_app(config: Config, show_window: bool = False):
                 "notebooklm_connect": lambda: self.start_notebooklm(NOTEBOOKLM_CONNECT),
                 "notebooklm_sync": self.start_notebooklm, "notebooklm_disconnect": self.disconnect_notebooklm,
                 "notebooklm_open": lambda: open_url(notebooklm_store.APP_URL),
+                "notebooklm_duplicates": self.find_notebooklm_duplicates,
             }[action]()
 
         def _window_closed(self) -> None:

@@ -12,9 +12,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from blackboard_sync.config import Config
@@ -29,6 +30,25 @@ TOUCHED = "touched"  # the size or modification time differ, the content does no
 MODIFIED = "modified"  # the content differs from what was added
 
 STATE_VERSION = 1
+LEGACY_FIELDS = ("notebook_id", "source_id", "size", "mtime_ns", "sha256")
+LEGACY_TOOL = "dersler-notebooklm"  # the command line tool that filled the notebooks before this app
+
+ORIGIN_APP = "app"  # this app added it
+ORIGIN_LEGACY = "legacy"  # the old tool added it
+ORIGIN_ADOPTED = "adopted"  # it was there already, whoever added it
+ORIGIN_OTHER = "other"  # nothing on this computer knows it
+
+
+@dataclass(frozen=True)
+class KnownSource:
+    rel: str
+    sha256: str
+    origin: str
+
+
+def nfc(text: str) -> str:
+    """macOS can hand back decomposed names; titles and state keys are composed."""
+    return unicodedata.normalize("NFC", text)
 
 
 def session_file(config: Config) -> Path:
@@ -103,7 +123,8 @@ class UploadState:
         return self.data["courses"].get(course, {}).get("files", {}).get(rel)
 
     def record(self, course: str, rel: str, *, notebook_id: str, source_id: str, size: int, mtime_ns: int,
-               sha256: str) -> None:
+               sha256: str, adopted: bool = False) -> None:
+        """``adopted``: it was in the notebook already, so this app did not add it and never removes it."""
         self._course(course)["files"][rel] = {
             "notebook_id": notebook_id,
             "source_id": source_id,
@@ -111,11 +132,70 @@ class UploadState:
             "mtime_ns": mtime_ns,
             "sha256": sha256,
             "added_at": utcnow_text(),
+            **({"adopted": True} if adopted else {}),
         }
 
     def refresh(self, course: str, rel: str, *, size: int, mtime_ns: int) -> None:
         entry = self._course(course)["files"][rel]
         entry["size"], entry["mtime_ns"] = size, mtime_ns
+
+    def known_sources(self, course: str) -> dict[str, KnownSource]:
+        """Every source the record can say something about, by id: its file, content and origin."""
+        data = self.data["courses"].get(course, {})
+        known = {source_id: KnownSource(entry["rel"], entry["sha256"], ORIGIN_LEGACY)
+                 for source_id, entry in data.get("legacy", {}).items()}
+        for rel, entry in data.get("files", {}).items():
+            if entry["source_id"] not in known:
+                origin = ORIGIN_ADOPTED if entry.get("adopted") else ORIGIN_APP
+                known[entry["source_id"]] = KnownSource(rel, entry["sha256"], origin)
+        return known
+
+    def repoint(self, course: str, source_id: str, kept_id: str) -> None:
+        """A removed copy's files now count as the copy that stayed, so they are not added again."""
+        for entry in self.data["courses"].get(course, {}).get("files", {}).values():
+            if entry["source_id"] == source_id:
+                entry["source_id"], entry["adopted"] = kept_id, True
+
+    def import_legacy(self, folders: list[str], path: Path) -> int:
+        """Count what the old tool uploaded as present; returns how many files were new to the record.
+
+        Its courses are keyed by the folder's own name, without the term. A file already in this
+        record keeps its entry, but the old tool's source is remembered beside it: that copy is
+        never this app's to remove. An entry from another notebook does no harm, since
+        ``plan_course`` ignores it. ``path`` is only ever read.
+        """
+        legacy = read_legacy(path)
+        imported = 0
+        for folder in folders:
+            uploads = legacy.get(nfc(PurePosixPath(folder).name))
+            if uploads is None:
+                continue
+            course = self._course(folder)
+            sources = course.setdefault("legacy", {})
+            for rel, entry in uploads.items():
+                sources.setdefault(entry["source_id"], {"rel": rel, "sha256": entry["sha256"]})
+                if rel not in course["files"]:
+                    course["files"][rel] = {key: entry[key] for key in LEGACY_FIELDS}
+                    course["files"][rel].update(added_at=entry.get("uploaded_at", ""), origin=LEGACY_TOOL)
+                    imported += 1
+        return imported
+
+
+def read_legacy(path: Path) -> dict[str, dict[str, dict]]:
+    """The old tool's uploads, by course and file; nothing when its state is absent or unusable.
+
+    An entry that lacks what ``plan_course`` and ``classify`` need is left out.
+    """
+    try:
+        courses = json.loads(path.read_text(encoding="utf-8"))["courses"]
+        return {nfc(name): {nfc(rel): entry for rel, entry in course["files"].items()
+                            if all(entry.get(key) is not None for key in LEGACY_FIELDS)}
+                for name, course in courses.items()}
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        log.warning("Could not read the %s state: %s", LEGACY_TOOL, type(exc).__name__)
+        return {}
 
 
 def classify(entry: dict | None, size: int, mtime_ns: int, hasher: Callable[[], str]) -> tuple[str, str | None]:
@@ -144,6 +224,7 @@ class NotebookLMStatus:
     skipped: int = 0  # files NotebookLM does not take
     modified: int = 0  # changed since they were added; never replaced
     blocked: int = 0  # courses over the source limit: nothing was added to them
+    held: int = 0  # may be in the notebook under another title: left out, not added
     failed: int = 0
     message: str = ""
     outcome: str = ""  # how a connect ended (``signin``); empty for anything else
@@ -159,7 +240,7 @@ def _read_last_run(config: Config) -> dict:
 
 def status(config: Config) -> NotebookLMStatus:
     data = _read_last_run(config)
-    counts = {key: value for key in ("added", "skipped", "modified", "blocked", "failed")
+    counts = {key: value for key in ("added", "skipped", "modified", "blocked", "held", "failed")
               if isinstance(value := data.get(key), int)}
     return NotebookLMStatus(
         connected=session_file(config).is_file(),
