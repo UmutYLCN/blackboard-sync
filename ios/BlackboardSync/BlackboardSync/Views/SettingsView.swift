@@ -25,6 +25,12 @@ struct SettingsView: View {
                         Text("Türkçe").tag("tr")
                     }
                     Toggle(model.text("Sync on app open"), isOn: $model.syncOnOpen)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle(model.text("Automatic re-sign-in"), isOn: $model.automaticSignIn)
+                            .accessibilityIdentifier("settings.automaticSignIn")
+                        Text(model.text("Keeps your session alive and signs in again in the background when your school allows it. Your password is never stored."))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     NavigationLink(model.text("Selected courses")) { CoursesView() }
                     ComingSoon(title: "Automatic background sync", symbol: "clock.arrow.circlepath")
                 }
