@@ -7,6 +7,7 @@ import json
 import os
 import plistlib
 import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -29,6 +30,8 @@ NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
 DEST = Path(os.path.abspath("/Users/student/Documents"))
 SETTINGS = Settings(base_url=BASE_URL, dest=DEST)
 USER = {"id": "_1_1", "userName": "ada"}
+# Chromium's SingletonLock is a link on macOS, and making one takes extra rights on Windows.
+needs_links = pytest.mark.skipif(sys.platform == "win32", reason="SingletonLock is a macOS link")
 OLD = [{"name": "BbRouter", "value": "old", "domain": "blackboard.example.edu", "path": "/"}]
 NEW = [{"name": "BbRouter", "value": "new", "domain": "blackboard.example.edu", "path": "/", "secure": True,
         "expires": -1}]
@@ -157,7 +160,7 @@ def test_a_valid_single_sign_on_saves_new_cookies_with_no_window(rig):
     assert rig.browser.closed and not rig.process.stopped
 
     argv, options = rig.started[0]
-    assert argv[0].endswith("Google Chrome.app/Contents/MacOS/Google Chrome")
+    assert Path(argv[0]).parts[-4:] == ("Google Chrome.app", "Contents", "MacOS", "Google Chrome")
     assert f"--user-data-dir={rig.config.profile_dir}" in argv  # the profile that holds the sign-on
     assert "--headless=new" in argv and "--restore-last-session" in argv
     assert "/usr/bin/open" not in argv  # LaunchServices would make it a frontmost app
@@ -230,6 +233,7 @@ def test_signed_in_through_the_app_window_there_is_no_profile(rig):
     assert rig.run(FakeBrowser(FakeContext(NEW, FakePage()))).reason == sr.NOT_SIGNED_IN
 
 
+@needs_links
 def test_a_browser_running_on_the_profile_is_left_alone(rig):
     os.symlink(f"host-{os.getpid()}", rig.config.profile_dir / SINGLETON_LOCK)
     assert rig.run(FakeBrowser(FakeContext(NEW, FakePage()))).reason == sr.PROFILE_BUSY
@@ -254,6 +258,7 @@ def test_the_profile_is_free_again_afterwards(rig):
         pass
 
 
+@needs_links
 def test_a_lock_left_by_a_crash_does_not_count(tmp_path):
     os.symlink("host-123", tmp_path / SINGLETON_LOCK)
     assert not profile_in_use(tmp_path, alive=lambda pid: False)
