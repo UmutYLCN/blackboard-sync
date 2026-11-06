@@ -24,13 +24,15 @@ struct BlackboardSyncApp: App {
                 }
                 .onChange(of: phase) { _, phase in
                     if phase == .active {
-                        if wasActive && model.syncOnOpen { model.syncNow() }
+                        model.enterForeground(resumeSync: wasActive)
                         wasActive = true
                     } else if phase == .background {
                         // Foreground pilot: cancel cooperatively before suspension, preserving checkpoints.
                         model.cancel()
+                        model.enterBackground()
                     }
                 }
         }
+        .backgroundTask(.appRefresh(SessionCare.backgroundTaskID)) { await model.backgroundRefresh() }
     }
 }

@@ -205,6 +205,9 @@ struct StatusCard: View {
                     if let last = model.library.lastSync {
                         Text(model.text("Last synced") + ": " + last.formatted(date: .abbreviated, time: .shortened)).font(.callout).foregroundStyle(.secondary)
                     }
+                    if model.sessionNoteVisible {
+                        Text(model.text("Session refreshed automatically")).font(.callout).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer(minLength: 8)
                 action

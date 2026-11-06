@@ -5,6 +5,36 @@
 	"objectVersion" = "56";
 	"archiveVersion" = "1";
 	"objects" = {
+		"7B2D4E1A9C3F4D5E8A6B1C01" = {
+			"isa" = "PBXFileReference";
+			"path" = "Session/SessionCare.swift";
+			"sourceTree" = "<group>";
+			"lastKnownFileType" = "sourcecode.swift";
+		};
+		"7B2D4E1A9C3F4D5E8A6B1C02" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7B2D4E1A9C3F4D5E8A6B1C01";
+		};
+		"7B2D4E1A9C3F4D5E8A6B1C03" = {
+			"isa" = "PBXFileReference";
+			"path" = "Session/SilentSignIn.swift";
+			"sourceTree" = "<group>";
+			"lastKnownFileType" = "sourcecode.swift";
+		};
+		"7B2D4E1A9C3F4D5E8A6B1C04" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7B2D4E1A9C3F4D5E8A6B1C03";
+		};
+		"7B2D4E1A9C3F4D5E8A6B1C05" = {
+			"isa" = "PBXFileReference";
+			"path" = "SessionCareTests.swift";
+			"sourceTree" = "<group>";
+			"lastKnownFileType" = "sourcecode.swift";
+		};
+		"7B2D4E1A9C3F4D5E8A6B1C06" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7B2D4E1A9C3F4D5E8A6B1C05";
+		};
 		"5C1A7E0D2F3B4A6C8E9D0B11" = {
 			"path" = "Signing.xcconfig";
 			"isa" = "PBXFileReference";
@@ -54,6 +84,7 @@
 				"6D890825794BE505638A5398",
 				"5A11E0C0AB5E4F6B9D2C7E32",
 				"5B22F1D1BC6F405CAE3D8F46",
+				"7B2D4E1A9C3F4D5E8A6B1C06",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
@@ -117,6 +148,8 @@
 				"FC5E60FB706981815505B604",
 				"04681FDBB1C209D226A6374C",
 				"3768547F5127948CED893F29",
+				"7B2D4E1A9C3F4D5E8A6B1C02",
+				"7B2D4E1A9C3F4D5E8A6B1C04",
 				"1AD7CC3D0A162AB0CD3DDB0E",
 				"5B22F1D1BC6F405CAE3D8F44",
 				"CE799DEDBF35F1A4C88EFAEF",
@@ -269,6 +302,7 @@
 				"04EDDDB9DF0587D8145D444E",
 				"5A11E0C0AB5E4F6B9D2C7E31",
 				"5B22F1D1BC6F405CAE3D8F45",
+				"7B2D4E1A9C3F4D5E8A6B1C05",
 			);
 			"sourceTree" = "<group>";
 		};
@@ -308,6 +342,8 @@
 				"BA8E10CAD3F5997A529C64E0",
 				"492247ED7B488A8639140C5B",
 				"8CDB2C0C34AFA0992FF97978",
+				"7B2D4E1A9C3F4D5E8A6B1C01",
+				"7B2D4E1A9C3F4D5E8A6B1C03",
 				"81E5EC34742D737E3AC43ED2",
 				"5B22F1D1BC6F405CAE3D8F43",
 				"45F985C366034059628BC553",
