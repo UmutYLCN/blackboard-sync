@@ -809,20 +809,23 @@ def test_the_cli_reports_a_connect_that_worked(config, monkeypatch, capsys):
 class ParallelGateway(FakeGateway):
     """Counts the uploads in flight, per notebook and in all; each upload lets the others run."""
 
-    def __init__(self, **options):
+    def __init__(self, meet=0, **options):
         super().__init__(**options)
         self.in_flight: dict[str, int] = {}
         self.most = 0
         self.most_in_a_notebook = 0
-        self.after_limit: list[int] = []
+        self.meet = meet  # uploads wait until this many are in flight; hashing makes the timing unknown
+        self.met = asyncio.Event()
 
     async def add_file(self, notebook_id, path, title):
         self.in_flight[notebook_id] = self.in_flight.get(notebook_id, 0) + 1
         self.most = max(self.most, sum(self.in_flight.values()))
         self.most_in_a_notebook = max(self.most_in_a_notebook, self.in_flight[notebook_id])
         try:
-            for _ in range(3):
-                await asyncio.sleep(0)
+            if self.most >= self.meet:
+                self.met.set()
+            await asyncio.wait_for(self.met.wait(), 10)
+            await asyncio.sleep(0)
             return await super().add_file(notebook_id, path, title)
         finally:
             self.in_flight[notebook_id] -= 1
@@ -848,7 +851,7 @@ def run_parallel(config, gateway, **options):
 
 def test_courses_go_side_by_side_and_a_course_stays_in_order(config):
     many_courses(config)
-    gateway = ParallelGateway()
+    gateway = ParallelGateway(meet=runner.COURSE_CONCURRENCY)
 
     result = run_parallel(config, gateway)
 
