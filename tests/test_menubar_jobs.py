@@ -391,7 +391,7 @@ def notebooklm_config(tmp_path):
 def test_notebooklm_child_arguments():
     settings = Settings(base_url="https://bb.example.edu", dest=Path("/tmp/dest"))
     assert jobs.notebooklm_arguments("connect", settings) == ["notebooklm", "login"]
-    assert jobs.notebooklm_arguments("sync", settings) == ["notebooklm", "sync", "--dest", "/tmp/dest"]
+    assert jobs.notebooklm_arguments("sync", settings) == ["notebooklm", "sync", "--dest", str(settings.dest)]
     assert jobs.notebooklm_arguments("sync", settings, auto=True)[-1] == "--auto"
 
 
