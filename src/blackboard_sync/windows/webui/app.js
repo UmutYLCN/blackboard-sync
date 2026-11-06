@@ -7,6 +7,11 @@
 "use strict";
 
 (() => {
+  const NOTEBOOKLM_ICONS = {
+    off: "menu_book",
+    idle: "menu_book-fill",
+    attention: "warning-fill",
+  };
   const STATE_ICONS = {
     synced: "check_circle-fill",
     syncing: "sync",
@@ -87,13 +92,13 @@
   let menuAnchor = null;
 
   function openMenu(anchor, items, header) {
-    menu.replaceChildren(
+    menu.replaceChildren(...[
       header ? h("div", { class: "menu-header", text: header }) : null,
-      items.map((item) => h("button", {
+      ...items.map((item) => h("button", {
         class: "menu-item", type: "button", role: "menuitem", disabled: item.disabled,
         onclick: () => { menu.hidePopover(); item.run(); },
       }, icon(item.icon), h("span", { text: item.title }))),
-    );
+    ].filter(Boolean));
     menuAnchor = anchor;
     anchor.setAttribute("aria-expanded", "true");
     menu.showPopover();
@@ -152,9 +157,10 @@
       call("dialog_answer", data.id, button, checked);
       dialog.close();
     };
-    dialog.replaceChildren(
+    dialog.replaceChildren(...[ // replaceChildren would print a null as the word
       h("h2", { class: "dialog-title", text: data.title }),
-      h("p", { class: "dialog-message", text: data.message }),
+      data.message ? h("p", { class: "dialog-message", text: data.message }) : null,
+      data.list ? h("pre", { class: "dialog-list", tabindex: "0", text: data.list }) : null,
       data.checkbox ? h("label", { class: "check" },
         h("input", {
           class: "switch", type: "checkbox",
@@ -165,7 +171,7 @@
       h("div", { class: "dialog-buttons" },
         data.buttons.map((button) => pill(button.title, button.style || "gray", () => answer(button.id),
           { "data-default": button.default ? "true" : null }))),
-    );
+    ].filter(Boolean));
     dialog.oncancel = (event) => { event.preventDefault(); answer(null); }; // Escape cancels
     dialog.showModal();
     dialog.querySelector('[data-default="true"]')?.focus();
@@ -312,6 +318,71 @@
         h("span", { class: "count", text: home.recent_count })));
   }
 
+  // Its own host in the page: a progress event must not restart the moving papers and the bar.
+  let notebooklmShown = null;
+
+  function notebooklmPills(data) {
+    return [
+      data.button ? pill(data.button.title, "gray", () => call("action", data.button.id), { disabled: !data.button.enabled }) : null,
+      data.open ? pill(data.open.title, "gray", () => call("action", data.open.id)) : null,
+    ];
+  }
+
+  function fillNotebooklmText(card, data) {
+    for (const key of ["detail", "counts", "notice"]) {
+      const line = card.querySelector(`.nlm-${key}`);
+      line.textContent = data[key];
+      line.title = data[key];
+      line.hidden = !data[key];
+    }
+    const bar = card.querySelector(".nlm-bar");
+    if (bar) {
+      const known = data.progress !== null;
+      bar.classList.toggle("moving", !known);
+      if (known) {
+        bar.setAttribute("aria-valuenow", String(Math.round(data.progress * 100)));
+        bar.firstChild.style.width = `${data.progress * 100}%`;
+      } else {
+        bar.removeAttribute("aria-valuenow");
+        bar.firstChild.style.width = "";
+      }
+    }
+    card.querySelector(".nlm-buttons").replaceChildren(...notebooklmPills(data).filter(Boolean));
+  }
+
+  function notebooklmCard(data) {
+    const card = h("section", { class: data.warning ? "card notebooklm warning" : "card notebooklm", id: "notebooklm-card" },
+      data.running ? scene(true) : icon(NOTEBOOKLM_ICONS[data.kind] || NOTEBOOKLM_ICONS.off, `nlm-icon ${data.kind}`),
+      h("div", { class: "nlm-text" },
+        h("div", { class: "nlm-title", text: data.title }),
+        h("div", { class: "nlm-detail" }),
+        h("div", { class: "nlm-counts" }),
+        h("div", { class: "nlm-notice" }),
+        data.running ? h("div", { class: "nlm-bar", role: "progressbar", "aria-label": data.title, "aria-valuemin": "0", "aria-valuemax": "100" },
+          h("span", {})) : null,
+        h("div", { class: "nlm-buttons" })));
+    fillNotebooklmText(card, data);
+    return card;
+  }
+
+  function drawNotebooklm() {
+    const host = document.getElementById("notebooklm");
+    if (!host) {
+      notebooklmShown = null;
+      return;
+    }
+    const data = state.home.notebooklm;
+    const card = host.firstChild;
+    if (card && notebooklmShown === data.kind) {
+      fillNotebooklmText(card, data);
+      return;
+    }
+    const next = notebooklmCard(data);
+    if (notebooklmShown !== null && notebooklmShown !== data.kind) next.classList.add("changed"); // fades only between states
+    host.replaceChildren(next);
+    notebooklmShown = data.kind;
+  }
+
   function announcementsCard(home) {
     const any = home.attention.length || home.announcements.length;
     return h("section", { class: "card" },
@@ -336,7 +407,7 @@
     const home = state.home;
     return h("div", { class: "home" },
       banner(),
-      h("div", { class: "column" }, statusCard(home)),
+      h("div", { class: "column" }, statusCard(home), h("div", { id: "notebooklm" })),
       h("div", { class: "column" }, announcementsCard(home), deadlinesCard(home)));
   }
 
@@ -586,7 +657,7 @@
     general: () => settingsPage(),
   };
   const PAGE_DATA = {
-    overview: () => [state.home, state.banner],
+    overview: () => [{ ...state.home, notebooklm: null }, state.banner], // drawNotebooklm has its own
     start: () => [state.start, state.settings.error_field, state.settings.error],
     activity: () => state.activity,
     announcements: () => state.announcements,
@@ -621,6 +692,7 @@
         if (typeof caret === "number" && again.setSelectionRange) again.setSelectionRange(caret, caret);
       }
     }
+    drawNotebooklm();
     drawSaveBar();
   }
 

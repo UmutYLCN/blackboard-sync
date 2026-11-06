@@ -52,6 +52,7 @@ COMPACT_SCENE = (120, 70)  # in Home's status card while a sync runs
 # the left and its control on the right; the on/off settings are check boxes (Tk has no switch).
 ROW_WRAP = 360  # the left text of a row wraps here first, then at the width the window leaves it
 ROW_MIN_WRAP = 120
+NOTEBOOKLM_WRAP = 420  # Home's NotebookLM card
 DANGER_BORDER = "#d9534f"
 # In the Microsoft Store build the Store owns updates and removal: no check box, no buttons.
 PACKAGED_HIDDEN_ROWS = ("check_updates",)
@@ -164,6 +165,8 @@ class MainWindow:
         self.dest = tk.StringVar(value=values.dest)
         self.autostart = tk.BooleanVar(value=values.autostart)
         self.check_updates = tk.BooleanVar(value=values.check_updates)
+        self.auto_relogin = tk.BooleanVar(value=values.auto_relogin)
+        self.notebooklm_auto = tk.BooleanVar(value=values.notebooklm_auto)
         self.interval = tk.StringVar(value=form.interval_title(values.sync_interval_minutes))
         self.language = tk.StringVar(value=form.language_title(values.language))
         self.past_term = tk.StringVar(value="")
@@ -181,7 +184,8 @@ class MainWindow:
             page.grid_remove()
             self.pages[name] = page
             build(page)
-        for variable in (self.url, self.dest, self.autostart, self.check_updates, self.interval, self.language):
+        for variable in (self.url, self.dest, self.autostart, self.check_updates, self.interval, self.language,
+                         self.auto_relogin, self.notebooklm_auto):
             variable.trace_add("write", lambda *_args: self.changed())
         # The wheel scrolls the section in view wherever the pointer is; over a
         # list it scrolls too instead of changing the choice.
@@ -343,8 +347,11 @@ class MainWindow:
         background = background_of(page)
 
         # Left: Drive's status card: the state in words, the last files and "View all".
-        status = ttk.LabelFrame(page, padding=(14, 12))
-        status.grid(row=2, column=0, rowspan=2, sticky="new", padx=(0, 12))
+        left = ttk.Frame(page)
+        left.grid(row=2, column=0, rowspan=2, sticky="new", padx=(0, 12))
+        status = ttk.LabelFrame(left, padding=(14, 12))
+        status.pack(fill="x")
+        self._build_notebooklm_card(left)
         status.columnconfigure(1, weight=1)
         self.state_icon = ttk.Label(status, font=("Segoe UI", 20), width=2, anchor="center")
         self.state_icon.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 10))
@@ -382,6 +389,55 @@ class MainWindow:
         self.notify_frame.grid(row=2, column=1, sticky="new", pady=(0, 12))
         self.calendar_frame = ttk.LabelFrame(page, text=main.T_HOME_CALENDAR, padding=(14, 8))
         self.calendar_frame.grid(row=3, column=1, sticky="new")
+
+    def _build_notebooklm_card(self, parent):
+        """Under the status card: the same card as the WebView2 page and macOS, in plain Tk."""
+        from tkinter import ttk
+
+        card = ttk.LabelFrame(parent, text=main.T_NOTEBOOKLM, padding=(14, 8))
+        card.pack(fill="x", pady=(12, 0))
+        card.columnconfigure(0, weight=1)
+        self.notebooklm_detail = ttk.Label(card, foreground=MUTED, wraplength=NOTEBOOKLM_WRAP)
+        self.notebooklm_detail.grid(row=0, column=0, sticky="w")
+        self.notebooklm_counts = ttk.Label(card, foreground=MUTED, wraplength=NOTEBOOKLM_WRAP)
+        self.notebooklm_counts.grid(row=1, column=0, sticky="w")
+        self.notebooklm_notice = ttk.Label(card, foreground=WARNING, wraplength=NOTEBOOKLM_WRAP)
+        self.notebooklm_notice.grid(row=2, column=0, sticky="w")
+        self.notebooklm_bar = ttk.Progressbar(card, maximum=1.0)
+        self.notebooklm_bar.grid(row=3, column=0, sticky="ew", pady=(6, 0))
+        buttons = ttk.Frame(card)
+        buttons.grid(row=4, column=0, sticky="w", pady=(8, 0))
+        self.notebooklm_button = PillButton(buttons, command=lambda: self.on_action(self.status.notebooklm.action))
+        self.notebooklm_button.pack(side="left")
+        self.notebooklm_open = PillButton(buttons, main.T_NOTEBOOKLM_OPEN, lambda: self.on_action("notebooklm_open"))
+        self.notebooklm_open.pack(side="left", padx=(8, 0))
+
+    def _draw_notebooklm_card(self):
+        card = self.status.notebooklm
+        for label, text in ((self.notebooklm_detail, card.detail), (self.notebooklm_counts, card.counts),
+                            (self.notebooklm_notice, card.notice)):
+            label.configure(text=text)
+            if text:
+                label.grid()
+            else:
+                label.grid_remove()
+        self.notebooklm_detail.configure(foreground=WARNING if card.warning else MUTED)
+        bar = self.notebooklm_bar
+        if not card.running:
+            bar.stop()
+            bar.grid_remove()
+        else:
+            bar.grid()
+            if card.progress is None:
+                bar.configure(mode="indeterminate")
+                bar.start(40)
+            else:
+                bar.stop()
+                bar.configure(mode="determinate", value=card.progress)
+        self.notebooklm_button.configure(text=card.action_title, state="normal" if card.enabled else "disabled")
+        self.notebooklm_open.pack_forget()
+        if card.open_action:
+            self.notebooklm_open.pack(side="left", padx=(8, 0))
 
     def _draw_home_cards(self):
         """Home's Announcements (what needs attention, then the newest) and Yaklaşan teslimler cards."""
@@ -504,7 +560,7 @@ class MainWindow:
         self.update_button = self.uninstall_button = None
         packaged = package.is_packaged()
         row = 0
-        for section in form.settings_sections():
+        for section in form.settings_sections(notebooklm=True, auto_relogin=True):
             if section.key == form.SECTION_CALENDAR:
                 continue  # Connection controls currently macOS/CLI only.
             if packaged and section.danger:
@@ -612,7 +668,8 @@ class MainWindow:
         key, kind = definition.key, definition.control
         variables = {"base_url": self.url, "dest": self.dest, "autostart": self.autostart,
                      "check_updates": self.check_updates, "interval": self.interval, "language": self.language,
-                     "past_term": self.past_term}
+                     "past_term": self.past_term, "auto_relogin": self.auto_relogin,
+                     "notebooklm_auto": self.notebooklm_auto}
         if kind == form.CONTROL_FIELD:
             return ttk.Entry(frame, textvariable=variables[key], width=26 if definition.button else 34)
         if kind == form.CONTROL_POPUP:
@@ -624,7 +681,9 @@ class MainWindow:
             return ttk.Checkbutton(frame, variable=variables[key])
         commands = {"account": self.account_pressed, "past_download": self.download_past_term,
                     "update": lambda: self.on_action(self.status.form.update_action),
-                    "uninstall": lambda: self.on_action("uninstall")}
+                    "uninstall": lambda: self.on_action("uninstall"),
+                    "notebooklm_duplicates": lambda: self.on_action("notebooklm_duplicates"),
+                    "notebooklm_disconnect": lambda: self.on_action("notebooklm_disconnect")}
         style = self._danger_button_style() if danger else None
         options = {"style": style} if style else {}
         return ttk.Button(frame, text=definition.button, width=ACTION_WIDTH, command=commands[key], **options)
@@ -751,7 +810,8 @@ class MainWindow:
     def values(self):
         minutes = next((m for m, title in form.INTERVAL_OPTIONS if title == self.interval.get()), 60)
         return form.FormValues(self.url.get(), self.dest.get(), self.autostart.get(),
-                               self.check_updates.get(), minutes, form.language_code(self.language.get()))
+                               self.check_updates.get(), minutes, form.language_code(self.language.get()),
+                               self.auto_relogin.get(), self.notebooklm_auto.get())
 
     def set_values(self, values):
         """Show ``values`` as what is saved: the bar goes away."""
@@ -761,6 +821,8 @@ class MainWindow:
             self.dest.set(values.dest)
             self.autostart.set(values.autostart)
             self.check_updates.set(values.check_updates)
+            self.auto_relogin.set(values.auto_relogin)
+            self.notebooklm_auto.set(values.notebooklm_auto)
             self.interval.set(form.interval_title(values.sync_interval_minutes))
             self.language.set(form.language_title(values.language))
         finally:
@@ -859,6 +921,7 @@ class MainWindow:
             self.account_message.grid_remove()
         self._animate()
         self._draw_recent()
+        self._draw_notebooklm_card()
         self._draw_home_cards()
         self.refresh_calendar()
         self.refresh_activity()
@@ -884,6 +947,8 @@ class MainWindow:
             if key.startswith("google_calendar"):
                 continue
             self._apply_row_state(key, state)
+        for key in ("notebooklm_duplicates", "notebooklm_disconnect"):
+            self._apply_row_state(key, form.notebooklm_disconnect_state(form_status))
         terms = list(form_status.past_terms)
         self.past_dropdown.configure(values=terms,
                                      state="readonly" if terms and not form_status.past_running else "disabled")
@@ -1211,6 +1276,46 @@ def ask_dest_choice(parent, old, new, files):
     dialog.grab_set()
     dialog.wait_window()
     return answer[0] if answer else None
+
+
+def ask_notebooklm_duplicates(parent, title, text, remove):
+    """What is there twice, in a box that scrolls; True for ``remove``, the button of any copy that can go."""
+    import tkinter as tk
+    from tkinter import ttk
+
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    dialog.transient(parent)
+    answer = []
+
+    def confirm():
+        answer.append(True)
+        dialog.destroy()
+
+    frame = ttk.Frame(dialog, padding=20)
+    frame.grid(sticky="nsew")
+    ttk.Label(frame, text=title, font=HEADING_FONT, wraplength=520).grid(sticky="w", pady=(0, 8))
+    box = ttk.Frame(frame)
+    box.grid(sticky="nsew", pady=(0, 16))
+    lines = tk.Text(box, width=70, height=16, wrap="word", relief="flat")
+    lines.insert("1.0", text)
+    lines.configure(state="disabled")
+    lines.pack(side="left", fill="both", expand=True)
+    bar = ttk.Scrollbar(box, command=lines.yview)
+    bar.pack(side="right", fill="y")
+    lines.configure(yscrollcommand=bar.set)
+    buttons = ttk.Frame(frame)
+    buttons.grid(sticky="e")
+    close = ttk.Button(buttons, text=tr("Close"), command=dialog.destroy)
+    close.pack(side="left", padx=4)
+    if remove:
+        ttk.Button(buttons, text=remove, command=confirm).pack(side="left", padx=4)
+    dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+    dialog.bind("<Escape>", lambda _e: dialog.destroy())
+    close.focus_set()
+    dialog.grab_set()
+    dialog.wait_window()
+    return bool(answer)
 
 
 def ask_uninstall(parent, dest):

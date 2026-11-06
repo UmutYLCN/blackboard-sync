@@ -416,7 +416,7 @@ def fake_tk(monkeypatch, tmp_path):
             self.traces.append(callback)
 
     names = ('Frame', 'Label', 'Entry', 'Button', 'Checkbutton', 'Radiobutton', 'Separator', 'Combobox',
-             'LabelFrame', 'Scrollbar')
+             'LabelFrame', 'Scrollbar', 'Progressbar')
     ttk = SimpleNamespace(**{name: Widget for name in names})
     fake = SimpleNamespace(Toplevel=Widget, Canvas=Widget, Frame=Widget, StringVar=Variable, BooleanVar=Variable, ttk=ttk,
                            filedialog=SimpleNamespace(askdirectory=lambda **kw: str(tmp_path / 'picked')))
@@ -478,6 +478,44 @@ def test_windows_recent_badges_track_viewport_and_return_visit(monkeypatch, tmp_
     assert [r.is_new for r in window.status.recent] == [False, True]
     window.close()
     assert model.recent_seen.snapshot is None and window._recent_after is None
+
+
+def test_windows_tk_window_draws_the_notebooklm_card_and_keeps_its_settings(monkeypatch, tmp_path):
+    from dataclasses import replace
+    from blackboard_sync.menubar import main_window_model as main
+    from blackboard_sync.notebooklm.store import NotebookLMStatus
+    from blackboard_sync.windows.main_window import MainWindow
+
+    fake_tk(monkeypatch, tmp_path)
+    now = datetime.now(timezone.utc)
+    model = AppModel(tmp_path, now, configured=True, session={'saved_at': now.timestamp(), 'user': {'displayName': 'Ada'}})
+    actions = []
+    saved = FormValues('https://school.edu', str(tmp_path), True, auto_relogin=False, notebooklm_auto=False)
+    window = MainWindow(None, saved, main.main_status(model, now), lambda *a: None, actions.append, lambda: None)
+    assert (window.values().auto_relogin, window.values().notebooklm_auto) == (False, False)  # a Save keeps them
+    assert not main.has_changes(saved, window.values())
+
+    window.update_status(main.main_status(model, now))
+    assert window.notebooklm_detail.options['text'] == main.T_NOTEBOOKLM_INTRO
+    assert window.notebooklm_counts.removed and window.notebooklm_bar.removed and not window.notebooklm_open.canvas.packed
+    window.notebooklm_button.options['command']()
+    assert actions == ['notebooklm_connect']
+    assert window.settings_rows['notebooklm_disconnect'].control.options['state'] == 'disabled'
+
+    model.notebooklm = NotebookLMStatus(connected=True)
+    model.begin_notebooklm('sync')
+    model.notebooklm_progress = main.NotebookLMProgress('Adding 1 of 2: a.pdf', 'CSE303', 0.5)
+    window.update_status(main.main_status(model, now))
+    assert not window.notebooklm_bar.removed and window.notebooklm_bar.options['value'] == 0.5
+    assert window.notebooklm_counts.options["text"] == "CSE303" and window.notebooklm_open.canvas.packed
+    assert window.notebooklm_button.options['state'] == 'disabled'
+
+    model.notebooklm_busy, model.notebooklm_progress = None, None
+    model.notebooklm = replace(model.notebooklm, error=True, message='down')
+    window.update_status(main.main_status(model, now))
+    assert window.notebooklm_bar.removed and window.notebooklm_button.options['state'] == 'normal'
+    assert window.notebooklm_detail.options['foreground'] == '#b00020'
+    assert window.settings_rows['notebooklm_disconnect'].control.options['state'] == 'normal'
 
 
 def test_windows_home_header_and_pill_buttons(monkeypatch, tmp_path):
@@ -555,7 +593,8 @@ def test_windows_settings_are_sections_of_rows(monkeypatch, tmp_path):
     heading = [w.options['text'] for w in widgets if w.options.get('font') == ("Segoe UI", 11, "bold") and w.options.get('text')]
     titles = ['Account', 'Sync', 'Folder', 'Past terms', 'Updates', 'Danger zone']  # no Calendar yet
     assert [text for text in heading if text in titles] == titles
-    assert set(window.settings_rows) == {row.key for section in form_module.settings_sections() if section.key != form_module.SECTION_CALENDAR
+    assert set(window.settings_rows) == {row.key for section in form_module.settings_sections(notebooklm=True, auto_relogin=True)
+                                         if section.key != form_module.SECTION_CALENDAR
                                          for row in section.rows}
     danger = next(w for w in widgets if w.options.get('text') == 'Danger zone')
     assert danger.options['foreground'] == '#b00020'

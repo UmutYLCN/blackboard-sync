@@ -168,17 +168,18 @@ def run_sync_refreshing(
     term_id: str = "",
     may_refresh: bool = False,
     wanted: Callable[[], bool] = lambda: True,
+    runner: Runner = run_cancellable,
 ) -> tuple[RunOutcome, session_refresh.RefreshResult | None]:
     """A sync that, when the session is gone, signs in again in the background and runs once more.
 
     Returns how the sync went and how the sign-in went (None: none was tried).
     ``wanted`` is False once the student paused. Worker threads call this.
     """
-    outcome = run_sync_guarded(job, settings, term_name=term_name, term_id=term_id)
+    outcome = run_sync_guarded(job, settings, term_name=term_name, term_id=term_id, runner=runner)
     if outcome.status != "login_required" or not may_refresh or not wanted():
         return outcome, None
     try:
-        result = run_session_refresh(settings)
+        result = run_session_refresh(settings, runner)
     except SyncStopped:
         return RunOutcome(status="paused", finished_at=utcnow()), None
     except Exception:
@@ -188,7 +189,7 @@ def run_sync_refreshing(
         return outcome, result
     if not wanted():
         return RunOutcome(status="paused", finished_at=utcnow()), result
-    return run_sync_guarded(job, settings, term_name=term_name, term_id=term_id), result
+    return run_sync_guarded(job, settings, term_name=term_name, term_id=term_id, runner=runner), result
 
 
 @dataclass(frozen=True)
@@ -199,13 +200,14 @@ class SessionCheck:
     refresh: session_refresh.RefreshResult | None = None
 
 
-def run_session_check(config: Config, settings: Settings, may_refresh: bool) -> SessionCheck:
+def run_session_check(config: Config, settings: Settings, may_refresh: bool,
+                      runner: Runner = run_cancellable) -> SessionCheck:
     """Keep the session alive, and replace it when it is gone or about to go; never raises."""
     try:
         alive = session_refresh.keep_alive(replace(config, base_url=settings.base_url))
         if not may_refresh or not alive.wants_refresh(utcnow()):
             return SessionCheck(alive.status)
-        return SessionCheck(alive.status, run_session_refresh(settings))
+        return SessionCheck(alive.status, run_session_refresh(settings, runner))
     except SyncStopped:
         return SessionCheck(session_refresh.UNREACHABLE)
     except Exception:
@@ -233,13 +235,14 @@ def run_login(settings: Settings, runner: Runner = subprocess.run) -> tuple[bool
     return False, lines[-1] if lines else tr("exit status {code}").format(code=proc.returncode)
 
 
-def run_sync_guarded(job: str, settings: Settings, term_name: str = "", term_id: str = "") -> RunOutcome:
+def run_sync_guarded(job: str, settings: Settings, term_name: str = "", term_id: str = "",
+                     runner: Runner = run_cancellable) -> RunOutcome:
     """``run_sync`` that turns any unexpected exception into a failed outcome.
 
     Worker threads must always report back, or the model stays busy forever.
     """
     try:
-        return run_sync(job, settings, term_name=term_name, term_id=term_id)
+        return run_sync(job, settings, runner=runner, term_name=term_name, term_id=term_id)
     except Exception as exc:
         log.exception("Sync job failed")
         return RunOutcome(status="error", message=str(exc), finished_at=utcnow())
@@ -343,24 +346,25 @@ def run_notebooklm(config: Config, action: str, settings: Settings, auto: bool =
 
 
 def run_notebooklm_guarded(config: Config, action: str, settings: Settings, auto: bool = False,
-                           on_event: Callable[[dict], None] = lambda event: None) -> notebooklm_store.NotebookLMStatus:
+                           on_event: Callable[[dict], None] = lambda event: None,
+                           popen: Callable[..., object] = subprocess.Popen) -> notebooklm_store.NotebookLMStatus:
     """``run_notebooklm`` for a worker thread: it always reports back, and never raises."""
     try:
-        return run_notebooklm(config, action, settings, auto, on_event)
+        return run_notebooklm(config, action, settings, auto, on_event, popen)
     except Exception as exc:
         log.exception("NotebookLM job failed")
         return replace(notebooklm_store.status(config), error=True, message=str(exc))
 
 
-def run_notebooklm_duplicates(source_ids: list[str] | None = None) -> dict:
+def run_notebooklm_duplicates(source_ids: list[str] | None = None, runner: Runner | None = None) -> dict:
     """List the duplicates, or remove these confirmed copies; the child's result, whatever happened."""
     arguments = ["notebooklm", "duplicates", "--json"]
     if source_ids is not None:
         arguments = ["notebooklm", "remove-duplicates", "--json", "--yes"]
         arguments += [argument for source_id in source_ids for argument in ("--source", source_id)]
     try:
-        proc = subprocess.run(cli_command(*arguments), stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                              timeout=NOTEBOOKLM_TIMEOUT)
+        proc = (runner or subprocess.run)(cli_command(*arguments), stdin=subprocess.DEVNULL, capture_output=True,
+                                          text=True, timeout=NOTEBOOKLM_TIMEOUT)
         report = json.loads(proc.stdout.strip().splitlines()[-1])
     except (OSError, subprocess.SubprocessError, ValueError, IndexError) as exc:
         log.exception("NotebookLM duplicates job failed")

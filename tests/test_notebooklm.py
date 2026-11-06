@@ -1005,7 +1005,7 @@ def test_a_rate_limit_is_told_from_other_passing_failures():
 
 # -- the gateway ----------------------------------------------------------------------------------
 def gateway_module():
-    pytest.importorskip("notebooklm")  # macOS only: the library is not installed elsewhere
+    pytest.importorskip("notebooklm")  # macOS and Windows: the library is not installed elsewhere
     from blackboard_sync.notebooklm import gateway
 
     return gateway

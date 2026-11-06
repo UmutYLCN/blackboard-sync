@@ -7,7 +7,7 @@ Downloads your Blackboard course content to your computer automatically.
 - **Automatic downloads:** Checks Blackboard every hour in the background, downloads new files by itself and sends you a notification.
 - **Tidy folders:** Files are saved in a **University** folder with Blackboard's own term and course structure.
 - **Google Calendar (optional):** Send deadlines to a dedicated Blackboard Deadlines calendar; automatic updates after successful app syncs. [Client setup](docs/GOOGLE_CALENDAR_SETUP.md).
-- **NotebookLM (optional, Mac):** Add your course files to one notebook per course, automatically after each sync. Uses an unofficial connection. [Details](docs/USAGE.md#notebooklm-mac).
+- **NotebookLM (optional, Mac and Windows):** Add your course files to one notebook per course, automatically after each sync. Uses an unofficial connection. [Details](docs/USAGE.md#notebooklm-mac-and-windows).
 - **Calendar:** See the due dates of assignments, exams and other graded work day by day, with the course name.
 - **Announcements:** Every synced announcement from your current-term courses in one place, newest first; open the saved notes from there.
 - **Courses:** Untick a course you don't want and it is no longer synced. The folder is a copy of Blackboard; deleted or damaged files come back by themselves.
@@ -45,7 +45,7 @@ You type your password only into your school's own sign-in page; the app never s
 
 Optional Google Calendar sends event titles, course names, due times and Blackboard links to Google in a dedicated **Blackboard Deadlines** calendar. Your main calendar and personal events are not accessed. Refresh tokens stay in the OS credential store (private JSON on other platforms); event mappings and connection status are private local files. Disconnect in Settings or the CLI to revoke access; optionally delete the dedicated calendar. Keeping the calendar retains only its ID locally for reconnection. Access can also be revoked at [Google Account connections](https://myaccount.google.com/connections). 
 
-Optional NotebookLM (Mac) sends your course files to Google, into your own notebooks, through an unofficial connection. The Google session stays in a private local file; Disconnect in Settings deletes it. Notebooks stay in your Google account.
+Optional NotebookLM (Mac and Windows) sends your course files to Google, into your own notebooks, through an unofficial connection. The Google session stays in a private local file; Disconnect in Settings deletes it. Notebooks stay in your Google account.
 
 The app contacts Blackboard, GitHub for supported builds' updates, and Google only when Calendar or NotebookLM is connected. See the [privacy policy](site/privacy.html).
 

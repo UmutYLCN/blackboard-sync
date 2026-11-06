@@ -30,7 +30,7 @@ import subprocess
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import IO, Callable, Mapping
 
 import requests
 
@@ -91,8 +91,10 @@ AUTO_ORDER = {
 # Chromium writes the port it picked for --remote-debugging-port=0 here.
 DEVTOOLS_PORT_FILE = "DevToolsActivePort"
 POLL_SECONDS = 2
-# Chromium's own mark that a browser runs on a profile: a link to "<host>-<pid>" (macOS).
+# Chromium's own mark that a browser runs on a profile: a link to "<host>-<pid>" (macOS)...
 SINGLETON_LOCK = "SingletonLock"
+# ...and on Windows this file, which it holds open for writing and deletes when it quits.
+WINDOWS_LOCK_FILE = "lockfile"
 # A sign-in waits this long for a background one (``session_refresh``) to end.
 PROFILE_WAIT_SECONDS = 90
 # Windows: run the browser on its own, without a console and outside our
@@ -155,11 +157,22 @@ def pid_alive(pid: int) -> bool:
     return True
 
 
-def profile_in_use(profile_dir: Path, alive: Callable[[int], bool] = pid_alive) -> bool:
+def profile_in_use(profile_dir: Path, alive: Callable[[int], bool] = pid_alive, platform: str | None = None,
+                   opener: Callable[..., IO] = open) -> bool:
     """Whether a browser already runs on this profile, however it was started.
 
-    A crash leaves the link behind, so its process has to be alive too.
+    A crash leaves the macOS link behind, so its process has to be alive too. On Windows
+    the system closes the lock file with the browser, whatever ended it, and only a
+    running browser refuses to share it. (``alive`` is not for Windows: ``os.kill`` ends a process.)
     """
+    if is_windows(platform):
+        try:
+            with opener(profile_dir / WINDOWS_LOCK_FILE, "r+b"):
+                return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
     try:
         target = os.readlink(profile_dir / SINGLETON_LOCK)
     except OSError:

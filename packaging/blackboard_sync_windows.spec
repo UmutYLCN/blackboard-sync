@@ -2,7 +2,7 @@
 import re
 import sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 ROOT = Path(SPECPATH).parent
 sys.path.insert(0, str(ROOT / "packaging"))
@@ -15,12 +15,18 @@ VERSION = re.search(
     r'__version__ = "([^"]+)"', (ROOT / "src" / "blackboard_sync" / "__init__.py").read_text()
 ).group(1)
 ICON = str(ROOT / "assets" / "icon" / "app.ico")
+# The NotebookLM library loads much of itself lazily; its own CLI and servers stay out.
+NOTEBOOKLM_IMPORTS = collect_submodules(
+    "notebooklm",
+    filter=lambda name: not name.startswith(("notebooklm.cli", "notebooklm.mcp", "notebooklm.server")),
+)
 
 a = Analysis(
     [str(ROOT / "packaging" / "app_entry.py")],
     pathex=[str(ROOT / "src")],
     # Fonts of the PDF notes (blackboard_sync.notepdf), with their license.
-    datas=[(str(ROOT / "assets" / "fonts"), "assets/fonts")] + GOOGLE_OAUTH_DATAS + TTKBOOTSTRAP_DATAS + WEBUI_DATAS,
+    datas=[(str(ROOT / "assets" / "fonts"), "assets/fonts")] + GOOGLE_OAUTH_DATAS + TTKBOOTSTRAP_DATAS + WEBUI_DATAS
+          + copy_metadata("notebooklm-py"),
     # The sync child run and the tray app are imported lazily by app_entry, the
     # in-app sign-in window (pywebview on WebView2, through pythonnet) by login.
     # pyinstaller-hooks-contrib's pywebview hook bundles the WebView2 interop DLLs.
@@ -32,6 +38,7 @@ a = Analysis(
         "playwright.sync_api",
         "blackboard_sync.inapp_windows",
         "blackboard_sync.locale_tr",  # Turkish, loaded once the language is known
+        "blackboard_sync.notebooklm.gateway",  # imported only when a run starts
         "webview.platforms.winforms",
         "webview.platforms.edgechromium",
         "clr",
@@ -39,7 +46,7 @@ a = Analysis(
         "win32cred",  # Google Calendar refresh tokens in Credential Manager
         "win32com.shell.shell",
         "win32com.server.policy",
-    ],
+    ] + NOTEBOOKLM_IMPORTS,
     # reportlab.graphics: charts and barcodes, which the PDF notes never draw.
     excludes=["pytest", "unittest", "pydoc_data", "reportlab.graphics"],
 )

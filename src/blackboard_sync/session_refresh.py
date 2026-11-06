@@ -17,8 +17,8 @@ closes" lives in them.
 Between syncs ``keep_alive`` makes the one light request ``login.session_user``
 makes, which also tells early that the session is gone.
 
-Only the macOS menu bar app uses this so far. No GUI here, so that Windows and the
-iPad can share the decisions (``SessionCare``) later.
+The macOS menu bar app and the Windows tray app use this. No GUI here, so that
+they share the decisions (``SessionCare``), and the iPad can later.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ from blackboard_sync.session import (
     session_expires_at,
 )
 from blackboard_sync.sync import run_lock
-from blackboard_sync.system import is_windows
+from blackboard_sync.system import CREATE_NO_WINDOW, end_with_this_process, is_windows
 
 log = logging.getLogger("blackboard_sync.session_refresh")
 
@@ -91,8 +91,9 @@ FAILED = "error"
 ALIVE, EXPIRED, UNREACHABLE = "alive", "expired", "unreachable"
 
 # "Headless" is not a background mode everywhere: Arc may reuse the student's running
-# window whatever it is told (see ``login.AUTO_ORDER``).
-NO_SILENT_START = (BROWSERS["arc"],)
+# window whatever it is told (see ``login.AUTO_ORDER``), and on Windows ``opera.exe`` (also
+# Opera GX) is a launcher that leaves, so the browser it starts could not be ended for sure.
+NO_SILENT_START = (BROWSERS["arc"], "opera.exe")
 PASSWORD_FIELD = "input[type=password]:visible"
 
 
@@ -256,7 +257,7 @@ def silent_sign_in(
         return RefreshResult(BROWSER_MISSING)
     try:
         with run_lock(config.lock_file), profile_lock(config):
-            if profile_in_use(config.profile_dir):
+            if profile_in_use(config.profile_dir, platform=platform):
                 return RefreshResult(PROFILE_BUSY)
             reason = _sign_in_with_profile(config, app, timeout, spawn, connect, check_user, platform)
     except AlreadyRunning:
@@ -281,8 +282,10 @@ def _sign_in_with_profile(config, app, timeout, spawn, connect, check_user, plat
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        start_new_session=True,
+        **({"creationflags": CREATE_NO_WINDOW} if is_windows(platform) else {"start_new_session": True}),
     )
+    # Windows ends this process with no chance to clean up (``cmd_refresh_session``).
+    end_with_this_process(process, platform)
     try:
         port = wait_for_devtools_port(config.profile_dir, timeout=BROWSER_START_TIMEOUT)
         with _connector(connect) as connect_fn:

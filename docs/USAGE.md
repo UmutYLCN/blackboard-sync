@@ -14,8 +14,8 @@ in the menu opens the same window on the **Settings** page.
 
 - **Home** is a summary: the sync state (**Up to date**, **Syncing…**, **Paused**, **Sign-in needed**;
   an animation of files flying into a folder while a sync runs), the latest downloads, what needs your
-  attention with the newest announcements, and the upcoming due dates. On a Mac, a **NotebookLM** card
-  sits under the sync state (see [NotebookLM](#notebooklm-mac)).
+  attention with the newest announcements, and the upcoming due dates. On a Mac and on Windows, a
+  **NotebookLM** card sits under the sync state (see [NotebookLM](#notebooklm-mac-and-windows)).
 - **Sync activity** lists every file, note and announcement a sync brought, newest first, with its
   size and status; click a row to open the file in its own app.
 - **Announcements** shows what needs your attention at the top (session expired, an update, a sync that
@@ -94,7 +94,7 @@ its missing files arrive with the sync that starts right away.
 The list fills after the first sync. Past terms are not in this list; download them separately from
 **Past terms** on the **Settings** page.
 
-## Staying signed in (macOS)
+## Staying signed in (Mac and Windows)
 
 A Blackboard session runs out after a while, but your school's single sign-on usually lasts much longer.
 With **Automatic re-sign-in** on (Settings, Sync; on by default), the app handles this for you:
@@ -237,11 +237,11 @@ source; run `blackboard-sync sync` first when testing from the terminal. The
 terminal Blackboard sync command itself does not automatically contact Google.
 
 
-## NotebookLM (Mac)
+## NotebookLM (Mac and Windows)
 
 Blackboard Sync can add your course files to [NotebookLM](https://notebook.google.com) (now also
 called Gemini Notebook), so you can ask questions about them. The automatic connection below is on
-Mac only. On iPad, the **NotebookLM** card on Home lists the courses with new files, and **Send** hands
+Mac and Windows. On iPad, the **NotebookLM** card on Home lists the courses with new files, and **Send** hands
 them to Google's NotebookLM app through the share sheet, with no Google sign-in in Blackboard Sync.
 
 **Connect once.** On **Home**, press **Connect NotebookLM** on the NotebookLM card. A browser window
@@ -295,7 +295,7 @@ and the next run carries on from there. The app keeps the session fresh, but a c
 security check at Google ends it.
 
 **Disconnect.** **Settings → NotebookLM → Disconnect NotebookLM** deletes the stored Google session
-and the sign-in browser's data from this Mac. Your notebooks stay in NotebookLM. The record of which
+and the sign-in browser's data from this computer. Your notebooks stay in NotebookLM. The record of which
 files were added is kept, so reconnecting does not add anything twice. Uninstalling the app does the
 same and removes that record as well.
 
@@ -305,7 +305,7 @@ this uses an unofficial connection, through the open-source
 notice and it can stop working until the app is updated. It works with your Google account's session,
 so use it knowing that Google could object to automated use. Your course files are sent to Google;
 files your school does not allow you to share should stay out of it. The session is stored only on
-this Mac, in a file only your user account can read.
+this computer, in a file only your user account can read.
 
 Terminal commands:
 

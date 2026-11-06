@@ -22,6 +22,8 @@ DEST_FOLDER = "University"
 # subprocess.CREATE_NO_WINDOW exists only on Windows; keeps helper tools from
 # flashing a console window when the caller has none (the tray app).
 CREATE_NO_WINDOW = 0x08000000
+# A job whose last handle closing ends its processes (winnt.h, JobObjectExtendedLimitInformation).
+JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_EXTENDED_LIMITS = 0x2000, 9
 # Well-known SID of the operating system account (LocalSystem).
 SYSTEM_SID = "S-1-5-18"
 
@@ -207,6 +209,54 @@ def set_private_file_mode(fd: int, platform: str | None = None) -> None:
     """
     if not is_windows(platform):
         os.fchmod(fd, 0o600)
+
+
+def end_with_this_process(process, platform: str | None = None) -> None:
+    """Windows: have the system end ``process``, and what it starts, when this process ends.
+
+    Windows ends a process at once, with no handler to run and no ``finally``, so a child left
+    to its own would outlive it. The child joins a job that goes when its one handle closes,
+    which is on purpose left open for the rest of this process. Best effort, and for short-lived
+    processes. Elsewhere a signal handler does this job.
+    """
+    if not is_windows(platform):
+        return
+    try:
+        _join_kill_on_close_job(int(process._handle))
+    except (AttributeError, OSError, TypeError, ValueError) as exc:
+        log.debug("Could not tie the process to this one: %s", exc)
+
+
+def _join_kill_on_close_job(process_handle: int) -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    class BasicLimits(ctypes.Structure):
+        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                    ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                    ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                    ("SchedulingClass", wintypes.DWORD)]
+
+    class ExtendedLimits(ctypes.Structure):
+        _fields_ = [("BasicLimitInformation", BasicLimits), ("IoInfo", ctypes.c_uint64 * 6),
+                    ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.SetInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD)
+    kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+    job = kernel32.CreateJobObjectW(None, None)
+    if not job:
+        raise ctypes.WinError(ctypes.get_last_error())
+    limits = ExtendedLimits()
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    if (not kernel32.SetInformationJobObject(job, JOB_OBJECT_EXTENDED_LIMITS, ctypes.byref(limits),
+                                             ctypes.sizeof(limits))
+            or not kernel32.AssignProcessToJobObject(job, process_handle)):
+        raise ctypes.WinError(ctypes.get_last_error())
 
 
 def try_lock(fh: IO) -> bool:
