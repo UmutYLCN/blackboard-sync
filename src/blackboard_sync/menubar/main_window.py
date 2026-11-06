@@ -563,6 +563,7 @@ ROW_ATTRIBUTES = {
     "google_calendar_disconnect": (None, None, None),
     "interval": ("interval_popup", None, None),
     "autostart": ("autostart", None, None),
+    "auto_relogin": ("auto_relogin", None, None),
     "language": ("language_popup", None, None),
     "dest": ("dest_field", None, None),
     "notebooklm_auto": ("notebooklm_switch", None, None),
@@ -1445,7 +1446,7 @@ class MainWindow:
         page.addSubview_(self.form_scroll)
         self.settings_rows = {}
         y = 8
-        for section in settings_sections(notebooklm=True):
+        for section in settings_sections(notebooklm=True, auto_relogin=True):
             y = self._build_section(view, section, y)
         y += PAD - SECTION_GAP
         view.setFrame_(NSMakeRect(0, 0, PAGE, y))
@@ -1837,6 +1838,7 @@ class MainWindow:
                 (m for m, title in INTERVAL_OPTIONS if title == str(self.interval_popup.titleOfSelectedItem())), 60
             ),
             language=language_code(str(self.language_popup.titleOfSelectedItem())),
+            auto_relogin=bool(self.auto_relogin.state()),
             notebooklm_auto=bool(self.notebooklm_switch.state()),
         )
 
@@ -1850,6 +1852,7 @@ class MainWindow:
         for box in (self.autostart, self.start_autostart):
             box.setState_(1 if values.autostart else 0)
         self.check_updates.setState_(1 if values.check_updates else 0)
+        self.auto_relogin.setState_(1 if values.auto_relogin else 0)
         self.interval_popup.selectItemWithTitle_(interval_title(values.sync_interval_minutes))
         self.language_popup.selectItemWithTitle_(language_title(values.language))
         self.notebooklm_switch.setState_(1 if values.notebooklm_auto else 0)

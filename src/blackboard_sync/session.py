@@ -105,6 +105,22 @@ def load_session(path: Path, base_url: str) -> dict:
     return data
 
 
+def session_expires_at(session_data: dict) -> float | None:
+    """When Blackboard will end this session (epoch seconds); None if it does not say.
+
+    The session cookies carry no expiry of their own. Blackboard writes one into the
+    value of its ``BbRouter`` cookie, as ``expires:<seconds>`` in a comma-separated list.
+    """
+    for cookie in session_data.get("cookies", []):
+        if cookie.get("name") != "BbRouter":
+            continue
+        for part in str(cookie.get("value") or "").split(","):
+            key, _, value = part.partition(":")
+            if key == "expires" and value.isdigit():
+                return float(value)
+    return None
+
+
 RETRY = Retry(
     total=3,
     backoff_factor=1,

@@ -865,7 +865,7 @@ def test_settings_page_is_sections_of_rows(tmp_path):
         def lines(card):
             return sum(1 for v in card.subviews() if hasattr(v, 'boxType') and v.boxType() == NSBoxSeparator)
         cards = {key: window.settings_rows[key].control.superview() for key in ('base_url', 'interval', 'dest')}
-        assert lines(cards['base_url']) == 1 and lines(cards['interval']) == 2 and lines(cards['dest']) == 0
+        assert lines(cards['base_url']) == 1 and lines(cards['interval']) == 3 and lines(cards['dest']) == 0
 
         # Accessibility: controls are named after their rows.
         assert str(window.autostart.accessibilityLabel()) == 'Start when the computer starts'

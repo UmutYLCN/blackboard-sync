@@ -102,6 +102,7 @@ T_EXPIRED = tr("Session expired")
 T_SIGNED_OUT = tr("Not signed in")
 T_WAITING = tr("Waiting for sign-in")
 T_NEVER_SYNCED = tr("Not synced yet")
+T_SESSION_REFRESHED = tr("Session refreshed automatically")
 # The one line under the illustration on the very first sync.
 T_FIRST_SYNC = tr("Downloading your files for the first time…")
 # The sidebar's account card; Tk cuts long names itself (AppKit truncates).
@@ -133,6 +134,7 @@ T_ACTIVITY_EMPTY = tr("Nothing downloaded yet.")
 T_NEEDS_ATTENTION = tr("Needs your attention")
 T_NAME, T_SIZE, T_STATUS = tr("Name"), tr("File size"), tr("Status")
 T_PAUSE_SHORT = tr("Pause")
+SESSION_NOTE_FOR = timedelta(hours=2)  # how long Home's card mentions a background sign-in
 HOME_RECENT_ROWS = 4  # files listed on Home before "View all"
 HOME_RECENT_MIN_ROWS = 2  # ...and what stays when the window is short; the page scrolls below that
 HOME_ANNOUNCEMENT_ROWS = 3  # attention items first, then the newest announcements
@@ -468,6 +470,9 @@ def home_state(model: AppModel, now: datetime) -> HomeState:
         return HomeState(STATE_ATTENTION, T_STATE_TITLES[STATE_ATTENTION], detail, "login", T_LOGIN)
     if model.last is not None and model.last.status == "error":
         return HomeState(STATE_ERROR, T_STATE_TITLES[STATE_ERROR], shorten(model.last.message, 100) or detail)
+    refreshed = model.session_care.refreshed_at
+    if refreshed is not None and timedelta(0) <= now - refreshed < SESSION_NOTE_FOR:
+        detail = f"{detail} · {T_SESSION_REFRESHED}"
     return HomeState(STATE_SYNCED, T_STATE_TITLES[STATE_SYNCED], detail)
 
 

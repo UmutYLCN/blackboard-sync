@@ -1,10 +1,11 @@
-"""Command-line entry point: ``blackboard-sync login | sync | check | notebooklm | uninstall``."""
+"""Command-line entry point: ``blackboard-sync login | refresh-session | sync | check | notebooklm | uninstall``."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import logging
+import signal
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -68,6 +69,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="auto: a supported browser if installed, else the app's own window (inapp)",
     )
     login.add_argument("--timeout", type=float, default=600, help="seconds to wait (default 600)")
+
+    refresh = sub.add_parser("refresh-session", help="sign in again with no window, if the school's single sign-on allows it")
+    refresh.add_argument("--json", action="store_true", help="print how it ended as JSON")
 
     sync = sub.add_parser("sync", help="download everything new into the course folders")
     _add_selection_args(sync)
@@ -138,6 +142,23 @@ def cmd_login(args, config: Config) -> int:
     login(config, browser=args.browser, timeout=args.timeout)
     print(tr("Next: run `blackboard-sync sync` to download your courses."))
     return EXIT_OK
+
+
+def cmd_refresh_session(args, config: Config) -> int:
+    from blackboard_sync import session_refresh
+
+    # Pausing ends this process; the browser must not stay behind on the profile.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+    result = session_refresh.silent_sign_in(config)
+    if args.json:
+        print(json.dumps({"status": result.reason, "seconds": round(result.seconds, 1)}))
+    elif result.ok:
+        print(tr("Session refreshed automatically"))
+    else:
+        print(tr("Could not refresh the session without you: {reason}").format(reason=result.reason), file=sys.stderr)
+    if result.ok:
+        return EXIT_OK
+    return EXIT_LOCKED if result.reason == session_refresh.LOCKED else EXIT_LOGIN_REQUIRED
 
 
 def cmd_check(args, config: Config) -> int:
@@ -326,7 +347,7 @@ def main(argv: list[str] | None = None) -> int:
         # urllib3 logs full URLs at DEBUG only; keep it quiet by default.
         logging.getLogger("urllib3").setLevel(logging.WARNING)
     config = make_config(args)
-    handlers = {"login": cmd_login, "sync": cmd_sync, "check": cmd_check,
+    handlers = {"login": cmd_login, "refresh-session": cmd_refresh_session, "sync": cmd_sync, "check": cmd_check,
                 "past-terms": cmd_past_terms, "uninstall": cmd_uninstall, "calendar": cmd_calendar,
                 "notebooklm": cmd_notebooklm}
     try:

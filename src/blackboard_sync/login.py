@@ -28,6 +28,7 @@ from __future__ import annotations
 import os
 import subprocess
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -41,7 +42,7 @@ from blackboard_sync.inapp import INAPP
 from blackboard_sync.inapp import check_runtime as inapp_check_runtime
 from blackboard_sync.inapp import sign_in as inapp_sign_in
 from blackboard_sync.session import save_session
-from blackboard_sync.system import is_windows, make_private_dir
+from blackboard_sync.system import is_windows, make_private_dir, try_lock
 
 # macOS app bundle names, as installed in /Applications.
 BROWSERS = {
@@ -90,6 +91,10 @@ AUTO_ORDER = {
 # Chromium writes the port it picked for --remote-debugging-port=0 here.
 DEVTOOLS_PORT_FILE = "DevToolsActivePort"
 POLL_SECONDS = 2
+# Chromium's own mark that a browser runs on a profile: a link to "<host>-<pid>" (macOS).
+SINGLETON_LOCK = "SingletonLock"
+# A sign-in waits this long for a background one (``session_refresh``) to end.
+PROFILE_WAIT_SECONDS = 90
 # Windows: run the browser on its own, without a console and outside our
 # Ctrl+C group, like an app started from the Start menu.
 DETACHED_PROCESS = 0x00000008
@@ -114,6 +119,53 @@ class BrowserStartError(BlackboardSyncError):
 
     ``login`` with ``auto`` then signs in in the app's own window instead.
     """
+
+
+class ProfileBusy(BlackboardSyncError):
+    """Another sign-in holds the browser profile; two browsers must never share one."""
+
+
+@contextmanager
+def profile_lock(config: Config, wait: float = 0):
+    """Hold the sign-in browser profile for one sign-in, interactive or in the background.
+
+    Raises ``ProfileBusy`` when it stays taken for ``wait`` seconds. The lock goes when
+    the file is closed, also if the process dies.
+    """
+    config.ensure_data_dir()
+    fh = open(config.profile_lock_file, "w")
+    try:
+        deadline = time.monotonic() + wait
+        while not try_lock(fh):
+            if time.monotonic() >= deadline:
+                raise ProfileBusy(tr("Another sign-in is in progress; try again in a minute."))
+            time.sleep(0.25)
+        yield
+    finally:
+        fh.close()
+
+
+def pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:  # it exists, and belongs to someone else
+        return True
+    return True
+
+
+def profile_in_use(profile_dir: Path, alive: Callable[[int], bool] = pid_alive) -> bool:
+    """Whether a browser already runs on this profile, however it was started.
+
+    A crash leaves the link behind, so its process has to be alive too.
+    """
+    try:
+        target = os.readlink(profile_dir / SINGLETON_LOCK)
+    except OSError:
+        return False
+    pid = target.rpartition("-")[2]
+    return pid.isdigit() and alive(int(pid))
 
 
 def supported_browsers(platform: str | None = None) -> list[str]:
@@ -412,6 +464,11 @@ def login_method_label(browser: str = "auto", platform: str | None = None) -> st
 
 
 def _browser_sign_in(config, app, timeout, out, run, connect, check_user, spawn, platform):
+    with profile_lock(config, wait=PROFILE_WAIT_SECONDS):
+        return _sign_in_on_profile(config, app, timeout, out, run, connect, check_user, spawn, platform)
+
+
+def _sign_in_on_profile(config, app, timeout, out, run, connect, check_user, spawn, platform):
     label = browser_label(app)
     make_private_dir(config.profile_dir, platform=platform)
     stale = config.profile_dir / DEVTOOLS_PORT_FILE

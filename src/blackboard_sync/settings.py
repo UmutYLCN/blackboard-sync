@@ -60,6 +60,8 @@ class Settings:
     sync_interval_minutes: int = DEFAULT_SYNC_INTERVAL_MINUTES
     language: str = DEFAULT_LANGUAGE  # i18n.LANGUAGES; applies after a restart
     theme: str = THEME_SYSTEM  # THEMES; applies at once (not part of the window's Save/Cancel form)
+    # "Otomatik yeniden giriş": keep the session alive and sign in again in the background (``session_refresh``).
+    auto_relogin: bool = True
     notebooklm_auto: bool = True  # add new files to NotebookLM after each sync, once it is connected
 
     def to_dict(self) -> dict:
@@ -70,6 +72,7 @@ class Settings:
             "sync_interval_minutes": self.sync_interval_minutes,
             "language": self.language,
             "theme": self.theme,
+            "auto_relogin": self.auto_relogin,
             "notebooklm_auto": self.notebooklm_auto,
         }
 
@@ -82,6 +85,7 @@ class Settings:
             sync_interval_minutes=normalize_sync_interval(data.get("sync_interval_minutes")),
             language=normalize_language(data.get("language")),
             theme=normalize_theme(data.get("theme")),
+            auto_relogin=data.get("auto_relogin", True) is not False,
             notebooklm_auto=data.get("notebooklm_auto", True) is not False,
         )
 
