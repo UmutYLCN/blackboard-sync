@@ -3,6 +3,8 @@ import re
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_submodules, copy_metadata
+
 ROOT = Path(SPECPATH).parent
 sys.path.insert(0, str(ROOT / "packaging"))
 from google_oauth_bundle import oauth_datas
@@ -10,6 +12,12 @@ GOOGLE_OAUTH_DATAS = oauth_datas(ROOT)
 VERSION = re.search(
     r'__version__ = "([^"]+)"', (ROOT / "src" / "blackboard_sync" / "__init__.py").read_text()
 ).group(1)
+
+# The NotebookLM library loads much of itself lazily; its own CLI and servers stay out.
+NOTEBOOKLM_IMPORTS = collect_submodules(
+    "notebooklm",
+    filter=lambda name: not name.startswith(("notebooklm.cli", "notebooklm.mcp", "notebooklm.server")),
+)
 
 a = Analysis(
     [str(ROOT / "packaging" / "app_entry.py")],
@@ -21,7 +29,7 @@ a = Analysis(
         (str(ROOT / "assets" / "fonts"), "assets/fonts"),
         # The main window's sidebar logo (transparent; the .icns has a background).
         (str(ROOT / "assets" / "icon" / "logo.png"), "assets/icon"),
-    ] + GOOGLE_OAUTH_DATAS,
+    ] + GOOGLE_OAUTH_DATAS + copy_metadata("notebooklm-py"),
     # The sync child run and the menu bar app are imported lazily by app_entry,
     # the in-app sign-in window (WKWebView) lazily by login.
     hiddenimports=[
@@ -31,8 +39,9 @@ a = Analysis(
         "playwright.sync_api",
         "blackboard_sync.inapp_macos",
         "blackboard_sync.locale_tr",  # Turkish, loaded once the language is known
+        "blackboard_sync.notebooklm.gateway",  # imported only when a run starts
         "WebKit",
-    ],
+    ] + NOTEBOOKLM_IMPORTS,
     excludes=[
         "pytest", "tkinter", "unittest", "pydoc_data",
         # ReportLab (the PDF notes) imports only PIL.Image and never opens an image

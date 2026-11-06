@@ -30,7 +30,7 @@
   <main id="content" class="legal wrap">
     <p class="eyebrow">Privacy</p>
     <h1>Privacy Policy</h1>
-    <p class="legal-updated">Last updated: <time datetime="2026-10-18">18 October 2026</time></p>
+    <p class="legal-updated">Last updated: <time datetime="2026-11-06">6 November 2026</time></p>
 
     <p class="legal-lead">Blackboard Sync is a free, open-source app for macOS and Windows that downloads your course content from Blackboard Learn to your own computer. This page explains what the app stores on your computer, what it sends over the internet, and how you can delete it. The app’s source code is public on <a href="https://github.com/UmutYLCN/blackboard-sync">GitHub</a>, and every statement here is based on that code.</p>
 
@@ -49,9 +49,9 @@
       <ul>
         <li>The app never sees or stores your password.</li>
         <li>Your sign-in session, settings and download records stay on your computer.</li>
-        <li>It connects to your school’s Blackboard address (and its sign-in and file redirects), and to Google if you enable optional Google Calendar sync. The macOS and Windows Setup builds also contact GitHub to check for updates; the Microsoft Store build does not.</li>
+        <li>It connects to your school’s Blackboard address (and its sign-in and file redirects), and to Google if you enable optional Google Calendar sync or connect optional NotebookLM on a Mac. The macOS and Windows Setup builds also contact GitHub to check for updates; the Microsoft Store build does not.</li>
         <li>No analytics, ads or usage tracking (telemetry), and no account to create.</li>
-        <li>Your data is not sold. If you enable Google Calendar, deadline information is sent to Google at your request.</li>
+        <li>Your data is not sold. If you enable Google Calendar, deadline information is sent to Google at your request. If you connect NotebookLM, your course files are sent to Google at your request.</li>
       </ul>
     </section>
 
@@ -102,12 +102,21 @@
       <p>Installing and updating the app through the Microsoft Store is handled by Windows and the Microsoft Store under Microsoft’s own privacy statement. Blackboard Sync itself sends no data to Microsoft.</p>
     </section>
 
+    <section aria-labelledby="notebooklm">
+      <h2 id="notebooklm">Optional NotebookLM (Mac)</h2>
+      <p>Only after you connect, the app adds the course files it downloaded to notebooks in your own Google account: the files themselves, their names and the course folder names. It adds them automatically after each sync, which you can switch off, and when you press Sync NotebookLM. It never reads or changes the contents of your notebooks, except to list notebook and source titles so nothing is added twice. It deletes nothing there. What Google does with those files is covered by Google’s own terms and privacy policy.</p>
+      <p>You sign in on Google’s own page, in a browser window on your Mac, and the app never sees your password. The sign-in gives the app a Google session, which is stored in the private data folder in the owner-only file <code>notebooklm/session.json</code>, with that browser’s profile beside it. This session is broader than the Calendar permission: it is what a browser signed in to your Google account holds, and the app uses it only for NotebookLM. It is never logged and is sent only to Google. <code>notebooklm/state.json</code> records which files were added.</p>
+      <p>This feature uses an unofficial connection, not an API offered by Google, through the open-source notebooklm-py library. Google may change or block it. It is separate from the Google Calendar authorization, so the Google API Services statement in the section above does not apply to it.</p>
+      <p>Disconnect in macOS Settings → NotebookLM, or run <code>blackboard-sync notebooklm disconnect</code>, to delete the stored session and browser profile. Notebooks and sources stay in your Google account; delete them in NotebookLM if you wish. Uninstalling the app deletes these local files too. To end the session on Google’s side as well, use <a href="https://myaccount.google.com/device-activity">Google Account → Your devices</a>.</p>
+    </section>
+
     <section aria-labelledby="network">
       <h2 id="network">What is sent over the internet</h2>
       <p>The app connects to:</p>
       <ul>
         <li><strong>Your school’s Blackboard address</strong> (the address you enter in the settings), in all builds. The course list, course content, announcements and files are requested from this address with your saved session cookies. If Blackboard redirects a file download to its own file storage address, the file is downloaded from there. During sign-in, your school’s sign-in page may redirect to your school’s single sign-on provider.</li>
         <li><strong>Google</strong> (accounts.google.com, oauth2.googleapis.com and www.googleapis.com), only when you connect optional Calendar sync: consent, token refresh/revocation, and management of Blackboard Deadlines as described above. Like any web service, Google sees your IP address.</li>
+        <li><strong>Google</strong> (<code>notebook.google.com</code> and <code>accounts.google.com</code>), only when you connect optional NotebookLM on a Mac: uploading course files and renewing the session as described above. Files are uploaded to Google’s servers.</li>
         <li><strong>GitHub</strong> (<code>api.github.com</code> and <code>github.com</code>), <strong>macOS and Windows Setup builds only</strong>: to learn whether a new version exists and to download it. The automatic check runs once a day and can be turned off with <strong>Check for updates automatically</strong> in the settings. The request includes the app’s version number; like any web request, GitHub sees your IP address. Updates are downloaded from GitHub’s file servers, and their size and the SHA-256 digest published with the release are checked before installing. The Microsoft Store build never makes these requests.</li>
       </ul>
       <p>The network activity of the browser or sign-in window used for sign-in is up to the maker of that browser or component. The app talks to the sign-in browser only inside your computer (<code>127.0.0.1</code>).</p>
@@ -120,7 +129,7 @@
 
     <section aria-labelledby="sharing">
       <h2 id="sharing">Sharing with third parties</h2>
-      <p>Your data is not sold or rented. The app contacts your school’s Blackboard server, GitHub for updates in the macOS and Windows Setup builds, and Google when you opt into Calendar sync. Deadline information is transferred to Google only to provide that feature. These services have their own privacy policies.</p>
+      <p>Your data is not sold or rented. The app contacts your school’s Blackboard server, GitHub for updates in the macOS and Windows Setup builds, and Google when you opt into Calendar sync or NotebookLM. Deadline information and course files are transferred to Google only to provide those features. These services have their own privacy policies.</p>
     </section>
 
     <section aria-labelledby="delete">

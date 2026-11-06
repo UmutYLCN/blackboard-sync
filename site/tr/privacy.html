@@ -30,7 +30,7 @@
   <main id="content" class="legal wrap">
     <p class="eyebrow">Gizlilik</p>
     <h1>Gizlilik Politikası</h1>
-    <p class="legal-updated">Son güncelleme: <time datetime="2026-10-18">18 Ekim 2026</time></p>
+    <p class="legal-updated">Son güncelleme: <time datetime="2026-11-06">6 Kasım 2026</time></p>
 
     <p class="legal-lead">Blackboard Sync, Blackboard Learn’deki ders içeriklerinizi kendi bilgisayarınıza indiren, macOS ve Windows için ücretsiz ve açık kaynaklı bir uygulamadır. Bu sayfa uygulamanın bilgisayarınızda neleri sakladığını, internet üzerinden neleri gönderdiğini ve bu verileri nasıl silebileceğinizi açıklar. Uygulamanın kaynak kodu <a href="https://github.com/UmutYLCN/blackboard-sync">GitHub</a> üzerinde herkese açıktır; buradaki açıklamalar bu koda dayanır.</p>
 
@@ -49,9 +49,9 @@
       <ul>
         <li>Uygulama şifrenizi hiçbir zaman görmez veya saklamaz.</li>
         <li>Giriş oturumunuz, ayarlarınız ve indirme kayıtlarınız bilgisayarınızda kalır.</li>
-        <li>Okulunuzun Blackboard adresine ve bu adresin giriş ve dosya yönlendirmelerine bağlanır. İsteğe bağlı Google Takvim eşitlemesini açarsanız Google’a da bağlanır. macOS ve Windows Setup paketleri güncellemeleri kontrol etmek için GitHub’a bağlanır; Microsoft Store paketi bağlanmaz.</li>
+        <li>Okulunuzun Blackboard adresine ve bu adresin giriş ve dosya yönlendirmelerine bağlanır. İsteğe bağlı Google Takvim eşitlemesini açarsanız veya Mac’te isteğe bağlı NotebookLM’i bağlarsanız Google’a da bağlanır. macOS ve Windows Setup paketleri güncellemeleri kontrol etmek için GitHub’a bağlanır; Microsoft Store paketi bağlanmaz.</li>
         <li>Analiz, reklam, kullanım takibi (telemetri) veya oluşturmanız gereken ayrı bir hesap yoktur.</li>
-        <li>Verileriniz satılmaz. Google Takvim’i etkinleştirirseniz teslim tarihi bilgileri isteğiniz üzerine Google’a gönderilir.</li>
+        <li>Verileriniz satılmaz. Google Takvim’i etkinleştirirseniz teslim tarihi bilgileri, NotebookLM’i bağlarsanız ders dosyalarınız isteğiniz üzerine Google’a gönderilir.</li>
       </ul>
     </section>
 
@@ -102,12 +102,21 @@
       <p>Microsoft Store üzerinden kurulum ve güncelleme işlemleri Windows ve Microsoft Store tarafından, Microsoft’un kendi gizlilik bildirimi kapsamında yürütülür. Blackboard Sync’in kendisi Microsoft’a veri göndermez.</p>
     </section>
 
+    <section aria-labelledby="notebooklm">
+      <h2 id="notebooklm">İsteğe bağlı NotebookLM (Mac)</h2>
+      <p>Uygulama yalnızca bağlantıyı kurmanızdan sonra, indirdiği ders dosyalarını kendi Google hesabınızdaki not defterlerine ekler: dosyaların kendisi, adları ve ders klasörlerinin adları gönderilir. Bu, her eşitlemeden sonra otomatik olarak (kapatılabilir) ve NotebookLM’e ekle düğmesine bastığınızda yapılır. Bir dosyanın iki kez eklenmemesi için not defteri ve kaynak başlıklarını listelemek dışında not defterlerinizin içeriğini okumaz veya değiştirmez. Orada hiçbir şeyi silmez. Google’ın bu dosyalarla ne yaptığı Google’ın kendi koşullarına ve gizlilik politikasına tabidir.</p>
+      <p>Mac’inizdeki bir tarayıcı penceresinde Google’ın kendi sayfasında giriş yaparsınız; uygulama şifrenizi görmez. Giriş, uygulamaya bir Google oturumu verir. Bu oturum özel veri klasöründe, yalnızca sizin okuyabildiğiniz <code>notebooklm/session.json</code> dosyasında, giriş tarayıcısının profiliyle birlikte saklanır. Bu oturum Takvim izninden daha geniştir: Google hesabınızda oturum açmış bir tarayıcının sahip olduklarıyla aynıdır ve uygulama onu yalnızca NotebookLM için kullanır. Günlüklere yazılmaz ve yalnızca Google’a gönderilir. <code>notebooklm/state.json</code> hangi dosyaların eklendiğini kaydeder.</p>
+      <p>Bu özellik Google’ın sunduğu bir API değil, açık kaynaklı notebooklm-py kitaplığı üzerinden gayriresmî bir bağlantı kullanır. Google bu bağlantıyı değiştirebilir veya engelleyebilir. Google Takvim yetkilendirmesinden ayrıdır; bu nedenle yukarıdaki bölümde geçen Google API Services beyanı bu özellik için geçerli değildir.</p>
+      <p>Saklanan oturumu ve tarayıcı profilini silmek için macOS’te Ayarlar → NotebookLM bölümünden bağlantıyı kesin veya <code>blackboard-sync notebooklm disconnect</code> komutunu çalıştırın. Not defterleri ve kaynaklar Google hesabınızda kalır; isterseniz NotebookLM’de silebilirsiniz. Uygulamayı kaldırmak bu yerel dosyaları da siler. Oturumu Google tarafında da sonlandırmak için <a href="https://myaccount.google.com/device-activity">Google Hesabı → Cihazlarınız</a> sayfasını kullanın.</p>
+    </section>
+
     <section aria-labelledby="network">
       <h2 id="network">İnternet üzerinden gönderilen bilgiler</h2>
       <p>Uygulama şu adreslere bağlanır:</p>
       <ul>
         <li>Tüm paketlerde <strong>okulunuzun Blackboard adresi</strong> (ayarlara yazdığınız adres). Ders listesi, ders içerikleri, duyurular ve dosyalar kayıtlı oturum çerezlerinizle bu adresten istenir. Blackboard bir dosya indirmesini kendi dosya depolama adresine yönlendirirse dosya o adresten indirilir. Giriş sırasında okulunuzun giriş sayfası sizi okulunuzun tek oturum açma sağlayıcısına yönlendirebilir.</li>
         <li><strong>Google</strong> (<code>accounts.google.com</code>, <code>oauth2.googleapis.com</code> ve <code>www.googleapis.com</code>), yalnızca isteğe bağlı Takvim eşitlemesine bağlandığınızda: yukarıda açıklanan izin, belirteç yenileme/iptal ve Blackboard Deadlines takvimini yönetme işlemleri için. Her web hizmetinde olduğu gibi Google IP adresinizi görür.</li>
+        <li><strong>Google</strong> (<code>notebook.google.com</code> ve <code>accounts.google.com</code>), yalnızca Mac’te isteğe bağlı NotebookLM’i bağladığınızda: yukarıda açıklanan şekilde ders dosyalarını yüklemek ve oturumu yenilemek için. Dosyalar Google’ın sunucularına yüklenir.</li>
         <li>Yalnızca <strong>macOS ve Windows Setup paketlerinde GitHub</strong> (<code>api.github.com</code> ve <code>github.com</code>): yeni sürüm olup olmadığını öğrenmek ve güncellemeyi indirmek için. Otomatik kontrol günde bir kez çalışır ve ayarlardaki <strong>Güncellemeleri otomatik kontrol et</strong> seçeneğiyle kapatılabilir. İstek, uygulamanın sürüm numarasını içerir; her web isteğinde olduğu gibi GitHub IP adresinizi görür. Güncellemeler GitHub’ın dosya sunucularından indirilir; kurulmadan önce boyutları ve sürümle birlikte yayımlanan SHA-256 özetleri kontrol edilir. Microsoft Store paketi bu istekleri yapmaz.</li>
       </ul>
       <p>Giriş için kullanılan tarayıcının veya giriş penceresinin ağ etkinlikleri, ilgili tarayıcı veya bileşenin üreticisine bağlıdır. Uygulamanın giriş tarayıcısıyla iletişimi yalnızca bilgisayarınızın içinde (<code>127.0.0.1</code>) gerçekleşir.</p>
@@ -120,7 +129,7 @@
 
     <section aria-labelledby="sharing">
       <h2 id="sharing">Üçüncü taraflarla paylaşım</h2>
-      <p>Verileriniz satılmaz veya kiralanmaz. Uygulama okulunuzun Blackboard sunucusuna; macOS ve Windows Setup paketlerinde güncellemeler için GitHub’a; Takvim eşitlemesini seçtiğinizde ise Google’a bağlanır. Teslim tarihi bilgileri yalnızca bu özelliği sağlamak için Google’a aktarılır. Bu hizmetlerin kendi gizlilik politikaları vardır.</p>
+      <p>Verileriniz satılmaz veya kiralanmaz. Uygulama okulunuzun Blackboard sunucusuna; macOS ve Windows Setup paketlerinde güncellemeler için GitHub’a; Takvim eşitlemesini veya NotebookLM’i seçtiğinizde ise Google’a bağlanır. Teslim tarihi bilgileri ve ders dosyaları yalnızca bu özellikleri sağlamak için Google’a aktarılır. Bu hizmetlerin kendi gizlilik politikaları vardır.</p>
     </section>
 
     <section aria-labelledby="delete">

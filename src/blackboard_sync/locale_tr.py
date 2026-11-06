@@ -632,4 +632,45 @@ CATALOG = {
     "System": "Sistem",
     "Light": "Açık",
     "Dark": "Koyu",
+
+    # NotebookLM
+    "Sign in to Google again to keep adding files.": "Dosya eklemek için Google'da yeniden oturum açın.",
+    "Disconnect NotebookLM?": "NotebookLM bağlantısı kesilsin mi?",
+    "The Google session is deleted from this computer. Files already in NotebookLM stay there, and new ones "
+    "are no longer added.":
+        "Google oturumu bu bilgisayardan silinir. NotebookLM'deki dosyalar orada kalır, yenileri artık eklenmez.",
+    "Connect NotebookLM": "NotebookLM'i bağla",
+    "Sync NotebookLM": "NotebookLM'e ekle",
+    "Add your course files to NotebookLM after each sync.":
+        "Ders dosyalarınızı her senkrondan sonra NotebookLM'e ekleyin.",
+    "Checking what is already in NotebookLM…": "NotebookLM'de nelerin olduğuna bakılıyor…",
+    "Sign in to Google in the browser window.": "Tarayıcı penceresinde Google'da oturum açın.",
+    "Adding {done} of {total}: {course}": "Ekleniyor {done}/{total}: {course}",
+    "{n} added": "{n} eklendi",
+    "{n} skipped": "{n} atlandı",
+    "{n} changed, not replaced": "{n} değişti, değiştirilmedi",
+    "{n} course blocked": "{n} ders engellendi",
+    "{n} courses blocked": "{n} ders engellendi",
+    "{n} failed": "{n} başarısız",
+    "Add new files to NotebookLM after each sync": "Her senkrondan sonra yeni dosyaları NotebookLM'e ekle",
+    "Disconnect NotebookLM": "NotebookLM bağlantısını kes",
+    "Files already there are not added again.": "Zaten orada olan dosyalar yeniden eklenmez.",
+    "Deletes the Google session on this computer. Files in NotebookLM stay there.":
+        "Bu bilgisayardaki Google oturumunu siler. NotebookLM'deki dosyalar orada kalır.",
+    "NotebookLM (Gemini Notebook) is reached through an unofficial connection that may stop working if Google "
+    "changes NotebookLM. Your course files go to your own Google account.":
+        "NotebookLM'e (Gemini Notebook) resmi olmayan bir bağlantıyla ulaşılır; Google NotebookLM'i değiştirirse "
+        "çalışmayabilir. Ders dosyalarınız kendi Google hesabınıza gider.",
+    "{course}: {n} over the {limit} source limit; nothing added.":
+        "{course}: {limit} kaynak sınırı {n} aşıldı; hiçbir şey eklenmedi.",
+    "{course}: several notebooks have this name, so it was skipped.":
+        "{course}: bu ada sahip birden fazla not defteri var, bu yüzden atlandı.",
+    "{n} file could not be added; the next sync tries again.":
+        "{n} dosya eklenemedi; sonraki senkron yeniden deneyecek.",
+    "{n} files could not be added; the next sync tries again.":
+        "{n} dosya eklenemedi; sonraki senkron yeniden deneyecek.",
+    "The browser did not start. If a sign-in window from an earlier attempt is still open, close it and try again.":
+        "Tarayıcı başlatılamadı. Önceki denemeden kalan bir giriş penceresi açıksa kapatıp yeniden deneyin.",
+    "NotebookLM needs Chrome, Edge or Brave to sign in to Google; install one and try again.":
+        "NotebookLM, Google'da oturum açmak için Chrome, Edge veya Brave gerektirir; birini kurup yeniden deneyin.",
 }

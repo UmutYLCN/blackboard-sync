@@ -35,8 +35,10 @@ from blackboard_sync.menubar.main_window_model import (
     sidebar_name,
     sync_scene,
 )
-from blackboard_sync.menubar.model import AppModel, RecentItem, RunOutcome
-from blackboard_sync.menubar.settings_form import FormValues
+from blackboard_sync.menubar import main_window_model
+from blackboard_sync.menubar.model import NOTEBOOKLM_CONNECT, NOTEBOOKLM_SYNC, AppModel, RecentItem, RunOutcome
+from blackboard_sync.menubar.settings_form import FormValues, window_status
+from blackboard_sync.notebooklm.store import NotebookLMStatus
 from blackboard_sync import __version__, updater
 from blackboard_sync.menubar.model import UpdateState
 
@@ -309,3 +311,146 @@ def test_window_state_reopens_on_the_overview_and_keeps_the_open_section():
 def test_reopen_hint_names_the_platforms_launcher():
     assert "Applications or Launchpad" in reopen_hint("Applications or Launchpad")
     assert reopen_hint("the Start menu").startswith("You can close this window.")
+
+
+# -- NotebookLM on Home ---------------------------------------------------------------------------
+def notebooklm_model(**status):
+    model = AppModel(Path("/tmp/dest"), NOW)
+    model.notebooklm = NotebookLMStatus(**status)
+    return model
+
+
+def test_notebooklm_not_connected_offers_to_connect():
+    card = main_window_model.notebooklm_card(notebooklm_model(), NOW)
+    assert card.kind == main_window_model.NOTEBOOKLM_OFF
+    assert (card.action, card.action_title) == ("notebooklm_connect", "Connect NotebookLM")
+    assert card.enabled and "after each sync" in card.detail
+
+
+def test_notebooklm_idle_shows_the_last_run():
+    model = notebooklm_model(connected=True, finished_at=NOW.isoformat(), added=3, skipped=2, blocked=1, failed=1)
+    card = main_window_model.notebooklm_card(model, NOW)
+    assert card.kind == main_window_model.NOTEBOOKLM_IDLE
+    assert card.action == "notebooklm_sync" and card.action_title == "Sync NotebookLM"
+    assert card.detail.startswith("Last synced: today")
+    assert card.counts == "3 added · 2 skipped · 1 course blocked · 1 failed"
+
+
+def test_notebooklm_connected_but_never_run():
+    card = main_window_model.notebooklm_card(notebooklm_model(connected=True), NOW)
+    assert card.detail == main_window_model.T_NEVER_SYNCED and not card.counts
+
+
+def test_notebooklm_running_shows_progress_and_locks_the_pill():
+    model = notebooklm_model(connected=True)
+    assert model.begin_notebooklm(NOTEBOOKLM_SYNC)
+    assert not model.begin_notebooklm(NOTEBOOKLM_SYNC)
+    model.notebooklm_progress = main_window_model.notebooklm_progress(
+        {"event": "progress", "done": 3, "total": 12, "course": "CSE301"})
+    card = main_window_model.notebooklm_card(model, NOW)
+    assert card.kind == main_window_model.NOTEBOOKLM_RUNNING and not card.enabled
+    assert card.detail == "Adding 3 of 12: CSE301"
+
+
+def test_notebooklm_while_signing_in():
+    model = notebooklm_model()
+    model.begin_notebooklm(NOTEBOOKLM_CONNECT)
+    card = main_window_model.notebooklm_card(model, NOW)
+    assert card.detail == main_window_model.T_NOTEBOOKLM_WAITING and not card.enabled
+
+
+def test_notebooklm_needing_sign_in_asks_for_it_on_the_card():
+    model = notebooklm_model(connected=True, needs_login=True, message="Sign in to Google again.")
+    card = main_window_model.notebooklm_card(model, NOW)
+    assert card.warning and card.action == "notebooklm_connect" and card.action_title == "Sign in"
+    assert card.detail == "Sign in to Google again."
+
+
+def test_notebooklm_failure_offers_another_try():
+    model = notebooklm_model(connected=True, error=True, message="NetworkError")
+    card = main_window_model.notebooklm_card(model, NOW)
+    assert card.warning and card.action == "notebooklm_sync" and card.detail == "Sync did not finish: NetworkError"
+
+
+def test_a_failed_first_connection_says_why():
+    card = main_window_model.notebooklm_card(notebooklm_model(error=True, message="No browser"), NOW)
+    assert card.warning and card.action == "notebooklm_connect" and card.detail == "No browser"
+
+
+def test_notebooklm_failures_stay_on_the_card():
+    model = notebooklm_model(connected=True, error=True, message="boom")
+    assert not [item for item in main_window_model.attention_items(model) if "boom" in item.detail]
+
+
+def test_pause_stops_the_notebooklm_button_too():
+    model = notebooklm_model(connected=True)
+    model.pause()
+    assert not main_window_model.notebooklm_card(model, NOW).enabled
+    assert not model.begin_notebooklm(NOTEBOOKLM_SYNC)
+
+
+OK = RunOutcome(status="ok")
+
+
+def test_a_successful_sync_is_followed_by_notebooklm():
+    assert notebooklm_model(connected=True).wants_notebooklm(OK, True)
+
+
+@pytest.mark.parametrize("status, enabled, connected, needs_login", [
+    ("error", True, True, False),
+    ("login_required", True, True, False),
+    ("ok", False, True, False),  # the setting is off
+    ("ok", True, False, False),
+    ("ok", True, True, True),
+])
+def test_when_a_sync_is_not_followed_by_notebooklm(status, enabled, connected, needs_login):
+    model = notebooklm_model(connected=connected, needs_login=needs_login)
+    assert not model.wants_notebooklm(RunOutcome(status=status), enabled)
+    assert not model.notebooklm_again
+
+
+def test_notebooklm_is_not_started_while_paused():
+    model = notebooklm_model(connected=True)
+    model.pause()
+    assert not model.wants_notebooklm(OK, True)
+
+
+def test_a_sync_during_a_run_makes_it_look_once_more():
+    model = notebooklm_model(connected=True)
+    model.begin_notebooklm(NOTEBOOKLM_SYNC)
+    assert not model.wants_notebooklm(OK, True)
+    assert model.finish_notebooklm(NotebookLMStatus(connected=True))
+    assert not model.finish_notebooklm(NotebookLMStatus(connected=True))
+
+
+def test_a_lost_session_ends_the_second_look():
+    model = notebooklm_model(connected=True)
+    model.begin_notebooklm(NOTEBOOKLM_SYNC)
+    model.wants_notebooklm(OK, True)
+    assert not model.finish_notebooklm(NotebookLMStatus(connected=True, needs_login=True))
+
+
+def test_notebooklm_never_takes_the_blackboard_job_slot():
+    model = notebooklm_model(connected=True)
+    model.begin_notebooklm(NOTEBOOKLM_SYNC)
+    assert model.busy is None and model.begin("sync")
+    assert model.notebooklm_busy == NOTEBOOKLM_SYNC
+
+
+def test_uninstall_waits_for_notebooklm():
+    model = notebooklm_model(connected=True)
+    model.begin_notebooklm(NOTEBOOKLM_SYNC)
+    assert not window_status(model).uninstall_enabled
+
+
+@pytest.mark.parametrize("available, rows, shown", [
+    (500, 10, 4),  # room to spare
+    (162 + 4 * 52, 10, 4),  # just fits
+    (162 + 4 * 52 - 1, 10, 3),
+    (162 + 2 * 52, 10, 2),
+    (100, 10, 2),  # never fewer: the page scrolls
+    (100, 1, 1),
+    (500, 0, 0),
+])
+def test_home_gives_up_file_rows_in_a_short_window(available, rows, shown):
+    assert main_window_model.home_recent_rows(available, 162, 52, rows) == shown

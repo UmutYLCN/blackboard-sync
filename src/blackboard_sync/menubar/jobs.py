@@ -15,16 +15,19 @@ import subprocess
 import sys
 import threading
 import time
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, IO
 
 from blackboard_sync import courses, deadlines, gcal, relocate, runtime, signout
+from blackboard_sync.notebooklm import store as notebooklm_store
 from blackboard_sync.config import Config
 from blackboard_sync.errors import EXIT_ERROR, LoginRequired
 from blackboard_sync.i18n import tr
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
+    NOTEBOOKLM_CONNECT,
     AppModel,
     CourseChange,
     Notification,
@@ -49,6 +52,7 @@ log = logging.getLogger("blackboard_sync.menubar")
 # A first sync of a whole term can take a while; this only guards against a hang.
 SYNC_TIMEOUT = 2 * 60 * 60
 LOGIN_TIMEOUT = 15 * 60  # `login` itself gives up after 10 minutes
+NOTEBOOKLM_TIMEOUT = 2 * 60 * 60  # a first run adds a whole term; this only guards against a hang
 
 Runner = Callable[..., subprocess.CompletedProcess]
 
@@ -192,6 +196,87 @@ def calendar_after_sync(config: Config, model: AppModel, outcome: RunOutcome) ->
         return False
     model.calendar_busy = "sync"
     return True
+
+
+class NotebookLMChild:
+    """The running ``blackboard-sync notebooklm`` child; only one runs at a time (the app's slot).
+
+    Its own handle, not ``run_cancellable``'s: it runs beside the Blackboard sync. A child gets
+    the whole run, so a crash in the unofficial library cannot take the app down, and it can be
+    ended at any moment: every file is saved as soon as it is up.
+    """
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.proc: subprocess.Popen | None = None
+        self.stopped = False
+
+    def stop(self) -> bool:
+        with self.lock:
+            if self.proc is None or self.proc.poll() is not None:
+                return False
+            self.stopped = True
+            self.proc.terminate()
+            return True
+
+
+notebooklm_child = NotebookLMChild()
+
+
+def notebooklm_arguments(action: str, settings: Settings, auto: bool = False) -> list[str]:
+    if action == NOTEBOOKLM_CONNECT:
+        return ["notebooklm", "login"]
+    return ["notebooklm", "sync", "--dest", str(settings.dest), *(["--auto"] if auto else [])]
+
+
+def run_notebooklm(config: Config, action: str, settings: Settings, auto: bool = False,
+                   on_event: Callable[[dict], None] = lambda event: None, popen: Callable[..., object] = subprocess.Popen,
+                   child: NotebookLMChild = notebooklm_child) -> notebooklm_store.NotebookLMStatus:
+    """Run one NotebookLM action and return how things stand; its errors are only for the Home card.
+
+    The child's standard error comes along so that what a failed sign-in printed can be shown.
+    """
+    timeout = LOGIN_TIMEOUT if action == NOTEBOOKLM_CONNECT else NOTEBOOKLM_TIMEOUT
+    proc = popen(cli_command(*notebooklm_arguments(action, settings, auto)), stdin=subprocess.DEVNULL,
+                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    with child.lock:
+        child.proc, child.stopped = proc, False
+    killer = threading.Timer(timeout, proc.kill)
+    killer.daemon = True
+    killer.start()
+    finished, last_line = False, ""
+    try:
+        for line in proc.stdout:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                event = None
+            if not isinstance(event, dict):
+                last_line = line.strip() or last_line
+            elif event.get("event") == "result":
+                finished = True
+            else:
+                on_event(event)
+        proc.wait()
+    finally:
+        killer.cancel()
+        with child.lock:
+            child.proc, stopped = None, child.stopped
+    status = notebooklm_store.status(config)
+    if finished or stopped:
+        return status
+    return replace(status, error=True, message=shorten(last_line, 200)
+                   or tr("exit status {code}").format(code=proc.returncode))
+
+
+def run_notebooklm_guarded(config: Config, action: str, settings: Settings, auto: bool = False,
+                           on_event: Callable[[dict], None] = lambda event: None) -> notebooklm_store.NotebookLMStatus:
+    """``run_notebooklm`` for a worker thread: it always reports back, and never raises."""
+    try:
+        return run_notebooklm(config, action, settings, auto, on_event)
+    except Exception as exc:
+        log.exception("NotebookLM job failed")
+        return replace(notebooklm_store.status(config), error=True, message=str(exc))
 
 
 def run_login_guarded(settings: Settings) -> tuple[bool, str]:
@@ -338,6 +423,7 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
     model.activity_log = load_activity((saved or {}).get("activity"))
     model.restore_pending((saved or {}).get("pending"))  # a move or download the last run never got to
     model.calendar = gcal.status(config)
+    model.notebooklm = notebooklm_store.status(config)
     refresh_hidden_folders(config, model)
     refresh_session(config, model, settings)
     if saved is None and last is not None and last.status == "ok":

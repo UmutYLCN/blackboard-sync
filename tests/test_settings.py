@@ -1,3 +1,4 @@
+from dataclasses import replace
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -200,3 +201,11 @@ def test_settings_window_opens_no_taller_than_the_screen():
     assert window_height(content=900, chrome=40, available=1400) == 940
     # A tiny work area still leaves a usable window.
     assert window_height(content=900, chrome=28, available=300) == MIN_WINDOW_HEIGHT
+
+
+def test_adding_files_to_notebooklm_is_on_by_default_and_saved(tmp_path):
+    settings = Settings(base_url="https://bb.example.edu", dest=tmp_path)
+    assert settings.notebooklm_auto
+    assert Settings.from_dict({"base_url": "https://bb.example.edu", "dest": str(tmp_path)}).notebooklm_auto
+    off = replace(settings, notebooklm_auto=False)
+    assert not Settings.from_dict(off.to_dict()).notebooklm_auto

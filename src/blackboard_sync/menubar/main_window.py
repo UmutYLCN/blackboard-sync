@@ -79,6 +79,10 @@ from blackboard_sync.menubar.main_window_model import (
     HOME_ANNOUNCEMENT_ROWS,
     HOME_RECENT_ROWS,
     NAV_SECTIONS,
+    NOTEBOOKLM_ATTENTION,
+    NOTEBOOKLM_IDLE,
+    NOTEBOOKLM_OFF,
+    NOTEBOOKLM_RUNNING,
     OVERVIEW,
     START_STEPS,
     STATE_ATTENTION,
@@ -95,6 +99,7 @@ from blackboard_sync.menubar.main_window_model import (
     T_NAV_GENERAL,
     T_NEEDS_ATTENTION,
     T_NEW,
+    T_NOTEBOOKLM,
     T_NO_DEADLINES,
     T_OPEN_CALENDAR,
     T_OPEN_FILE,
@@ -116,6 +121,7 @@ from blackboard_sync.menubar.main_window_model import (
     course_title,
     enabled_count,
     has_changes,
+    home_recent_rows,
     recent_count,
     reopen_hint,
 )
@@ -149,6 +155,7 @@ from blackboard_sync.menubar.settings_form import (
     interval_title,
     language_code,
     language_title,
+    notebooklm_disconnect_state,
     row_states,
     calendar_presentation,
     settings_sections,
@@ -192,6 +199,9 @@ UPDATE_BANNER_HEIGHT = 86
 LEFT_W = 420
 RIGHT_W = INNER - LEFT_W - GAP
 SCENE_SMALL = (72, 44)  # the illustration in place of the state symbol while a sync runs
+NOTEBOOKLM_TEXT_X = 64  # the NotebookLM card's text lines up with the status card's
+NOTEBOOKLM_BASE = 88  # its height: symbol and title, the detail line
+NOTEBOOKLM_LINE = 20  # one more small line: the counts, the notice
 ICON_SIZE = 28  # the state symbol beside "Up to date", like Drive's cloud
 PILL_H = 36  # Drive's rounded "View all" buttons
 HOME_ROW = 54  # a notification or due-date row on Home
@@ -210,6 +220,14 @@ STATE_SYMBOLS = {
     STATE_PAUSED: ("pause.circle", "secondaryLabelColor"),
     STATE_ATTENTION: ("person.crop.circle.badge.exclamationmark", "systemOrangeColor"),
     STATE_ERROR: ("exclamationmark.icloud", "systemOrangeColor"),
+}
+
+# The NotebookLM card's symbol and its tint.
+NOTEBOOKLM_SYMBOLS = {
+    NOTEBOOKLM_OFF: ("text.book.closed", "secondaryLabelColor"),
+    NOTEBOOKLM_IDLE: ("text.book.closed.fill", "systemGreenColor"),
+    NOTEBOOKLM_RUNNING: ("arrow.triangle.2.circlepath", "controlAccentColor"),
+    NOTEBOOKLM_ATTENTION: ("exclamationmark.triangle", "systemOrangeColor"),
 }
 
 # Text fields get Cmd+V and friends from the main menu; while it is not there
@@ -311,6 +329,15 @@ class _Target(NSObject):
 
     def homeAction_(self, _sender):
         self.owner.on_action(self.owner.status.home.action)
+
+    def notebooklm_(self, _sender):
+        self.owner.on_action(self.owner.status.notebooklm.action)
+
+    def notebooklmDisconnect_(self, _sender):
+        self.owner.on_action("notebooklm_disconnect")
+
+    def windowDidResize_(self, _notification):
+        self.owner.reflow_overview()
 
     def showActivity_(self, _sender):
         self.owner.select(ACTIVITY)
@@ -529,6 +556,8 @@ ROW_ATTRIBUTES = {
     "autostart": ("autostart", None, None),
     "language": ("language_popup", None, None),
     "dest": ("dest_field", None, None),
+    "notebooklm_auto": ("notebooklm_switch", None, None),
+    "notebooklm_disconnect": (None, None, None),
     "past_term": ("past_popup", None, None),
     "past_download": ("past_button", None, "past_label"),
     "check_updates": ("check_updates", None, None),
@@ -537,7 +566,8 @@ ROW_ATTRIBUTES = {
 }
 # A button of a row that acts at once, and the buttons whose title changes keep one width.
 ROW_ACTIONS = {"google_calendar": "googleCalendar:", "google_calendar_sync": "googleCalendarSync:",
-               "google_calendar_disconnect": "googleCalendarDisconnect:", "account": "account:", "past_download": "pastTerm:", "update": "update:", "uninstall": "uninstall:"}
+               "google_calendar_disconnect": "googleCalendarDisconnect:", "account": "account:", "past_download": "pastTerm:", "update": "update:", "uninstall": "uninstall:",
+               "notebooklm_disconnect": "notebooklmDisconnect:"}
 ROW_BUTTON_WIDTH = {"google_calendar": 210, "account": ACTION_WIDTH, "update": ACTION_WIDTH, "past_download": 190}
 # Rows whose description changes while the app runs keep room for two lines.
 LIVE_DETAIL_LINES = {"past_download": 2, "google_calendar": 3}
@@ -928,6 +958,10 @@ class MainWindow:
         return box, title, button
 
     def _build_overview(self, page) -> None:
+        # The page scrolls only in a window too short for it; see ``home_recent_rows``.
+        self.overview_scroll, view = _scroll(NSMakeRect(0, 0, PAGE, HEIGHT), HEIGHT)
+        page.addSubview_(self.overview_scroll)
+        page = view
         self.overview_title = self._header(page, "")
         # The line under Home's greeting: the next due dates (hidden without any).
         self.overview_subtitle = _label("", 13, secondary=True)
@@ -955,6 +989,7 @@ class MainWindow:
         self.recent_count.setAlignment_(NSTextAlignmentRight)
         content.addSubview_(self.recent_count)
         page.addSubview_(self.status_card)
+        self._build_notebooklm_card(page)
 
         # Right: what needs attention, then the next due dates.
         x = PAD + LEFT_W + GAP
@@ -967,6 +1002,56 @@ class MainWindow:
         self.calendar_card.contentView().addSubview_(self.calendar_body)
         page.addSubview_(self.calendar_card)
         self._home_heights = (150, 150)
+        self._home_rows = 0
+        self._status_fixed = 0
+
+    def _build_notebooklm_card(self, page) -> None:
+        """Under the status card, in its style: a symbol, the state and a line, a pill at the top right."""
+        self.notebooklm_card = _card(NSMakeRect(PAD, HEADER, LEFT_W, NOTEBOOKLM_BASE))
+        content = self.notebooklm_card.contentView()
+        self.notebooklm_icon = NSImageView.alloc().initWithFrame_(NSMakeRect(22, 18, ICON_SIZE, ICON_SIZE))
+        content.addSubview_(self.notebooklm_icon)
+        self.notebooklm_title = _label(T_NOTEBOOKLM, 17)
+        self.notebooklm_title.setFont_(NSFont.systemFontOfSize_weight_(17, -0.4))  # NSFontWeightLight
+        content.addSubview_(self.notebooklm_title)
+        self.notebooklm_detail = _label("", 13, secondary=True)
+        content.addSubview_(self.notebooklm_detail)
+        self.notebooklm_counts = _label("", _small(), secondary=True)
+        content.addSubview_(self.notebooklm_counts)
+        self.notebooklm_notice = _label("", _small())
+        self.notebooklm_notice.setTextColor_(NSColor.systemOrangeColor())
+        content.addSubview_(self.notebooklm_notice)
+        self.notebooklm_button = _pill_view("", self.target, "notebooklm:", 0, 14)
+        content.addSubview_(self.notebooklm_button)
+        page.addSubview_(self.notebooklm_card)
+
+    def _layout_notebooklm_card(self, top: float) -> float:
+        """Places the card at ``top``; returns its height."""
+        card = self.status.notebooklm
+        symbol, tint = NOTEBOOKLM_SYMBOLS[card.kind]
+        self.notebooklm_icon.setImage_(_symbol_image(symbol, 20))
+        self.notebooklm_icon.setContentTintColor_(getattr(NSColor, tint)())
+        self.notebooklm_button.setHidden_(not card.action)
+        self.notebooklm_button.setTitle_(card.action_title)
+        self.notebooklm_button.setEnabled_(card.enabled)
+        width = _pill_width(self.notebooklm_button)
+        self.notebooklm_button.setFrame_(NSMakeRect(LEFT_W - 20 - width, 14, width, PILL_H))
+        text = LEFT_W - NOTEBOOKLM_TEXT_X - 20
+        self.notebooklm_title.setFrame_(NSMakeRect(NOTEBOOKLM_TEXT_X, 20, text - width - 8, 24))
+        y = 52
+        for label, value in ((self.notebooklm_detail, card.detail), (self.notebooklm_counts, card.counts),
+                             (self.notebooklm_notice, card.notice)):
+            label.setStringValue_(value)
+            label.setToolTip_(value or None)
+            label.setHidden_(not value)
+            if value:
+                label.setFrame_(NSMakeRect(NOTEBOOKLM_TEXT_X, y, text, 17))
+                y += NOTEBOOKLM_LINE
+        height = y + 16
+        _tone(self.notebooklm_card, card.warning)
+        self.notebooklm_card.setFrame_(NSMakeRect(PAD, top, LEFT_W, height))
+        self.notebooklm_card.contentView().setFrame_(NSMakeRect(0, 0, LEFT_W, height))
+        return height
 
     def _state_header(self, content, width: float):
         """Drive's "Up to date" header: a small symbol (the illustration while a sync runs), the
@@ -1151,9 +1236,13 @@ class MainWindow:
         if status.update_banner is not None:
             self.overview_update_banner[0].setFrame_(NSMakeRect(PAD, top, INNER, UPDATE_BANNER_HEIGHT))
             top += UPDATE_BANNER_HEIGHT + GAP
-        height = self._layout_status_card()
+        # The NotebookLM card is laid out first: the files give way to it in a short window.
+        notebooklm_height = self._layout_notebooklm_card(top)
+        height = self._layout_status_card(self.pages[OVERVIEW].frame().size.height - top - GAP - notebooklm_height - PAD)
         self.status_card.setFrame_(NSMakeRect(PAD, top, LEFT_W, height))
         self.status_card.contentView().setFrame_(NSMakeRect(0, 0, LEFT_W, height))
+        self.notebooklm_card.setFrameOrigin_((PAD, top + height + GAP))
+        left_bottom = top + height + GAP + notebooklm_height
         notify_height = self._draw_home_notifications()
         calendar_height = self._draw_home_calendar()
         self._home_heights = (notify_height, calendar_height)
@@ -1164,9 +1253,23 @@ class MainWindow:
             card.setFrame_(NSMakeRect(x, y, RIGHT_W, card_height))
             card.contentView().setFrame_(NSMakeRect(0, 0, RIGHT_W, card_height))
             body.setFrame_(NSMakeRect(0, 0, RIGHT_W, card_height))
+        right_bottom = top + notify_height + GAP + calendar_height
+        self.overview_scroll.documentView().setFrameSize_((PAGE, max(left_bottom, right_bottom) + PAD))
 
-    def _layout_status_card(self) -> float:
-        """The header, a note if any, the last files and "View all"; returns the card's height."""
+    def reflow_overview(self) -> None:
+        """The window's height changed: Home follows when that changes how many files fit."""
+        if self.state.section == OVERVIEW and self._home_rows != self._fitting_rows():
+            self._layout_overview()
+
+    def _fitting_rows(self) -> int:
+        frame = self.notebooklm_card.frame()
+        available = self.pages[OVERVIEW].frame().size.height - self.status_card.frame().origin.y
+        return home_recent_rows(available - GAP - frame.size.height - PAD, self._status_fixed, ROW_HEIGHT,
+                                len(self.status.recent))
+
+    def _layout_status_card(self, available: float) -> float:
+        """The header, a note if any, as many of the last files as fit in ``available`` points and
+        "View all"; returns the card's height. The files still in the list scroll."""
         status = self.status
         home = status.home
         # At most one button at the top right of the card: what the state asks for, else "Sync now".
@@ -1188,7 +1291,8 @@ class MainWindow:
         if has_message:
             self.account_message.setFrame_(NSMakeRect(22, y - 6, LEFT_W - 44, 16))
             y += 18
-        shown = min(len(status.recent), HOME_RECENT_ROWS)
+        self._status_fixed = y + 14 + PILL_H + 20
+        shown = self._home_rows = home_recent_rows(available, self._status_fixed, ROW_HEIGHT, len(status.recent))
         rows_height = shown * ROW_HEIGHT if shown else 40
         self.recent_scroll.setFrame_(NSMakeRect(0, y, LEFT_W, rows_height))
         y += rows_height + 14
@@ -1273,7 +1377,7 @@ class MainWindow:
         page.addSubview_(self.form_scroll)
         self.settings_rows = {}
         y = 8
-        for section in settings_sections():
+        for section in settings_sections(notebooklm=True):
             y = self._build_section(view, section, y)
         y += PAD - SECTION_GAP
         view.setFrame_(NSMakeRect(0, 0, PAGE, y))
@@ -1665,6 +1769,7 @@ class MainWindow:
                 (m for m, title in INTERVAL_OPTIONS if title == str(self.interval_popup.titleOfSelectedItem())), 60
             ),
             language=language_code(str(self.language_popup.titleOfSelectedItem())),
+            notebooklm_auto=bool(self.notebooklm_switch.state()),
         )
 
     def set_values(self, values: FormValues) -> None:
@@ -1679,6 +1784,7 @@ class MainWindow:
         self.check_updates.setState_(1 if values.check_updates else 0)
         self.interval_popup.selectItemWithTitle_(interval_title(values.sync_interval_minutes))
         self.language_popup.selectItemWithTitle_(language_title(values.language))
+        self.notebooklm_switch.setState_(1 if values.notebooklm_auto else 0)
         self.show_error("")
 
     def changed(self, control) -> None:
@@ -1785,6 +1891,7 @@ class MainWindow:
             if not key.startswith("google_calendar"):
                 self._apply_row_state(key, state)
         self._update_google_calendar(form)
+        self._apply_row_state("notebooklm_disconnect", notebooklm_disconnect_state(form))
         if form.past_terms != self._past_terms:
             selected = self.past_popup.titleOfSelectedItem()
             self.past_popup.removeAllItems()
@@ -2075,6 +2182,18 @@ def ask_uninstall(dest: Path) -> bool | None:
     if alert.runModal() != NSAlertFirstButtonReturn:
         return None
     return bool(checkbox.state())
+
+
+def ask_notebooklm_disconnect() -> bool:
+    """Confirm first: signing in again takes the student through Google's sign-in."""
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_(tr("Disconnect NotebookLM?"))
+    alert.setInformativeText_(tr("The Google session is deleted from this computer. Files already in NotebookLM "
+                                 "stay there, and new ones are no longer added."))
+    alert.addButtonWithTitle_(tr("Disconnect"))
+    alert.addButtonWithTitle_(T_CANCEL).setKeyEquivalent_("\x1b")
+    NSApp.activateIgnoringOtherApps_(True)
+    return alert.runModal() == NSAlertFirstButtonReturn
 
 
 def ask_calendar_disconnect() -> bool | None:

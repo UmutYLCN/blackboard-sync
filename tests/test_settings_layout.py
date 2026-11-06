@@ -24,15 +24,24 @@ from blackboard_sync.menubar.settings_form import (
     row_states,
     settings_sections,
 )
+from blackboard_sync.menubar.settings_form import SECTION_NOTEBOOKLM
+
+
+def test_only_the_macos_window_has_the_notebooklm_section():
+    assert SECTION_NOTEBOOKLM not in [section.key for section in settings_sections(appearance=True)]
+    section = next(s for s in settings_sections(notebooklm=True) if s.key == SECTION_NOTEBOOKLM)
+    assert [row.key for row in section.rows] == ["notebooklm_auto", "notebooklm_disconnect"]
+    assert section.rows[0].title == "Add new files to NotebookLM after each sync"
+    assert "unofficial" in section.footer
 
 
 def all_rows():
-    return [row for section in settings_sections() for row in section.rows]
+    return [row for section in settings_sections(notebooklm=True) for row in section.rows]
 
 
 def test_the_sections_come_in_the_planned_order_with_a_slot_for_the_calendar():
-    assert SECTION_ORDER == (SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR, SECTION_FOLDER,
-                             SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER)
+    assert SECTION_ORDER == (SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR, SECTION_NOTEBOOKLM,
+                             SECTION_FOLDER, SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER)
     # The immediate Calendar controls occupy the reserved slot.
     assert SECTION_CALENDAR in SECTIONS
     assert [section.key for section in settings_sections()] == [
@@ -77,7 +86,7 @@ def test_controls_match_what_they_edit():
     assert immediate == {"account": CONTROL_BUTTON, "past_term": CONTROL_POPUP, "past_download": CONTROL_BUTTON,
                          "update": CONTROL_BUTTON, "uninstall": CONTROL_BUTTON,
                          "google_calendar": CONTROL_BUTTON, "google_calendar_sync": CONTROL_BUTTON,
-                         "google_calendar_disconnect": CONTROL_BUTTON}
+                         "google_calendar_disconnect": CONTROL_BUTTON, "notebooklm_disconnect": CONTROL_BUTTON}
 
 
 def test_every_row_has_a_description_or_a_live_one():
