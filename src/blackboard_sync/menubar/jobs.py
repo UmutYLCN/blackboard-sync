@@ -15,11 +15,12 @@ import subprocess
 import sys
 import threading
 import time
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, IO
 
-from blackboard_sync import courses, deadlines, gcal, relocate, runtime, signout
+from blackboard_sync import courses, deadlines, gcal, relocate, runtime, session_refresh, signout
 from blackboard_sync.config import Config
 from blackboard_sync.errors import EXIT_ERROR, LoginRequired
 from blackboard_sync.i18n import tr
@@ -137,6 +138,76 @@ def run_sync(
     except OSError as exc:
         return RunOutcome(status="error", message=str(exc), finished_at=now())
     return parse_sync_output(proc.stdout, proc.returncode, proc.stderr, now())
+
+
+def run_session_refresh(settings: Settings, runner: Runner = run_cancellable) -> session_refresh.RefreshResult:
+    """Try ``blackboard-sync refresh-session``; ``SyncStopped`` when Duraklat ended it."""
+    try:
+        proc = runner(
+            cli_command("--base-url", settings.base_url, "refresh-session", "--json"),
+            capture_output=True,
+            text=True,
+            timeout=session_refresh.SILENT_HARD_TIMEOUT,
+            stdin=subprocess.DEVNULL,
+        )
+        reported = json.loads(proc.stdout)
+        return session_refresh.RefreshResult(str(reported["status"]), float(reported.get("seconds") or 0))
+    except subprocess.TimeoutExpired:
+        return session_refresh.RefreshResult(session_refresh.TIMED_OUT)
+    except (OSError, ValueError, KeyError, TypeError):
+        return session_refresh.RefreshResult(session_refresh.FAILED)
+
+
+def run_sync_refreshing(
+    job: str,
+    settings: Settings,
+    term_name: str = "",
+    term_id: str = "",
+    may_refresh: bool = False,
+    wanted: Callable[[], bool] = lambda: True,
+) -> tuple[RunOutcome, session_refresh.RefreshResult | None]:
+    """A sync that, when the session is gone, signs in again in the background and runs once more.
+
+    Returns how the sync went and how the sign-in went (None: none was tried).
+    ``wanted`` is False once the student paused. Worker threads call this.
+    """
+    outcome = run_sync_guarded(job, settings, term_name=term_name, term_id=term_id)
+    if outcome.status != "login_required" or not may_refresh or not wanted():
+        return outcome, None
+    try:
+        result = run_session_refresh(settings)
+    except SyncStopped:
+        return RunOutcome(status="paused", finished_at=utcnow()), None
+    except Exception:
+        log.exception("Background sign-in failed")
+        return outcome, session_refresh.RefreshResult(session_refresh.FAILED)
+    if not result.ok:
+        return outcome, result
+    if not wanted():
+        return RunOutcome(status="paused", finished_at=utcnow()), result
+    return run_sync_guarded(job, settings, term_name=term_name, term_id=term_id), result
+
+
+@dataclass(frozen=True)
+class SessionCheck:
+    """A look at the session between syncs, and the background sign-in it led to, if any."""
+
+    status: str  # ``session_refresh.KeepAlive.status``
+    refresh: session_refresh.RefreshResult | None = None
+
+
+def run_session_check(config: Config, settings: Settings, may_refresh: bool) -> SessionCheck:
+    """Keep the session alive, and replace it when it is gone or about to go; never raises."""
+    try:
+        alive = session_refresh.keep_alive(replace(config, base_url=settings.base_url))
+        if not may_refresh or not alive.wants_refresh(utcnow()):
+            return SessionCheck(alive.status)
+        return SessionCheck(alive.status, run_session_refresh(settings))
+    except SyncStopped:
+        return SessionCheck(session_refresh.UNREACHABLE)
+    except Exception:
+        log.exception("Session check failed")
+        return SessionCheck(session_refresh.UNREACHABLE)
 
 
 def run_login(settings: Settings, runner: Runner = subprocess.run) -> tuple[bool, str]:
@@ -318,6 +389,7 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
         autostart=autostart,
         check_updates=settings.check_updates,
         sync_interval_minutes=settings.sync_interval_minutes,
+        auto_relogin=settings.auto_relogin,
         updates=UpdateState.load((saved or {}).get("updates"), now),
         recent_seen=RecentSeen((saved or {}).get("recent_seen")),
     )

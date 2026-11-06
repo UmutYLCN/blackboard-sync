@@ -27,7 +27,7 @@ from blackboard_sync.menubar.settings_form import (
 
 
 def all_rows():
-    return [row for section in settings_sections() for row in section.rows]
+    return [row for section in settings_sections(auto_relogin=True) for row in section.rows]
 
 
 def test_the_sections_come_in_the_planned_order_with_a_slot_for_the_calendar():
@@ -61,7 +61,7 @@ def test_the_rows_of_each_section():
 
 def test_every_form_value_has_exactly_one_row_and_no_setting_is_invented():
     edited = [row.field for row in all_rows() if row.field]
-    # The form's own values: the school, folder, login item, update checks, interval and language.
+    # The form's own values: the school, folder, login item, update checks, interval, language, re-sign-in.
     assert sorted(edited) == sorted(field.name for field in fields(FormValues))
     assert len(edited) == len(set(edited))
 

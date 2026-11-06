@@ -16,7 +16,7 @@ import threading
 import webbrowser
 from pathlib import Path
 
-from blackboard_sync import announcements, courses, deadlines, runtime, update_macos, updater, uninstall
+from blackboard_sync import announcements, courses, deadlines, runtime, session_refresh, update_macos, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.i18n import tr
@@ -24,6 +24,7 @@ from blackboard_sync.menubar import jobs, launchagent, settings_form
 from blackboard_sync.menubar.main_window_model import GENERAL, main_status, shows_window_at_launch
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
+    SESSION_JOB,
     AppModel,
     Icon,
     MenuModel,
@@ -295,6 +296,7 @@ def build_app(config: Config, show_window: bool = False):
             if self._uninstalling:
                 return
             self.start_next()
+            self.start_session_check()
             if self.model.update_due(jobs.utcnow()):
                 self.start_update_check(manual=False)
             self.remind()
@@ -325,11 +327,48 @@ def build_app(config: Config, show_window: bool = False):
             log.info("%s started", job)
             self.refresh()
             threading.Thread(target=self._sync_worker, args=(job, self.settings, self.model.past_term,
-                                                              self.model.past_term_id), daemon=True).start()
+                                                              self.model.past_term_id,
+                                                              self.model.session_care.may_refresh(jobs.utcnow())),
+                             daemon=True).start()
 
-        def _sync_worker(self, job: str, settings, term_name: str = "", term_id: str = "") -> None:
-            outcome = jobs.run_sync_guarded(job, settings, term_name=term_name, term_id=term_id)
-            AppHelper.callAfter(self._sync_done, outcome)
+        def _sync_worker(self, job: str, settings, term_name: str = "", term_id: str = "",
+                         may_refresh: bool = False) -> None:
+            outcome, refresh = jobs.run_sync_refreshing(job, settings, term_name, term_id, may_refresh,
+                                                        wanted=lambda: not self.model.paused)
+            AppHelper.callAfter(self._sync_done, outcome, refresh)
+
+        def start_session_check(self) -> None:
+            """Between syncs: keep the session alive, and replace it if it is gone or about to go."""
+            now = jobs.utcnow()
+            if not self.model.session_check_due(now) or not self.model.begin(SESSION_JOB):
+                return
+            threading.Thread(target=self._session_worker,
+                             args=(self.settings, self.model.session_care.may_refresh(now)), daemon=True).start()
+
+        def _session_worker(self, settings, may_refresh: bool) -> None:
+            check = jobs.run_session_check(self.config, settings, may_refresh)
+            AppHelper.callAfter(self._session_done, check)
+
+        def _session_done(self, check: jobs.SessionCheck) -> None:
+            if check.status != session_refresh.ALIVE:
+                log.info("keep-alive: %s", check.status)
+            self._log_refresh(check.refresh)
+            for note in self.model.finish_session_check(check.status, check.refresh, jobs.utcnow()):
+                self.notify(note)
+            self._save()
+            if self._login_after_job:
+                self._login_after_job = False
+                self.start_login()
+                return
+            self.tick()
+
+        def _log_refresh(self, refresh) -> None:
+            if refresh is None:
+                return
+            if refresh.ok:
+                log.info("session refreshed automatically (%.1f s)", refresh.seconds)
+            else:
+                log.warning("automatic re-sign-in failed: %s", refresh.reason)
 
         def start_past_terms(self) -> None:
             """Look up the past terms for the list in Genel, in the background."""
@@ -385,8 +424,11 @@ def build_app(config: Config, show_window: bool = False):
             self.open_settings()
             self._window.show_calendar_settings()
 
-        def _sync_done(self, outcome: RunOutcome) -> None:
+        def _sync_done(self, outcome: RunOutcome, refresh=None) -> None:
             log.info("sync finished: %s %s", outcome.status, outcome.message)
+            self._log_refresh(refresh)
+            if refresh is not None:
+                self.model.record_refresh(refresh, jobs.utcnow())
             for note in self.model.finish_sync(outcome, jobs.utcnow()):
                 self.notify(note)
             if jobs.calendar_after_sync(self.config, self.model, outcome):
@@ -423,6 +465,9 @@ def build_app(config: Config, show_window: bool = False):
             self.refresh()
 
         def start_login(self, _sender=None) -> None:
+            if self.model.busy == SESSION_JOB:  # over in seconds, and it may use the browser profile
+                self._login_after_job = True
+                return
             if not self.model.begin("login"):
                 return
             self.model.login_method = jobs.login_method()
@@ -707,6 +752,7 @@ def build_app(config: Config, show_window: bool = False):
                 submission.settings.check_updates,
                 submission.settings.sync_interval_minutes,
                 dest_choice=choice,
+                auto_relogin=submission.settings.auto_relogin,
             )
             if submission.autostart != launchagent.is_installed():
                 self.toggle_autostart()

@@ -24,6 +24,7 @@ from blackboard_sync import __version__
 from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
 from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.inapp import INAPP
+from blackboard_sync.session_refresh import EXPIRED, REFRESHED, RefreshResult, SessionCare
 from blackboard_sync.settings import DEFAULT_SYNC_INTERVAL_MINUTES, Settings, normalize_sync_interval
 from blackboard_sync.system import sync_root
 from blackboard_sync.updater import CheckResult, Release, is_newer
@@ -120,6 +121,9 @@ PAST_TERMS_AVAILABLE = False
 # ``move_from`` equal to ``dest`` it only moves the files of an older version
 # from the chosen folder into its University folder (``relocate.migrate_to_root``).
 MOVE_JOB = "move"
+# A look at the session between syncs (``session_refresh``). Takes the job slot so no
+# sync reads the session while it is replaced, and is otherwise invisible.
+SESSION_JOB = "session"
 
 # After a past-term lookup that met a running sync or failed, when to try again (Genel in view).
 PAST_RETRY_DELAYS = {"locked": timedelta(seconds=15), "error": timedelta(seconds=60)}
@@ -672,6 +676,7 @@ class AppModel:
         updates: UpdateState | None = None,
         sync_interval_minutes: int = DEFAULT_SYNC_INTERVAL_MINUTES,
         recent_seen: RecentSeen | None = None,
+        auto_relogin: bool = True,
     ):
         self.dest = dest  # the folder the student chose; the files are in ``root``
         self.session = session
@@ -716,6 +721,8 @@ class AppModel:
         self.sync_interval = sync_interval(sync_interval_minutes)  # None: only by hand
         self.next_run_at = self.schedule(now, FIRST_SYNC_DELAY)
         self.check_updates = check_updates  # the "Check for updates automatically" setting
+        # A sync at start-up looks at the session anyway, so the first keep-alive counts from there.
+        self.session_care = SessionCare(enabled=auto_relogin, checked_at=now)
         self.updates = updates or UpdateState(not_before=now + UPDATE_FIRST_DELAY)
 
     # -- state ----------------------------------------------------------
@@ -771,6 +778,18 @@ class AppModel:
             and self.busy is None
             and self.next_run_at is not None
             and now >= self.next_run_at
+        )
+
+    def session_check_due(self, now: datetime) -> bool:
+        """Time for the keep-alive: only signed in, not paused, and with the slot free."""
+        return (
+            self.configured
+            and not self.paused
+            and self.busy is None
+            and self.pending is None
+            and self.updates.busy != "download"
+            and self.account()[0] is not None
+            and self.session_care.keep_alive_due(now)
         )
 
     def update_due(self, now: datetime) -> bool:
@@ -866,6 +885,28 @@ class AppModel:
     def can_download_past_term(self) -> bool:
         return self.past_terms_available and self.busy is None and self.updates.busy != "download" and bool(self.past_terms)
 
+    def record_refresh(self, result: RefreshResult, now: datetime) -> None:
+        """A background sign-in ended. It worked: the session problem is over, and a later one tells again."""
+        self.session_care.record(result, now)
+        if result.ok:
+            self.auth_failed_at = None
+            self.session_expired = False
+            self.login_prompted = False
+
+    def finish_session_check(self, status: str, refresh: RefreshResult | None, now: datetime) -> list[Notification]:
+        """The look between syncs ended. A session that is gone for good asks for "Sign in"."""
+        self.busy = None
+        self.session_care.checked_at = now
+        if refresh is not None:
+            self.record_refresh(refresh, now)
+        if status != EXPIRED or (refresh is not None and refresh.reason == REFRESHED):
+            return []
+        self.auth_failed_at = now
+        if self.login_prompted:
+            return []
+        self.login_prompted = True
+        return [login_notification()]
+
     def finish_sync(self, outcome: RunOutcome, now: datetime) -> list[Notification]:
         notes = self._finish_sync(outcome, now)
         return [*self.root_move_notifications(outcome.moved_into_root, outcome.left_outside_root), *notes]
@@ -930,6 +971,7 @@ class AppModel:
             self.login_prompted = False
             self.session_expired = False
             self.auth_failed_at = None
+            self.session_care.checked_at = now  # a sync keeps the session alive as well
             self.courses = outcome.courses
             self.remember(outcome)
             self.next_run_at = self.schedule(now, self.sync_interval)
@@ -990,6 +1032,7 @@ class AppModel:
         sync_interval_minutes: int | None = None,
         now: datetime | None = None,
         dest_choice: str | None = None,
+        auto_relogin: bool | None = None,
     ) -> None:
         """The settings window was saved.
 
@@ -1005,6 +1048,10 @@ class AppModel:
         self.configured = True
         if check_updates is not None:
             self.check_updates = check_updates
+        if auto_relogin is not None:
+            if auto_relogin and not self.session_care.enabled:
+                self.session_care.failed_at = None  # switched on again: it may try right away
+            self.session_care.enabled = auto_relogin
         if sync_interval_minutes is not None:
             interval = sync_interval(sync_interval_minutes)
             if interval != self.sync_interval:

@@ -288,7 +288,8 @@ are, in order, Account, Sync, Folder, Past terms, Updates and a red Danger zone:
   background the first time **Settings** is shown after the window opens, while you
   are signed in; until then it
   says it is loading (a lookup that met a running sync tries again by itself), and **No past terms to download.** when there is none.
-- **Sync** — **Start when the computer starts**, ticked by default (see
+- **Sync** — on macOS also **Automatic re-sign-in**, on by default (see
+  [Signing in again by itself](#signing-in-again-by-itself)). **Start when the computer starts**, ticked by default (see
   [Start at login](#start-at-login)), and **Automatic sync**: every 30
   minutes, **every hour** (default), every 3 hours or **Only manually** (no
   automatic sync; the menu says "automatic sync off" and no notifications
@@ -446,6 +447,7 @@ downloads the same files into the same folders as the command does.
 
 ```
 blackboard-sync [--base-url URL] [--data-dir DIR] [-v] login [--browser auto|chrome|edge|brave|vivaldi|opera|operagx|chromium|arc|inapp] [--timeout S]
+blackboard-sync [...] refresh-session [--json]
 blackboard-sync [...] check [--term NAME | --term-id ID | --all-terms] [--course CODE ...]
 blackboard-sync [...] sync  [--term NAME | --term-id ID | --all-terms] [--course CODE ...]
                             [--dest DIR] [--json] [--dry-run]
@@ -596,6 +598,59 @@ in again is often just a click. Cookies that Blackboard refreshes during a run
 are saved back, which keeps a regularly used session alive longer.
 In the menu bar app the icon turns red and one notification asks you to sign
 in; choose **Sign in** there instead of typing `login`.
+
+### Signing in again by itself
+
+The macOS menu bar app first tries to do this itself (`session_refresh.py`, setting
+`auto_relogin`, on by default). The session cookies have no expiry of their own; the
+only date is the `expires:` field inside the `BbRouter` cookie, read by
+`session.session_expires_at`.
+
+`blackboard-sync refresh-session [--json]` starts the browser `login` found, on the same
+`browser-profile`, with `--headless=new`, and opens Blackboard. The school's sign-on page
+finds its cookies and sends it straight back. When `login.session_user` accepts the new
+cookies they are saved with `save_session`, and the browser quits. It is a child process
+like `sync`, so Playwright never runs in the app. Details that matter:
+
+- The program inside the app bundle is started directly, not with `open`: there is no
+  window to give focus to, and the process can be stopped for certain. It is not registered
+  with LaunchServices, so it gets no Dock icon.
+- `--restore-last-session` is needed for sign-ons that last "until the browser closes":
+  without it Chromium deletes the profile's session cookies at start.
+- The profile's Blackboard cookies are cleared first. They may still work for minutes, and
+  saving them again would refresh nothing. The sign-on cookies stay.
+- It never fills in anything. A visible password field ends the attempt at once. After
+  `SILENT_TIMEOUT` (45 s) a page away from Blackboard counts as wanting the student.
+- SIGTERM (Pause) exits through the `finally` blocks that stop the browser.
+- It holds `sync.lock`, so no sync reads the session while it changes, and
+  `browser-profile.lock` (`login.profile_lock`), so it never meets an interactive sign-in,
+  which waits for it. `SingletonLock` in the profile catches any other browser on it.
+
+How it ended is one of `refreshed`, `sso-needs-interaction`, `timeout`, `browser-missing`,
+`browser-failed`, `profile-busy`, `not-signed-in`, `locked` or `error`. The exit status is 0,
+4 for `locked`, otherwise 3. Reasons and timings go to the log; cookies and URLs do not.
+
+**When** is `session_refresh.SessionCare`, which has no GUI code so that Windows and the iPad
+can reuse it:
+
+- A sync that ends with `login_required` tries once and runs again if that worked
+  (`jobs.run_sync_refreshing`). Otherwise the outcome stays as it was and today's
+  notification follows.
+- Between syncs, every `KEEP_ALIVE_EVERY` (25 min) while signed in, not paused and with the
+  job slot free, `keep_alive` makes the `users/me` request and saves rotated cookies through
+  `refresh_saved_cookies`. A finished sync counts as one. A session that is gone, or ends
+  within `EXPIRY_MARGIN` (30 min), starts a background sign-in. The margin is longer than the
+  interval so one look always falls before the end.
+- After a failed attempt no other starts for `FAILED_RETRY_AFTER` (10 min).
+- The look holds the app's job slot as `SESSION_JOB`, which shows nowhere but briefly
+  disables the buttons that need the slot. **Sign in** pressed meanwhile starts right after it.
+
+With the setting off, none of this runs. The Settings row is macOS only
+(`settings_sections(auto_relogin=True)`).
+
+`tests/test_session_refresh.py` fakes the browser, so check changes here against a real one.
+Use a copy of the profile: a plain start without `--restore-last-session` deletes session
+cookies from the profile it runs on.
 
 ## For the scheduler: single-run contract
 

@@ -71,6 +71,11 @@ class Config:
         return self.data_dir / "browser-profile"
 
     @property
+    def profile_lock_file(self) -> Path:
+        """Held by whichever sign-in has ``profile_dir`` open (``login.profile_lock``)."""
+        return self.data_dir / "browser-profile.lock"
+
+    @property
     def inapp_profile_dir(self) -> Path:
         """The Windows sign-in window's web data (macOS keeps it in WebKit's store)."""
         return self.data_dir / "inapp-profile"

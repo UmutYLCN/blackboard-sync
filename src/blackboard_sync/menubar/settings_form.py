@@ -3,7 +3,7 @@
 The settings live in the main window (``main_window_model``). Its Settings page
 is one scrolling page of sections, each a card of rows (``SECTIONS``, in the order of
 ``SECTION_ORDER``): Account (school address, who is signed in, sign in or out), Sync
-(sync interval, start at login, language), Folder (destination), Past terms (download a
+(sync interval, start at login, automatic re-sign-in, language), Folder (destination), Past terms (download a
 past term once), Updates (automatic checks, check now, version) and, last, a Danger
 zone (uninstall). Calendar connection actions sit between Sync and Folder. Dersler (``courses.py``) picks the courses that sync. The GUI layers (``main_window.py`` on macOS,
 ``windows/main_window.py``) only draw ``FormValues`` and ``WindowStatus`` and
@@ -14,7 +14,7 @@ User-facing strings go through ``i18n.tr``: the window is read by the student.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from blackboard_sync import __version__, uninstall
@@ -101,6 +101,9 @@ T_PAST_SIGN_IN = tr("Sign in to see past terms.")
 T_UNINSTALL = uninstall.BUTTON_TITLE
 T_AUTOSTART = tr("Start when the computer starts")
 T_CHECK_UPDATES = tr("Check for updates automatically")
+T_AUTO_RELOGIN = tr("Automatic re-sign-in")
+T_AUTO_RELOGIN_DETAIL = tr("Keeps your session alive and signs in again in the background when your school "
+                           "allows it. Your password is never stored.")
 T_CHOOSE_FOLDER = tr("Choose…")
 T_CHOOSE_FOLDER_PROMPT = tr("Use this folder")
 T_CHOOSE_FOLDER_MESSAGE = tr("Choose the folder to save your course files in.")
@@ -190,6 +193,7 @@ SECTIONS = {section.key: section for section in (
     SettingsSection(SECTION_SYNC, T_SECTION_GENERAL, (
         SettingRow("interval", T_INTERVAL_LABEL, T_INTERVAL_DETAIL, CONTROL_POPUP, field="sync_interval_minutes"),
         SettingRow("autostart", T_AUTOSTART, T_AUTOSTART_DETAIL, CONTROL_SWITCH, field="autostart"),
+        SettingRow("auto_relogin", T_AUTO_RELOGIN, T_AUTO_RELOGIN_DETAIL, CONTROL_SWITCH, field="auto_relogin"),
         SettingRow("language", T_LANGUAGE_LABEL, T_LANGUAGE_RESTART, CONTROL_POPUP, field="language"),
     )),
     SettingsSection(SECTION_APPEARANCE, T_SECTION_APPEARANCE, (
@@ -218,10 +222,18 @@ SECTIONS = {section.key: section for section in (
 )}
 
 
-def settings_sections(appearance: bool = False) -> tuple[SettingsSection, ...]:
-    """The sections the page shows, in order; Appearance only where the window can change its theme."""
-    return tuple(SECTIONS[key] for key in SECTION_ORDER
-                 if key in SECTIONS and (appearance or key != SECTION_APPEARANCE))
+def settings_sections(appearance: bool = False, auto_relogin: bool = False) -> tuple[SettingsSection, ...]:
+    """The sections the page shows, in order.
+
+    Appearance only where the window can change its theme, the "Automatic re-sign-in"
+    row only where the app does that (macOS so far).
+    """
+    sections = tuple(SECTIONS[key] for key in SECTION_ORDER
+                     if key in SECTIONS and (appearance or key != SECTION_APPEARANCE))
+    if auto_relogin:
+        return sections
+    return tuple(replace(section, rows=tuple(row for row in section.rows if row.key != "auto_relogin"))
+                 for section in sections)
 
 
 @dataclass(frozen=True)
@@ -331,6 +343,7 @@ class FormValues:
     check_updates: bool = True
     sync_interval_minutes: int = 60  # 0: only by hand
     language: str = DEFAULT_LANGUAGE
+    auto_relogin: bool = True
 
 
 @dataclass(frozen=True)
@@ -455,6 +468,7 @@ def initial_values(saved: Settings | None, current: Settings, autostart: bool) -
         check_updates=shown.check_updates,
         sync_interval_minutes=shown.sync_interval_minutes,
         language=shown.language,
+        auto_relogin=shown.auto_relogin,
     )
 
 
@@ -471,6 +485,7 @@ def submit(values: FormValues, current: Settings) -> Submission:
         sync_interval_minutes=normalize_sync_interval(values.sync_interval_minutes),
         language=normalize_language(values.language),
         theme=current.theme,  # chosen apart from the form (``Settings.theme``)
+        auto_relogin=values.auto_relogin,
     )
     return Submission(
         settings=settings,

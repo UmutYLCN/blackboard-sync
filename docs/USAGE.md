@@ -93,6 +93,25 @@ its missing files arrive with the sync that starts right away.
 The list fills after the first sync. Past terms are not in this list; download them separately from
 **Past terms** on the **Settings** page.
 
+## Staying signed in (macOS)
+
+A Blackboard session runs out after a while, but your school's single sign-on usually lasts much longer.
+With **Automatic re-sign-in** on (Settings, Sync; on by default), the app handles this for you:
+
+- While it runs, it checks your session every 25 minutes or so with one small request, which also keeps
+  the session alive. Nothing is sent while you are signed out or paused.
+- When the session has ended or is about to, the app signs in again in the background, with no window,
+  using the same private browser profile as **Sign in**. If your school still knows you, this takes a few
+  seconds and the sync goes on. Home then shows **Session refreshed automatically**.
+- If your school wants you (a password, a two-factor code, choosing an account), nothing is filled in. You
+  get the usual notification and sign in with **Sign in**, as before. After a failed try the app waits at
+  least 10 minutes before trying again.
+
+Your password is never seen or stored. How long this keeps working depends on your school. Microsoft
+sign-ins often last longer if you choose "Stay signed in" when you sign in. It does not work if you signed
+in through the app's own window, or if Arc is your only supported browser. Turn the setting off to go back
+to signing in by hand.
+
 ## Announcements
 
 The **Announcements** section of the main window lists every announcement synced from your

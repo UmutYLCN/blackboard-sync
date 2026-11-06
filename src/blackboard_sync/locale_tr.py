@@ -431,6 +431,12 @@ CATALOG = {
     "Sign in to see past terms.": "Eski dönemleri görmek için giriş yapın.",
     "Start when the computer starts": "Bilgisayar açılınca başlat",
     "Check for updates automatically": "Güncellemeleri otomatik denetle",
+    "Automatic re-sign-in": "Otomatik yeniden giriş",
+    "Keeps your session alive and signs in again in the background when your school allows it. Your password is never stored.":
+        "Oturumunuzu açık tutar ve okulunuz izin verdiğinde arka planda yeniden giriş yapar. Parolanız asla saklanmaz.",
+    "Session refreshed automatically": "Oturum otomatik yenilendi",
+    "Could not refresh the session without you: {reason}": "Oturum sizsiz yenilenemedi: {reason}",
+    "Another sign-in is in progress; try again in a minute.": "Başka bir giriş sürüyor; bir dakika sonra yeniden deneyin.",
     "Choose…": "Seç…",
     "Use this folder": "Bu klasörü kullan",
     "Choose the folder to save your course files in.": "Ders dosyalarının kaydedileceği klasörü seçin.",
