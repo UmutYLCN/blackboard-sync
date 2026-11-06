@@ -40,6 +40,7 @@ a = Analysis(
         "blackboard_sync.inapp_macos",
         "blackboard_sync.locale_tr",  # Turkish, loaded once the language is known
         "blackboard_sync.notebooklm.gateway",  # imported only when a run starts
+        "blackboard_sync.notebooklm.duplicates",  # imported only by its commands
         "WebKit",
     ] + NOTEBOOKLM_IMPORTS,
     excludes=[

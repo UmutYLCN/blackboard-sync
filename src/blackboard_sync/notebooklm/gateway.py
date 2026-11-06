@@ -31,7 +31,7 @@ from blackboard_sync.errors import (
     NotebookLMRateLimited,
     NotebookLMTransient,
 )
-from blackboard_sync.notebooklm.planner import nfc
+from blackboard_sync.notebooklm.store import nfc
 
 TRANSIENT = (NetworkError, RateLimitError, ServerError, RPCTimeoutError, WaitTimeoutError, SourceAddError,
              asyncio.TimeoutError)
@@ -53,6 +53,7 @@ class RemoteSource:
     id: str
     title: str
     status: str  # ready | processing | preparing | error | unknown
+    created_at: str = ""  # ISO 8601; empty when NotebookLM did not say
 
 
 def check_runtime() -> str:
@@ -156,7 +157,8 @@ class Gateway:
             raw = await self._client.sources.list(notebook_id)
         except Exception as exc:
             raise translate_exception(exc) from exc
-        return [RemoteSource(source.id, nfc(source.title or ""), getattr(source.status, "name", "unknown").lower())
+        return [RemoteSource(source.id, nfc(source.title or ""), getattr(source.status, "name", "unknown").lower(),
+                             source.created_at.isoformat() if source.created_at else "")
                 for source in raw]
 
     async def add_file(self, notebook_id: str, path: Path, title: str) -> str:
@@ -165,6 +167,13 @@ class Gateway:
         except Exception as exc:
             raise translate_exception(exc) from exc
         return source.id
+
+    async def delete_source(self, notebook_id: str, source_id: str) -> None:
+        """Only ``duplicates.remove`` calls this, after the student confirmed the removal."""
+        try:
+            await self._client.sources.delete(notebook_id, source_id)
+        except Exception as exc:
+            raise translate_exception(exc) from exc
 
     async def wait_ready(self, notebook_id: str, source_ids: list[str], timeout: float) -> dict[str, str]:
         """Each source's status once none is still processing, or at ``timeout``."""

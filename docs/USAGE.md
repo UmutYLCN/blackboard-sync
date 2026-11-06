@@ -258,7 +258,11 @@ each sync**; the button keeps working.
 
 **What goes where.** Each course gets one notebook, named after its folder. A notebook with that name
 is reused, and files already in it are kept and not added twice. Each source is named by its path
-inside the course folder, such as `Week 3/slides.pdf`.
+inside the course folder, such as `Week 3/slides.pdf`. NotebookLM sometimes keeps only the file name
+(`slides.pdf`), so the app recognizes a file by what it recorded when adding it, then by its content,
+then by its path, and then by its name. If a file's name is in the notebook but the app cannot tell
+that it is the same file, the file is **held back**: it is not added, the card counts it, and
+`blackboard-sync notebooklm sync` lists it in `held_files`.
 
 - Added: the PDF, Word, PowerPoint, text, Markdown, CSV and EPUB files Blackboard Sync downloaded for
   your courses, up to 200 MB each, and the PDF notes of course pages. Hidden courses are left
@@ -266,11 +270,23 @@ inside the course folder, such as `Week 3/slides.pdf`.
 - Skipped and counted: other file types, images, larger files, and files you put in the folders
   yourself.
 
-**What the app never does.** It only adds. It deletes and replaces nothing in NotebookLM. A source you
+**What the app never does.** A sync only adds. It deletes and replaces nothing in NotebookLM; the one
+exception is removing duplicates, below, which you confirm yourself. A source you
 remove there stays removed: the app remembers the file and does not add it again. If a course has more files than the notebook's source limit (often 50), that
 course is left as it is and marked **blocked**, because adding only some of them would leave a silent
 gap. If a file changed on Blackboard after it was added, it is counted as **modified**; the old source
 stays. If two notebooks have the same name, that course is skipped until you rename one.
+
+**Duplicates.** **Settings → NotebookLM → Find duplicates** lists the sources that are in a notebook
+more than once, with the date of each copy. It deletes nothing. Press **Remove** and confirm to take
+out the extra copies. Only a newer copy that this app added, with the same content as an older copy
+that is ready, can go. An older copy, a source you added yourself, and a file that changed on
+Blackboard in between (both versions stay, and you decide in NotebookLM) are listed but never removed.
+
+**If you used the `dersler-notebooklm` tool before.** Its `state.json` is read, never changed, and
+what it uploaded counts as already there. The app looks in
+`~/Documents/My Cave/Garage/dersler-notebooklm/state.json`; set `BBSYNC_NOTEBOOKLM_LEGACY_STATE` to
+use another path.
 
 **If the card asks you to sign in again,** Google ended the session. Press **Sign in**; nothing is lost
 and the next run carries on from there. The app keeps the session fresh, but a changed password or a
@@ -295,6 +311,8 @@ Terminal commands:
 blackboard-sync notebooklm login
 blackboard-sync notebooklm sync
 blackboard-sync notebooklm status
+blackboard-sync notebooklm duplicates [--json]
+blackboard-sync notebooklm remove-duplicates [--yes] [--source ID] [--json]
 blackboard-sync notebooklm disconnect
 ```
 

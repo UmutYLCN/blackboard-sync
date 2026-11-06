@@ -41,6 +41,7 @@ from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     NOTEBOOKLM_CONNECT,
+    NOTEBOOKLM_DUPLICATES,
     NOTEBOOKLM_SYNC,
     T_LOGGING_IN,
     T_LOGIN,
@@ -297,6 +298,7 @@ T_NOTEBOOKLM_CHECKING = tr("Checking what is already in NotebookLM…")
 T_NOTEBOOKLM_WAITING = tr("Sign in to Google in the browser window.")
 T_NOTEBOOKLM_VERIFYING = tr("Checking the connection…")
 T_NOTEBOOKLM_READING = tr("NotebookLM is reading the new files…")
+T_NOTEBOOKLM_DUPLICATES_RUNNING = tr("Looking through the notebooks…")
 
 
 @dataclass(frozen=True)
@@ -500,6 +502,8 @@ def notebooklm_counts(status) -> str:
         parts.append(tr("{n} changed, not replaced").format(n=status.modified))
     if status.blocked:
         parts.append(ntr("{n} course blocked", "{n} courses blocked", status.blocked).format(n=status.blocked))
+    if status.held:
+        parts.append(tr("{n} held back").format(n=status.held))
     if status.failed:
         parts.append(tr("{n} failed").format(n=status.failed))
     return " · ".join(parts)
@@ -515,6 +519,8 @@ def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
     if busy == NOTEBOOKLM_CONNECT:
         return NotebookLMCard(NOTEBOOKLM_RUNNING, progress.text if progress else T_NOTEBOOKLM_WAITING,
                               **{**connect, "enabled": False})
+    if busy == NOTEBOOKLM_DUPLICATES:
+        return NotebookLMCard(NOTEBOOKLM_RUNNING, T_NOTEBOOKLM_DUPLICATES_RUNNING, **{**sync, "enabled": False})
     if busy == NOTEBOOKLM_SYNC:
         progress = progress or NotebookLMProgress(T_NOTEBOOKLM_CHECKING)
         return NotebookLMCard(NOTEBOOKLM_RUNNING, progress.text, progress.course, progress=progress.fraction,
@@ -533,6 +539,40 @@ def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
         return NotebookLMCard(NOTEBOOKLM_IDLE, T_NEVER_SYNCED, **sync)
     return NotebookLMCard(NOTEBOOKLM_IDLE, tr("Last synced: {time}").format(time=day_time(finished, now)),
                           counts=notebooklm_counts(status), notice=status.message, **sync)
+
+
+def duplicates_title(report: dict) -> str:
+    groups = report.get("duplicates", 0)
+    if not groups:
+        return tr("No duplicates in your notebooks.")
+    return ntr("{n} file is in a notebook more than once.", "{n} files are in a notebook more than once.",
+               groups).format(n=groups)
+
+
+def duplicates_text(report: dict) -> str:
+    """Per notebook, what is there twice: when each copy was added and what happens to the newer one."""
+    notes = {"identical": tr("same content, can be removed"),
+             "changed": tr("the file changed since then, both stay"),
+             "not-added-by-app": tr("not added by this app, stays"),
+             "unverified": tr("cannot be compared, stays")}
+    lines = []
+    for course in report.get("courses", ()):
+        if course["duplicates"]:
+            lines.append(course["course"])
+        for duplicate in course["duplicates"]:
+            lines.append(f"  {duplicate['name']}")
+            lines.append("    " + tr("older: {time}").format(time=duplicate["older"]["created_at"][:10]))
+            lines.extend("    " + tr("newer: {time}").format(time=copy["created_at"][:10]) + f" ({notes[copy['verdict']]})"
+                         for copy in duplicate["newer"])
+        if course["duplicates"]:
+            lines.append("")
+    return "\n".join(lines).strip()
+
+
+def removable_ids(report: dict) -> list[str]:
+    """Exactly the copies the student was shown as removable; a later removal goes no further."""
+    return [copy["id"] for course in report.get("courses", ()) for duplicate in course["duplicates"]
+            for copy in duplicate["newer"] if copy["removable"]]
 
 
 def home_recent_rows(available: float, fixed: float, row: float, rows: int) -> int:

@@ -3,11 +3,15 @@
 import asyncio
 import json
 import os
+import subprocess
+import unicodedata
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
+from blackboard_sync.cli import main
 from blackboard_sync.config import Config
 from blackboard_sync.errors import (
     BlackboardSyncError,
@@ -17,9 +21,13 @@ from blackboard_sync.errors import (
     NotebookLMSignInFailed,
     NotebookLMTransient,
 )
-from blackboard_sync.notebooklm import planner, runner, signin, store
+from blackboard_sync.menubar import jobs, main_window_model
+from blackboard_sync.menubar.model import NOTEBOOKLM_DUPLICATES, AppModel
+from blackboard_sync.notebooklm import duplicates, planner, runner, signin, store
 from blackboard_sync.notebooklm.planner import CourseScan, FileInfo
+from blackboard_sync.settings import Settings
 from blackboard_sync.state import State
+from blackboard_sync.sync import run_lock
 
 from .conftest import assert_owner_only
 
@@ -31,6 +39,7 @@ class Remote:
     id: str
     title: str
     status: str = "ready"
+    created_at: str = ""
 
 
 class FakeGateway:
@@ -41,6 +50,8 @@ class FakeGateway:
         self.sources = {key: list(value) for key, value in (sources or {}).items()}
         self.limit = limit
         self.added: list[tuple[str, str]] = []
+        self.deleted: list[str] = []
+        self.undeletable: set[str] = set()
         self.failures: dict[str, list[Exception]] = {}  # per title, raised before it goes up
         self.land_despite_failure = False
         self.processing = "ready"
@@ -72,6 +83,12 @@ class FakeGateway:
         self.sources.setdefault(notebook_id, []).append(source)
         return source.id
 
+    async def delete_source(self, notebook_id, source_id):
+        if source_id in self.undeletable:
+            raise NotebookLMTransient("timed out")
+        self.deleted.append(source_id)
+        self.sources[notebook_id] = [s for s in self.sources[notebook_id] if s.id != source_id]
+
     async def wait_ready(self, notebook_id, source_ids, timeout):
         return {source_id: self.processing for source_id in source_ids}
 
@@ -79,18 +96,20 @@ class FakeGateway:
         self.closed = True
 
 
-def put(config, folder, rel, data=b"content", kind="attachment", name=None):
-    """A file the sync downloaded, recorded in its state."""
+def put(config, folder, rel, data=None, kind="attachment", name=None):
+    """A file the sync downloaded, recorded in its state; files have their own content by default."""
     path = f"{folder}/{rel}"
     target = config.root / path
     target.parent.mkdir(parents=True, exist_ok=True)
+    data = path.encode() if data is None else data
     target.write_bytes(data)
     return f"{kind}:_1_1:{name or path}", {"path": path, "sha256": "x", "size": len(data)}
 
 
 @pytest.fixture
 def config(tmp_path):
-    made = Config(dest=tmp_path / "dest", data_dir=tmp_path / "data")
+    made = Config(dest=tmp_path / "dest", data_dir=tmp_path / "data",
+                  notebooklm_legacy_state=tmp_path / "legacy" / "state.json")
     made.ensure_data_dir()
     store.session_file(made).parent.mkdir()
     store.session_file(made).write_text("{}")
@@ -186,7 +205,8 @@ def scan_of(tmp_path, *names):
     files = []
     for name in names:
         path = tmp_path / name
-        path.write_bytes(b"data")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(name.encode())
         info = path.stat()
         files.append(FileInfo(name, path, info.st_size, info.st_mtime_ns))
     return CourseScan("T/C", "C", files)
@@ -1028,7 +1048,7 @@ def test_the_gateway_lists_and_adds_through_the_library():
     class Sources:
         async def list(self, notebook_id):
             status = type("Status", (), {"name": "READY"})
-            return [type("S", (), {"id": "s1", "title": "Müh.pdf", "status": status})]
+            return [type("S", (), {"id": "s1", "title": "Müh.pdf", "status": status, "created_at": None})]
 
         async def add_file(self, notebook_id, path, title, wait):
             assert wait is False
@@ -1061,3 +1081,494 @@ def test_a_failing_limit_lookup_is_not_fatal():
     gateway = gateway_mod.Gateway(Path("session.json"))
     gateway._client = type("Client", (), {"settings": Settings()})
     assert asyncio.run(gateway.source_limit()) is None
+
+
+# Files that are in the notebook already, under whatever title NotebookLM left them.
+
+
+@pytest.mark.parametrize("title", [
+    "Lecture Notes/Week 1/Notlar_1.pptx",  # the library's rename worked
+    "Notlar_1.pptx",  # it did not: the bare file name
+    unicodedata.normalize("NFD", "Notlar_1.pptx"),
+    "NOTLAR_1.PPTX",
+    "Notlar_1",  # no extension
+])
+def test_every_title_notebooklm_leaves_counts_as_there(tmp_path, title):
+    scan = scan_of(tmp_path, "Lecture Notes/Week 1/Notlar_1.pptx")
+    plan = planner.plan_course(scan, store.UploadState(tmp_path / "s"), matches=[Remote("n", "C")],
+                               sources=[Remote("old", title)], limit=50)
+    assert [(a.action, a.source_id) for a in plan.actions] == [(planner.ADOPT, "old")]
+
+
+def test_a_decomposed_turkish_name_matches_its_composed_path(tmp_path):
+    name = "Haftalık Özet.pdf"
+    scan = scan_of(tmp_path, f"Ders/{name}")
+    plan = planner.plan_course(scan, store.UploadState(tmp_path / "s"), matches=[Remote("n", "C")],
+                               sources=[Remote("old", unicodedata.normalize("NFD", name))], limit=50)
+    assert actions(plan) == {f"Ders/{name}": planner.ADOPT}
+
+
+def test_the_same_name_under_another_extension_is_another_file(tmp_path):
+    scan = scan_of(tmp_path, "Syllabus.pdf")
+    plan = planner.plan_course(scan, store.UploadState(tmp_path / "s"), matches=[Remote("n", "C")],
+                               sources=[Remote("old", "Syllabus.docx")], limit=50)
+    assert actions(plan) == {"Syllabus.pdf": planner.UPLOAD}
+
+
+def test_a_name_that_could_be_several_sources_is_held_not_added(tmp_path):
+    scan = scan_of(tmp_path, "Week 2/notes.pdf")
+    plan = planner.plan_course(scan, store.UploadState(tmp_path / "s"), matches=[Remote("n", "C")],
+                               sources=[Remote("a", "notes.pdf"), Remote("b", "Other/notes.pdf")], limit=50)
+    assert actions(plan) == {"Week 2/notes.pdf": planner.HOLD}
+    assert not plan.uploads
+
+
+def test_two_files_cannot_both_be_the_one_bare_title(tmp_path):
+    scan = scan_of(tmp_path, "Week 1/notes.pdf", "Week 2/notes.pdf")
+    plan = planner.plan_course(scan, store.UploadState(tmp_path / "s"), matches=[Remote("n", "C")],
+                               sources=[Remote("a", "notes.pdf")], limit=50)
+    assert set(actions(plan).values()) == {planner.HOLD}
+
+
+def test_an_unknown_source_with_the_same_name_stops_the_upload_even_in_another_folder(tmp_path):
+    """The safety net: a file whose name is in the notebook is not added on a guess."""
+    scan = scan_of(tmp_path, "Week 2/notes.pdf")
+    plan = planner.plan_course(scan, store.UploadState(tmp_path / "s"), matches=[Remote("n", "C")],
+                               sources=[Remote("a", "Week 1/notes.pdf")], limit=50)
+    assert actions(plan) == {"Week 2/notes.pdf": planner.HOLD}
+
+
+def test_a_source_known_to_hold_other_content_is_not_this_file(tmp_path):
+    scan = scan_of(tmp_path, "Week 2/notes.pdf")
+    state = store.UploadState(tmp_path / "s")
+    state.record("T/C", "Week 1/notes.pdf", notebook_id="n", source_id="a", size=1, mtime_ns=1, sha256="other")
+    plan = planner.plan_course(scan, state, matches=[Remote("n", "C")], sources=[Remote("a", "notes.pdf")], limit=50)
+    assert actions(plan) == {"Week 2/notes.pdf": planner.UPLOAD}
+
+
+def test_a_moved_file_is_found_by_its_content(tmp_path):
+    scan = scan_of(tmp_path, "Renamed folder/new name.pdf")
+    state = store.UploadState(tmp_path / "s")
+    digest = store.sha256_file(scan.files[0].path)
+    state.record("T/C", "Old folder/old name.pdf", notebook_id="n", source_id="a", size=1, mtime_ns=1, sha256=digest)
+    plan = planner.plan_course(scan, state, matches=[Remote("n", "C")], sources=[Remote("a", "old name.pdf")], limit=50)
+    assert [(a.action, a.source_id) for a in plan.actions] == [(planner.ADOPT, "a")]
+
+
+def test_the_same_content_in_two_folders_goes_up_once(tmp_path):
+    scan = scan_of(tmp_path, "A/x.pdf", "B/y.pdf")
+    scan.files[1].path.write_bytes(scan.files[0].path.read_bytes())
+    plan = planner.plan_course(scan, store.UploadState(tmp_path / "s"), matches=[Remote("n", "C")], sources=[], limit=50)
+    assert actions(plan) == {"A/x.pdf": planner.UPLOAD, "B/y.pdf": planner.HOLD}
+
+
+def test_a_copy_that_failed_processing_does_not_count_as_there(tmp_path):
+    scan = scan_of(tmp_path, "A/x.pdf")
+    plan = planner.plan_course(scan, store.UploadState(tmp_path / "s"), matches=[Remote("n", "C")],
+                               sources=[Remote("a", "x.pdf", "error")], limit=50)
+    assert actions(plan) == {"A/x.pdf": planner.UPLOAD}
+
+
+def test_a_held_file_is_reported_and_nothing_goes_up(config):
+    write_state(config, [CS], [put(config, CS, "Week 2/notes.pdf")])
+    gateway = FakeGateway([Remote("n1", "CSE301 Database")],
+                          {"n1": [Remote("a", "notes.pdf"), Remote("b", "Other/notes.pdf")]})
+
+    result = run(config, gateway)
+
+    assert not gateway.added and len(result.held) == 1
+    assert result.notice() == "1 file may already be in NotebookLM, so it was not added."
+    assert store.status(config).held == 1
+    assert "CSE301 Database/Week 2/notes.pdf" in result.last_run()["held_files"][0]
+
+
+def test_a_failure_that_landed_is_found_while_it_is_still_preparing(config):
+    write_state(config, [CS], [put(config, CS, "Week 1/a.pdf")])
+
+    class Landing(FakeGateway):
+        async def add_file(self, notebook_id, path, title):
+            self.sources.setdefault(notebook_id, []).append(Remote("landed", "a.pdf", "preparing"))
+            raise NotebookLMTransient("timed out")
+
+    gateway = Landing()
+    run(config, gateway)
+
+    assert store.UploadState.load(store.state_file(config)).get_file(CS, "Week 1/a.pdf")["source_id"] == "landed"
+
+
+def test_a_retry_does_not_take_an_older_source_with_the_same_name_for_its_own(config):
+    entry = put(config, CS, "Week 2/a.pdf")
+    write_state(config, [CS], [entry])
+    state = store.UploadState(store.state_file(config))
+    state.record(CS, "Week 1/a.pdf", notebook_id="n1", source_id="other", size=1, mtime_ns=1, sha256="different")
+    state.save()
+    gateway = FakeGateway([Remote("n1", "CSE301 Database")], {"n1": [Remote("other", "a.pdf")]})
+    gateway.failures["Week 2/a.pdf"] = [NotebookLMTransient("timed out")]
+
+    run(config, gateway)
+
+    assert gateway.added == [("n1", "Week 2/a.pdf")]
+    assert store.UploadState.load(store.state_file(config)).get_file(CS, "Week 2/a.pdf")["source_id"] == "s1"
+
+
+# What the dersler-notebooklm tool uploaded before this app.
+
+
+def legacy(config, course="CSE301 Database", notebook="n1", files=None):
+    config.notebooklm_legacy_state.parent.mkdir(exist_ok=True)
+    config.notebooklm_legacy_state.write_text(json.dumps({"version": 1, "courses": {
+        course: {"notebook_id": notebook, "files": files or {}}}}), encoding="utf-8")
+    return config.notebooklm_legacy_state.read_bytes()
+
+
+def legacy_entry(config, folder, rel, source_id, notebook="n1", **changes):
+    path = config.root / folder / rel
+    info = path.stat()
+    return {"notebook_id": notebook, "source_id": source_id, "size": info.st_size, "mtime_ns": info.st_mtime_ns,
+            "sha256": store.sha256_file(path), "uploaded_at": "2026-10-23T10:18:47+00:00", **changes}
+
+
+def test_what_the_old_tool_uploaded_is_not_added_again_under_any_title(config):
+    write_state(config, [CS], [put(config, CS, "Week 1/a.pdf"), put(config, CS, "b.pdf")])
+    before = legacy(config, files={"Week 1/a.pdf": legacy_entry(config, CS, "Week 1/a.pdf", "old-a"),
+                                   "b.pdf": legacy_entry(config, CS, "b.pdf", "old-b")})
+    gateway = FakeGateway([Remote("n1", "CSE301 Database")],
+                          {"n1": [Remote("old-a", "Something the document calls itself"), Remote("old-b", "b.pdf")]})
+
+    result = run(config, gateway)
+
+    assert not gateway.added and not result.held
+    saved = store.UploadState.load(store.state_file(config))
+    assert saved.get_file(CS, "Week 1/a.pdf")["source_id"] == "old-a"
+    assert saved.get_file(CS, "Week 1/a.pdf")["origin"] == store.LEGACY_TOOL
+    assert config.notebooklm_legacy_state.read_bytes() == before
+
+
+def test_a_legacy_import_needs_no_network_for_an_automatic_run(config):
+    write_state(config, [CS], [put(config, CS, "a.pdf")])
+    legacy(config, files={"a.pdf": legacy_entry(config, CS, "a.pdf", "old")})
+    store.session_file(config).touch()
+
+    assert run(config, FakeGateway(), auto=True).worked is False
+
+
+def test_a_file_that_changed_since_the_old_tool_is_reported_not_added(config):
+    entry = put(config, CS, "a.pdf")
+    write_state(config, [CS], [entry])
+    legacy(config, files={"a.pdf": legacy_entry(config, CS, "a.pdf", "old", sha256="not this content", size=1)})
+    gateway = FakeGateway([Remote("n1", "CSE301 Database")], {"n1": [Remote("old", "a.pdf")]})
+
+    result = run(config, gateway)
+
+    assert not gateway.added and len(result.modified) == 1
+
+
+def test_the_old_tools_record_of_another_notebook_counts_for_nothing(config):
+    write_state(config, [CS], [put(config, CS, "Week 1/a.pdf")])
+    legacy(config, files={"Week 1/a.pdf": legacy_entry(config, CS, "Week 1/a.pdf", "old", notebook="elsewhere")})
+    gateway = FakeGateway([Remote("n1", "CSE301 Database")])
+
+    run(config, gateway)
+
+    assert gateway.added == [("n1", "Week 1/a.pdf")]
+
+
+def test_a_file_already_recorded_keeps_its_entry_but_the_old_copy_is_remembered(config):
+    state = store.UploadState(store.state_file(config))
+    state.record(CS, "a.pdf", notebook_id="n1", source_id="new", size=1, mtime_ns=1, sha256="h")
+    config.notebooklm_legacy_state.parent.mkdir()
+    config.notebooklm_legacy_state.write_text(json.dumps({"courses": {"CSE301 Database": {"files": {
+        "a.pdf": {"notebook_id": "n1", "source_id": "old", "size": 1, "mtime_ns": 1, "sha256": "h"}}}}}))
+
+    assert state.import_legacy([CS], config.notebooklm_legacy_state) == 0
+    assert state.get_file(CS, "a.pdf")["source_id"] == "new"
+    assert state.known_sources(CS)["old"].origin == store.ORIGIN_LEGACY
+
+
+@pytest.mark.parametrize("text", ["not json", "[]", '{"courses": []}', '{"courses": {"C": {"files": 1}}}'])
+def test_an_unusable_old_state_is_ignored(tmp_path, text):
+    path = tmp_path / "state.json"
+    path.write_text(text)
+    assert store.UploadState(tmp_path / "s").import_legacy(["T/C"], path) == 0
+
+
+def test_a_missing_old_state_is_no_problem(tmp_path):
+    assert store.UploadState(tmp_path / "s").import_legacy(["T/C"], tmp_path / "none.json") == 0
+
+
+def test_the_old_state_path_can_be_set(tmp_path):
+    env = {"BBSYNC_DATA_DIR": str(tmp_path), "BBSYNC_NOTEBOOKLM_LEGACY_STATE": "~/elsewhere/state.json"}
+    assert Config.from_env(env).notebooklm_legacy_state == Path.home() / "elsewhere" / "state.json"
+    assert Config.from_env({"BBSYNC_DATA_DIR": str(tmp_path)}).notebooklm_legacy_state.name == "state.json"
+
+
+# Duplicates: listing, and removing only what is safe to remove.
+
+OLD, NEW = "2026-10-23T10:18:00+00:00", "2026-11-06T10:53:00+00:00"
+
+
+def known(rel="a.pdf", sha="h", origin=store.ORIGIN_APP):
+    return store.KnownSource(rel, sha, origin)
+
+
+def verdicts(sources, record):
+    return [(d.older.id, [(c.id, c.verdict, c.removable) for c in d.newer])
+            for d in duplicates.find_in_notebook(sources, record)]
+
+
+def test_a_newer_identical_copy_this_app_added_can_go():
+    sources = [Remote("new", "a.pdf", created_at=NEW), Remote("old", "Week 1/a.pdf", created_at=OLD)]
+    record = {"old": known(origin=store.ORIGIN_LEGACY), "new": known()}
+    assert verdicts(sources, record) == [("old", [("new", duplicates.IDENTICAL, True)])]
+
+
+def test_a_file_changed_on_blackboard_keeps_both_versions():
+    sources = [Remote("old", "a.pdf", created_at=OLD), Remote("new", "a.pdf", created_at=NEW)]
+    record = {"old": known(sha="before", origin=store.ORIGIN_LEGACY), "new": known(sha="after")}
+    assert verdicts(sources, record) == [("old", [("new", duplicates.CHANGED, False)])]
+
+
+@pytest.mark.parametrize("record", [
+    {},  # nothing here knows them
+    {"old": known()},  # the newer copy is nobody's on this computer
+    {"old": known(), "new": known(origin=store.ORIGIN_ADOPTED)},  # the app found it there
+    {"old": known(), "new": known(origin=store.ORIGIN_LEGACY)},
+])
+def test_a_copy_this_app_did_not_add_is_listed_and_stays(record):
+    sources = [Remote("old", "a.pdf", created_at=OLD), Remote("new", "a.pdf", created_at=NEW)]
+    assert verdicts(sources, record) == [("old", [("new", duplicates.NOT_ADDED_BY_APP, False)])]
+
+
+def test_an_older_copy_with_unknown_content_is_no_ground_for_removing_the_newer():
+    sources = [Remote("hand", "a.pdf", created_at=OLD), Remote("new", "a.pdf", created_at=NEW)]
+    assert verdicts(sources, {"new": known()}) == [("hand", [("new", duplicates.UNVERIFIED, False)])]
+
+
+@pytest.mark.parametrize("older", [
+    Remote("old", "a.pdf", "error", OLD),  # the only good copy would go
+    Remote("old", "a.pdf", "ready", ""),  # no telling which is older
+])
+def test_the_copy_that_stays_must_be_good_and_older(older):
+    sources = [older, Remote("new", "a.pdf", created_at=NEW)]
+    record = {"old": known(origin=store.ORIGIN_LEGACY), "new": known()}
+    assert not any(copy.removable for d in duplicates.find_in_notebook(sources, record) for copy in d.newer)
+
+
+def test_two_different_files_sharing_a_name_are_no_duplicate():
+    sources = [Remote("one", "notes.pdf", created_at=OLD), Remote("two", "notes.pdf", created_at=NEW)]
+    assert verdicts(sources, {"one": known("A/notes.pdf", "h1"), "two": known("B/notes.pdf", "h2")}) == []
+
+
+def test_each_of_two_same_named_files_has_its_own_duplicate():
+    sources = [Remote("b", "notes.pdf", created_at=OLD), Remote("a", "notes.pdf", created_at="2026-10-24T00:00:00+00:00"),
+               Remote("a2", "notes.pdf", created_at=NEW)]
+    record = {"b": known("B/notes.pdf", "h2"), "a": known("A/notes.pdf", "h1", store.ORIGIN_LEGACY),
+              "a2": known("A/notes.pdf", "h1")}
+    assert verdicts(sources, record) == [("a", [("a2", duplicates.IDENTICAL, True)])]
+
+
+def record_pair(config, removable=True):
+    """The live case: the old tool's copy, and this app's newer one of the same file."""
+    state = store.UploadState(store.state_file(config))
+    state.set_notebook(CS, "n1")
+    state.record(CS, "Week 1/a.pdf", notebook_id="n1", source_id="new", size=1, mtime_ns=1, sha256="h")
+    state.save()
+    config.notebooklm_legacy_state.parent.mkdir(exist_ok=True)
+    config.notebooklm_legacy_state.write_text(json.dumps({"courses": {"CSE301 Database": {"files": {
+        "Week 1/a.pdf": {"notebook_id": "n1", "source_id": "old", "size": 1, "mtime_ns": 1,
+                         "sha256": "h" if removable else "older content"}}}}}))
+    return FakeGateway(sources={"n1": [Remote("old", "a.pdf", created_at=OLD),
+                                       Remote("hand", "b.pdf", created_at=OLD),
+                                       Remote("hand2", "b.pdf", created_at=NEW),
+                                       Remote("new", "Week 1/a.pdf", created_at=NEW)]})
+
+
+@pytest.fixture
+def gateway_of(monkeypatch):
+    """Runs the duplicates step against this gateway, without its pause between removals."""
+    monkeypatch.setattr(duplicates, "DELETE_DELAY_SECONDS", 0)
+
+    def use(gateway):
+        async def opener(_config):
+            return gateway
+
+        monkeypatch.setattr(runner, "open_gateway", opener)
+        return gateway
+
+    return use
+
+
+def test_listing_deletes_nothing(config, gateway_of):
+    gateway = gateway_of(record_pair(config))
+
+    report = duplicates.find(config)
+
+    assert report.status == "ok" and not gateway.deleted
+    assert report.as_dict()["duplicates"] == 2 and report.as_dict()["removable"] == 1
+    assert gateway.closed
+
+
+def test_removing_takes_only_the_newer_copy_and_the_file_stays_known(config, gateway_of):
+    gateway = gateway_of(record_pair(config))
+
+    report = duplicates.remove(config, ["new", "old", "hand", "hand2"])
+
+    assert gateway.deleted == ["new"]
+    assert report.removed == ["CSE301 Database/Week 1/a.pdf"]
+    entry = store.UploadState.load(store.state_file(config)).get_file(CS, "Week 1/a.pdf")
+    assert entry["source_id"] == "old" and entry["adopted"]
+
+
+def test_a_changed_file_is_not_removed_even_when_asked(config, gateway_of):
+    gateway = gateway_of(record_pair(config, removable=False))
+
+    duplicates.remove(config, ["new"])
+
+    assert not gateway.deleted
+
+
+def test_a_failed_removal_is_reported_and_leaves_the_record(config, gateway_of):
+    gateway = gateway_of(record_pair(config))
+    gateway.undeletable.add("new")
+
+    report = duplicates.remove(config, ["new"])
+
+    assert report.failed and not report.removed
+    assert store.UploadState.load(store.state_file(config)).get_file(CS, "Week 1/a.pdf")["source_id"] == "new"
+
+
+def test_removing_a_copy_does_not_bring_the_file_back(config, gateway_of):
+    write_state(config, [CS], [put(config, CS, "Week 1/a.pdf")])
+    gateway = gateway_of(record_pair(config))
+    gateway.notebooks = [Remote("n1", "CSE301 Database")]
+    duplicates.remove(config, ["new"])
+
+    run(config, gateway)
+
+    assert not gateway.added
+
+
+def test_duplicates_wait_for_a_running_sync(config, gateway_of):
+    gateway_of(FakeGateway())
+    with run_lock(store.lock_file(config)):
+        assert duplicates.find(config).status == "locked"
+
+
+def test_duplicates_need_a_session(config, gateway_of):
+    gateway_of(FakeGateway())
+    store.session_file(config).unlink()
+    assert duplicates.find(config).status == "login_required"
+
+
+def cli(config, monkeypatch, *arguments, tty=False, answer=""):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: tty, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _prompt: answer)
+    monkeypatch.setenv("BBSYNC_NOTEBOOKLM_LEGACY_STATE", str(config.notebooklm_legacy_state))
+    return main(["--data-dir", str(config.data_dir), "notebooklm", *arguments])
+
+
+def test_the_duplicates_command_lists_as_json_and_deletes_nothing(config, monkeypatch, capsys, gateway_of):
+    gateway = gateway_of(record_pair(config))
+
+    assert cli(config, monkeypatch, "duplicates", "--json") == 0
+
+    report = json.loads(capsys.readouterr().out)
+    assert report["removable"] == 1 and not gateway.deleted
+    copy = report["courses"][0]["duplicates"][0]
+    assert copy["older"]["id"] == "old" and copy["newer"][0]["id"] == "new"
+
+
+def test_the_duplicates_command_says_which_copy_is_which(config, monkeypatch, capsys, gateway_of):
+    gateway_of(record_pair(config))
+    assert cli(config, monkeypatch, "duplicates") == 0
+    out = capsys.readouterr().out
+    assert "a.pdf" in out and "2026-10-23" in out and "2026-11-06" in out and "can be removed" in out
+
+
+def test_removing_from_a_script_needs_yes(config, monkeypatch, capsys, gateway_of):
+    gateway = gateway_of(record_pair(config))
+
+    assert cli(config, monkeypatch, "remove-duplicates") != 0
+
+    assert not gateway.deleted
+
+
+@pytest.mark.parametrize("answer, deleted", [("", []), ("n", []), ("y", ["new"])])
+def test_removing_asks_first(config, monkeypatch, capsys, gateway_of, answer, deleted):
+    gateway = gateway_of(record_pair(config))
+    cli(config, monkeypatch, "remove-duplicates", tty=True, answer=answer)
+    assert gateway.deleted == deleted
+
+
+def test_yes_removes_only_the_named_copies(config, monkeypatch, capsys, gateway_of):
+    gateway = gateway_of(record_pair(config))
+    assert cli(config, monkeypatch, "remove-duplicates", "--yes", "--source", "other") == 0
+    assert not gateway.deleted
+    assert cli(config, monkeypatch, "remove-duplicates", "--yes", "--source", "new") == 0
+    assert gateway.deleted == ["new"]
+
+
+def test_the_gateway_reads_the_age_of_a_source_and_deletes_through_the_library():
+    gateway_mod = gateway_module()
+    deleted = []
+
+    class Sources:
+        async def list(self, notebook_id):
+            status = type("Status", (), {"name": "READY"})
+            when = datetime(2026, 10, 23, 10, 18, tzinfo=timezone.utc)
+            return [type("S", (), {"id": "s1", "title": "a.pdf", "status": status, "created_at": when})]
+
+        async def delete(self, notebook_id, source_id):
+            deleted.append((notebook_id, source_id))
+
+    gateway = gateway_mod.Gateway(Path("session.json"))
+    gateway._client = type("Client", (), {"sources": Sources()})
+
+    async def scenario():
+        assert (await gateway.list_sources("n1"))[0].created_at == "2026-10-23T10:18:00+00:00"
+        await gateway.delete_source("n1", "s1")
+
+    asyncio.run(scenario())
+    assert deleted == [("n1", "s1")]
+
+
+def test_the_card_says_what_was_held_back_and_when_it_looks_for_duplicates(tmp_path):
+    model = AppModel(Settings(base_url="https://bb.example.edu", dest=tmp_path), datetime.now(timezone.utc))
+    model.notebooklm = store.NotebookLMStatus(connected=True, finished_at="2026-11-06T10:00:00+00:00", held=2)
+    assert "2 held back" in main_window_model.notebooklm_card(model, datetime.now(timezone.utc)).counts
+    assert model.begin_notebooklm(NOTEBOOKLM_DUPLICATES)
+    card = main_window_model.notebooklm_card(model, datetime.now(timezone.utc))
+    assert card.running and card.detail == main_window_model.T_NOTEBOOKLM_DUPLICATES_RUNNING
+
+
+def test_the_duplicates_window_lists_both_copies_and_only_offers_what_can_go():
+    copy = {"created_at": NEW, "verdict": "changed", "removable": False, "id": "x"}
+    report = {"duplicates": 2, "courses": [
+        {"course": "CSE301", "duplicates": [
+            {"name": "a.pdf", "older": {"created_at": OLD}, "newer": [copy]},
+            {"name": "b.pdf", "older": {"created_at": OLD},
+             "newer": [{**copy, "verdict": "identical", "removable": True, "id": "y"}]}]},
+        {"course": "Empty", "duplicates": []}]}
+
+    assert main_window_model.removable_ids(report) == ["y"]
+    assert main_window_model.duplicates_title(report).startswith("2 ")
+    text = main_window_model.duplicates_text(report)
+    assert "CSE301" in text and "2026-10-23" in text and "2026-11-06" in text and "Empty" not in text
+    assert main_window_model.duplicates_title({"duplicates": 0}) == "No duplicates in your notebooks."
+
+
+def test_the_app_lists_duplicates_through_the_child_and_survives_its_failure(monkeypatch):
+    calls = []
+
+    def fake_run(command, **_options):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout='noise\n{"status": "ok"}\n', stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert jobs.run_notebooklm_duplicates() == {"status": "ok"}
+    assert jobs.run_notebooklm_duplicates(["a", "b"]) == {"status": "ok"}
+    assert calls[0][-3:] == ["notebooklm", "duplicates", "--json"]
+    assert calls[1][-4:] == ["--source", "a", "--source", "b"] and "--yes" in calls[1]
+
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: subprocess.CompletedProcess([], 1, stdout="", stderr=""))
+    assert jobs.run_notebooklm_duplicates()["status"] == "error"

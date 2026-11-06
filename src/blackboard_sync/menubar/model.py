@@ -125,8 +125,8 @@ MOVE_JOB = "move"
 # sync reads the session while it is replaced, and is otherwise invisible.
 SESSION_JOB = "session"
 
-# The two things the NotebookLM slot runs (``AppModel.notebooklm_busy``).
-NOTEBOOKLM_CONNECT, NOTEBOOKLM_SYNC = "connect", "sync"
+# The things the NotebookLM slot runs (``AppModel.notebooklm_busy``).
+NOTEBOOKLM_CONNECT, NOTEBOOKLM_SYNC, NOTEBOOKLM_DUPLICATES = "connect", "sync", "duplicates"
 
 # After a past-term lookup that met a running sync or failed, when to try again (Genel in view).
 PAST_RETRY_DELAYS = {"locked": timedelta(seconds=15), "error": timedelta(seconds=60)}
@@ -700,7 +700,7 @@ class AppModel:
         from blackboard_sync.notebooklm.store import NotebookLMStatus
         self.notebooklm = NotebookLMStatus()
         # Beside the job slot, like the calendar: uploads take minutes and must never hold up a sync.
-        self.notebooklm_busy: str | None = None  # NOTEBOOKLM_CONNECT | NOTEBOOKLM_SYNC
+        self.notebooklm_busy: str | None = None  # NOTEBOOKLM_CONNECT | NOTEBOOKLM_SYNC | NOTEBOOKLM_DUPLICATES
         self.notebooklm_progress = None  # main_window_model.NotebookLMProgress of the running job
         self.notebooklm_again = False  # a sync finished during a run: look again once it ends
         self.busy: str | None = None  # "sync" | "login" | "move" | ...
