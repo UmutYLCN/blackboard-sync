@@ -226,10 +226,13 @@ called Gemini Notebook), so you can ask questions about them. It is on Mac only 
 **Connect once.** On **Home**, press **Connect NotebookLM** on the NotebookLM card. A browser window
 opens on Google's own sign-in page; sign in and it closes by itself. Your password goes only to
 Google. You need Chrome, Edge, Brave or another Chromium browser installed, as for the Blackboard
-sign-in.
+sign-in. Once you are connected, the first run starts right away. If the sign-in does not finish, the
+card says why (out of time, window closed, NotebookLM did not open) and you can try again.
 
 **After that it runs by itself.** After every successful Blackboard sync, new files are added in the
-background. **Sync NotebookLM** on the card does the same on demand. Your downloads are never held up:
+background. **Sync NotebookLM** on the card does the same on demand, and **Open NotebookLM** opens your
+notebooks in your browser. While files go up, the card counts them across your courses, up to three
+of which are worked on at a time. Your downloads are never held up:
 NotebookLM runs on its own after the sync, and a problem shows only on the card. Pause stops it too.
 To turn the automatic step off, untick **Settings → NotebookLM → Add new files to NotebookLM after
 each sync**; the button keeps working.

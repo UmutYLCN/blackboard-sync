@@ -287,7 +287,13 @@ def cmd_notebooklm(args, config: Config) -> int:
         print(json.dumps(event, ensure_ascii=False), flush=True)
 
     if args.notebooklm_action == "login":
-        signin.login(config)
+        outcome, message = signin.CONNECTED, ""
+        try:
+            signin.login(config, on_verify=lambda: emit({"event": "sign_in", "step": "verify"}))
+        except BlackboardSyncError as exc:
+            outcome, message = getattr(exc, "outcome", "error"), str(exc)
+        emit({"event": "result", **asdict(store.status(config)), "outcome": outcome, "message": message})
+        return EXIT_OK if outcome == signin.CONNECTED else EXIT_ERROR
     elif args.notebooklm_action == "sync":
         result = runner.run(config, auto=args.auto, events=emit)
         emit({"event": "result", **result.last_run()})

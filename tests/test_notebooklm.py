@@ -3,7 +3,7 @@
 import asyncio
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -13,6 +13,8 @@ from blackboard_sync.errors import (
     BlackboardSyncError,
     NotebookLMLoginRequired,
     NotebookLMPermanent,
+    NotebookLMRateLimited,
+    NotebookLMSignInFailed,
     NotebookLMTransient,
 )
 from blackboard_sync.notebooklm import planner, runner, signin, store
@@ -505,7 +507,9 @@ def test_progress_events_count_the_uploads(config):
     events: list[dict] = []
     run(config, FakeGateway(), events=events.append)
     assert events[0] == {"event": "planning"}
-    assert events[-1] == {"event": "progress", "done": 2, "total": 2, "course": "CSE301 Database"}
+    assert events[-1]["event"] == "processing"
+    assert events[-2] == {"event": "progress", "done": 2, "finished": 2, "total": 2, "course": "CSE301 Database",
+                          "file": "b.pdf"}
 
 
 def test_a_stopped_run_lost_nothing(config):
@@ -576,15 +580,21 @@ class FakePage:
 class FakeContext:
     def __init__(self, pages, cookies=()):
         self.pages = pages
-        self.cookies = list(cookies)
+        self.names = list(cookies)
 
-    def storage_state(self):
-        return {"cookies": [{"name": name, "value": "v"} for name in self.cookies], "origins": []}
+    def cookies(self):
+        return [{"name": name, "value": "v"} for name in self.names]
 
 
 class FakeBrowser:
+    """Like Playwright's sync API: what the browser did only arrives during a call, here ``cookies()``.
+
+    Each entry of ``timeline`` is the browser at the next look; ``sleep`` alone changes nothing.
+    """
+
     def __init__(self, *timeline):
         self.timeline = list(timeline)
+        self.context = FakeContext([FakePage("about:blank")])
         self.closed = False
 
     def is_connected(self):
@@ -592,7 +602,19 @@ class FakeBrowser:
 
     @property
     def contexts(self):
-        return [self.timeline.pop(0) if len(self.timeline) > 1 else self.timeline[0]]
+        browser = self
+
+        class Live:
+            @property
+            def pages(self):
+                return browser.context.pages
+
+            def cookies(self):
+                if browser.timeline:
+                    browser.context = browser.timeline.pop(0)
+                return browser.context.cookies()
+
+        return [Live()]
 
     def new_browser_cdp_session(self):
         class Session:
@@ -658,8 +680,21 @@ def test_a_session_google_rejects_is_not_kept(config, signin_seams):
     def check(_config):
         raise NotebookLMLoginRequired()
 
-    with pytest.raises(NotebookLMLoginRequired):
+    with pytest.raises(NotebookLMSignInFailed) as caught:
         signin.login(config, run=spawn_run, connect=lambda url: FakeBrowser(SIGNED_IN), check=check, platform="darwin")
+    assert caught.value.outcome == signin.VERIFY_FAILED
+    assert not store.session_file(config).exists()
+
+
+def test_a_session_the_library_cannot_use_is_not_kept(config, signin_seams):
+    _started, spawn_run = signin_seams
+
+    def check(_config):
+        raise NotebookLMPermanent("no such thing")
+
+    with pytest.raises(NotebookLMSignInFailed) as caught:
+        signin.login(config, run=spawn_run, connect=lambda url: FakeBrowser(SIGNED_IN), check=check, platform="darwin")
+    assert caught.value.outcome == signin.VERIFY_FAILED
     assert not store.session_file(config).exists()
 
 
@@ -680,12 +715,269 @@ def test_no_supported_browser_is_said_plainly(config, monkeypatch):
         raise NoSupportedBrowserError("no browser")
 
     monkeypatch.setattr(signin, "find_browser", missing)
-    with pytest.raises(BlackboardSyncError, match="needs Chrome, Edge or Brave"):
+    with pytest.raises(NotebookLMSignInFailed, match="needs Chrome, Edge or Brave") as caught:
         signin.login(config, platform="darwin")
+    assert caught.value.outcome == signin.NO_BROWSER
 
 
 def test_a_free_port_is_a_real_port():
     assert signin.free_port() > 0
+
+
+def test_the_sign_in_sees_what_happened_while_it_slept():
+    """The bug of the first live test: the page only moved on for Playwright during a call of its
+    own, and looking at the URL alone made none, so a finished sign-in was never noticed."""
+    browser = FakeBrowser(FakeContext([FakePage("https://accounts.google.com/signin")]), SIGNED_IN)
+    state = signin.wait_for_sign_in(browser, timeout=5, sleep=lambda _s: None)
+    assert {cookie["name"] for cookie in state["cookies"]} == signin.REQUIRED_COOKIES
+    assert state["origins"] == []
+
+
+def test_a_closed_window_is_seen_while_nothing_else_happens():
+    browser = FakeBrowser(FakeContext([FakePage("https://accounts.google.com/signin")]), FakeContext([]))
+    with pytest.raises(NotebookLMSignInFailed) as caught:
+        signin.wait_for_sign_in(browser, timeout=5, sleep=lambda _s: None)
+    assert caught.value.outcome == signin.WINDOW_CLOSED
+
+
+def test_chromium_refusing_the_look_once_its_last_window_is_gone_counts_as_closed():
+    """What a real Chrome does: ``Storage.getCookies`` fails, the browser itself lives on."""
+    browser = FakeBrowser(FakeContext([FakePage("https://accounts.google.com/signin")]))
+    live = browser.contexts[0]
+
+    class Refusing:
+        pages: list = []
+
+        def cookies(self):
+            raise RuntimeError("Browser context management is not supported.")
+
+    browser.__class__ = type("Gone", (FakeBrowser,), {"contexts": property(lambda self: [Refusing()])})
+    assert live.pages  # it had a window a moment ago
+    with pytest.raises(NotebookLMSignInFailed) as caught:
+        signin.wait_for_sign_in(browser, timeout=5, sleep=lambda _s: None)
+    assert caught.value.outcome == signin.WINDOW_CLOSED
+
+
+def test_another_failure_of_the_look_is_not_hidden():
+    class Failing:
+        pages = [FakePage("https://accounts.google.com/signin")]
+
+        def cookies(self):
+            raise RuntimeError("something else")
+
+    browser = FakeBrowser()
+    browser.__class__ = type("Broken", (FakeBrowser,), {"contexts": property(lambda self: [Failing()])})
+    with pytest.raises(RuntimeError, match="something else"):
+        signin.wait_for_sign_in(browser, timeout=5, sleep=lambda _s: None)
+
+
+def test_running_out_of_time_says_so():
+    browser = FakeBrowser(FakeContext([FakePage("https://accounts.google.com/signin")]))
+    with pytest.raises(NotebookLMSignInFailed) as caught:
+        signin.wait_for_sign_in(browser, timeout=0, sleep=lambda _s: None)
+    assert caught.value.outcome == signin.TIMED_OUT
+
+
+def test_the_cli_reports_how_a_connect_ended(config, monkeypatch, capsys):
+    from blackboard_sync import cli
+
+    def fail(_config, **_options):
+        raise NotebookLMSignInFailed("Sign-in was not completed.", signin.TIMED_OUT)
+
+    monkeypatch.setattr(signin, "login", fail)
+    args = type("Args", (), {"notebooklm_action": "login"})()
+    assert cli.cmd_notebooklm(args, config) != 0
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert (result["outcome"], result["message"]) == (signin.TIMED_OUT, "Sign-in was not completed.")
+
+
+def test_the_cli_reports_a_connect_that_worked(config, monkeypatch, capsys):
+    from blackboard_sync import cli
+
+    def works(_config, on_verify, **_options):
+        on_verify()
+
+    monkeypatch.setattr(signin, "login", works)
+    args = type("Args", (), {"notebooklm_action": "login"})()
+    assert cli.cmd_notebooklm(args, config) == 0
+    lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert lines[0] == {"event": "sign_in", "step": "verify"}
+    assert lines[-1]["outcome"] == signin.CONNECTED
+
+
+# -- courses side by side -------------------------------------------------------------------------
+class ParallelGateway(FakeGateway):
+    """Counts the uploads in flight, per notebook and in all; each upload lets the others run."""
+
+    def __init__(self, **options):
+        super().__init__(**options)
+        self.in_flight: dict[str, int] = {}
+        self.most = 0
+        self.most_in_a_notebook = 0
+        self.after_limit: list[int] = []
+
+    async def add_file(self, notebook_id, path, title):
+        self.in_flight[notebook_id] = self.in_flight.get(notebook_id, 0) + 1
+        self.most = max(self.most, sum(self.in_flight.values()))
+        self.most_in_a_notebook = max(self.most_in_a_notebook, self.in_flight[notebook_id])
+        try:
+            for _ in range(3):
+                await asyncio.sleep(0)
+            return await super().add_file(notebook_id, path, title)
+        finally:
+            self.in_flight[notebook_id] -= 1
+
+
+def many_courses(config, courses=5, files=3):
+    folders = [f"{TERM}/C{index} Course" for index in range(courses)]
+    write_state(config, folders, [put(config, folder, f"{name}.pdf") for folder in folders
+                                  for name in "abcdefg"[:files]])
+    return folders
+
+
+async def yielding_sleep(_seconds):
+    await asyncio.sleep(0)
+
+
+def run_parallel(config, gateway, **options):
+    async def opener(_config):
+        return gateway
+
+    return runner.run(config, opener=opener, sleep=yielding_sleep, **options)
+
+
+def test_courses_go_side_by_side_and_a_course_stays_in_order(config):
+    many_courses(config)
+    gateway = ParallelGateway()
+
+    result = run_parallel(config, gateway)
+
+    assert len(result.added) == 15 and not result.failed
+    assert runner.COURSE_CONCURRENCY == 3
+    assert gateway.most == 3
+    assert gateway.most_in_a_notebook == 1
+
+
+def test_the_count_on_the_card_runs_across_all_courses(config):
+    many_courses(config)
+    events: list[dict] = []
+    run_parallel(config, ParallelGateway(), events=events.append)
+    progress = [event for event in events if event["event"] == "progress"]
+
+    assert {event["total"] for event in progress} == {15}
+    assert [event["done"] for event in progress] == sorted(event["done"] for event in progress)
+    assert [event["finished"] for event in progress] == sorted(event["finished"] for event in progress)
+    assert progress[-1]["done"] == progress[-1]["finished"] == 15
+    assert len({event["course"] for event in progress}) == 5
+
+
+def test_a_rate_limit_leaves_one_course_at_work(config):
+    many_courses(config, courses=4, files=4)
+    gateway = ParallelGateway()
+    gateway.failures["a.pdf"] = [NotebookLMRateLimited("429")]
+    seen_after: list[int] = []
+    original = gateway.add_file
+
+    async def watching(notebook_id, path, title):
+        if not gateway.failures["a.pdf"]:
+            seen_after.append(sum(gateway.in_flight.values()))
+        return await original(notebook_id, path, title)
+
+    gateway.add_file = watching
+
+    result = run_parallel(config, gateway)
+
+    assert len(result.added) == 16 and not result.failed
+    # Those already on their way finish that file; then it is one at a time, to the end.
+    assert seen_after[-8:] == [0] * 8
+
+
+def test_a_rate_limited_upload_keeps_its_three_waits(config):
+    write_state(config, [CS], [put(config, CS, "a.pdf")])
+    gateway = FakeGateway()
+    gateway.failures["a.pdf"] = [NotebookLMRateLimited("429"), NotebookLMRateLimited("429")]
+
+    result = run(config, gateway)
+
+    assert result.waits[:2] == [5.0, 15.0] and len(result.added) == 1
+
+
+def test_the_gate_lets_in_as_many_as_it_says_and_narrows():
+    async def scenario():
+        gate = runner.CourseGate(2)
+        await gate.enter("a")
+        await gate.enter("b")
+        third = asyncio.create_task(gate.enter("c"))
+        await asyncio.sleep(0)
+        assert not third.done()
+
+        gate.slow_down()
+        stepping = asyncio.create_task(gate.step("a"))
+        await asyncio.sleep(0)
+        assert gate.active == {"b"} and not stepping.done()  # "b" works on; "a" waits its turn
+        await gate.step("b")
+        assert gate.active == {"b"}
+
+        gate.leave("b")
+        await asyncio.wait({stepping, third}, return_when=asyncio.FIRST_COMPLETED)
+        assert len(gate.active) == 1
+        gate.leave(next(iter(gate.active)))
+        await asyncio.gather(stepping, third)
+
+    asyncio.run(scenario())
+
+
+def test_every_change_to_the_record_is_saved_alone_and_whole(config, monkeypatch):
+    many_courses(config)
+    original = store.UploadState.save
+    saves: list[dict] = []
+    locks: list[bool] = []
+
+    def watched(self):
+        original(self)
+        saves.append(json.loads(self.path.read_text(encoding="utf-8")))  # a whole file at every moment
+
+    monkeypatch.setattr(store.UploadState, "save", watched)
+    real_commit = runner._Execution.commit
+
+    async def commit(self, change):
+        def inside():
+            locks.append(self.lock.locked())
+            change()
+
+        await real_commit(self, inside)
+
+    monkeypatch.setattr(runner._Execution, "commit", commit)
+
+    run_parallel(config, ParallelGateway())
+
+    assert locks and all(locks)
+    counts = [sum(len(course["files"]) for course in save["courses"].values()) for save in saves]
+    assert counts == sorted(counts) and counts[-1] == 15
+
+
+def test_a_stopped_parallel_run_lost_nothing_and_stops_the_others(config):
+    many_courses(config)
+    gateway = ParallelGateway()
+    gateway.failures["b.pdf"] = [NotebookLMLoginRequired()]
+
+    result = run_parallel(config, gateway)
+
+    assert result.status == "login_required"
+    recorded = store.UploadState.load(store.state_file(config)).data["courses"]
+    uploaded = sum(len(course["files"]) for course in recorded.values())
+    assert uploaded == len(gateway.added)  # the rest is still to do, and the next run does it
+    assert uploaded < 15
+
+
+def test_a_rate_limit_is_told_from_other_passing_failures():
+    gateway = gateway_module()
+    from notebooklm import NetworkError, RateLimitError
+
+    assert isinstance(gateway.translate_exception(RateLimitError("slow down")), NotebookLMRateLimited)
+    assert isinstance(gateway.translate_exception(NetworkError("HTTP 429 Too Many Requests")), NotebookLMRateLimited)
+    plain = gateway.translate_exception(NetworkError("connection reset"))
+    assert isinstance(plain, NotebookLMTransient) and not isinstance(plain, NotebookLMRateLimited)
 
 
 # -- the gateway ----------------------------------------------------------------------------------

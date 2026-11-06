@@ -696,7 +696,7 @@ class AppModel:
         self.notebooklm = NotebookLMStatus()
         # Beside the job slot, like the calendar: uploads take minutes and must never hold up a sync.
         self.notebooklm_busy: str | None = None  # NOTEBOOKLM_CONNECT | NOTEBOOKLM_SYNC
-        self.notebooklm_progress = ""
+        self.notebooklm_progress = None  # main_window_model.NotebookLMProgress of the running job
         self.notebooklm_again = False  # a sync finished during a run: look again once it ends
         self.busy: str | None = None  # "sync" | "login" | "move" | ...
         self.past_term = ""  # only for the active one-time job; never saved as a default
@@ -820,7 +820,7 @@ class AppModel:
         """Claim the NotebookLM slot; False while it runs, or for a sync while paused."""
         if self.notebooklm_busy is not None or (action == NOTEBOOKLM_SYNC and self.paused):
             return False
-        self.notebooklm_busy, self.notebooklm_progress = action, ""
+        self.notebooklm_busy, self.notebooklm_progress = action, None
         return True
 
     def wants_notebooklm(self, outcome: RunOutcome, enabled: bool) -> bool:
@@ -838,10 +838,12 @@ class AppModel:
         return self.notebooklm_busy is None
 
     def finish_notebooklm(self, status) -> bool:
-        """The run ended; ``status`` is how it went. True: start another one (``wants_notebooklm``)."""
+        """The job ended; ``status`` is how it went. True: start a run, because a sync brought files
+        in the meantime (``wants_notebooklm``) or the student has just connected."""
+        connected = self.notebooklm_busy == NOTEBOOKLM_CONNECT and not status.error
         again, self.notebooklm_again = self.notebooklm_again, False
-        self.notebooklm_busy, self.notebooklm_progress, self.notebooklm = None, "", status
-        return again and not self.paused and status.connected and not status.needs_login
+        self.notebooklm_busy, self.notebooklm_progress, self.notebooklm = None, None, status
+        return (again or connected) and not self.paused and status.connected and not status.needs_login
 
     def past_terms_due(self, now: datetime | None = None) -> bool:
         """The past-term list still has to be looked up (once Genel is in view)."""

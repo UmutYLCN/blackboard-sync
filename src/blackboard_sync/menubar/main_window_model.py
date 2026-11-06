@@ -289,9 +289,12 @@ NOTEBOOKLM_OFF, NOTEBOOKLM_IDLE, NOTEBOOKLM_RUNNING, NOTEBOOKLM_ATTENTION = "off
 T_NOTEBOOKLM = "NotebookLM"
 T_NOTEBOOKLM_CONNECT = tr("Connect NotebookLM")
 T_NOTEBOOKLM_SYNC = tr("Sync NotebookLM")
+T_NOTEBOOKLM_OPEN = tr("Open NotebookLM")
 T_NOTEBOOKLM_INTRO = tr("Add your course files to NotebookLM after each sync.")
 T_NOTEBOOKLM_CHECKING = tr("Checking what is already in NotebookLM…")
 T_NOTEBOOKLM_WAITING = tr("Sign in to Google in the browser window.")
+T_NOTEBOOKLM_VERIFYING = tr("Checking the connection…")
+T_NOTEBOOKLM_READING = tr("NotebookLM is reading the new files…")
 
 
 @dataclass(frozen=True)
@@ -306,10 +309,25 @@ class NotebookLMCard:
     action: str = ""
     action_title: str = ""
     enabled: bool = True
+    open_action: bool = False  # the "Open NotebookLM" pill beside the action
+    progress: float | None = None  # 0 to 1 while files go up; None: no telling, the bar just moves
 
     @property
     def warning(self) -> bool:
         return self.kind == NOTEBOOKLM_ATTENTION
+
+    @property
+    def running(self) -> bool:
+        return self.kind == NOTEBOOKLM_RUNNING
+
+
+@dataclass(frozen=True)
+class NotebookLMProgress:
+    """Where a running job is: its line, the course it is at and how far the bar has come."""
+
+    text: str
+    course: str = ""
+    fraction: float | None = None
 
 
 @dataclass(frozen=True)
@@ -453,12 +471,19 @@ def home_state(model: AppModel, now: datetime) -> HomeState:
     return HomeState(STATE_SYNCED, T_STATE_TITLES[STATE_SYNCED], detail)
 
 
-def notebooklm_progress(event: dict) -> str:
-    """The running card's line for an event of ``blackboard-sync notebooklm sync``."""
-    if event.get("event") == "progress":
-        return tr("Adding {done} of {total}: {course}").format(done=event.get("done"), total=event.get("total"),
-                                                               course=event.get("course"))
-    return T_NOTEBOOKLM_CHECKING
+def notebooklm_progress(event: dict) -> NotebookLMProgress:
+    """The running card's state for an event of ``blackboard-sync notebooklm``."""
+    kind = event.get("event")
+    if kind == "progress":
+        file, total = str(event.get("file", "")), event.get("total") or 0
+        return NotebookLMProgress(
+            tr("Adding {done} of {total}: {file}").format(done=event.get("done"), total=total, file=file.rsplit("/")[-1]),
+            str(event.get("course", "")), min(event.get("finished", 0) / total, 1.0) if total else None)
+    if kind == "processing":
+        return NotebookLMProgress(T_NOTEBOOKLM_READING)
+    if kind == "sign_in":
+        return NotebookLMProgress(T_NOTEBOOKLM_VERIFYING)
+    return NotebookLMProgress(T_NOTEBOOKLM_CHECKING)
 
 
 def notebooklm_counts(status) -> str:
@@ -479,11 +504,15 @@ def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
     """Not connected, signing in, running, needing the student, or idle with the last run's result."""
     status, busy = model.notebooklm, model.notebooklm_busy
     connect = {"action": "notebooklm_connect", "action_title": T_NOTEBOOKLM_CONNECT}
-    sync = {"action": "notebooklm_sync", "action_title": T_NOTEBOOKLM_SYNC, "enabled": not model.paused}
+    sync = {"action": "notebooklm_sync", "action_title": T_NOTEBOOKLM_SYNC, "enabled": not model.paused,
+            "open_action": True}
+    progress = model.notebooklm_progress
     if busy == NOTEBOOKLM_CONNECT:
-        return NotebookLMCard(NOTEBOOKLM_RUNNING, T_NOTEBOOKLM_WAITING, **{**connect, "enabled": False})
+        return NotebookLMCard(NOTEBOOKLM_RUNNING, progress.text if progress else T_NOTEBOOKLM_WAITING,
+                              **{**connect, "enabled": False})
     if busy == NOTEBOOKLM_SYNC:
-        return NotebookLMCard(NOTEBOOKLM_RUNNING, model.notebooklm_progress or T_NOTEBOOKLM_CHECKING,
+        progress = progress or NotebookLMProgress(T_NOTEBOOKLM_CHECKING)
+        return NotebookLMCard(NOTEBOOKLM_RUNNING, progress.text, progress.course, progress=progress.fraction,
                               **{**sync, "enabled": False})
     if not status.connected:
         if status.error:

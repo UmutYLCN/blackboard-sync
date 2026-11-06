@@ -346,10 +346,60 @@ def test_notebooklm_running_shows_progress_and_locks_the_pill():
     assert model.begin_notebooklm(NOTEBOOKLM_SYNC)
     assert not model.begin_notebooklm(NOTEBOOKLM_SYNC)
     model.notebooklm_progress = main_window_model.notebooklm_progress(
-        {"event": "progress", "done": 3, "total": 12, "course": "CSE301"})
+        {"event": "progress", "done": 3, "finished": 2, "total": 12, "course": "CSE301", "file": "Week 3/a.pdf"})
     card = main_window_model.notebooklm_card(model, NOW)
-    assert card.kind == main_window_model.NOTEBOOKLM_RUNNING and not card.enabled
-    assert card.detail == "Adding 3 of 12: CSE301"
+    assert card.kind == main_window_model.NOTEBOOKLM_RUNNING and not card.enabled and card.running
+    assert (card.detail, card.counts) == ("Adding 3 of 12: a.pdf", "CSE301")
+    assert card.progress == pytest.approx(2 / 12)
+    assert card.open_action  # NotebookLM can be opened while files go up
+
+
+def test_notebooklm_bar_has_no_end_in_sight_while_planning_or_reading():
+    model = notebooklm_model(connected=True)
+    model.begin_notebooklm(NOTEBOOKLM_SYNC)
+    assert main_window_model.notebooklm_card(model, NOW).progress is None
+    model.notebooklm_progress = main_window_model.notebooklm_progress({"event": "processing"})
+    card = main_window_model.notebooklm_card(model, NOW)
+    assert card.progress is None and card.detail == main_window_model.T_NOTEBOOKLM_READING
+
+
+def test_notebooklm_checks_the_connection_after_the_sign_in():
+    model = notebooklm_model()
+    model.begin_notebooklm(NOTEBOOKLM_CONNECT)
+    assert main_window_model.notebooklm_card(model, NOW).detail == main_window_model.T_NOTEBOOKLM_WAITING
+    model.notebooklm_progress = main_window_model.notebooklm_progress({"event": "sign_in", "step": "verify"})
+    assert main_window_model.notebooklm_card(model, NOW).detail == main_window_model.T_NOTEBOOKLM_VERIFYING
+
+
+def test_notebooklm_offers_to_open_only_once_connected():
+    assert not main_window_model.notebooklm_card(notebooklm_model(), NOW).open_action
+    connected = main_window_model.notebooklm_card(notebooklm_model(connected=True), NOW)
+    assert connected.open_action and connected.action == "notebooklm_sync"
+    gone = main_window_model.notebooklm_card(notebooklm_model(connected=True, needs_login=True, message="x"), NOW)
+    assert not gone.open_action and gone.action == "notebooklm_connect"
+
+
+def test_a_failed_connect_stays_on_the_card_with_its_reason():
+    model = notebooklm_model()
+    model.begin_notebooklm(NOTEBOOKLM_CONNECT)
+    model.finish_notebooklm(NotebookLMStatus(error=True, message="Out of time.", outcome="timeout"))
+    card = main_window_model.notebooklm_card(model, NOW)
+    assert card.warning and card.detail == "Out of time." and card.action == "notebooklm_connect"
+
+
+def test_the_first_run_follows_a_connect_at_once():
+    model = notebooklm_model()
+    model.begin_notebooklm(NOTEBOOKLM_CONNECT)
+    assert model.finish_notebooklm(NotebookLMStatus(connected=True, outcome="connected"))
+
+
+def test_no_run_follows_a_failed_connect_or_one_while_paused():
+    model = notebooklm_model()
+    model.begin_notebooklm(NOTEBOOKLM_CONNECT)
+    assert not model.finish_notebooklm(NotebookLMStatus(error=True, outcome="timeout"))
+    model.paused = True
+    model.begin_notebooklm(NOTEBOOKLM_CONNECT)
+    assert not model.finish_notebooklm(NotebookLMStatus(connected=True, outcome="connected"))
 
 
 def test_notebooklm_while_signing_in():

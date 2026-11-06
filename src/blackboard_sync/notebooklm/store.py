@@ -146,6 +146,7 @@ class NotebookLMStatus:
     blocked: int = 0  # courses over the source limit: nothing was added to them
     failed: int = 0
     message: str = ""
+    outcome: str = ""  # how a connect ended (``signin``); empty for anything else
 
 
 def _read_last_run(config: Config) -> dict:
@@ -172,6 +173,11 @@ def status(config: Config) -> NotebookLMStatus:
 
 def save_last_run(config: Config, data: dict) -> None:
     write_private_json(last_run_file(config), data)
+
+
+CONNECTED = "connected"  # how a connect that worked ended (``signin`` has the others)
+# NotebookLM's own address, for the Home card's "Open NotebookLM".
+APP_URL = "https://notebook.google.com/"
 
 
 def mark_connected(config: Config) -> None:

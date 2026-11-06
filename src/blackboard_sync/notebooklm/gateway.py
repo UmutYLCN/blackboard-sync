@@ -25,11 +25,17 @@ from notebooklm import (
     WaitTimeoutError,
 )
 
-from blackboard_sync.errors import NotebookLMLoginRequired, NotebookLMPermanent, NotebookLMTransient
+from blackboard_sync.errors import (
+    NotebookLMLoginRequired,
+    NotebookLMPermanent,
+    NotebookLMRateLimited,
+    NotebookLMTransient,
+)
 from blackboard_sync.notebooklm.planner import nfc
 
 TRANSIENT = (NetworkError, RateLimitError, ServerError, RPCTimeoutError, WaitTimeoutError, SourceAddError,
              asyncio.TimeoutError)
+RATE_MARKERS = ("429", "rate limit", "rate-limit", "too many requests", "resource_exhausted", "resource exhausted")
 AUTH_MARKERS = ("unauthenticated", "authentication expired", "signed-out", "notebooklm login")
 FIRST_POLL, LAST_POLL = 3.0, 10.0  # seconds between looks at a file NotebookLM is processing
 # Google only renews a session when asked, and uploads alone do not ask, so a long run does.
@@ -64,12 +70,25 @@ def looks_like_auth_failure(exc: BaseException | None) -> bool:
     return False
 
 
+def looks_like_rate_limit(exc: BaseException | None) -> bool:
+    """The library also wraps a 429 in its other errors, so the chain counts as well."""
+    seen = 0
+    while exc is not None and seen < 8:
+        text = str(exc).lower()
+        if isinstance(exc, RateLimitError) or any(marker in text for marker in RATE_MARKERS):
+            return True
+        exc, seen = exc.__cause__ or exc.__context__, seen + 1
+    return False
+
+
 def translate_exception(exc: Exception) -> Exception:
     if isinstance(exc, (NotebookLMLoginRequired, NotebookLMTransient, NotebookLMPermanent)):
         return exc
     if looks_like_auth_failure(exc):
         return NotebookLMLoginRequired()
     if isinstance(exc, TRANSIENT):
+        if looks_like_rate_limit(exc):
+            return NotebookLMRateLimited(f"{type(exc).__name__}: {exc}")
         return NotebookLMTransient(f"{type(exc).__name__}: {exc}")
     return NotebookLMPermanent(f"{type(exc).__name__}: {exc}")
 

@@ -54,6 +54,18 @@ class NotebookLMTransient(BlackboardSyncError):
     """Worth trying again: the network, a rate limit, a server error, a timeout."""
 
 
+class NotebookLMRateLimited(NotebookLMTransient):
+    """Google asks to slow down: the run goes on, one course at a time."""
+
+
+class NotebookLMSignInFailed(BlackboardSyncError):
+    """Connecting did not work out; ``outcome`` says how, for the log."""
+
+    def __init__(self, message: str, outcome: str):
+        super().__init__(message)
+        self.outcome = outcome
+
+
 class NotebookLMPermanent(BlackboardSyncError):
     """Trying again will not help: a rejected file, a validation failure."""
 

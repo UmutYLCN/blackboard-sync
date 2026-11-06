@@ -645,7 +645,12 @@ CATALOG = {
         "Ders dosyalarınızı her senkrondan sonra NotebookLM'e ekleyin.",
     "Checking what is already in NotebookLM…": "NotebookLM'de nelerin olduğuna bakılıyor…",
     "Sign in to Google in the browser window.": "Tarayıcı penceresinde Google'da oturum açın.",
-    "Adding {done} of {total}: {course}": "Ekleniyor {done}/{total}: {course}",
+    "Adding {done} of {total}: {file}": "Ekleniyor {done}/{total}: {file}",
+    "NotebookLM is reading the new files…": "NotebookLM yeni dosyaları okuyor…",
+    "Checking the connection…": "Bağlantı kontrol ediliyor…",
+    "Open NotebookLM": "NotebookLM'i aç",
+    "Google took the sign-in, but NotebookLM did not open. Try again.":
+        "Google girişi kabul etti ama NotebookLM açılmadı. Yeniden deneyin.",
     "{n} added": "{n} eklendi",
     "{n} skipped": "{n} atlandı",
     "{n} changed, not replaced": "{n} değişti, değiştirilmedi",

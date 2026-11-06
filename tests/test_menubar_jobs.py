@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import plistlib
@@ -393,6 +394,66 @@ def test_notebooklm_child_arguments():
     assert jobs.notebooklm_arguments("connect", settings) == ["notebooklm", "login"]
     assert jobs.notebooklm_arguments("sync", settings) == ["notebooklm", "sync", "--dest", str(settings.dest)]
     assert jobs.notebooklm_arguments("sync", settings, auto=True)[-1] == "--auto"
+
+
+def test_the_log_reaches_its_file_when_started_outside_the_login_item(tmp_path, monkeypatch):
+    import logging
+
+    config = notebooklm_config(tmp_path)
+    root = logging.getLogger()
+    before = list(root.handlers)
+    monkeypatch.setattr(jobs.sys, "stderr", io.StringIO())  # no file behind it, as in the Finder
+    try:
+        jobs.log_to_file(config)
+        added = [handler for handler in root.handlers if handler not in before]
+        assert len(added) == 1 and Path(added[0].baseFilename) == jobs.log_file(config)
+    finally:
+        for handler in root.handlers[:]:
+            if handler not in before:
+                root.removeHandler(handler)
+                handler.close()
+
+
+def test_the_login_item_does_not_log_each_line_twice(tmp_path, monkeypatch):
+    import logging
+
+    config = notebooklm_config(tmp_path)
+    config.ensure_data_dir()
+    root = logging.getLogger()
+    before = list(root.handlers)
+    with open(jobs.log_file(config), "a") as out:
+        monkeypatch.setattr(jobs.sys, "stderr", out)
+        jobs.log_to_file(config)
+    assert root.handlers == before
+
+
+def test_a_failed_connect_reports_how_it_ended(tmp_path):
+    config = notebooklm_config(tmp_path)
+    lines = ['{"event": "result", "connected": false, "outcome": "timeout", "message": "Out of time."}\n']
+
+    status = jobs.run_notebooklm(config, "connect", Settings(base_url="https://b.edu", dest=Path("/d")),
+                                 popen=lambda *a, **k: FakeChild(lines), child=jobs.NotebookLMChild())
+
+    assert status.outcome == "timeout" and status.error and status.message == "Out of time."
+
+
+def test_a_connect_that_worked_reports_it(tmp_path):
+    config = notebooklm_config(tmp_path)
+    lines = ['{"event": "sign_in", "step": "verify"}\n', '{"event": "result", "outcome": "connected", "message": ""}\n']
+
+    status = jobs.run_notebooklm(config, "connect", Settings(base_url="https://b.edu", dest=Path("/d")),
+                                 popen=lambda *a, **k: FakeChild(lines), child=jobs.NotebookLMChild())
+
+    assert status.outcome == "connected" and not status.error
+
+
+def test_a_connect_child_that_died_is_an_outcome_too(tmp_path):
+    config = notebooklm_config(tmp_path)
+
+    status = jobs.run_notebooklm(config, "connect", Settings(base_url="https://b.edu", dest=Path("/d")),
+                                 popen=lambda *a, **k: FakeChild(["Traceback: boom\n"]), child=jobs.NotebookLMChild())
+
+    assert status.outcome == "error" and status.error and "boom" in status.message
 
 
 def test_run_notebooklm_passes_events_on_and_reads_the_saved_result(tmp_path):

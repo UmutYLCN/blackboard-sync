@@ -25,6 +25,7 @@ from blackboard_sync.errors import (
     AlreadyRunning,
     NotebookLMLoginRequired,
     NotebookLMPermanent,
+    NotebookLMRateLimited,
     NotebookLMTransient,
 )
 from blackboard_sync.i18n import ntr, tr
@@ -36,7 +37,8 @@ from blackboard_sync.system import make_private_dir
 
 log = logging.getLogger(__name__)
 
-DELAY_SECONDS = 2.5  # between uploads
+DELAY_SECONDS = 2.5  # between the uploads of a course
+COURSE_CONCURRENCY = 3  # courses going up at once; a course's own files go one after another
 MAX_ATTEMPTS = 3
 RETRY_BASE_SECONDS = 5.0  # waits of 5, 15 and 45 seconds
 FALLBACK_SOURCE_LIMIT = 50  # the free plan's, when the account's cannot be read
@@ -98,7 +100,47 @@ def wait_seconds(attempt: int) -> float:
     return RETRY_BASE_SECONDS * 3 ** (attempt - 1)
 
 
-async def upload_with_retry(gateway, notebook_id: str, action: FileAction, sleep: Sleep) -> str:
+class CourseGate:
+    """How many courses work at once. A rate limit drops it to one for the rest of the run.
+
+    The courses already going then stop between two files, until only one is left at work.
+    """
+
+    def __init__(self, limit: int = COURSE_CONCURRENCY):
+        self.limit = limit
+        self.active: set[str] = set()
+        self._changed = asyncio.Event()
+
+    def _wake(self) -> None:
+        self._changed.set()
+        self._changed = asyncio.Event()
+
+    async def _room(self) -> None:
+        while len(self.active) >= self.limit:
+            await self._changed.wait()
+
+    async def enter(self, course: str) -> None:
+        await self._room()
+        self.active.add(course)
+
+    def leave(self, course: str) -> None:
+        self.active.discard(course)
+        self._wake()
+
+    async def step(self, course: str) -> None:
+        """Between two files: step aside while too many courses are at work."""
+        if len(self.active) > self.limit:
+            self.leave(course)
+            await self.enter(course)
+
+    def slow_down(self) -> None:
+        if self.limit > 1:
+            log.warning("rate limited: one course at a time from now on")
+        self.limit = 1
+
+
+async def upload_with_retry(gateway, notebook_id: str, action: FileAction, sleep: Sleep,
+                            on_rate_limit: Callable[[], None] = lambda: None) -> str:
     """Add one file, retrying only passing failures.
 
     A failed add can still have landed, and adding it again would make a duplicate, so the
@@ -109,6 +151,8 @@ async def upload_with_retry(gateway, notebook_id: str, action: FileAction, sleep
         try:
             return await gateway.add_file(notebook_id, action.file.path, title)
         except NotebookLMTransient as exc:
+            if isinstance(exc, NotebookLMRateLimited):
+                on_rate_limit()
             if attempt == MAX_ATTEMPTS:
                 raise
             log.warning("attempt %d of %d failed: %s", attempt, MAX_ATTEMPTS, exc)
@@ -131,65 +175,127 @@ async def plan_all(scans: list[CourseScan], state: store.UploadState, gateway) -
     return plans
 
 
+@dataclass
+class _Execution:
+    """What the courses of a run share. They take turns on one event loop, so only a step with an
+    ``await`` in it can be cut in two; ``_commit`` has none, and its lock says that it must not."""
+
+    state: store.UploadState
+    gateway: object
+    result: RunResult
+    sleep: Sleep
+    events: Events
+    total: int
+    gate: CourseGate = field(default_factory=CourseGate)
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    started: int = 0
+    finished: int = 0
+
+    async def commit(self, change: Callable[[], None]) -> None:
+        """One change to the upload record, on disk (atomically) before anything else happens."""
+        async with self.lock:
+            change()
+            self.state.save()
+
+    def progress(self, course: str, file: str) -> None:
+        self.events({"event": "progress", "done": self.started, "finished": self.finished, "total": self.total,
+                     "course": course, "file": file})
+
+
+async def _upload(run: _Execution, plan: CoursePlan, action: FileAction, notebook_id: str,
+                  added: dict[str, str]) -> None:
+    scan, info = plan.course, action.file
+    label = f"{scan.title}/{info.rel}"
+    run.started += 1
+    run.progress(scan.title, info.rel)
+    try:
+        digest = action.sha256 or await asyncio.to_thread(store.sha256_file, info.path)
+        source_id = await upload_with_retry(run.gateway, notebook_id, action, run.sleep, run.gate.slow_down)
+    except (NotebookLMTransient, NotebookLMPermanent, OSError) as exc:
+        run.result.failed.append((label, str(exc)))
+    else:
+        await run.commit(lambda: run.state.record(scan.folder, info.rel, notebook_id=notebook_id, source_id=source_id,
+                                                  size=info.size, mtime_ns=info.mtime_ns, sha256=digest))
+        run.result.added.append(label)
+        added[source_id] = label
+    run.finished += 1
+    run.progress(scan.title, info.rel)
+
+
+async def _course(run: _Execution, plan: CoursePlan) -> None:
+    """One course, its files one after another: the plan's limit check holds only that way."""
+    scan = plan.course
+    state, result = run.state, run.result
+    notebook_id = plan.notebook_id
+    try:
+        if plan.uploads and not notebook_id:
+            notebook_id = (await run.gateway.create_notebook(scan.title)).id
+            result.notebooks_created += 1
+    except (NotebookLMTransient, NotebookLMPermanent) as exc:
+        if isinstance(exc, NotebookLMRateLimited):
+            run.gate.slow_down()
+        result.failed.extend((f"{scan.title}/{a.file.rel}", str(exc)) for a in plan.uploads)
+        run.started += len(plan.uploads)
+        run.finished += len(plan.uploads)
+        return
+    if notebook_id:
+        await run.commit(lambda: state.set_notebook(scan.folder, notebook_id))
+    added: dict[str, str] = {}  # source id -> file
+    for action in plan.actions:
+        info = action.file
+        label = f"{scan.title}/{info.rel}"
+        if action.action == planner.TOUCHED:
+            await run.commit(lambda: state.refresh(scan.folder, info.rel, size=info.size, mtime_ns=info.mtime_ns))
+        elif action.action == planner.MODIFIED:
+            result.modified.append(label)
+        elif action.action == planner.ADOPT:
+            try:
+                digest = await asyncio.to_thread(store.sha256_file, info.path)
+            except OSError as exc:
+                result.failed.append((label, str(exc)))
+                continue
+            await run.commit(lambda: state.record(scan.folder, info.rel, notebook_id=notebook_id,
+                                                  source_id=action.source_id, size=info.size, mtime_ns=info.mtime_ns,
+                                                  sha256=digest))
+            result.adopted.append(label)
+        elif action.action == planner.UPLOAD:
+            await run.gate.step(scan.folder)
+            await _upload(run, plan, action, notebook_id, added)
+            await run.sleep(DELAY_SECONDS)
+    if added:
+        if run.finished >= run.total:  # the others are still adding otherwise: the card keeps counting
+            run.events({"event": "processing"})
+        await _collect_processing(run.gateway, notebook_id, added, result)
+
+
 async def execute(plans: list[CoursePlan], state: store.UploadState, gateway, result: RunResult, sleep: Sleep,
                   events: Events) -> None:
-    total = sum(len(plan.uploads) for plan in plans if plan.status == planner.READY)
-    done = 0
+    """Up to ``COURSE_CONCURRENCY`` courses at once, on the one client: the library is made for
+    that (``max_concurrent_uploads``). A lost session ends them all; the rest is per file."""
+    ready = []
     for plan in plans:
-        scan = plan.course
         if plan.status == planner.BLOCKED:
-            result.blocked.append((scan.title, plan.overflow, plan.limit))
-            continue
-        if plan.status == planner.AMBIGUOUS:
-            result.ambiguous.append(scan.title)
-            continue
-        if plan.status != planner.READY:
-            continue
-        notebook_id = plan.notebook_id
+            result.blocked.append((plan.course.title, plan.overflow, plan.limit))
+        elif plan.status == planner.AMBIGUOUS:
+            result.ambiguous.append(plan.course.title)
+        elif plan.status == planner.READY:
+            ready.append(plan)
+    run = _Execution(state, gateway, result, sleep, events, total=sum(len(plan.uploads) for plan in ready))
+
+    async def one(plan: CoursePlan) -> None:
+        await run.gate.enter(plan.course.folder)
         try:
-            if plan.uploads and not notebook_id:
-                notebook_id = (await gateway.create_notebook(scan.title)).id
-                result.notebooks_created += 1
-        except (NotebookLMTransient, NotebookLMPermanent) as exc:
-            result.failed.extend((f"{scan.title}/{a.file.rel}", str(exc)) for a in plan.uploads)
-            done += len(plan.uploads)
-            continue
-        if notebook_id:
-            state.set_notebook(scan.folder, notebook_id)
-            state.save()
-        added: dict[str, str] = {}  # source id -> file
-        for action in plan.actions:
-            info = action.file
-            label = f"{scan.title}/{info.rel}"
-            if action.action == planner.TOUCHED:
-                state.refresh(scan.folder, info.rel, size=info.size, mtime_ns=info.mtime_ns)
-            elif action.action == planner.MODIFIED:
-                result.modified.append(label)
-            elif action.action == planner.ADOPT:
-                try:
-                    state.record(scan.folder, info.rel, notebook_id=notebook_id, source_id=action.source_id,
-                                 size=info.size, mtime_ns=info.mtime_ns, sha256=store.sha256_file(info.path))
-                    result.adopted.append(label)
-                except OSError as exc:
-                    result.failed.append((label, str(exc)))
-            elif action.action == planner.UPLOAD:
-                done += 1
-                events({"event": "progress", "done": done, "total": total, "course": scan.title})
-                try:
-                    digest = action.sha256 or store.sha256_file(info.path)
-                    source_id = await upload_with_retry(gateway, notebook_id, action, sleep)
-                except (NotebookLMTransient, NotebookLMPermanent, OSError) as exc:
-                    result.failed.append((label, str(exc)))
-                else:
-                    state.record(scan.folder, info.rel, notebook_id=notebook_id, source_id=source_id,
-                                 size=info.size, mtime_ns=info.mtime_ns, sha256=digest)
-                    state.save()
-                    result.added.append(label)
-                    added[source_id] = label
-                await sleep(DELAY_SECONDS)
-        state.save()
-        if added:
-            await _collect_processing(gateway, notebook_id, added, result)
+            await _course(run, plan)
+        finally:
+            run.gate.leave(plan.course.folder)
+
+    tasks = [asyncio.create_task(one(plan)) for plan in ready]
+    try:
+        await asyncio.gather(*tasks)
+    finally:  # the first exception leaves the others running otherwise
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _collect_processing(gateway, notebook_id: str, added: dict[str, str], result: RunResult) -> None:

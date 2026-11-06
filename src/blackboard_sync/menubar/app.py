@@ -408,11 +408,10 @@ def build_app(config: Config, show_window: bool = False):
             self.refresh()
 
         def _notebooklm_done(self, action: str, status) -> None:
-            log.info("NotebookLM %s finished", action)
-            again = self.model.finish_notebooklm(status)
-            connected = action == NOTEBOOKLM_CONNECT and status.connected and not status.error
-            if again or (connected and self.settings.notebooklm_auto):
-                self.start_notebooklm(auto=again)
+            result = status.outcome or ("login required" if status.needs_login else "error" if status.error else "ok")
+            log.info("NotebookLM %s finished: %s %s", action, result, status.message if status.error else "")
+            if self.model.finish_notebooklm(status):
+                self.start_notebooklm(auto=action == NOTEBOOKLM_SYNC)
             self.refresh()
 
         def disconnect_notebooklm(self) -> None:
@@ -717,6 +716,7 @@ def build_app(config: Config, show_window: bool = False):
                 "uninstall": self.start_uninstall, "pause": self.toggle_pause,
                 "notebooklm_connect": lambda: self.start_notebooklm(NOTEBOOKLM_CONNECT),
                 "notebooklm_sync": self.start_notebooklm, "notebooklm_disconnect": self.disconnect_notebooklm,
+                "notebooklm_open": lambda: open_url(notebooklm_store.APP_URL),
             }[action]()
 
         def _window_closed(self) -> None:
@@ -991,6 +991,7 @@ def main(argv: list[str] | None = None) -> int:
         return jobs.detach(config)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    jobs.log_to_file(config)
     lock = jobs.wait_for_instance(config) if args.restarting else jobs.single_instance(config)
     if lock is None:
         print("The Blackboard Sync menu bar app is already running.", file=sys.stderr)

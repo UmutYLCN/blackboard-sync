@@ -244,7 +244,7 @@ def run_notebooklm(config: Config, action: str, settings: Settings, auto: bool =
     killer = threading.Timer(timeout, proc.kill)
     killer.daemon = True
     killer.start()
-    finished, last_line = False, ""
+    finished, last_line = None, ""
     try:
         for line in proc.stdout:
             try:
@@ -254,7 +254,7 @@ def run_notebooklm(config: Config, action: str, settings: Settings, auto: bool =
             if not isinstance(event, dict):
                 last_line = line.strip() or last_line
             elif event.get("event") == "result":
-                finished = True
+                finished = event
             else:
                 on_event(event)
         proc.wait()
@@ -263,10 +263,13 @@ def run_notebooklm(config: Config, action: str, settings: Settings, auto: bool =
         with child.lock:
             child.proc, stopped = None, child.stopped
     status = notebooklm_store.status(config)
+    outcome = (finished or {}).get("outcome", "")
+    if outcome and outcome != notebooklm_store.CONNECTED:  # a failed connect leaves no trace but this
+        return replace(status, error=True, message=finished.get("message", ""), outcome=outcome)
     if finished or stopped:
-        return status
-    return replace(status, error=True, message=shorten(last_line, 200)
-                   or tr("exit status {code}").format(code=proc.returncode))
+        return replace(status, outcome=outcome)
+    return replace(status, error=True, outcome="error" if action == NOTEBOOKLM_CONNECT else "",
+                   message=shorten(last_line, 200) or tr("exit status {code}").format(code=proc.returncode))
 
 
 def run_notebooklm_guarded(config: Config, action: str, settings: Settings, auto: bool = False,
@@ -356,6 +359,25 @@ def menubar_state_file(config: Config) -> Path:
 
 def log_file(config: Config) -> Path:
     return config.data_dir / "menubar.log"
+
+
+def log_to_file(config: Config) -> None:
+    """Also write the log to ``menubar.log``, unless that is where standard error goes already (the
+    login item). Started from the Finder or a terminal the log would otherwise be lost."""
+    path = log_file(config)
+    try:
+        config.ensure_data_dir()
+        if path.exists() and os.path.samestat(os.fstat(sys.stderr.fileno()), path.stat()):
+            return
+    except (OSError, ValueError):  # no usable standard error: the file is all there is
+        pass
+    try:
+        handler = logging.FileHandler(path, encoding="utf-8")
+    except OSError as exc:
+        log.warning("Could not open the log file: %s", exc)
+        return
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logging.getLogger().addHandler(handler)
 
 
 def _read_json(path: Path) -> dict | None:
