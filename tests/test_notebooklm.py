@@ -3,7 +3,6 @@
 import asyncio
 import json
 import os
-import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -19,6 +18,8 @@ from blackboard_sync.errors import (
 from blackboard_sync.notebooklm import planner, runner, signin, store
 from blackboard_sync.notebooklm.planner import CourseScan, FileInfo
 from blackboard_sync.state import State
+
+from .conftest import assert_owner_only
 
 TERM = "2026-2027 Güz"
 
@@ -252,7 +253,7 @@ def test_a_run_makes_the_notebook_adds_the_files_and_a_second_run_adds_nothing(c
 
     second = run(config, gateway)
     assert len(gateway.added) == 2 and not second.added
-    assert stat.S_IMODE(store.state_file(config).stat().st_mode) == 0o600
+    assert_owner_only(store.state_file(config))
 
 
 def test_the_same_titled_notebook_is_reused_and_lost_state_adopts_its_sources(config):
@@ -645,7 +646,7 @@ def test_login_saves_the_session_owner_only_and_never_with_port_zero(config, sig
     signin.login(config, run=spawn_run, connect=lambda url: FakeBrowser(SIGNED_IN), check=lambda c: None,
                  platform="darwin")
 
-    assert stat.S_IMODE(store.session_file(config).stat().st_mode) == 0o600
+    assert_owner_only(store.session_file(config))
     assert not store.status(config).needs_login
     assert "--remote-debugging-port=12345" in started[0]
     assert signin.SIGN_IN_URL in started[0]
