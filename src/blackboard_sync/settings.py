@@ -60,6 +60,7 @@ class Settings:
     sync_interval_minutes: int = DEFAULT_SYNC_INTERVAL_MINUTES
     language: str = DEFAULT_LANGUAGE  # i18n.LANGUAGES; applies after a restart
     theme: str = THEME_SYSTEM  # THEMES; applies at once (not part of the window's Save/Cancel form)
+    notebooklm_auto: bool = True  # add new files to NotebookLM after each sync, once it is connected
 
     def to_dict(self) -> dict:
         return {
@@ -69,6 +70,7 @@ class Settings:
             "sync_interval_minutes": self.sync_interval_minutes,
             "language": self.language,
             "theme": self.theme,
+            "notebooklm_auto": self.notebooklm_auto,
         }
 
     @classmethod
@@ -80,6 +82,7 @@ class Settings:
             sync_interval_minutes=normalize_sync_interval(data.get("sync_interval_minutes")),
             language=normalize_language(data.get("language")),
             theme=normalize_theme(data.get("theme")),
+            notebooklm_auto=data.get("notebooklm_auto", True) is not False,
         )
 
 

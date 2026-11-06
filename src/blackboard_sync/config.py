@@ -89,6 +89,11 @@ class Config:
         return self.data_dir / "courses.json"
 
     @property
+    def notebooklm_dir(self) -> Path:
+        """The Google session and upload record of the NotebookLM step (``notebooklm.store``)."""
+        return self.data_dir / "notebooklm"
+
+    @property
     def last_run_file(self) -> Path:
         return self.data_dir / "last-run.json"
 

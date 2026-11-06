@@ -14,7 +14,8 @@ in the menu opens the same window on the **Settings** page.
 
 - **Home** is a summary: the sync state (**Up to date**, **Syncing…**, **Paused**, **Sign-in needed**;
   an animation of files flying into a folder while a sync runs), the latest downloads, what needs your
-  attention with the newest announcements, and the upcoming due dates.
+  attention with the newest announcements, and the upcoming due dates. On a Mac, a **NotebookLM** card
+  sits under the sync state (see [NotebookLM](#notebooklm-mac)).
 - **Sync activity** lists every file, note and announcement a sync brought, newest first, with its
   size and status; click a row to open the file in its own app.
 - **Announcements** shows what needs your attention at the top (session expired, an update, a sync that
@@ -215,6 +216,71 @@ blackboard-sync calendar disconnect --delete-calendar
 needed. Tokens are never printed. `calendar sync` uses the cached Blackboard
 source; run `blackboard-sync sync` first when testing from the terminal. The
 terminal Blackboard sync command itself does not automatically contact Google.
+
+
+## NotebookLM (Mac)
+
+Blackboard Sync can add your course files to [NotebookLM](https://notebook.google.com) (now also
+called Gemini Notebook), so you can ask questions about them. It is on Mac only for now.
+
+**Connect once.** On **Home**, press **Connect NotebookLM** on the NotebookLM card. A browser window
+opens on Google's own sign-in page; sign in and it closes by itself. Your password goes only to
+Google. You need Chrome, Edge, Brave or another Chromium browser installed, as for the Blackboard
+sign-in. Once you are connected, the first run starts right away. If the sign-in does not finish, the
+card says why (out of time, window closed, NotebookLM did not open) and you can try again.
+
+**After that it runs by itself.** After every successful Blackboard sync, new files are added in the
+background. **Sync NotebookLM** on the card does the same on demand, and **Open NotebookLM** opens your
+notebooks in your browser. While files go up, the card counts them across your courses, up to three
+of which are worked on at a time. Your downloads are never held up:
+NotebookLM runs on its own after the sync, and a problem shows only on the card. Pause stops it too.
+To turn the automatic step off, untick **Settings → NotebookLM → Add new files to NotebookLM after
+each sync**; the button keeps working.
+
+**What goes where.** Each course gets one notebook, named after its folder. A notebook with that name
+is reused, and files already in it are kept and not added twice. Each source is named by its path
+inside the course folder, such as `Week 3/slides.pdf`.
+
+- Added: the PDF, Word, PowerPoint, text, Markdown, CSV and EPUB files Blackboard Sync downloaded for
+  your courses, up to 200 MB each, and the PDF notes of course pages. Hidden courses are left
+  out, and so are announcements.
+- Skipped and counted: other file types, images, larger files, and files you put in the folders
+  yourself.
+
+**What the app never does.** It only adds. It deletes and replaces nothing in NotebookLM. A source you
+remove there stays removed: the app remembers the file and does not add it again. If a course has more files than the notebook's source limit (often 50), that
+course is left as it is and marked **blocked**, because adding only some of them would leave a silent
+gap. If a file changed on Blackboard after it was added, it is counted as **modified**; the old source
+stays. If two notebooks have the same name, that course is skipped until you rename one.
+
+**If the card asks you to sign in again,** Google ended the session. Press **Sign in**; nothing is lost
+and the next run carries on from there. The app keeps the session fresh, but a changed password or a
+security check at Google ends it.
+
+**Disconnect.** **Settings → NotebookLM → Disconnect NotebookLM** deletes the stored Google session
+and the sign-in browser's data from this Mac. Your notebooks stay in NotebookLM. The record of which
+files were added is kept, so reconnecting does not add anything twice. Uninstalling the app does the
+same and removes that record as well.
+
+**Please know before connecting.** Google has no public way for apps to add NotebookLM sources, so
+this uses an unofficial connection, through the open-source
+[notebooklm-py](https://github.com/teng-lin/notebooklm-py) library. Google may change it without
+notice and it can stop working until the app is updated. It works with your Google account's session,
+so use it knowing that Google could object to automated use. Your course files are sent to Google;
+files your school does not allow you to share should stay out of it. The session is stored only on
+this Mac, in a file only your user account can read.
+
+Terminal commands:
+
+```sh
+blackboard-sync notebooklm login
+blackboard-sync notebooklm sync
+blackboard-sync notebooklm status
+blackboard-sync notebooklm disconnect
+```
+
+Each prints one JSON line per step. `status` shows only the connection and the last run's counts; the
+session is never printed.
 
 
 ## Version 1.6.0: past-term downloads

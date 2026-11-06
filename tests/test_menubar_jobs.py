@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import plistlib
@@ -356,3 +357,172 @@ def test_unexpected_exception_in_a_login_worker_still_clears_busy(monkeypatch):
     assert not ok and "unexpected" in message
     model.finish_login(ok, message, NOW)
     assert model.busy is None
+
+
+# -- the NotebookLM child -------------------------------------------------------------------------
+class FakeChild:
+    def __init__(self, lines, returncode=0):
+        self.stdout = iter(lines)
+        self.returncode = returncode
+        self.terminated = False
+        self.killed = False
+
+    def poll(self):
+        return None
+
+    def wait(self):
+        return self.returncode
+
+    def terminate(self):
+        self.terminated = True
+
+    def kill(self):
+        self.killed = True
+
+
+def notebooklm_config(tmp_path):
+    from blackboard_sync.notebooklm import store
+
+    config = Config(dest=tmp_path / "dest", data_dir=tmp_path / "data")
+    config.notebooklm_dir.mkdir(parents=True)
+    store.session_file(config).write_text("{}")
+    return config
+
+
+def test_notebooklm_child_arguments():
+    settings = Settings(base_url="https://bb.example.edu", dest=Path("/tmp/dest"))
+    assert jobs.notebooklm_arguments("connect", settings) == ["notebooklm", "login"]
+    assert jobs.notebooklm_arguments("sync", settings) == ["notebooklm", "sync", "--dest", str(settings.dest)]
+    assert jobs.notebooklm_arguments("sync", settings, auto=True)[-1] == "--auto"
+
+
+def test_the_log_reaches_its_file_when_started_outside_the_login_item(tmp_path, monkeypatch):
+    import logging
+
+    config = notebooklm_config(tmp_path)
+    root = logging.getLogger()
+    before = list(root.handlers)
+    monkeypatch.setattr(jobs.sys, "stderr", io.StringIO())  # no file behind it, as in the Finder
+    try:
+        jobs.log_to_file(config)
+        added = [handler for handler in root.handlers if handler not in before]
+        assert len(added) == 1 and Path(added[0].baseFilename) == jobs.log_file(config)
+    finally:
+        for handler in root.handlers[:]:
+            if handler not in before:
+                root.removeHandler(handler)
+                handler.close()
+
+
+def test_the_login_item_does_not_log_each_line_twice(tmp_path, monkeypatch):
+    import logging
+
+    config = notebooklm_config(tmp_path)
+    config.ensure_data_dir()
+    root = logging.getLogger()
+    before = list(root.handlers)
+    with open(jobs.log_file(config), "a") as out:
+        monkeypatch.setattr(jobs.sys, "stderr", out)
+        jobs.log_to_file(config)
+    assert root.handlers == before
+
+
+def test_a_failed_connect_reports_how_it_ended(tmp_path):
+    config = notebooklm_config(tmp_path)
+    lines = ['{"event": "result", "connected": false, "outcome": "timeout", "message": "Out of time."}\n']
+
+    status = jobs.run_notebooklm(config, "connect", Settings(base_url="https://b.edu", dest=Path("/d")),
+                                 popen=lambda *a, **k: FakeChild(lines), child=jobs.NotebookLMChild())
+
+    assert status.outcome == "timeout" and status.error and status.message == "Out of time."
+
+
+def test_a_connect_that_worked_reports_it(tmp_path):
+    config = notebooklm_config(tmp_path)
+    lines = ['{"event": "sign_in", "step": "verify"}\n', '{"event": "result", "outcome": "connected", "message": ""}\n']
+
+    status = jobs.run_notebooklm(config, "connect", Settings(base_url="https://b.edu", dest=Path("/d")),
+                                 popen=lambda *a, **k: FakeChild(lines), child=jobs.NotebookLMChild())
+
+    assert status.outcome == "connected" and not status.error
+
+
+def test_a_connect_child_that_died_is_an_outcome_too(tmp_path):
+    config = notebooklm_config(tmp_path)
+
+    status = jobs.run_notebooklm(config, "connect", Settings(base_url="https://b.edu", dest=Path("/d")),
+                                 popen=lambda *a, **k: FakeChild(["Traceback: boom\n"]), child=jobs.NotebookLMChild())
+
+    assert status.outcome == "error" and status.error and "boom" in status.message
+
+
+def test_run_notebooklm_passes_events_on_and_reads_the_saved_result(tmp_path):
+    from blackboard_sync.notebooklm import store
+
+    config = notebooklm_config(tmp_path)
+    store.save_last_run(config, {"status": "ok", "added": 2})
+    events = []
+    calls = []
+    lines = ['{"event": "planning"}\n', 'warning from the library\n',
+             '{"event": "progress", "done": 1, "total": 2, "course": "C"}\n',
+             '{"event": "result", "status": "ok"}\n']
+
+    def popen(command, **options):
+        calls.append((command, options))
+        return FakeChild(lines)
+
+    status = jobs.run_notebooklm(config, "sync", Settings(base_url="https://b.edu", dest=Path("/d")), auto=True,
+                                 on_event=events.append, popen=popen, child=jobs.NotebookLMChild())
+
+    assert [event["event"] for event in events] == ["planning", "progress"]
+    assert status.added == 2 and status.connected and not status.error
+    assert calls[0][1]["stderr"] == subprocess.STDOUT  # one pipe: a chatty child can never fill the other
+    assert calls[0][0][-1] == "--auto"
+
+
+def test_a_child_that_dies_shows_on_the_card_with_what_it_said_last(tmp_path):
+    config = notebooklm_config(tmp_path)
+    status = jobs.run_notebooklm(config, "connect", Settings(base_url="https://b.edu", dest=Path("/d")),
+                                 popen=lambda *a, **k: FakeChild(["NotebookLM needs Chrome\n"], 1),
+                                 child=jobs.NotebookLMChild())
+    assert status.error and status.message == "NotebookLM needs Chrome"
+
+
+def test_a_child_that_dies_silently_shows_its_exit_status(tmp_path):
+    config = notebooklm_config(tmp_path)
+    status = jobs.run_notebooklm(config, "sync", Settings(base_url="https://b.edu", dest=Path("/d")),
+                                 popen=lambda *a, **k: FakeChild([], 9), child=jobs.NotebookLMChild())
+    assert status.error and "9" in status.message
+
+
+def test_stopping_a_notebooklm_run_is_not_an_error(tmp_path):
+    config = notebooklm_config(tmp_path)
+    child = jobs.NotebookLMChild()
+    assert not child.stop()
+
+    def lines():
+        assert child.stop()
+        yield from ()
+
+    fake = FakeChild([])
+    fake.stdout = lines()
+    status = jobs.run_notebooklm(config, "sync", Settings(base_url="https://b.edu", dest=Path("/d")),
+                                 popen=lambda *a, **k: fake, child=child)
+    assert fake.terminated and not status.error
+
+
+def test_a_notebooklm_job_that_cannot_start_still_reports_back(tmp_path, monkeypatch):
+    config = notebooklm_config(tmp_path)
+
+    def broken(*_args, **_kwargs):
+        raise OSError("no such program")
+
+    monkeypatch.setattr(jobs, "run_notebooklm", broken)
+    status = jobs.run_notebooklm_guarded(config, "sync", Settings(base_url="https://b.edu", dest=Path("/d")))
+    assert status.error and status.message == "no such program"
+
+
+def test_load_model_restores_the_notebooklm_connection(tmp_path):
+    config = notebooklm_config(tmp_path)
+    model = jobs.load_model(config, datetime(2026, 11, 6, tzinfo=timezone.utc), False)
+    assert model.notebooklm.connected and model.notebooklm_busy is None

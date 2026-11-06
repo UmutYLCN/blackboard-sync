@@ -17,7 +17,9 @@ CHECK_PACKAGE = "--check-package"
 # Hidden self-test used by CI: draws a PDF note with the bundled fonts.
 CHECK_NOTE_PDF = "--check-note-pdf"
 CHECK_GOOGLE_CALENDAR = "--check-google-calendar"
-CLI_COMMANDS = {"login", "sync", "check", "past-terms", "uninstall", "calendar", "--version", "-h", "--help"}
+# Hidden self-test used by CI: loads the NotebookLM library, which is imported only by a run.
+CHECK_NOTEBOOKLM = "--check-notebooklm"
+CLI_COMMANDS = {"login", "sync", "check", "past-terms", "uninstall", "calendar", "notebooklm", "--version", "-h", "--help"}
 # CLI options that come before the subcommand; the menu bar app passes the
 # school from its settings window as ``--base-url URL sync ...``.
 CLI_GLOBAL_OPTIONS = {"--base-url", "--data-dir", "-v", "--verbose"}
@@ -44,6 +46,11 @@ def main() -> int:
         from blackboard_sync.notepdf import check_runtime as check_note_pdf
 
         print(check_note_pdf())
+        return 0
+    if args == [CHECK_NOTEBOOKLM] and sys.platform == "darwin":
+        from blackboard_sync.notebooklm.gateway import check_runtime as check_notebooklm
+
+        print(check_notebooklm())
         return 0
     if args == [CHECK_PACKAGE] and sys.platform == "win32":
         from blackboard_sync.windows.autostart import check_package

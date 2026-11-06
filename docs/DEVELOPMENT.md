@@ -449,6 +449,7 @@ blackboard-sync [--base-url URL] [--data-dir DIR] [-v] login [--browser auto|chr
 blackboard-sync [...] check [--term NAME | --term-id ID | --all-terms] [--course CODE ...]
 blackboard-sync [...] sync  [--term NAME | --term-id ID | --all-terms] [--course CODE ...]
                             [--dest DIR] [--json] [--dry-run]
+blackboard-sync [...] notebooklm login | sync [--dest DIR] [--auto] | status | disconnect
 ```
 
 | Option | Meaning |
@@ -492,6 +493,7 @@ another term's gets its id added.
 | Sync state | `~/Library/Application Support/blackboard-sync/state.json` |
 | Last run summary | `~/Library/Application Support/blackboard-sync/last-run.json` |
 | Menu bar app state and log | `~/Library/Application Support/blackboard-sync/menubar.json`, `menubar.log` |
+| NotebookLM session, upload record and sign-in profile | `~/Library/Application Support/blackboard-sync/notebooklm/` (see [Optional NotebookLM](#optional-notebooklm)) |
 | Start-at-login item | `~/Library/LaunchAgents/io.github.umutylcn.blackboard-sync.menubar.plist` |
 
 The data folder is created with owner-only permissions (`700`) and the files in
@@ -733,9 +735,12 @@ and tick **Start when the computer starts** again.
 - Only cookies for the Blackboard site are saved, in a file only your user
   account can read. Single-sign-on cookies stay inside the tool's private
   browser profile.
-- Nothing is sent anywhere except to Blackboard itself, and, for the menu
-  bar app's update check, an anonymous request to GitHub for this project's
-  latest release (switch it off with **Check for updates automatically**).
+- Nothing is sent anywhere except to Blackboard itself; for the menu bar
+  app's update check, an anonymous request to GitHub for this project's
+  latest release (switch it off with **Check for updates automatically**);
+  and, only once you connect them, to Google for
+  [Google Calendar](#optional-google-calendar-integration) and
+  [NotebookLM](#optional-notebooklm).
 - Session data, sync state and course material are never stored in this
   repository; `.gitignore` also blocks them as a safety net.
 - To remove everything: delete
@@ -1090,6 +1095,91 @@ Use calendar.app.created: the narrow scope supports creating and managing only
 app-created secondary calendars, without access to the user's primary calendar.
 ```
 
+
+## Optional NotebookLM
+
+macOS only for now; the core has no GUI code, so Windows and iPad can follow. Nothing here runs
+until the user connects. `src/blackboard_sync/notebooklm/` holds:
+
+| Module | Job |
+| --- | --- |
+| `gateway.py` | The only module that imports `notebooklm` (notebooklm-py). Sorts every failure into `NotebookLMLoginRequired`, `NotebookLMTransient` or `NotebookLMPermanent`. |
+| `planner.py` | Pure. What to upload for a course, from `State` and the remote sources. No network. |
+| `store.py` | The files in `notebooklm/`: upload record, last run, connected or not, `disconnect`. |
+| `runner.py` | One run: plan, upload, wait for processing, write the last run. Holds `run.lock`. |
+| `signin.py` | The one-time Google sign-in. |
+
+**notebooklm-py is pinned exactly and is darwin-only.** It wraps undocumented Google endpoints, so
+upgrade it on purpose and retest a real upload. Replacing it with something else means replacing
+`gateway.py`. The packaged app collects the library's modules in `packaging/blackboard_sync.spec`
+without its CLI and servers; `--check-notebooklm` proves in the release build that it loads.
+
+**The card** is `main_window_model.notebooklm_card`. While a job runs it shows the sync illustration
+and an `NSProgressIndicator`: filling from `finished / total` of the progress events, or moving
+without an end while planning, signing in or waiting for NotebookLM to read the files. "Adding 3 of
+12" counts started uploads across all courses. Changing state fades the card and slides it to its
+new height; with Reduce motion none of this animates.
+
+**It never touches a Blackboard sync.** Runs happen in a child process (`blackboard-sync notebooklm
+sync`, JSON events on stdout) in a slot of their own beside the calendar one, `model.notebooklm_busy`,
+so `model.busy` stays free. The menu bar app starts one with `--auto` after a successful sync, if
+`Settings.notebooklm_auto` is on and `wants_notebooklm` agrees. A sync that ends while a run is going
+sets `notebooklm_again`. Results reach only the Home card, through `last-run.json`, read by
+`store.status` and shaped by `main_window_model.notebooklm_card`.
+
+**Sign-in** uses the same Chromium browsers as `login.py`, with a private profile in
+`notebooklm/browser-profile`. It needs a fixed `--remote-debugging-port`: with port 0, Chromium sets
+`navigator.webdriver` and Google refuses the sign-in. There is no in-app fallback, because Google
+refuses web views. `SIGN_IN_URL` is on `notebook.google.com`, the product's current host. The cookies
+are read over CDP and written to `session.json` (`600`), which `verify` then proves by listing the
+notebooks.
+
+`wait_for_sign_in` calls `context.cookies()` first on every poll, and that is not only for the
+cookies. Playwright's sync API hears from the browser only during its own calls, never during
+`time.sleep`, so `page.url` and `context.pages` stay stale without one. A poll that looked only at the
+URL never saw the signed-in page or a closed window. With its last window gone Chromium fails that
+very call (`Storage.getCookies`), and the browser itself stays connected; that means "closed" too.
+Fakes do not show either of these, so check changes here against a real browser.
+
+`notebooklm login` ends with a result event that says how it went: `connected`, `timeout`,
+`window_closed`, `verify_failed`, `no_browser` or `error`. The app logs it and the card shows it. The
+log is `menubar.log`; `jobs.log_to_file` writes there when standard error does not already go there,
+as when the app is started from the Finder or a terminal.
+
+**What goes up comes from the sync record, not a folder walk.** `planner.scan_courses` reads
+`State.outputs`, so a file the user dropped in a folder is not uploaded. `note-md`,
+`announcement-note` and `announcement-note-md` are left out: a note's `.md` twin would duplicate its
+PDF in the source count, and announcements would eat the limit.
+
+**Rules kept from the original uploader:**
+
+- Add-only. No code path calls a delete or update on the remote side.
+- Idempotent. A remote source with the same title (NFC) is adopted instead of uploaded, so losing
+  `state.json` or a crash after an upload adds nothing twice. A file is recorded right after its upload.
+- Stop, do not truncate. A course with more uploads than the limit has room for is `BLOCKED` whole.
+  The limit is the account's, or `FALLBACK_SOURCE_LIMIT` (50) when it cannot be read.
+- Changed files are counted as modified and left; two notebooks with one title are `AMBIGUOUS` and skipped.
+- Only transient errors are retried, after 5, 15 and 45 seconds. A lost session stops the run.
+
+**Courses go side by side.** `COURSE_CONCURRENCY` (3) courses run at once as asyncio tasks on the one
+client, which the library supports (`max_concurrent_uploads`, default 4). The files of a course stay
+in order, one after another, so its limit check holds. If any upload is rate limited, `CourseGate`
+drops to one course for the rest of the run: courses already at work stop between two files. All
+changes to `state.json` go through `_Execution.commit`, under a lock, with an atomic write. A lost
+session cancels the other courses; what was added is on record, and an upload cut off in flight is
+adopted by its title next time. Planning stays sequential.
+
+**Keeping the session.** Google ends a session whose `__Secure-1PSIDTS` is not renewed, and plain RPC
+traffic does not renew it: the library's rotation runs when a client opens, and on `keepalive` while
+it stays open (the gateway uses 600 s). An automatic run with nothing new would otherwise never open
+one, so `runner._refresh_session` does when the session file is older than
+`SESSION_REFRESH_SECONDS` (12 h). Such a check is silent, unless it finds the session dead, which
+shows on the card. Only a sync reaches it, so a Mac off for a long time still needs a new sign-in.
+
+`session.json` holds a Google session: never log, print or commit it. `NOTEBOOKLM_HOME` is pointed at
+`notebooklm/library`, so the library's own files stay inside the data folder and do not meet a
+`~/.notebooklm` a developer may have. `disconnect` deletes the session, last run, profile and library
+folder and keeps `state.json`.
 
 ## Release 1.6.0 controls
 

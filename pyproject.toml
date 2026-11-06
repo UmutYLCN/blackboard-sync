@@ -27,6 +27,9 @@ dependencies = [
     # WKWebView on macOS, Microsoft Edge WebView2 through pywebview on Windows.
     "pyobjc-framework-WebKit==12.2.2; sys_platform == 'darwin'",
     "pywebview==6.2.1; sys_platform == 'win32'",
+    # The NotebookLM step (blackboard_sync.notebooklm.gateway): the unofficial client, loaded only
+    # when a run starts and upgraded deliberately, since its Google endpoints are undocumented.
+    "notebooklm-py==0.8.5; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]

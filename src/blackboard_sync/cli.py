@@ -1,4 +1,4 @@
-"""Command-line entry point: ``blackboard-sync login | sync | check | uninstall``."""
+"""Command-line entry point: ``blackboard-sync login | sync | check | notebooklm | uninstall``."""
 
 from __future__ import annotations
 
@@ -93,6 +93,14 @@ def build_parser() -> argparse.ArgumentParser:
     calendar_sync.add_argument("--reminders", action="store_true", help="use Google calendar default reminders")
     disconnect = commands.add_parser("disconnect", help="revoke access and remove local Calendar data")
     disconnect.add_argument("--delete-calendar", action="store_true")
+    notebooklm = sub.add_parser("notebooklm", help="add the synced course files to NotebookLM (macOS)")
+    commands = notebooklm.add_subparsers(dest="notebooklm_action", required=True)
+    commands.add_parser("login", help="sign in to Google in a browser and save the session")
+    notebooklm_sync = commands.add_parser("sync", help="add new course files; prints one JSON event per line")
+    notebooklm_sync.add_argument("--dest", type=Path, help="the folder the course files were saved in")
+    notebooklm_sync.add_argument("--auto", action="store_true", help="after a sync: only look at the courses with something new")
+    commands.add_parser("status", help="show the connection and the last run as JSON")
+    commands.add_parser("disconnect", help="delete the stored Google session")
     return parser
 
 
@@ -271,6 +279,32 @@ def cmd_calendar(args, config: Config) -> int:
     return EXIT_OK
 
 
+def cmd_notebooklm(args, config: Config) -> int:
+    from dataclasses import asdict
+    from blackboard_sync.notebooklm import runner, signin, store
+
+    def emit(event: dict) -> None:
+        print(json.dumps(event, ensure_ascii=False), flush=True)
+
+    if args.notebooklm_action == "login":
+        outcome, message = signin.CONNECTED, ""
+        try:
+            signin.login(config, on_verify=lambda: emit({"event": "sign_in", "step": "verify"}))
+        except BlackboardSyncError as exc:
+            outcome, message = getattr(exc, "outcome", "error"), str(exc)
+        emit({"event": "result", **asdict(store.status(config)), "outcome": outcome, "message": message})
+        return EXIT_OK if outcome == signin.CONNECTED else EXIT_ERROR
+    elif args.notebooklm_action == "sync":
+        result = runner.run(config, auto=args.auto, events=emit)
+        emit({"event": "result", **result.last_run()})
+        return runner.EXIT_CODES[result.status]
+    elif args.notebooklm_action == "disconnect":
+        for path in store.disconnect(config):
+            print(tr("Could not delete app data: {path}").format(path=path), file=sys.stderr)
+    emit({"event": "result", **asdict(store.status(config))})
+    return EXIT_OK
+
+
 def _utf8_output() -> None:
     """Windows: write UTF-8 even when the output is a pipe (Turkish names, JSON)."""
     for stream in (sys.stdout, sys.stderr):
@@ -293,7 +327,8 @@ def main(argv: list[str] | None = None) -> int:
         logging.getLogger("urllib3").setLevel(logging.WARNING)
     config = make_config(args)
     handlers = {"login": cmd_login, "sync": cmd_sync, "check": cmd_check,
-                "past-terms": cmd_past_terms, "uninstall": cmd_uninstall, "calendar": cmd_calendar}
+                "past-terms": cmd_past_terms, "uninstall": cmd_uninstall, "calendar": cmd_calendar,
+                "notebooklm": cmd_notebooklm}
     try:
         return handlers[args.command](args, config)
     except LoginRequired as exc:

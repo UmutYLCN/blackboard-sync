@@ -41,6 +41,35 @@ class ApiError(BlackboardSyncError):
         self.url = url
 
 
+class NotebookLMLoginRequired(BlackboardSyncError):
+    """Google rejected the NotebookLM session, or there is none; only signing in again helps."""
+
+    exit_code = EXIT_LOGIN_REQUIRED
+
+    def __init__(self):
+        super().__init__(tr("Sign in to Google again to keep adding files."))
+
+
+class NotebookLMTransient(BlackboardSyncError):
+    """Worth trying again: the network, a rate limit, a server error, a timeout."""
+
+
+class NotebookLMRateLimited(NotebookLMTransient):
+    """Google asks to slow down: the run goes on, one course at a time."""
+
+
+class NotebookLMSignInFailed(BlackboardSyncError):
+    """Connecting did not work out; ``outcome`` says how, for the log."""
+
+    def __init__(self, message: str, outcome: str):
+        super().__init__(message)
+        self.outcome = outcome
+
+
+class NotebookLMPermanent(BlackboardSyncError):
+    """Trying again will not help: a rejected file, a validation failure."""
+
+
 class SkippedMedia(Exception):
     """A media or oversized file was not downloaded; the note links to Blackboard.
 

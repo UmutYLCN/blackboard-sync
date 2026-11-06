@@ -14,16 +14,19 @@ import subprocess
 import sys
 import threading
 import webbrowser
+from dataclasses import replace
 from pathlib import Path
 
-from blackboard_sync import announcements, courses, deadlines, runtime, update_macos, updater, uninstall
+from blackboard_sync import announcements, courses, deadlines, runtime, signout, update_macos, updater, uninstall
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.i18n import tr
 from blackboard_sync.menubar import jobs, launchagent, settings_form
-from blackboard_sync.menubar.main_window_model import GENERAL, main_status, shows_window_at_launch
+from blackboard_sync.menubar.main_window_model import GENERAL, main_status, notebooklm_progress, shows_window_at_launch
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
+    NOTEBOOKLM_CONNECT,
+    NOTEBOOKLM_SYNC,
     AppModel,
     Icon,
     MenuModel,
@@ -32,6 +35,7 @@ from blackboard_sync.menubar.model import (
     RunOutcome,
     open_target,
 )
+from blackboard_sync.notebooklm import store as notebooklm_store
 from blackboard_sync.settings import SettingsError, save_settings
 from blackboard_sync.system import sync_root
 from blackboard_sync.updater import CheckResult, Release, UpdateError
@@ -385,6 +389,44 @@ def build_app(config: Config, show_window: bool = False):
             self.open_settings()
             self._window.show_calendar_settings()
 
+        def start_notebooklm(self, action: str = NOTEBOOKLM_SYNC, auto: bool = False) -> None:
+            """Run beside the Blackboard jobs; whatever happens shows only on Home's card."""
+            if not self.model.begin_notebooklm(action):
+                return
+            log.info("NotebookLM %s started", action)
+            self.refresh()
+            threading.Thread(target=self._notebooklm_worker, args=(action, auto, self.settings), daemon=True).start()
+
+        def _notebooklm_worker(self, action: str, auto: bool, settings) -> None:
+            status = jobs.run_notebooklm_guarded(
+                self.config, action, settings, auto,
+                on_event=lambda event: AppHelper.callAfter(self._notebooklm_event, event))
+            AppHelper.callAfter(self._notebooklm_done, action, status)
+
+        def _notebooklm_event(self, event: dict) -> None:
+            self.model.notebooklm_progress = notebooklm_progress(event)
+            self.refresh()
+
+        def _notebooklm_done(self, action: str, status) -> None:
+            result = status.outcome or ("login required" if status.needs_login else "error" if status.error else "ok")
+            log.info("NotebookLM %s finished: %s %s", action, result, status.message if status.error else "")
+            if self.model.finish_notebooklm(status):
+                self.start_notebooklm(auto=action == NOTEBOOKLM_SYNC)
+            self.refresh()
+
+        def disconnect_notebooklm(self) -> None:
+            from blackboard_sync.menubar.main_window import ask_notebooklm_disconnect
+
+            if self.model.notebooklm_busy is not None or not ask_notebooklm_disconnect():
+                return
+            problems = notebooklm_store.disconnect(self.config)
+            self.model.notebooklm = notebooklm_store.status(self.config)
+            if problems:
+                log.warning("could not delete the NotebookLM session data: %s", problems)
+                self.model.notebooklm = replace(self.model.notebooklm, error=True,
+                                                message=signout.LOCKED_WARNING)
+            self.refresh()
+
         def _sync_done(self, outcome: RunOutcome) -> None:
             log.info("sync finished: %s %s", outcome.status, outcome.message)
             for note in self.model.finish_sync(outcome, jobs.utcnow()):
@@ -392,6 +434,8 @@ def build_app(config: Config, show_window: bool = False):
             if jobs.calendar_after_sync(self.config, self.model, outcome):
                 self.model.calendar_busy = None
                 self.start_calendar()
+            if self.model.wants_notebooklm(outcome, self.settings.notebooklm_auto):
+                self.start_notebooklm(auto=True)
             jobs.refresh_hidden_folders(self.config, self.model)  # the sync may have found new courses
             self._save()
             if self._login_after_job:
@@ -670,6 +714,9 @@ def build_app(config: Config, show_window: bool = False):
                 "logout": self.logout,
                 "check_updates": self.start_update_check, "update": self.start_update,
                 "uninstall": self.start_uninstall, "pause": self.toggle_pause,
+                "notebooklm_connect": lambda: self.start_notebooklm(NOTEBOOKLM_CONNECT),
+                "notebooklm_sync": self.start_notebooklm, "notebooklm_disconnect": self.disconnect_notebooklm,
+                "notebooklm_open": lambda: open_url(notebooklm_store.APP_URL),
             }[action]()
 
         def _window_closed(self) -> None:
@@ -762,7 +809,7 @@ def build_app(config: Config, show_window: bool = False):
         def start_uninstall(self, _sender=None) -> None:
             from blackboard_sync.menubar.main_window import ask_uninstall
 
-            if self.model.busy or self.model.updates.busy or self.model.calendar_busy:
+            if self.model.busy or self.model.updates.busy or self.model.calendar_busy or self.model.notebooklm_busy:
                 rumps.alert("Blackboard Sync", uninstall.BUSY)
                 return
             self._uninstalling = True  # modal dialogs also run timers/wake events
@@ -799,6 +846,7 @@ def build_app(config: Config, show_window: bool = False):
             uninstall.close_file_logs()
 
         def quit(self, _sender=None) -> None:
+            jobs.notebooklm_child.stop()  # safe at any moment; the next run goes on from there
             rumps.quit_application()
 
         # -- drawing -----------------------------------------------------
@@ -813,6 +861,8 @@ def build_app(config: Config, show_window: bool = False):
             self.model.pause()
             if self.model.calendar_busy == "sync":
                 self._calendar_cancel.set()
+            if self.model.notebooklm_busy == NOTEBOOKLM_SYNC:
+                jobs.notebooklm_child.stop()
             log.info("sync paused")
             if self.model.busy in ("sync", "past_term"):
                 jobs.stop_sync()  # the worker reports "paused" and frees the job slot
@@ -941,6 +991,7 @@ def main(argv: list[str] | None = None) -> int:
         return jobs.detach(config)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    jobs.log_to_file(config)
     lock = jobs.wait_for_instance(config) if args.restarting else jobs.single_instance(config)
     if lock is None:
         print("The Blackboard Sync menu bar app is already running.", file=sys.stderr)

@@ -240,7 +240,7 @@ def browser_label(app: Path) -> str:
     return app.stem
 
 
-def browser_flags(profile_dir: Path, url: str) -> list[str]:
+def browser_flags(profile_dir: Path, url: str, port: int = 0) -> list[str]:
     """A separate, normal browser instance with a private profile.
 
     ``--user-data-dir`` keeps it apart from the student's own profile (and
@@ -250,22 +250,23 @@ def browser_flags(profile_dir: Path, url: str) -> list[str]:
     """
     return [
         f"--user-data-dir={profile_dir}",
-        "--remote-debugging-port=0",
+        f"--remote-debugging-port={port}",
         "--no-first-run",
         "--no-default-browser-check",
         url,
     ]
 
 
-def launch_command(app: Path, profile_dir: Path, url: str, platform: str | None = None) -> list[str]:
+def launch_command(app: Path, profile_dir: Path, url: str, platform: str | None = None,
+                   port: int = 0) -> list[str]:
     """The command that starts the sign-in browser.
 
     macOS: ``open -n -a`` (``-n`` starts a new instance even if the student's
     everyday browser is already running). Windows: the browser executable.
     """
     if is_windows(platform):
-        return [str(app), *browser_flags(profile_dir, url)]
-    return ["/usr/bin/open", "-n", "-a", str(app), "--args", *browser_flags(profile_dir, url)]
+        return [str(app), *browser_flags(profile_dir, url, port)]
+    return ["/usr/bin/open", "-n", "-a", str(app), "--args", *browser_flags(profile_dir, url, port)]
 
 
 def start_browser(
