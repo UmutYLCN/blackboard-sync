@@ -143,7 +143,7 @@ def window_height(content: float, chrome: float, available: float) -> int:
 SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER = "account", "sync", "calendar", "folder"
 SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER = "past_terms", "updates", "danger"
 SECTION_APPEARANCE = "appearance"  # the Windows WebView2 window only (``settings_sections(appearance=True)``)
-SECTION_NOTEBOOKLM = "notebooklm"  # the macOS window only for now (``settings_sections(notebooklm=True)``)
+SECTION_NOTEBOOKLM = "notebooklm"  # only where the app has it (``settings_sections(notebooklm=True)``)
 # Top to bottom; Calendar actions are immediate, outside the saved form.
 SECTION_ORDER = (SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR, SECTION_NOTEBOOKLM,
                  SECTION_FOLDER, SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER)
@@ -242,7 +242,7 @@ def settings_sections(appearance: bool = False, notebooklm: bool = False,
     """The sections the page shows, in order.
 
     Appearance only where the window can change its theme, NotebookLM only where the app
-    has it, the "Automatic re-sign-in" row only where the app does that (macOS so far).
+    has it, the "Automatic re-sign-in" row only where the app does that.
     """
     sections = tuple(SECTIONS[key] for key in SECTION_ORDER
                      if key in SECTIONS and (appearance or key != SECTION_APPEARANCE)
@@ -287,7 +287,7 @@ def row_states(status: "WindowStatus") -> dict[str, RowState]:
 
 
 def notebooklm_disconnect_state(status: "WindowStatus") -> RowState:
-    """Kept apart from ``row_states``: the Windows window has no such row yet."""
+    """Kept apart from ``row_states``, for the windows that have these rows."""
     return RowState(enabled=status.notebooklm_connected and not status.notebooklm_busy)
 
 

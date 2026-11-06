@@ -286,7 +286,7 @@ def test_windows_cancel_leaves_everything_untouched(config, monkeypatch):
 
     app = module.TrayApp.__new__(module.TrayApp)
     app.config, app.settings = config, SimpleNamespace(dest=config.dest)
-    app.model = SimpleNamespace(busy=None, updates=SimpleNamespace(busy=None))
+    app.model = SimpleNamespace(busy=None, updates=SimpleNamespace(busy=None), calendar_busy=None, notebooklm_busy=None)
     app.root, app.window = object(), None
     app.uninstalling = False
     monkeypatch.setattr(main_window, "ask_uninstall", lambda *args: None)
@@ -303,7 +303,7 @@ def test_windows_busy_refuses_before_confirmation(config, monkeypatch, busy):
 
     app = module.TrayApp.__new__(module.TrayApp)
     app.config, app.settings = config, SimpleNamespace(dest=config.dest)
-    app.model = SimpleNamespace(busy=busy, updates=SimpleNamespace(busy=None))
+    app.model = SimpleNamespace(busy=busy, updates=SimpleNamespace(busy=None), calendar_busy=None, notebooklm_busy=None)
     app.root, app.window = object(), None
     shown = []
     monkeypatch.setattr(main_window, "ask_uninstall", lambda *args: pytest.fail("must refuse before asking"))
@@ -358,7 +358,7 @@ def test_windows_confirmation_cleans_then_removes_app_and_quits(config, monkeypa
     calls = []
     app = module.TrayApp.__new__(module.TrayApp)
     app.config, app.settings = config, SimpleNamespace(dest=config.dest)
-    app.model = SimpleNamespace(busy=None, updates=SimpleNamespace(busy=None))
+    app.model = SimpleNamespace(busy=None, updates=SimpleNamespace(busy=None), calendar_busy=None, notebooklm_busy=None)
     app.root = SimpleNamespace(destroy=lambda: calls.append("quit"))
     app.icon = SimpleNamespace(stop=lambda: calls.append("stop"))
     app.window = None

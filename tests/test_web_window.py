@@ -384,12 +384,13 @@ def test_web_mode_falls_back_to_tk_where_webview2_cannot_run(tmp_path, monkeypat
 # -- Settings, Get started and questions ------------------------------------------------
 
 GOOD_FORM = {"base_url": "https://bb.example", "dest": "C:/Users/u/Documents", "autostart": True,
-             "check_updates": False, "sync_interval_minutes": 180, "language": "tr"}
+             "check_updates": False, "sync_interval_minutes": 180, "language": "tr", "auto_relogin": False,
+             "notebooklm_auto": False}
 
 
 @pytest.mark.parametrize("change", [
     {"autostart": "yes"}, {"sync_interval_minutes": 5}, {"sync_interval_minutes": True}, {"language": "de"},
-    {"base_url": None}, {"dest": "x" * 5000}, {"check_updates": 1},
+    {"base_url": None}, {"dest": "x" * 5000}, {"check_updates": 1}, {"auto_relogin": "on"}, {"notebooklm_auto": None},
 ])
 def test_form_values_refuse_wrong_types(change):
     assert web_window.form_values({**GOOD_FORM, **change}) is None
@@ -398,7 +399,7 @@ def test_form_values_refuse_wrong_types(change):
 
 def test_form_values_keep_the_texts_for_submit_to_check():
     values = web_window.form_values(GOOD_FORM)
-    assert values == FormValues("https://bb.example", "C:/Users/u/Documents", True, False, 180, "tr")
+    assert values == FormValues("https://bb.example", "C:/Users/u/Documents", True, False, 180, "tr", False, False)
 
 
 def test_save_shows_the_error_and_success_drops_the_edits():

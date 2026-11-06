@@ -288,7 +288,7 @@ are, in order, Account, Sync, Folder, Past terms, Updates and a red Danger zone:
   background the first time **Settings** is shown after the window opens, while you
   are signed in; until then it
   says it is loading (a lookup that met a running sync tries again by itself), and **No past terms to download.** when there is none.
-- **Sync** — on macOS also **Automatic re-sign-in**, on by default (see
+- **Sync** — also **Automatic re-sign-in**, on by default (see
   [Signing in again by itself](#signing-in-again-by-itself)). **Start when the computer starts**, ticked by default (see
   [Start at login](#start-at-login)), and **Automatic sync**: every 30
   minutes, **every hour** (default), every 3 hours or **Only manually** (no
@@ -603,7 +603,7 @@ in; choose **Sign in** there instead of typing `login`.
 
 ### Signing in again by itself
 
-The macOS menu bar app first tries to do this itself (`session_refresh.py`, setting
+The macOS and Windows apps first try to do this themselves (`session_refresh.py`, setting
 `auto_relogin`, on by default). The session cookies have no expiry of their own; the
 only date is the `expires:` field inside the `BbRouter` cookie, read by
 `session.session_expires_at`.
@@ -616,24 +616,29 @@ like `sync`, so Playwright never runs in the app. Details that matter:
 
 - The program inside the app bundle is started directly, not with `open`: there is no
   window to give focus to, and the process can be stopped for certain. It is not registered
-  with LaunchServices, so it gets no Dock icon.
+  with LaunchServices, so it gets no Dock icon. On Windows the browser's exe is started the
+  same way with `CREATE_NO_WINDOW`; Opera and Opera GX are left out there, because `opera.exe`
+  is a launcher that exits and the browser it starts could not be stopped for certain.
 - `--restore-last-session` is needed for sign-ons that last "until the browser closes":
   without it Chromium deletes the profile's session cookies at start.
 - The profile's Blackboard cookies are cleared first. They may still work for minutes, and
   saving them again would refresh nothing. The sign-on cookies stay.
 - It never fills in anything. A visible password field ends the attempt at once. After
   `SILENT_TIMEOUT` (45 s) a page away from Blackboard counts as wanting the student.
-- SIGTERM (Pause) exits through the `finally` blocks that stop the browser.
+- SIGTERM (Pause) exits through the `finally` blocks that stop the browser. Windows runs no
+  handler when it ends a process, so there the browser joins a job object that is closed with
+  this process (`system.end_with_this_process`).
 - It holds `sync.lock`, so no sync reads the session while it changes, and
   `browser-profile.lock` (`login.profile_lock`), so it never meets an interactive sign-in,
-  which waits for it. `SingletonLock` in the profile catches any other browser on it.
+  which waits for it. `SingletonLock` in the profile (`lockfile` on Windows, which a running
+  browser refuses to share) catches any other browser on it.
 
 How it ended is one of `refreshed`, `sso-needs-interaction`, `timeout`, `browser-missing`,
 `browser-failed`, `profile-busy`, `not-signed-in`, `locked` or `error`. The exit status is 0,
 4 for `locked`, otherwise 3. Reasons and timings go to the log; cookies and URLs do not.
 
-**When** is `session_refresh.SessionCare`, which has no GUI code so that Windows and the iPad
-can reuse it:
+**When** is `session_refresh.SessionCare`, which has no GUI code so that the macOS and Windows
+apps share it, and the iPad can reuse it:
 
 - A sync that ends with `login_required` tries once and runs again if that worked
   (`jobs.run_sync_refreshing`). Otherwise the outcome stays as it was and today's
@@ -647,8 +652,10 @@ can reuse it:
 - The look holds the app's job slot as `SESSION_JOB`, which shows nowhere but briefly
   disables the buttons that need the slot. **Sign in** pressed meanwhile starts right after it.
 
-With the setting off, none of this runs. The Settings row is macOS only
-(`settings_sections(auto_relogin=True)`).
+With the setting off, none of this runs. The Settings row needs
+`settings_sections(auto_relogin=True)`, which both apps pass. On Windows a look that is running
+does not hold up Quit (`TrayApp.job_holds_app`): it finishes by itself, and ending it is what the
+silent browser must not depend on.
 
 `tests/test_session_refresh.py` fakes the browser, so check changes here against a real one.
 Use a copy of the profile: a plain start without `--restore-last-session` deletes session
@@ -1043,7 +1050,7 @@ How it is put together:
   (`Bridge.next_state` waits until there is one), so the app never waits on the GUI.
   Closing the window hides it; Quit destroys it and pywebview's loop ends.
 - Yes/no questions (sign out, quit while busy, language restart) are native Windows message
-  boxes; the folder change, uninstall and Google Calendar disconnect questions are the page's own
+  boxes; the folder change, uninstall, Google Calendar and NotebookLM questions are the page's own
   dialogs (`WebHost.ask` waits on the app's thread for the answer the page sends).
 - The settings form is edited in the page and sent whole on Save; `web_window.form_values`
   checks the types and `settings_form.submit` the values, as for the Tk and macOS windows.
@@ -1153,8 +1160,8 @@ app-created secondary calendars, without access to the user's primary calendar.
 
 ## Optional NotebookLM
 
-macOS only for now; the core has no GUI code, so Windows and iPad can follow. Nothing here runs
-until the user connects. `src/blackboard_sync/notebooklm/` holds:
+macOS and Windows; the core has no GUI code, so the iPad can follow. Nothing here runs until the
+user connects. `src/blackboard_sync/notebooklm/` holds:
 
 | Module | Job |
 | --- | --- |
@@ -1167,8 +1174,9 @@ until the user connects. `src/blackboard_sync/notebooklm/` holds:
 
 **notebooklm-py is pinned exactly and is darwin-only.** It wraps undocumented Google endpoints, so
 upgrade it on purpose and retest a real upload. Replacing it with something else means replacing
-`gateway.py`. The packaged app collects the library's modules in `packaging/blackboard_sync.spec`
-without its CLI and servers; `--check-notebooklm` proves in the release build that it loads.
+`gateway.py`. The packaged apps collect the library's modules in `packaging/blackboard_sync.spec`
+and `packaging/blackboard_sync_windows.spec` without its CLI and servers; `--check-notebooklm` proves
+in the release builds and the Windows smoke tests that it loads.
 
 **Recognizing a file already in the notebook.** Titles cannot be trusted alone: the library sets the
 title in a best-effort rename after the upload, and on the first live run 38 of 96 sources for files
@@ -1184,11 +1192,13 @@ their source ids under the course's `legacy` key, since those copies are never t
 and an `NSProgressIndicator`: filling from `finished / total` of the progress events, or moving
 without an end while planning, signing in or waiting for NotebookLM to read the files. "Adding 3 of
 12" counts started uploads across all courses. Changing state fades the card and slides it to its
-new height; with Reduce motion none of this animates.
+new height; with Reduce motion none of this animates. The Windows page draws the same data
+(`webui_state.notebooklm_card`) in a host of its own (`drawNotebooklm`), so that a progress event
+changes the text and the bar and does not restart their animation; the Tk window has a plain version.
 
 **It never touches a Blackboard sync.** Runs happen in a child process (`blackboard-sync notebooklm
 sync`, JSON events on stdout) in a slot of their own beside the calendar one, `model.notebooklm_busy`,
-so `model.busy` stays free. The menu bar app starts one with `--auto` after a successful sync, if
+so `model.busy` stays free. The macOS and Windows apps start one with `--auto` after a successful sync, if
 `Settings.notebooklm_auto` is on and `wants_notebooklm` agrees. A sync that ends while a run is going
 sets `notebooklm_again`. Results reach only the Home card, through `last-run.json`, read by
 `store.status` and shaped by `main_window_model.notebooklm_card`.
@@ -1244,7 +1254,7 @@ traffic does not renew it: the library's rotation runs when a client opens, and 
 it stays open (the gateway uses 600 s). An automatic run with nothing new would otherwise never open
 one, so `runner._refresh_session` does when the session file is older than
 `SESSION_REFRESH_SECONDS` (12 h). Such a check is silent, unless it finds the session dead, which
-shows on the card. Only a sync reaches it, so a Mac off for a long time still needs a new sign-in.
+shows on the card. Only a sync reaches it, so a computer off for a long time still needs a new sign-in.
 
 `session.json` holds a Google session: never log, print or commit it. `NOTEBOOKLM_HOME` is pointed at
 `notebooklm/library`, so the library's own files stay inside the data folder and do not meet a

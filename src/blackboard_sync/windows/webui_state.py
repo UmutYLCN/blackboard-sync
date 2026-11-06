@@ -154,6 +154,22 @@ def home_deadlines(page: deadlines.DeadlinePage, today: date) -> tuple[list[dict
             "" if rows else page.message or main.T_NO_DEADLINES)
 
 
+def notebooklm_card(card: main.NotebookLMCard) -> dict:
+    """The card under the status card, the same one macOS draws (``main_window_model.notebooklm_card``)."""
+    return {
+        "kind": card.kind,
+        "title": main.T_NOTEBOOKLM,
+        "detail": card.detail,
+        "counts": card.counts,
+        "notice": card.notice,
+        "button": {"id": card.action, "title": card.action_title, "enabled": card.enabled} if card.action else None,
+        "open": {"id": "notebooklm_open", "title": main.T_NOTEBOOKLM_OPEN} if card.open_action else None,
+        "running": card.running,
+        "warning": card.warning,
+        "progress": card.progress,
+    }
+
+
 def home(status: main.MainStatus, announcement_rows, deadline_page: deadlines.DeadlinePage, today: date) -> dict:
     """Home: the greeting, the status card with the last files, Announcements and the next due dates."""
     state = status.home
@@ -172,6 +188,7 @@ def home(status: main.MainStatus, announcement_rows, deadline_page: deadlines.De
         "scene_line": status.scene_line,
         "recent": recent(status.recent),
         "recent_count": main.recent_count(status.recent),
+        "notebooklm": notebooklm_card(status.notebooklm),
         "attention": attention,
         "announcements": rows,
         "deadlines": upcoming,
@@ -312,9 +329,11 @@ def _calendar_rows(rows: list[dict], status_form: form.WindowStatus) -> None:
 def settings(status_form: form.WindowStatus, values: form.FormValues, error: tuple[str, str], packaged: bool,
              theme: str) -> dict:
     """Settings: sections of rows, the saved form values the page edits, and the last save's error."""
-    states = form.row_states(status_form)
+    notebooklm_row = form.notebooklm_disconnect_state(status_form)
+    states = {**form.row_states(status_form), "notebooklm_disconnect": notebooklm_row,
+              "notebooklm_duplicates": notebooklm_row}
     sections = []
-    for section in form.settings_sections(appearance=True):
+    for section in form.settings_sections(appearance=True, notebooklm=True, auto_relogin=True):
         if packaged and section.danger:
             continue  # the Store removes the app; the Updates card says so
         rows = [_row(definition, states.get(definition.key), status_form, packaged) for definition in section.rows
@@ -329,7 +348,8 @@ def settings(status_form: form.WindowStatus, values: form.FormValues, error: tup
         "sections": sections,
         "values": {"base_url": values.base_url, "dest": values.dest, "autostart": values.autostart,
                    "check_updates": values.check_updates, "sync_interval_minutes": values.sync_interval_minutes,
-                   "language": values.language},
+                   "language": values.language, "auto_relogin": values.auto_relogin,
+                   "notebooklm_auto": values.notebooklm_auto},
         "theme": theme,
         "error": message,
         "error_field": field,
@@ -368,6 +388,7 @@ def window_state(status: main.MainStatus, section: str, page: str, announcement_
 def ids(state: dict) -> dict[str, set[str]]:
     """The ids a click may send back, by kind, from the state the page was given."""
     home_state = state["home"]
+    card = home_state["notebooklm"]
     settings_state = state["settings"]
     rows = [row for section in settings_state["sections"] for row in section["rows"]]
     return {
@@ -379,6 +400,9 @@ def ids(state: dict) -> dict[str, set[str]]:
         "attention": ({item["id"] for item in home_state["attention"] if item["id"]}
                       | {item["id"] for item in state["announcements"]["attention"] if item["id"]}),
         "course": {row["id"] for row in state["courses"]["rows"]},
+        # The card's own buttons, while it shows them and they work.
+        "notebooklm": ({card["button"]["id"]} if card["button"] and card["button"]["enabled"] else set())
+                      | ({card["open"]["id"]} if card["open"] else set()),
         "past_term": {choice["value"] for row in rows if row["key"] == "past_term" for choice in row["choices"]},
         # A settings button that is on the page and enabled.
         "button": ({row["key"] for row in rows

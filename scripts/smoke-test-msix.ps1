@@ -80,6 +80,8 @@ try {
   Check ($out -match "login runtime ok \(Playwright, WebView2\)") "the sign-in runtimes (Playwright driver, WebView2 window) load"
   $out = Invoke-InPackage "--check-note-pdf"
   Check ($out -match "note pdf ok") "notes are drawn as PDF with the bundled fonts"
+  $out = Invoke-InPackage "--check-notebooklm"
+  Check ($out -match "notebooklm ok") "the NotebookLM library loads"
   if ($RequireGoogleCalendar) {
     $out = Invoke-InPackage "--check-google-calendar"
     Check ($out -match "Google Calendar client configuration OK\.") "Google Calendar configuration loads inside the installed package"

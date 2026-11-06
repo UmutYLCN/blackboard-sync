@@ -42,11 +42,13 @@ BACKGROUND = {True: "#F1F4F9", False: "#111317"}  # app.css --bg, light and dark
 STATE_WAIT = 20.0  # seconds a page's request for a new state waits before it asks again
 QUIT_GRACE = 10.0  # seconds pywebview's loop gets to end after Quit before the process ends anyway
 # What the page may ask the window to do (``Bridge.action``, ``Bridge.setting``).
-ACTIONS = ("sync", "pause", "folder", "update", "home_action", "account")
+NOTEBOOKLM_ACTIONS = ("notebooklm_connect", "notebooklm_sync", "notebooklm_open")
+ACTIONS = ("sync", "pause", "folder", "update", "home_action", "account", *NOTEBOOKLM_ACTIONS)
 SETTING_BUTTONS = ("account", "past_download", "update", "uninstall", "google_calendar", "google_calendar_sync",
-                   "google_calendar_disconnect")
-CALENDAR_ACTIONS = {"google_calendar": "calendar_connect", "google_calendar_sync": "calendar_sync",
-                    "google_calendar_disconnect": "calendar_disconnect"}
+                   "google_calendar_disconnect", "notebooklm_duplicates", "notebooklm_disconnect")
+BUTTON_ACTIONS = {"google_calendar": "calendar_connect", "google_calendar_sync": "calendar_sync",
+                  "google_calendar_disconnect": "calendar_disconnect", "notebooklm_duplicates": "notebooklm_duplicates",
+                  "notebooklm_disconnect": "notebooklm_disconnect"}
 MAX_ID = 4096  # an id is a path, a URL or a key; anything longer was not handed out
 MAX_VISIBLE = 64
 INTERVALS = tuple(minutes for minutes, _ in form.INTERVAL_OPTIONS)
@@ -92,14 +94,15 @@ def form_values(data) -> form.FormValues | None:
         return None
     base_url, dest = data.get("base_url"), data.get("dest")
     interval, code = data.get("sync_interval_minutes"), data.get("language")
-    switches = data.get("autostart"), data.get("check_updates")
+    switches = tuple(data.get(key) for key in ("autostart", "check_updates", "auto_relogin", "notebooklm_auto"))
     if not (isinstance(base_url, str) and len(base_url) <= 2048 and isinstance(dest, str) and len(dest) <= MAX_ID):
         return None
     if any(not isinstance(value, bool) for value in switches) or isinstance(interval, bool):
         return None
     if interval not in INTERVALS or code not in LANGUAGE_CODES:
         return None
-    return form.FormValues(base_url, dest, switches[0], switches[1], interval, code)
+    autostart, check_updates, auto_relogin, notebooklm_auto = switches
+    return form.FormValues(base_url, dest, autostart, check_updates, interval, code, auto_relogin, notebooklm_auto)
 
 
 class Bridge:
@@ -314,6 +317,20 @@ class WebHost:
                         {"id": "disconnect", "title": tr("Disconnect"), "style": "danger filled"}]})
         return answer[1] if answer and answer[0] == "disconnect" else None
 
+    def ask_destructive(self, title: str, message: str, button: str) -> bool:
+        """``button`` does it (and is not the default); anything else leaves things as they are."""
+        answer = self.ask({"title": title, "message": message,
+                           "buttons": [{"id": "cancel", "title": form.T_CANCEL, "style": "gray", "default": True},
+                                       {"id": "confirm", "title": button, "style": "danger filled"}]})
+        return bool(answer) and answer[0] == "confirm"
+
+    def ask_duplicates(self, title: str, text: str, remove: str) -> bool:
+        """What is there twice, in a box that scrolls; True for ``remove``, the button of any copy that can go."""
+        close = [{"id": "cancel", "title": tr("Close"), "style": "gray", "default": True}]
+        action = [{"id": "remove", "title": remove, "style": "filled"}] if remove else []
+        answer = self.ask({"title": title, "message": "", "list": text, "buttons": close + action})
+        return bool(answer) and answer[0] == "remove"
+
     # -- pywebview's threads ask ---------------------------------------------------
     def next_state(self, known: int, timeout: float):
         with self._condition:
@@ -508,6 +525,9 @@ class WebMainWindow:
         if name == "home_action":
             if status.home.action:
                 self.on_action(status.home.action)
+        elif name in NOTEBOOKLM_ACTIONS:
+            if name in self._ids.get("notebooklm", ()):
+                self.on_action(name)
         elif name == "update":
             self.on_action(status.form.update_action)
         elif name == "account":
@@ -535,7 +555,7 @@ class WebMainWindow:
         elif key == "uninstall":
             self.on_action("uninstall")
         else:
-            self.on_action(CALENDAR_ACTIONS[key])
+            self.on_action(BUTTON_ACTIONS[key])
 
     def save(self, values, login):
         """Save (or sign in from Get started); the window stays open either way."""

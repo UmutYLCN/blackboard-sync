@@ -51,6 +51,10 @@ $out = (& "$app\blackboard-sync-cli.exe" --check-note-pdf 2>&1) -join "`n"
 Write-Host $out
 Check ($out -match "note pdf ok") "notes are drawn as PDF with the bundled fonts"
 
+$out = (& "$app\blackboard-sync-cli.exe" --check-notebooklm 2>&1) -join "`n"
+Write-Host $out
+Check ($out -match "notebooklm ok") "the NotebookLM library loads"
+
 # The GUI itself: a fresh profile shows the main window (Get started), in front.
 $shown = Wait-Until 45 { (Test-Path $log) -and (MainWindow) }
 Check ($null -ne (Get-Process -Name "Blackboard Sync" -ErrorAction SilentlyContinue)) "the installer started the app"

@@ -87,13 +87,14 @@ Remove-Item "Cert:\LocalMachine\TrustedPeople\$($cert.Thumbprint)", "Cert:\Curre
 Uninstall a Setup-installed copy first, so that two copies do not both start at
 login.
 
-Two hidden self-tests check an installed package; CI runs both. Windows lets
+Three hidden self-tests check an installed package; CI runs them all. Windows lets
 only a process in the package's context start the package's programs, so run
 them through `Invoke-CommandInDesktopPackage -PackageFamilyName <family name>
 -AppId BlackboardSync -Command <exe> -Args <args>` (as
 `scripts/smoke-test-msix.ps1` does, writing the output to a file):
 
 - `blackboard-sync-cli.exe --check-login-runtime`: Playwright and WebView2 load.
+- `blackboard-sync-cli.exe --check-notebooklm`: the NotebookLM library and its version metadata load.
 - `blackboard-sync-cli.exe --check-package`: the process has package identity,
   the startup task can be turned on and off (it is left as it was), the
   self-updater is off, and a real toast notifier can be created with the GUI

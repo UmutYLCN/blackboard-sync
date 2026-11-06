@@ -359,7 +359,14 @@ button, input, select { font: inherit; color: inherit; }
 .state-icon.attention, .state-icon.error { color: var(--caution); }
 .state-text { flex: 1; min-width: 0; }
 .state-title { font: 400 26px/1.2 var(--font-display); letter-spacing: -0.015em; }
-.state-detail { color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.state-detail {
+  color: var(--muted);
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2; /* "Session refreshed automatically" must stay readable */
+  overflow: hidden;
+}
 
 .message { margin: 12px 0 0; color: var(--muted); font-size: 13px; }
 .message.warning { color: var(--warning); }
@@ -424,7 +431,27 @@ button, input, select { font: inherit; color: inherit; }
 .scene.small .paper { width: 18px; height: 18px; top: 6px; }
 .scene-line { margin-top: 10px; color: var(--muted); font-size: 13px; }
 
+/* -- the NotebookLM card (Home) ---------------------------------------------------- */
+
+.notebooklm { display: flex; align-items: flex-start; gap: 14px; }
+.notebooklm.warning { background: var(--warning-soft); }
+.notebooklm.changed { animation: settle 0.25s ease-out; }
+.nlm-icon { width: 32px; height: 32px; margin-top: 2px; }
+.nlm-icon.off { color: var(--muted); }
+.nlm-icon.idle { color: var(--success); }
+.nlm-icon.attention { color: var(--caution); }
+.nlm-text { flex: 1; min-width: 0; }
+.nlm-title { font: 400 19px/1.25 var(--font-display); letter-spacing: -0.01em; }
+.nlm-detail, .nlm-counts { color: var(--muted); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nlm-notice { color: var(--caution); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nlm-bar { position: relative; height: 6px; margin-top: 10px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.nlm-bar > span { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 3px; background: var(--accent); transition: width 0.3s ease-out; }
+.nlm-bar.moving > span { width: 35%; transition: none; animation: slide 1.4s ease-in-out infinite; }
+.nlm-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes settle { from { opacity: 0.2; transform: translateY(4px); } }
+@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
 @keyframes fly {
   0% { transform: translate(0, 0) scale(1); opacity: 0; }
   15% { opacity: 1; }
@@ -655,6 +682,18 @@ button, input, select { font: inherit; color: inherit; }
 .dialog-title { margin: 0 0 10px; font: 600 20px/1.3 var(--font-display); }
 .dialog-message { margin: 0; color: var(--text-2); white-space: pre-line; }
 .dialog-detail { margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13px; word-break: break-all; }
+.dialog-list {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 280px;
+  overflow: auto;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font: 13px/1.5 var(--font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .dialog-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; flex-wrap: wrap; }
 
 .placeholder { color: var(--muted); padding: 40px 0; text-align: center; }

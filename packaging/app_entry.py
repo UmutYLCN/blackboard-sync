@@ -47,7 +47,7 @@ def main() -> int:
 
         print(check_note_pdf())
         return 0
-    if args == [CHECK_NOTEBOOKLM] and sys.platform == "darwin":
+    if args == [CHECK_NOTEBOOKLM]:
         from blackboard_sync.notebooklm.gateway import check_runtime as check_notebooklm
 
         print(check_notebooklm())

@@ -108,6 +108,27 @@ def fixtures(now: datetime) -> dict[str, dict]:
                                                account.detail)), announcements, page),
         "empty": (replace(synced, recent=(), home_heading=main.greeting("Umut", now),
                           home_subtitle=tr("No deadlines this week")), (), deadlines.DeadlinePage()),
+        "notebooklm-off": (replace(synced, notebooklm=main.NotebookLMCard(
+            main.NOTEBOOKLM_OFF, main.T_NOTEBOOKLM_INTRO, action="notebooklm_connect",
+            action_title=main.T_NOTEBOOKLM_CONNECT)), announcements, page),
+        "notebooklm-signing-in": (replace(synced, notebooklm=main.NotebookLMCard(
+            main.NOTEBOOKLM_RUNNING, main.T_NOTEBOOKLM_WAITING, action="notebooklm_connect",
+            action_title=main.T_NOTEBOOKLM_CONNECT, enabled=False)), announcements, page),
+        "notebooklm-running": (replace(synced, notebooklm=main.NotebookLMCard(
+            main.NOTEBOOKLM_RUNNING, tr("Adding {done} of {total}: {file}").format(
+                done=3, total=8, file="Lecture 4 - Normalization.pptx"),
+            "CSE301 Database Management", action="notebooklm_sync", action_title=main.T_NOTEBOOKLM_SYNC, enabled=False,
+            open_action=True, progress=0.375)), announcements, page),
+        "notebooklm-idle": (replace(synced, notebooklm=main.NotebookLMCard(
+            main.NOTEBOOKLM_IDLE, tr("Last synced: {time}").format(time=tr("today {time}").format(time="18:14")),
+            counts=" · ".join((tr("{n} added").format(n=3), tr("{n} skipped").format(n=2))),
+            notice="2 files were held back.", action="notebooklm_sync", action_title=main.T_NOTEBOOKLM_SYNC,
+            open_action=True),
+            home=main.HomeState(main.STATE_SYNCED, main.T_STATE_TITLES[main.STATE_SYNCED],
+                                f"{account.detail} · {main.T_SESSION_REFRESHED}")), announcements, page),
+        "notebooklm-attention": (replace(synced, notebooklm=main.NotebookLMCard(
+            main.NOTEBOOKLM_ATTENTION, tr("Sync did not finish: {error}").format(error="Google could not be reached."),
+            action="notebooklm_sync", action_title=main.T_NOTEBOOKLM_SYNC, open_action=True)), announcements, page),
         "update": (replace(synced, update_banner=main.UpdateBanner(
                        tr("Blackboard Sync {version} is ready").format(version="1.7.0"), main.T_UPDATE, True)),
                    announcements, page),
@@ -158,6 +179,13 @@ def fixtures(now: datetime) -> dict[str, dict]:
                                                                      last_error="Token expired"))),
          {"error": (tr("The address must start with https://."), "base_url")}),
         ("settings-dark-forced", main.GENERAL, replace(full, form=settings_form), {"theme": "dark"}),
+        ("duplicates-dialog", main.GENERAL, replace(full, form=settings_form), {"dialog": {
+            "id": "q2", "title": tr("{n} files are in a notebook more than once.").format(n=2), "message": "",
+            "list": "CSE301 Database Management\n  Week 3/slides.pdf\n    older: 2026-10-02\n"
+                    "    newer: 2026-10-14 (same content, can be removed)\n\nPHY101 Physics I\n  lab1.pdf\n"
+                    "    older: 2026-09-30\n    newer: 2026-10-01 (the file changed since then, both stay)",
+            "buttons": [{"id": "cancel", "title": tr("Close"), "style": "gray", "default": True},
+                        {"id": "remove", "title": tr("Remove"), "style": "filled"}]}}),
         ("uninstall-dialog", main.GENERAL, replace(full, form=settings_form), {"dialog": {
             "id": "q1", "title": uninstall.TITLE, "message": uninstall.MESSAGE,
             "checkbox": {"label": tr("Also delete the downloaded course files"), "detail": "C:\\Users\\umut\\Documents\\University"},

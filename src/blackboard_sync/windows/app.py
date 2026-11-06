@@ -13,15 +13,35 @@ import sys
 import threading
 import time
 import webbrowser
+from dataclasses import replace
 from pathlib import Path
 
-from blackboard_sync import announcements, courses, deadlines, relocate, runtime, updater, uninstall
+from blackboard_sync import (announcements, courses, deadlines, relocate, runtime, session_refresh, signout, updater,
+                             uninstall)
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
-from blackboard_sync.i18n import tr
+from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.menubar import jobs, settings_form
-from blackboard_sync.menubar.main_window_model import GENERAL, main_status, shows_window_at_launch
-from blackboard_sync.menubar.model import MOVE_JOB, open_target, RunOutcome, UPDATE_ACTIONS
+from blackboard_sync.menubar.main_window_model import (
+    GENERAL,
+    duplicates_text,
+    duplicates_title,
+    main_status,
+    notebooklm_progress,
+    removable_ids,
+    shows_window_at_launch,
+)
+from blackboard_sync.menubar.model import (
+    MOVE_JOB,
+    NOTEBOOKLM_CONNECT,
+    NOTEBOOKLM_DUPLICATES,
+    NOTEBOOKLM_SYNC,
+    SESSION_JOB,
+    UPDATE_ACTIONS,
+    RunOutcome,
+    open_target,
+)
+from blackboard_sync.notebooklm import store as notebooklm_store
 from blackboard_sync.settings import SettingsError, save_settings
 from blackboard_sync.system import sync_root
 from . import activation, autostart, notifications, package
@@ -74,7 +94,7 @@ def app_command():
     return [str(executable), "-m", "blackboard_sync.windows"]
 
 
-def cli_runner(command, **kwargs):
+def console_command(command):
     # pythonw can discard standard streams even with redirected handles. Run
     # the console interpreter hidden so the CLI always returns its JSON report.
     command = list(command)
@@ -85,9 +105,27 @@ def cli_runner(command, **kwargs):
         # Same reason in the installed app: its windowed exe has no console, so
         # the CLI runs as the console twin installed next to it.
         command[0] = str(executable.with_name(CLI_EXE))
+    return command
+
+
+def cli_options():
     # The CLI emits UTF-8 even when the Windows ANSI code page is different.
-    return jobs.run_cancellable(command, **kwargs, encoding="utf-8", errors="replace",
-                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    return {"encoding": "utf-8", "errors": "replace", "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+
+
+def cli_runner(command, **kwargs):
+    """A CLI job in the app's one job slot: Pause can end it."""
+    return jobs.run_cancellable(console_command(command), **kwargs, **cli_options())
+
+
+def cli_run(command, **kwargs):
+    """A CLI job beside the job slot; ``subprocess.run`` for ``jobs``."""
+    return subprocess.run(console_command(command), **kwargs, **cli_options())
+
+
+def cli_popen(command, **kwargs):
+    """The same for a child that reports as it goes; ``subprocess.Popen`` for ``jobs``."""
+    return subprocess.Popen(console_command(command), **kwargs, **cli_options())
 
 
 class TrayApp:
@@ -165,6 +203,7 @@ class TrayApp:
             self.root.after(30000, self.tick)
             return
         self.start_next()
+        self.start_session_check()
         if updater.enabled() and self.model.update_due(jobs.utcnow()):
             self.start_update_check(manual=False)
         self.remind()
@@ -191,6 +230,9 @@ class TrayApp:
         old, new = self.model.move_from, self.model.dest
         if job == MOVE_JOB and old is None:
             return
+        if job == "login" and self.model.busy == SESSION_JOB:  # over in seconds, and it may use the browser profile
+            self.login_after_job = True
+            return
         if self.model.updates.busy == "download" or not self.model.begin(job):
             return
         if job == "login":
@@ -198,21 +240,55 @@ class TrayApp:
         self.refresh()
         settings, config = self.settings, self.config
         term_name, term_id = self.model.past_term, self.model.past_term_id
+        may_refresh = self.model.session_care.may_refresh(jobs.utcnow())
         def worker():
+            refresh = None
             try:
                 if job == "login":
                     result = jobs.run_login(settings, runner=cli_runner)
                 elif job == MOVE_JOB:
                     result = jobs.run_move_guarded(config, old, new)
                 else:
-                    result = jobs.run_sync(job, settings, runner=cli_runner, term_name=term_name, term_id=term_id)
+                    result, refresh = jobs.run_sync_refreshing(job, settings, term_name, term_id, may_refresh,
+                                                               wanted=lambda: not self.model.paused, runner=cli_runner)
             except Exception as exc:
                 log.exception("CLI job failed")
                 result = ((False, str(exc)) if job == "login"
                           else relocate.MoveResult(status="error", message=str(exc)) if job == MOVE_JOB
                           else RunOutcome(status="error", message=str(exc)))
-            self.post(self.job_done, job, result)
+            self.post(self.job_done, job, result, refresh)
         threading.Thread(target=worker, daemon=True).start()
+
+    def start_session_check(self):
+        """Between syncs: keep the session alive, and replace it if it is gone or about to go."""
+        now = jobs.utcnow()
+        if not self.model.session_check_due(now) or not self.model.begin(SESSION_JOB):
+            return
+        settings, may_refresh = self.settings, self.model.session_care.may_refresh(now)
+        def worker():
+            self.post(self.session_done, jobs.run_session_check(self.config, settings, may_refresh, runner=cli_runner))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def session_done(self, check):
+        if check.status != session_refresh.ALIVE:
+            log.info("Keep-alive: %s", check.status)
+        self.log_refresh(check.refresh)
+        self.post_notifications(self.model.finish_session_check(check.status, check.refresh, jobs.utcnow()))
+        self.save()
+        if self.login_after_job:
+            self.login_after_job = False
+            self.start_job("login")
+        else:
+            self.start_next()
+        self.refresh()
+
+    def log_refresh(self, refresh):
+        if refresh is None:
+            return
+        if refresh.ok:
+            log.info("Session refreshed automatically (%.1f s)", refresh.seconds)
+        else:
+            log.warning("Automatic re-sign-in failed: %s", refresh.reason)
 
     def start_calendar(self, action="sync", **options):
         """Connect, sync or disconnect Google Calendar on a worker; pressing Connect again cancels it."""
@@ -254,7 +330,90 @@ class TrayApp:
         self.save()
         self.refresh()
 
-    def job_done(self, job, result):
+    def start_notebooklm(self, action=NOTEBOOKLM_SYNC, auto=False):
+        """Run beside the Blackboard jobs; whatever happens shows only on Home's card."""
+        if not self.model.begin_notebooklm(action):
+            return
+        log.info("NotebookLM %s started", action)
+        self.refresh()
+        config, settings = self.config, self.settings
+        def worker():
+            status = jobs.run_notebooklm_guarded(config, action, settings, auto, popen=cli_popen,
+                                                 on_event=lambda event: self.post(self.notebooklm_event, event))
+            self.post(self.notebooklm_done, action, status)
+        threading.Thread(target=worker, daemon=True).start()
+
+    def notebooklm_event(self, event):
+        self.model.notebooklm_progress = notebooklm_progress(event)
+        self.refresh()
+
+    def notebooklm_done(self, action, status):
+        result = status.outcome or ("login required" if status.needs_login else "error" if status.error else "ok")
+        log.info("NotebookLM %s finished: %s %s", action, result, status.message if status.error else "")
+        if self.model.finish_notebooklm(status):
+            self.start_notebooklm(auto=action != NOTEBOOKLM_CONNECT)
+        self.refresh()
+
+    def find_notebooklm_duplicates(self, source_ids=None):
+        """List the duplicates, or remove the copies just confirmed; both take the NotebookLM slot."""
+        if not self.model.begin_notebooklm(NOTEBOOKLM_DUPLICATES):
+            return
+        self.refresh()
+        def worker():
+            report = jobs.run_notebooklm_duplicates(source_ids, runner=cli_run)
+            self.post(self.notebooklm_duplicates_done, report, source_ids is not None)
+        threading.Thread(target=worker, daemon=True).start()
+
+    def notebooklm_duplicates_done(self, report, removed):
+        self.notebooklm_done(NOTEBOOKLM_DUPLICATES, notebooklm_store.status(self.config))
+        if report.get("status") != "ok":
+            log.warning("NotebookLM duplicates: %s %s", report.get("status"), report.get("message"))
+            self.show_message("warning", tr("Could not look through NotebookLM."), report.get("message") or "")
+        elif removed:
+            self.show_message("info", tr("Duplicates removed."), tr("{n} removed, {failed} failed.").format(
+                n=len(report.get("removed", ())), failed=len(report.get("failed", ()))))
+        else:
+            ids = removable_ids(report)
+            if self.window is None or not self.window_open:
+                self.show_window(GENERAL)  # the look takes a while: it may have been closed since
+            if self.ask_duplicates(report, len(ids)) and self.ask_remove_duplicates(len(ids)):
+                self.find_notebooklm_duplicates(ids)
+
+    def ask_duplicates(self, report, removable):
+        """The list; True when the student asks to remove the copies that can go (they confirm once more)."""
+        remove = ntr("Remove {n} copy…", "Remove {n} copies…", removable).format(n=removable) if removable else ""
+        title, text = duplicates_title(report), duplicates_text(report)
+        if self.web is not None:
+            return self.web.ask_duplicates(title, text, remove)
+        from .main_window import ask_notebooklm_duplicates
+
+        return ask_notebooklm_duplicates(self.dialog_parent(), title, text, remove)
+
+    def ask_remove_duplicates(self, removable):
+        """Deleting cannot be undone from here, so it takes this second, plain question."""
+        return self.ask_destructive(
+            ntr("Remove {n} copy from NotebookLM?", "Remove {n} copies from NotebookLM?",
+                removable).format(n=removable),
+            tr("Only newer copies this app added are removed, and only with the same content as "
+               "the older copy. The older copy stays. This cannot be undone."), tr("Remove"))
+
+    def disconnect_notebooklm(self):
+        """Confirmed first: signing in again takes the student through Google's sign-in."""
+        if self.model.notebooklm_busy is not None or not self.ask_destructive(
+                tr("Disconnect NotebookLM?"),
+                tr("The Google session is deleted from this computer. Files already in NotebookLM "
+                   "stay there, and new ones are no longer added."), tr("Disconnect")):
+            return
+        try:
+            problems = notebooklm_store.disconnect(self.config)
+        except OSError as exc:  # Windows refuses to delete a file that something still holds open
+            problems = [str(exc)]
+        self.model.notebooklm = notebooklm_store.status(self.config)
+        if problems:
+            log.warning("Could not delete the NotebookLM session data: %s", problems)
+            self.model.notebooklm = replace(self.model.notebooklm, error=True, message=signout.LOCKED_WARNING)
+
+    def job_done(self, job, result, refresh=None):
         if job == "login":
             self.model.finish_login(*result, jobs.utcnow())
         elif job == MOVE_JOB:
@@ -262,6 +421,9 @@ class TrayApp:
             self.post_notifications(
                 self.model.finish_move(result.status, result.moved, len(result.kept), result.message))
         else:
+            self.log_refresh(refresh)
+            if refresh is not None:
+                self.model.record_refresh(refresh, jobs.utcnow())
             for note in self.model.finish_sync(result, jobs.utcnow()):
                 threading.Thread(target=self.notify, args=(note,), daemon=True).start()
             if jobs.calendar_after_sync(self.config, self.model, result):
@@ -271,6 +433,8 @@ class TrayApp:
                     status = jobs.run_calendar_guarded(self.config, cancel=cancel)
                     self.post(self.calendar_done, status)
                 threading.Thread(target=worker, daemon=True).start()
+            if self.model.wants_notebooklm(result, self.settings.notebooklm_auto):
+                self.start_notebooklm(auto=True)
             jobs.refresh_hidden_folders(self.config, self.model)  # the sync may have found new courses
         self.save()
         if self.login_after_job:
@@ -360,6 +524,8 @@ class TrayApp:
         self.model.pause()
         if self.model.calendar_busy == "sync":
             self.calendar_cancel.set()
+        if self.model.notebooklm_busy == NOTEBOOKLM_SYNC:
+            jobs.notebooklm_child.stop()
         if self.model.busy in ("sync", "past_term"):
             jobs.stop_sync()  # the worker reports "paused" and frees the job slot
         self.save()
@@ -425,6 +591,16 @@ class TrayApp:
             self.start_calendar()
         elif action == "calendar_disconnect":
             self.disconnect_calendar()
+        elif action == "notebooklm_connect":
+            self.start_notebooklm(NOTEBOOKLM_CONNECT)
+        elif action == "notebooklm_sync":
+            self.start_notebooklm()
+        elif action == "notebooklm_open":
+            webbrowser.open(notebooklm_store.APP_URL)
+        elif action == "notebooklm_duplicates":
+            self.find_notebooklm_duplicates()
+        elif action == "notebooklm_disconnect":
+            self.disconnect_notebooklm()
         elif action == "deadline":
             if value.startswith(self.config.base_url.rstrip("/") + "/"):
                 webbrowser.open(value)
@@ -473,14 +649,20 @@ class TrayApp:
                 except OSError:
                     self.model.note = tr("Could not sign out.")
         elif action == "quit":
-            if self.model.busy or self.model.updates.busy == "download":
+            if self.job_holds_app():
                 self.show_message("info", "Blackboard Sync", settings_form.T_BUSY, parent=self.root)
                 return
+            jobs.notebooklm_child.stop()  # safe at any moment; the next run goes on from there
             self.closed = True
             self.icon.stop()
             self.root.destroy()
             return
         self.refresh()
+
+    def job_holds_app(self):
+        """Quitting has to wait. A look at the session does not count: it needs no window, and
+        ending it could leave its browser behind, so it finishes on its own in a moment."""
+        return self.model.busy not in (None, SESSION_JOB) or self.model.updates.busy == "download"
 
     def start_past_terms(self):
         """Look up the past terms for the list in Genel, in the background."""
@@ -509,7 +691,7 @@ class TrayApp:
         if package.is_packaged():
             self.show_message("info", "Blackboard Sync", uninstall.STORE_REMOVAL)
             return
-        if self.model.busy or self.model.updates.busy:
+        if self.model.busy or self.model.updates.busy or self.model.calendar_busy or self.model.notebooklm_busy:
             self.show_message("info", "Blackboard Sync", uninstall.BUSY)
             return
         self.uninstalling = True
@@ -633,8 +815,8 @@ class TrayApp:
 
     def settings_submitted(self, values, login):
         # Do not apply a new destination/school to the result of an in-flight job;
-        # the past-term lookup the open window starts changes no files.
-        if self.model.busy not in (None, "past_terms") or self.model.updates.busy == "download":
+        # the past-term lookup the open window starts and a look at the session change no files.
+        if self.model.busy not in (None, "past_terms", SESSION_JOB) or self.model.updates.busy == "download":
             return settings_form.T_BUSY, "base_url"
         try:
             submission = settings_form.submit(values, self.settings)
@@ -659,6 +841,7 @@ class TrayApp:
             self.settings.check_updates,
             self.settings.sync_interval_minutes,
             dest_choice=choice,
+            auto_relogin=self.settings.auto_relogin,
         )
         self.save()
         self.start_next()  # a move goes before signing in to a new school
@@ -680,7 +863,7 @@ class TrayApp:
 
     def restart(self):
         """Start a new copy that takes over once this one has quit, then quit."""
-        if self.model.busy or self.model.updates.busy == "download":
+        if self.job_holds_app():
             self.model.note = tr("Could not restart Blackboard Sync; quit it and open it again.")
             self.refresh()
             return
@@ -712,6 +895,12 @@ class TrayApp:
         from tkinter import messagebox
 
         return messagebox.askyesno(title, message, parent=self.dialog_parent())
+
+    def ask_destructive(self, title, message, button):
+        """A yes-or-no question whose yes cannot be taken back: it is not the default answer."""
+        if self.web is not None:
+            return self.web.ask_destructive(title, message, button)
+        return self.ask_yes_no(title, message)
 
     def show_message(self, kind, title, message, parent=None):
         """``kind`` is "info", "warning" or "error"; ``parent`` overrides ``dialog_parent`` (Tk)."""
