@@ -143,9 +143,10 @@ def window_height(content: float, chrome: float, available: float) -> int:
 SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER = "account", "sync", "calendar", "folder"
 SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER = "past_terms", "updates", "danger"
 SECTION_APPEARANCE = "appearance"  # the Windows WebView2 window only (``settings_sections(appearance=True)``)
+SECTION_NOTEBOOKLM = "notebooklm"  # the macOS window only for now (``settings_sections(notebooklm=True)``)
 # Top to bottom; Calendar actions are immediate, outside the saved form.
-SECTION_ORDER = (SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR, SECTION_FOLDER,
-                 SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER)
+SECTION_ORDER = (SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR, SECTION_NOTEBOOKLM,
+                 SECTION_FOLDER, SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER)
 
 CONTROL_FIELD, CONTROL_POPUP, CONTROL_SWITCH, CONTROL_BUTTON = "field", "popup", "switch", "button"
 
@@ -157,6 +158,8 @@ T_AUTOSTART_DETAIL = tr("Keeps syncing in the background after you sign in to th
 T_CHECK_UPDATES_DETAIL = tr("Looks for a new version once a day.")
 T_UNINSTALL_LABEL = tr("Uninstall Blackboard Sync")
 T_SECTION_APPEARANCE = tr("Appearance")
+T_NOTEBOOKLM_AUTO = tr("Add new files to NotebookLM after each sync")
+T_NOTEBOOKLM_DISCONNECT = tr("Disconnect NotebookLM")
 T_THEME_LABEL = tr("Theme")
 T_THEME_DETAIL = tr("System follows the light or dark mode chosen in Windows.")
 # (value, menu text); applies at once, outside the Save/Cancel form.
@@ -204,6 +207,14 @@ SECTIONS = {section.key: section for section in (
         SettingRow("google_calendar_sync", tr("Sync calendar now"), button=tr("Sync calendar now")),
         SettingRow("google_calendar_disconnect", tr("Disconnect Google Calendar"), button=tr("Disconnect")),
     ), footer=tr("Sends deadlines to a dedicated Blackboard Deadlines calendar. Your other calendars stay private.")),
+    SettingsSection(SECTION_NOTEBOOKLM, "NotebookLM", (
+        SettingRow("notebooklm_auto", T_NOTEBOOKLM_AUTO, tr("Files already there are not added again."), CONTROL_SWITCH,
+                   field="notebooklm_auto"),
+        SettingRow("notebooklm_disconnect", T_NOTEBOOKLM_DISCONNECT,
+                   tr("Deletes the Google session on this computer. Files in NotebookLM stay there."),
+                   CONTROL_BUTTON, button=tr("Disconnect")),
+    ), footer=tr("NotebookLM (Gemini Notebook) is reached through an unofficial connection that may stop working "
+                 "if Google changes NotebookLM. Your course files go to your own Google account.")),
     SettingsSection(SECTION_FOLDER, T_SECTION_FOLDER, (
         SettingRow("dest", T_DEST_LABEL, T_DEST_ROOT_NOTE, CONTROL_FIELD, field="dest", button=T_CHOOSE_FOLDER),
     ), footer=T_DEST_CHANGE_NOTE),
@@ -222,14 +233,16 @@ SECTIONS = {section.key: section for section in (
 )}
 
 
-def settings_sections(appearance: bool = False, auto_relogin: bool = False) -> tuple[SettingsSection, ...]:
+def settings_sections(appearance: bool = False, notebooklm: bool = False,
+                      auto_relogin: bool = False) -> tuple[SettingsSection, ...]:
     """The sections the page shows, in order.
 
-    Appearance only where the window can change its theme, the "Automatic re-sign-in"
-    row only where the app does that (macOS so far).
+    Appearance only where the window can change its theme, NotebookLM only where the app
+    has it, the "Automatic re-sign-in" row only where the app does that (macOS so far).
     """
     sections = tuple(SECTIONS[key] for key in SECTION_ORDER
-                     if key in SECTIONS and (appearance or key != SECTION_APPEARANCE))
+                     if key in SECTIONS and (appearance or key != SECTION_APPEARANCE)
+                     and (notebooklm or key != SECTION_NOTEBOOKLM))
     if auto_relogin:
         return sections
     return tuple(replace(section, rows=tuple(row for row in section.rows if row.key != "auto_relogin"))
@@ -267,6 +280,11 @@ def row_states(status: "WindowStatus") -> dict[str, RowState]:
         "update": RowState(title=status.version, button=status.update_title, enabled=status.update_enabled),
         "uninstall": RowState(enabled=status.uninstall_enabled),
     }
+
+
+def notebooklm_disconnect_state(status: "WindowStatus") -> RowState:
+    """Kept apart from ``row_states``: the Windows window has no such row yet."""
+    return RowState(enabled=status.notebooklm_connected and not status.notebooklm_busy)
 
 
 @dataclass(frozen=True)
@@ -344,6 +362,7 @@ class FormValues:
     sync_interval_minutes: int = 60  # 0: only by hand
     language: str = DEFAULT_LANGUAGE
     auto_relogin: bool = True
+    notebooklm_auto: bool = True
 
 
 @dataclass(frozen=True)
@@ -393,6 +412,8 @@ class WindowStatus:
     calendar: CalendarStatus = CalendarStatus()
     calendar_busy: str | None = None
     calendar_paused: bool = False
+    notebooklm_connected: bool = False
+    notebooklm_busy: bool = False
 
 
 def past_term_status(model: AppModel) -> tuple[tuple[str, ...], str, bool]:
@@ -436,6 +457,7 @@ def window_status(model: AppModel) -> WindowStatus:
     past_terms, past_message, past_enabled = past_term_status(model)
     return WindowStatus(
         calendar=model.calendar, calendar_busy=model.calendar_busy, calendar_paused=model.paused,
+        notebooklm_connected=model.notebooklm.connected, notebooklm_busy=model.notebooklm_busy is not None,
         account=account,
         account_warning=expired and model.busy != "login",
         account_title=title,
@@ -450,7 +472,8 @@ def window_status(model: AppModel) -> WindowStatus:
         past_enabled=past_enabled,
         past_running=model.past_terms_available and model.busy == "past_term",
         past_available=model.past_terms_available,
-        uninstall_enabled=idle and updates.busy is None and model.calendar_busy is None,
+        uninstall_enabled=(idle and updates.busy is None and model.calendar_busy is None
+                           and model.notebooklm_busy is None),
     )
 
 
@@ -469,6 +492,7 @@ def initial_values(saved: Settings | None, current: Settings, autostart: bool) -
         sync_interval_minutes=shown.sync_interval_minutes,
         language=shown.language,
         auto_relogin=shown.auto_relogin,
+        notebooklm_auto=shown.notebooklm_auto,
     )
 
 
@@ -486,6 +510,7 @@ def submit(values: FormValues, current: Settings) -> Submission:
         language=normalize_language(values.language),
         theme=current.theme,  # chosen apart from the form (``Settings.theme``)
         auto_relogin=values.auto_relogin,
+        notebooklm_auto=values.notebooklm_auto,
     )
     return Submission(
         settings=settings,

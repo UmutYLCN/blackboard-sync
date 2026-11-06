@@ -125,6 +125,9 @@ MOVE_JOB = "move"
 # sync reads the session while it is replaced, and is otherwise invisible.
 SESSION_JOB = "session"
 
+# The two things the NotebookLM slot runs (``AppModel.notebooklm_busy``).
+NOTEBOOKLM_CONNECT, NOTEBOOKLM_SYNC = "connect", "sync"
+
 # After a past-term lookup that met a running sync or failed, when to try again (Genel in view).
 PAST_RETRY_DELAYS = {"locked": timedelta(seconds=15), "error": timedelta(seconds=60)}
 
@@ -694,6 +697,12 @@ class AppModel:
         from blackboard_sync.gcal import CalendarStatus
         self.calendar = CalendarStatus()
         self.calendar_busy: str | None = None
+        from blackboard_sync.notebooklm.store import NotebookLMStatus
+        self.notebooklm = NotebookLMStatus()
+        # Beside the job slot, like the calendar: uploads take minutes and must never hold up a sync.
+        self.notebooklm_busy: str | None = None  # NOTEBOOKLM_CONNECT | NOTEBOOKLM_SYNC
+        self.notebooklm_progress = None  # main_window_model.NotebookLMProgress of the running job
+        self.notebooklm_again = False  # a sync finished during a run: look again once it ends
         self.busy: str | None = None  # "sync" | "login" | "move" | ...
         self.past_term = ""  # only for the active one-time job; never saved as a default
         self.past_term_id = ""  # ...and the Blackboard id of that term
@@ -825,6 +834,35 @@ class AppModel:
     @property
     def past_terms_available(self) -> bool:
         return PAST_TERMS_AVAILABLE
+
+    def begin_notebooklm(self, action: str) -> bool:
+        """Claim the NotebookLM slot; False while it runs, or for a sync while paused."""
+        if self.notebooklm_busy is not None or (action == NOTEBOOKLM_SYNC and self.paused):
+            return False
+        self.notebooklm_busy, self.notebooklm_progress = action, None
+        return True
+
+    def wants_notebooklm(self, outcome: RunOutcome, enabled: bool) -> bool:
+        """Whether a finished Blackboard sync should be followed by a NotebookLM run.
+
+        A run that is going on when the sync ends cannot see its new files: it looks once more.
+        """
+        if outcome.status != "ok" or self.paused or not enabled:
+            return False
+        if not self.notebooklm.connected or self.notebooklm.needs_login:
+            return False
+        if self.notebooklm_busy == NOTEBOOKLM_SYNC:
+            self.notebooklm_again = True
+            return False
+        return self.notebooklm_busy is None
+
+    def finish_notebooklm(self, status) -> bool:
+        """The job ended; ``status`` is how it went. True: start a run, because a sync brought files
+        in the meantime (``wants_notebooklm``) or the student has just connected."""
+        connected = self.notebooklm_busy == NOTEBOOKLM_CONNECT and not status.error
+        again, self.notebooklm_again = self.notebooklm_again, False
+        self.notebooklm_busy, self.notebooklm_progress, self.notebooklm = None, None, status
+        return (again or connected) and not self.paused and status.connected and not status.needs_login
 
     def past_terms_due(self, now: datetime | None = None) -> bool:
         """The past-term list still has to be looked up (once Genel is in view)."""

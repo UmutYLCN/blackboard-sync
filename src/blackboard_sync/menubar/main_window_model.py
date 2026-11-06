@@ -40,6 +40,8 @@ from blackboard_sync import __version__, announcements, courses, deadlines, upda
 from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
+    NOTEBOOKLM_CONNECT,
+    NOTEBOOKLM_SYNC,
     T_LOGGING_IN,
     T_LOGIN,
     T_PAUSE,
@@ -134,6 +136,7 @@ T_NAME, T_SIZE, T_STATUS = tr("Name"), tr("File size"), tr("Status")
 T_PAUSE_SHORT = tr("Pause")
 SESSION_NOTE_FOR = timedelta(hours=2)  # how long Home's card mentions a background sign-in
 HOME_RECENT_ROWS = 4  # files listed on Home before "View all"
+HOME_RECENT_MIN_ROWS = 2  # ...and what stays when the window is short; the page scrolls below that
 HOME_ANNOUNCEMENT_ROWS = 3  # attention items first, then the newest announcements
 HOME_DEADLINE_ROWS = 4
 
@@ -283,6 +286,52 @@ class HomeState:
         return not self.action and self.kind != STATE_PAUSED
 
 
+# The NotebookLM card's states.
+NOTEBOOKLM_OFF, NOTEBOOKLM_IDLE, NOTEBOOKLM_RUNNING, NOTEBOOKLM_ATTENTION = "off", "idle", "running", "attention"
+T_NOTEBOOKLM = "NotebookLM"
+T_NOTEBOOKLM_CONNECT = tr("Connect NotebookLM")
+T_NOTEBOOKLM_SYNC = tr("Sync NotebookLM")
+T_NOTEBOOKLM_OPEN = tr("Open NotebookLM")
+T_NOTEBOOKLM_INTRO = tr("Add your course files to NotebookLM after each sync.")
+T_NOTEBOOKLM_CHECKING = tr("Checking what is already in NotebookLM…")
+T_NOTEBOOKLM_WAITING = tr("Sign in to Google in the browser window.")
+T_NOTEBOOKLM_VERIFYING = tr("Checking the connection…")
+T_NOTEBOOKLM_READING = tr("NotebookLM is reading the new files…")
+
+
+@dataclass(frozen=True)
+class NotebookLMCard:
+    """The card under Home's status card, always titled "NotebookLM": its pill leaves no room for
+    more, so ``detail`` says what is going on. ``action`` is a window action."""
+
+    kind: str  # one of the NOTEBOOKLM_* values
+    detail: str
+    counts: str = ""  # "3 added · 2 skipped · 1 course blocked"
+    notice: str = ""  # why something was left out
+    action: str = ""
+    action_title: str = ""
+    enabled: bool = True
+    open_action: bool = False  # the "Open NotebookLM" pill beside the action
+    progress: float | None = None  # 0 to 1 while files go up; None: no telling, the bar just moves
+
+    @property
+    def warning(self) -> bool:
+        return self.kind == NOTEBOOKLM_ATTENTION
+
+    @property
+    def running(self) -> bool:
+        return self.kind == NOTEBOOKLM_RUNNING
+
+
+@dataclass(frozen=True)
+class NotebookLMProgress:
+    """Where a running job is: its line, the course it is at and how far the bar has come."""
+
+    text: str
+    course: str = ""
+    fraction: float | None = None
+
+
 @dataclass(frozen=True)
 class ActivityRow:
     name: str
@@ -364,6 +413,7 @@ class MainStatus:
     # about the next due dates; the plain title and no line without them.
     home_heading: str = ""
     home_subtitle: str = ""
+    notebooklm: NotebookLMCard = NotebookLMCard(NOTEBOOKLM_OFF, T_NOTEBOOKLM_INTRO)
 
     @property
     def overview_title(self) -> str:
@@ -424,6 +474,74 @@ def home_state(model: AppModel, now: datetime) -> HomeState:
     if refreshed is not None and timedelta(0) <= now - refreshed < SESSION_NOTE_FOR:
         detail = f"{detail} · {T_SESSION_REFRESHED}"
     return HomeState(STATE_SYNCED, T_STATE_TITLES[STATE_SYNCED], detail)
+
+
+def notebooklm_progress(event: dict) -> NotebookLMProgress:
+    """The running card's state for an event of ``blackboard-sync notebooklm``."""
+    kind = event.get("event")
+    if kind == "progress":
+        file, total = str(event.get("file", "")), event.get("total") or 0
+        return NotebookLMProgress(
+            tr("Adding {done} of {total}: {file}").format(done=event.get("done"), total=total, file=file.rsplit("/")[-1]),
+            str(event.get("course", "")), min(event.get("finished", 0) / total, 1.0) if total else None)
+    if kind == "processing":
+        return NotebookLMProgress(T_NOTEBOOKLM_READING)
+    if kind == "sign_in":
+        return NotebookLMProgress(T_NOTEBOOKLM_VERIFYING)
+    return NotebookLMProgress(T_NOTEBOOKLM_CHECKING)
+
+
+def notebooklm_counts(status) -> str:
+    """"3 added · 2 skipped · 1 course blocked"; a count of zero only for what was added."""
+    parts = [tr("{n} added").format(n=status.added)]
+    if status.skipped:
+        parts.append(tr("{n} skipped").format(n=status.skipped))
+    if status.modified:
+        parts.append(tr("{n} changed, not replaced").format(n=status.modified))
+    if status.blocked:
+        parts.append(ntr("{n} course blocked", "{n} courses blocked", status.blocked).format(n=status.blocked))
+    if status.failed:
+        parts.append(tr("{n} failed").format(n=status.failed))
+    return " · ".join(parts)
+
+
+def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
+    """Not connected, signing in, running, needing the student, or idle with the last run's result."""
+    status, busy = model.notebooklm, model.notebooklm_busy
+    connect = {"action": "notebooklm_connect", "action_title": T_NOTEBOOKLM_CONNECT}
+    sync = {"action": "notebooklm_sync", "action_title": T_NOTEBOOKLM_SYNC, "enabled": not model.paused,
+            "open_action": True}
+    progress = model.notebooklm_progress
+    if busy == NOTEBOOKLM_CONNECT:
+        return NotebookLMCard(NOTEBOOKLM_RUNNING, progress.text if progress else T_NOTEBOOKLM_WAITING,
+                              **{**connect, "enabled": False})
+    if busy == NOTEBOOKLM_SYNC:
+        progress = progress or NotebookLMProgress(T_NOTEBOOKLM_CHECKING)
+        return NotebookLMCard(NOTEBOOKLM_RUNNING, progress.text, progress.course, progress=progress.fraction,
+                              **{**sync, "enabled": False})
+    if not status.connected:
+        if status.error:
+            return NotebookLMCard(NOTEBOOKLM_ATTENTION, status.message, **connect)
+        return NotebookLMCard(NOTEBOOKLM_OFF, T_NOTEBOOKLM_INTRO, **connect)
+    if status.needs_login:
+        return NotebookLMCard(NOTEBOOKLM_ATTENTION, status.message, "", "", "notebooklm_connect", T_LOGIN)
+    if status.error:
+        return NotebookLMCard(NOTEBOOKLM_ATTENTION, tr("Sync did not finish: {error}").format(error=status.message),
+                              **sync)
+    finished = parse_iso(status.finished_at)
+    if finished is None:
+        return NotebookLMCard(NOTEBOOKLM_IDLE, T_NEVER_SYNCED, **sync)
+    return NotebookLMCard(NOTEBOOKLM_IDLE, tr("Last synced: {time}").format(time=day_time(finished, now)),
+                          counts=notebooklm_counts(status), notice=status.message, **sync)
+
+
+def home_recent_rows(available: float, fixed: float, row: float, rows: int) -> int:
+    """How many files Home lists when ``available`` points of page must also hold ``fixed`` points of the rest.
+
+    A short window gives up rows before anything is pushed out of view.
+    """
+    fitting = int((available - fixed) // row)
+    return min(rows, max(min(fitting, HOME_RECENT_ROWS), HOME_RECENT_MIN_ROWS))
 
 
 def attention_items(model: AppModel) -> tuple[AttentionItem, ...]:
@@ -518,6 +636,7 @@ def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.Deadli
         attention=attention_items(model),
         home_heading=heading,
         home_subtitle=subtitle,
+        notebooklm=notebooklm_card(model, now),
     )
 
 
