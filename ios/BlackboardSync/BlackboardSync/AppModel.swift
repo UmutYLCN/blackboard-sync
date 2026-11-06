@@ -37,6 +37,9 @@ final class AppModel: ObservableObject {
     @Published var showingSettings = false
     /// Announcements and due dates for the signed-in account; nil while signed out.
     @Published private(set) var features: FeatureModels?
+    /// The ticked courses on the Send to NotebookLM page and Home's NotebookLM card.
+    @Published private(set) var notebookCourses: [NotebookCourse] = []
+    @Published var notebookError: String?
     var loginAfterSettings = false
     private(set) var store: LibraryStore?
     private(set) var scope = UserDefaults.standard.string(forKey: "libraryScope") ?? ""
@@ -47,6 +50,7 @@ final class AppModel: ObservableObject {
     private var featureHTTP: (any BlackboardHTTP)?
     private var featureTenant: URL?
     private var featureRefreshPending = false
+    private var notebookLedger: NotebookLedger?
     private(set) var featureRefresh: Task<Void, Never>?
     let websiteStore = WKWebsiteDataStore(forIdentifier: UUID(uuidString: "1A1FAFC3-8243-4C32-81A1-026D23F22B6D")!)
     var courses: [Course] { terms.flatMap(\.courses).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
@@ -70,6 +74,7 @@ final class AppModel: ObservableObject {
             await reloadLibrary()
             terms = library.cachedScope == scope ? library.terms : []
             selected = library.selected[scope] ?? []
+            await openNotebookLedger()
             status = library.interrupted ? "Previous sync was interrupted. Sync now to continue." : "Not signed in"
             if restoreSession, let saved = try SessionVault.load() {
                 let tenant = try SyncLogic.tenant(saved.tenant)
@@ -191,6 +196,26 @@ final class AppModel: ObservableObject {
     }
 
     #if DEBUG
+    /// UI tests only (`--ui-testing-notebook`, after the sample pages): new files in the first
+    /// sample course, and a second course that is fully sent.
+    func showSampleNotebookFiles() async {
+        guard let store, let term = terms.first, term.courses.count > 1 else { return }
+        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        do {
+            for (course, name) in [(term.courses[0], "Week 1/slides.pdf"), (term.courses[0], "Week 2/notes.txt"), (term.courses[1], "syllabus.pdf")] {
+                let folder = try await store.courseFolder(course, term: term, scope: scope)
+                try Data(name.utf8).write(to: temporary)
+                _ = try await store.install(key: "sample:" + name, desired: folder + "/" + name, temporary: temporary,
+                                            fingerprint: nil, etag: nil, lastModified: nil)
+            }
+            await reloadLibrary()
+            if let sent = notebookCourses.first(where: { $0.id == folder(for: term.courses[1]) }) {
+                await notebookShareFinished(sent, activity: nil, completed: true, error: nil)
+            }
+        } catch { notebookError = SyncLogic.safeError(error) }
+    }
+
     /// UI tests only (`--ui-testing-features`): the pages over the package's sample Blackboard.
     func showSampleFeatures() {
         let courses = PreviewData.courses.map { Course(id: $0.id, name: $0.name, termID: "sample", created: nil) }
@@ -260,7 +285,38 @@ final class AppModel: ObservableObject {
         }
     }
     func reloadLibrary() async {
-        if let store { library = await store.snapshot(); libraryRevision += 1 }
+        if let store { library = await store.snapshot(); libraryRevision += 1; await refreshNotebook() }
+    }
+
+    /// A record that cannot be read stops the page rather than listing everything as new again.
+    private func openNotebookLedger() async {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        do { notebookLedger = try NotebookLedger(support: support) }
+        catch { notebookError = "Library unavailable. Relaunch the app to retry." }
+        await refreshNotebook()
+    }
+
+    func refreshNotebook() async {
+        guard let store else { return }
+        let folders = courses.filter { selected.contains($0.id) }.compactMap { folder(for: $0) }
+        let local = await store.localFiles(library.records.values.map(\.relativePath))
+        guard let notebookLedger else { return } // After the await: a share may have finished meanwhile.
+        notebookCourses = NotebookSend.courses(folders: folders, records: Array(library.records.values),
+                                               local: local, sent: notebookLedger.sent)
+    }
+
+    /// The course as it is right now, for the share sheet; nil when nothing is left to send.
+    func notebookCourseToSend(_ id: String) async -> NotebookCourse? {
+        notebookError = nil
+        await refreshNotebook()
+        return notebookCourses.first { $0.id == id && !$0.newFiles.isEmpty }
+    }
+
+    /// Takes `course` as it was shared, so a file replaced during the share is listed again.
+    func notebookShareFinished(_ course: NotebookCourse, activity: String?, completed: Bool, error: Error?) async {
+        do { _ = try notebookLedger?.shareFinished(course, activity: activity, completed: completed, error: error) }
+        catch { notebookError = "Sent, but this iPad could not save that. These files may show as new again." }
+        await refreshNotebook()
     }
     func folder(for course: Course) -> String? { library.folders[scope + ":course:" + course.id] }
 

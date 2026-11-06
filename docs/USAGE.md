@@ -240,7 +240,9 @@ terminal Blackboard sync command itself does not automatically contact Google.
 ## NotebookLM (Mac)
 
 Blackboard Sync can add your course files to [NotebookLM](https://notebook.google.com) (now also
-called Gemini Notebook), so you can ask questions about them. It is on Mac only for now.
+called Gemini Notebook), so you can ask questions about them. The automatic connection below is on
+Mac only. On iPad, the **NotebookLM** card on Home lists the courses with new files, and **Send** hands
+them to Google's NotebookLM app through the share sheet, with no Google sign-in in Blackboard Sync.
 
 **Connect once.** On **Home**, press **Connect NotebookLM** on the NotebookLM card. A browser window
 opens on Google's own sign-in page; sign in and it closes by itself. Your password goes only to
