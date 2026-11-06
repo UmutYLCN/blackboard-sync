@@ -8,6 +8,12 @@
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1</string>
     <key>CFBundleVersion</key><string>1</string>
+    <key>BGTaskSchedulerPermittedIdentifiers</key><array>
+        <string>com.blackboardsync.session-refresh</string>
+    </array>
+    <key>UIBackgroundModes</key><array>
+        <string>fetch</string>
+    </array>
     <key>UIFileSharingEnabled</key><true/>
     <key>LSSupportsOpeningDocumentsInPlace</key><true/>
     <key>UIApplicationSceneManifest</key><dict>

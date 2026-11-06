@@ -18,6 +18,12 @@ final class CookieTransport: NSObject, URLSessionTaskDelegate, @unchecked Sendab
         return jar.filter { $0.expiresDate.map { $0 > Date() } ?? true }
     }
 
+    /// A background sign-in's new session, for the requests still to come.
+    func replace(_ cookies: [HTTPCookie]) {
+        lock.lock(); defer { lock.unlock() }
+        jar = cookies.filter { SyncLogic.matchesHost($0, tenant.host ?? "") }
+    }
+
     func request(_ url: URL, json: Bool) -> URLRequest {
         var request = URLRequest(url: url)
         request.httpShouldHandleCookies = false
@@ -72,6 +78,8 @@ final class CookieTransport: NSObject, URLSessionTaskDelegate, @unchecked Sendab
 
 @MainActor
 final class BlackboardAPI: MirrorAPI {
+    /// The light request that says whether a session still works.
+    static let accountPath = "/learn/api/public/v1/users/me"
     let tenant: URL
     private let transport: CookieTransport
     private let session: URLSession
@@ -82,7 +90,7 @@ final class BlackboardAPI: MirrorAPI {
     init(tenant: URL, cookies: [HTTPCookie],
          pageLoader: ((String) async throws -> [String: Any])? = nil,
          configuration: URLSessionConfiguration? = nil, persistSession: Bool = true,
-         log: @escaping (String) -> Void) {
+         requestTimeout: TimeInterval = 60, log: @escaping (String) -> Void) {
         self.tenant = tenant
         self.transport = CookieTransport(tenant: tenant, cookies: cookies)
         self.log = log
@@ -93,12 +101,17 @@ final class BlackboardAPI: MirrorAPI {
         config.httpShouldSetCookies = false
         config.urlCredentialStorage = nil
         config.urlCache = nil
-        config.timeoutIntervalForRequest = 60
+        config.timeoutIntervalForRequest = requestTimeout
         config.timeoutIntervalForResource = 300
         self.session = URLSession(configuration: config, delegate: transport, delegateQueue: nil)
     }
 
     func cancel() { session.invalidateAndCancel() }
+
+    var sessionCookies: [HTTPCookie] { transport.cookies }
+
+    /// Swaps the session under a running sync or page load instead of cancelling them as a new client would.
+    func replaceSession(_ cookies: [HTTPCookie]) { transport.replace(cookies) }
 
     private func url(_ path: String) throws -> URL {
         guard let url = URL(string: path, relativeTo: tenant)?.absoluteURL,
