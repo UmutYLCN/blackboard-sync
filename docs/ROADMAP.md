@@ -11,7 +11,7 @@ Status key: `Todo` · `In progress` · `Done` · `Blocked`
 | Step | Work | Status |
 |------|------|--------|
 | 1 | Publish version 1.7.0 on the Microsoft Store | Todo |
-| 2 | Mac work: school list, past-terms removal, file-move fixes | Todo |
+| 2 | Mac work: school list, past-terms removal, file-move fixes, UI cleanup | Todo |
 | 3 | Port the Mac work to Windows | Todo |
 | 4 | Microsoft Store release of the ported version | Todo |
 | 5 | Correct the website | Todo |
@@ -21,6 +21,7 @@ Status key: `Todo` · `In progress` · `Done` · `Blocked`
    - [School list with link fallback](#school-list-with-link-fallback)
    - [Removal of the past-terms feature](#removal-of-the-past-terms-feature)
    - [File-move fixes](#file-move-fixes)
+   - [UI cleanup](#ui-cleanup)
 3. **Windows port.** The finished Mac work is ported to Windows.
 4. **Microsoft Store release.** The ported Windows version is released on the Microsoft Store last. After this release, no new version is planned for a long time.
 5. **Website correction.** The website is corrected only after all of the steps above are finished.
@@ -47,6 +48,13 @@ The past-terms feature is removed from every app. Its desktop controls already s
 
 The known file-move problems already noted in [TODO.md](TODO.md) get fixed. The investigation notes are in [PLANNED_WORK_INVESTIGATIONS.md](PLANNED_WORK_INVESTIGATIONS.md).
 
+## UI cleanup
+
+- On the Mac app, clicking the round profile avatar (initials) at the top right of the window opens a small dropdown card showing `Signed in as <name>`, **Sign out** and **Settings**. That card is removed, because a Settings gear button already sits next to the avatar.
+- The visual design of the Settings page is improved.
+
+Nothing else changes in the UI.
+
 ## Microsoft Store listings
 
 - Store listings are created in both **English** and **Turkish**.
@@ -62,4 +70,14 @@ The known file-move problems already noted in [TODO.md](TODO.md) get fixed. The 
 
 Syncing other schools' data may break where the app's assumptions differ from how another school sets up Blackboard. Track these as the school list grows.
 
-- **Term titles.** Courses are fetched under a term title such as `2026-2027`. Another school may name its terms differently, so courses may not be found or may be sorted under the wrong term.
+- **Undated terms and term titles.** Some schools leave terms without dates and only name them (such as `2026-2027` or `Fall 2026`), or name them differently from the expected format. The current-term choice in `sync.py` and its iPad twin can then pick the wrong term, sort courses under the wrong term, or drop active ones.
+- **Courses without a term.** Courses with no term (`termId` null) are silently skipped, so the user sees zero courses and no error.
+- **Arabic text in PDF notes.** Arabic text in generated PDF notes shows as replacement characters because the bundled fonts cover only Latin, Turkish and Greek and shaping tables were stripped. This matters for the Saudi universities in the school list.
+- **Term-name aliases.** Term-name aliases rewrite English term names to Turkish (`Güz`, `Bahar`, `Yaz`) and miss other formats.
+- **Unscoped desktop state files.** Desktop `state.json` and `courses.json` are not scoped by school or account, so switching schools can collide on Blackboard internal IDs; the iPad app already scopes them.
+- **Course-code pattern.** The course-code pattern misses hyphenated codes like `CS-101` and can read a term prefix such as `FALL2026` as the course code.
+- **Windows path-length limit.** On Windows, term and course folder names are not shortened to fit the 259-character path limit (only subfolders are), which matters in OneDrive folders.
+- **English-only attachment check.** The check for items that do not support attachments looks for one English sentence, so a localized Blackboard server makes every such item fail and retry.
+- **Classic (non-Ultra) Blackboard.** Embedded file links without `xid-` or `rid-` markers are ignored and web links hardcode `/ultra/`.
+
+Lower-severity findings (sign-in methods, school directory gaps, iPad rate limits, language coverage) are kept in the private research notes and are not listed here.
