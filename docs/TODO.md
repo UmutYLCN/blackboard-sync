@@ -1,5 +1,7 @@
 # Planned Work
 
+For the agreed order of work and product direction, see [ROADMAP.md](ROADMAP.md).
+
 Items in this list must be investigated before implementation. An investigation should record the reproduction, evidence, likely cause, and scope before a separate implementation task begins.
 
 ## Destination change can leave downloaded files behind
