@@ -1,15 +1,12 @@
 """Release defaults and OAuth metadata delivery, independent of native GUI/network."""
 import importlib.util
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from blackboard_sync import gcal
 from blackboard_sync.config import Config
-from blackboard_sync.menubar.model import AppModel
-from blackboard_sync.menubar.settings_form import row_states, window_status
 
 CLIENT = 'test-desktop.apps.googleusercontent.com'
 METADATA = {'installed': {'client_id': CLIENT, 'client_secret': 'test-only-metadata'}}
@@ -21,27 +18,6 @@ def bundler():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-@pytest.mark.parametrize('configured', [False, True])
-def test_past_terms_coming_soon_cannot_start_jobs(tmp_path, configured):
-    model = AppModel(tmp_path, datetime.now(timezone.utc), configured=configured,
-                     session={'user': {'displayName': 'Student'}})
-    model.past_terms = ['An old cached term']
-    model.past_terms_loaded = True
-    status = window_status(model)
-    assert status.past_terms == ('Coming soon',)
-    assert 'redesigned' in status.past_message
-    assert not status.past_enabled and not status.past_running
-    rows = row_states(status)
-    assert not rows['past_term'].enabled
-    assert rows['past_download'].button == 'Coming soon'
-    assert not rows['past_download'].enabled
-    assert not model.select_past_term('An old cached term')
-    assert not model.past_terms_due()
-    assert not model.begin('past_terms') and not model.begin('past_term')
-    assert model.busy is None
-    assert model.begin('sync')  # normal Blackboard sync remains available
 
 
 def test_bundle_to_runtime_roundtrip_without_terminal_secret(tmp_path, monkeypatch):

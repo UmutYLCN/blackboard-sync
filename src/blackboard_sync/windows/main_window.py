@@ -61,13 +61,9 @@ ROW_ATTRIBUTES = {
     "account": ("account_button", "account_label", None),
     "interval": ("interval_dropdown", None, None),
     "language": ("language_dropdown", None, None),
-    "past_term": ("past_dropdown", None, None),
-    "past_download": ("past_button", None, "past_label"),
     "update": ("update_button", "version_label", None),
     "uninstall": ("uninstall_button", None, None),
 }
-# Rows whose description changes while the app runs.
-LIVE_DETAIL_ROWS = ("past_download",)
 
 
 class SettingsRowViews:
@@ -113,7 +109,7 @@ def wheel_steps(delta):
 class MainWindow:
     def __init__(self, root, values, status, on_submit, on_action, on_close, on_values=None,
                  on_open=lambda path: None, on_courses=lambda: (),
-                 on_course_toggle=lambda course_id, enabled: None, on_past_term=lambda name: None,
+                 on_course_toggle=lambda course_id, enabled: None,
                  on_section=lambda section: None, on_deadlines=deadlines.DeadlinePage,
                  on_deadline=lambda target: None, recent_seen=None, on_seen=lambda: None,
                  on_announcements=lambda: (), on_open_announcement=lambda row: None,
@@ -130,7 +126,7 @@ class MainWindow:
         self._recent_entries = []
         self.on_values = on_values or (lambda: self.saved)
         self.on_open, self.on_courses = on_open, on_courses
-        self.on_course_toggle, self.on_past_term = on_course_toggle, on_past_term
+        self.on_course_toggle = on_course_toggle
         self.on_announcements, self.on_open_announcement = on_announcements, on_open_announcement
         self.on_reveal = on_reveal
         self.state = main.WindowState()
@@ -169,7 +165,6 @@ class MainWindow:
         self.notebooklm_auto = tk.BooleanVar(value=values.notebooklm_auto)
         self.interval = tk.StringVar(value=form.interval_title(values.sync_interval_minutes))
         self.language = tk.StringVar(value=form.language_title(values.language))
-        self.past_term = tk.StringVar(value="")
         self.section_var = tk.StringVar(value=main.OVERVIEW)
 
         self._build_sidebar(window)
@@ -190,7 +185,7 @@ class MainWindow:
         # The wheel scrolls the section in view wherever the pointer is; over a
         # list it scrolls too instead of changing the choice.
         window.bind("<MouseWheel>", self.wheel)
-        for combobox in (self.past_dropdown, self.interval_dropdown, self.language_dropdown):
+        for combobox in (self.interval_dropdown, self.language_dropdown):
             combobox.bind("<MouseWheel>", lambda e: self.wheel(e) or "break")
         self._build_topbar(window)
         self.update_status(status)
@@ -634,7 +629,7 @@ class MainWindow:
         title = ttk.Label(text, text=definition.title, wraplength=ROW_WRAP)
         title.grid(row=0, column=0, sticky="w")
         detail = None
-        if definition.detail or key in LIVE_DETAIL_ROWS:
+        if definition.detail:
             detail = ttk.Label(text, text=definition.detail, foreground=MUTED, wraplength=ROW_WRAP)
             detail.grid(row=1, column=0, sticky="w")
 
@@ -652,11 +647,6 @@ class MainWindow:
             if definition.button:
                 ttk.Button(frame, text=definition.button, command=self.choose_folder).grid(
                     row=0, column=3, padx=(8, 0))
-        if key == "past_download":
-            # The papers fly into the folder for as long as the term is downloading.
-            self.past_scene = SyncScene(frame, *COMPACT_SCENE, background=background_of(frame))
-            self.past_scene.canvas.grid(row=0, column=1, sticky="e", padx=(16, 0))
-            self.past_scene.canvas.grid_remove()
         self.settings_rows[key] = SettingsRowViews(title, detail, control)
         for attribute, widget in zip(ROW_ATTRIBUTES.get(key, ()), (control, title, detail)):
             if attribute:
@@ -669,7 +659,7 @@ class MainWindow:
         key, kind = definition.key, definition.control
         variables = {"base_url": self.url, "dest": self.dest, "autostart": self.autostart,
                      "check_updates": self.check_updates, "interval": self.interval, "language": self.language,
-                     "past_term": self.past_term, "auto_relogin": self.auto_relogin,
+                     "auto_relogin": self.auto_relogin,
                      "notebooklm_auto": self.notebooklm_auto}
         if kind == form.CONTROL_FIELD:
             if key == "base_url":  # typing a school's name offers the known schools
@@ -682,7 +672,7 @@ class MainWindow:
                                 state="readonly" if choices else "disabled")
         if kind == form.CONTROL_SWITCH:
             return ttk.Checkbutton(frame, variable=variables[key])
-        commands = {"account": self.account_pressed, "past_download": self.download_past_term,
+        commands = {"account": self.account_pressed,
                     "update": lambda: self.on_action(self.status.form.update_action),
                     "uninstall": lambda: self.on_action("uninstall"),
                     "notebooklm_duplicates": lambda: self.on_action("notebooklm_duplicates"),
@@ -715,8 +705,7 @@ class MainWindow:
             return
         if state.button is not None:
             row.control.configure(text=state.button)
-        if key != "past_term":  # the past terms list sets its own state from the terms it holds
-            row.control.configure(state="normal" if state.enabled else "disabled")
+        row.control.configure(state="normal" if state.enabled else "disabled")
 
     def _build_courses(self, page):
         from tkinter import ttk
@@ -781,7 +770,7 @@ class MainWindow:
     def select(self, section):
         self.state.select(section)
         self._show_section()
-        self._animate()  # the past-term illustration only moves while Genel is in view
+        self._animate()
         self.on_section(section)
 
     def visible_page(self):
@@ -952,15 +941,6 @@ class MainWindow:
             self._apply_row_state(key, state)
         for key in ("notebooklm_duplicates", "notebooklm_disconnect"):
             self._apply_row_state(key, form.notebooklm_disconnect_state(form_status))
-        terms = list(form_status.past_terms)
-        self.past_dropdown.configure(values=terms,
-                                     state="readonly" if terms and not form_status.past_running else "disabled")
-        if self.past_term.get() not in terms:
-            self.past_term.set(terms[0] if terms else "")
-        if form_status.past_running:
-            self.past_scene.canvas.grid()
-        else:
-            self.past_scene.canvas.grid_remove()
         self._animate()
         self.refresh_announcements()
 
@@ -1011,10 +991,6 @@ class MainWindow:
             self.scene.start()
         else:
             self.scene.stop()
-        if self.status.form.past_running and self.state.open and self.state.section == main.GENERAL:
-            self.past_scene.start()
-        else:
-            self.past_scene.stop()
 
     def _draw_recent(self):
         rows = self.status.recent
@@ -1193,12 +1169,6 @@ class MainWindow:
     def toggle_course(self, course_id, enabled):
         self.on_course_toggle(course_id, enabled)
         self.refresh_courses()
-
-    def download_past_term(self):
-        """Start the one-time download of the term picked in Eski dönemler; the window stays open."""
-        name = self.past_term.get()
-        if name and self.status.form.past_enabled:
-            self.on_past_term(name)
 
     def account_pressed(self):
         if self.status.form.account_action == "login":

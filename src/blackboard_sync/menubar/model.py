@@ -80,7 +80,6 @@ STATUS_BY_EXIT = {EXIT_OK: "ok", EXIT_LOGIN_REQUIRED: "login_required", EXIT_LOC
 # Menu text
 T_SYNC_NOW = tr("Sync now")
 T_SYNCING = tr("Syncing…")
-T_PAST_LOADING = tr("Loading past terms…")
 T_LOGIN = tr("Sign in")
 T_LOGGING_IN = tr("Waiting for sign-in…")
 T_LOGOUT = tr("Sign out")
@@ -114,9 +113,7 @@ UPDATE_ACTIONS = ("check_updates", "update")
 
 # Sync and discovery jobs. Every "sync" mirrors Blackboard: files that were
 # deleted or broke are downloaded again (``sync.Syncer.present``).
-SYNC_JOBS = ("sync", "past_term", "past_terms")
-# Temporarily unavailable in the desktop apps while the archive flow is redesigned.
-PAST_TERMS_AVAILABLE = False
+SYNC_JOBS = ("sync",)
 # Moves the downloaded files into a new destination folder (``relocate.py``); with
 # ``move_from`` equal to ``dest`` it only moves the files of an older version
 # from the chosen folder into its University folder (``relocate.migrate_to_root``).
@@ -128,30 +125,15 @@ SESSION_JOB = "session"
 # The things the NotebookLM slot runs (``AppModel.notebooklm_busy``).
 NOTEBOOKLM_CONNECT, NOTEBOOKLM_SYNC, NOTEBOOKLM_DUPLICATES = "connect", "sync", "duplicates"
 
-# After a past-term lookup that met a running sync or failed, when to try again (Genel in view).
-PAST_RETRY_DELAYS = {"locked": timedelta(seconds=15), "error": timedelta(seconds=60)}
-
 # What happens to the downloaded files when the destination folder changes:
 # move them over, or download them again into the new folder (the old one is
 # left alone; a sync fills the new folder as soon as the student is signed in).
 DEST_MOVE, DEST_REFETCH = "move", "refetch"
 
 
-def sync_arguments(job: str, settings: Settings, term_name: str = "", term_id: str = "") -> list[str]:
-    """CLI arguments for a sync job with the settings from the settings window.
-
-    A past term is passed by its Blackboard id when the list gave one: its name
-    can be shared by another term or change with Blackboard's language.
-    """
-    args = ["--base-url", settings.base_url, "sync", "--json", "--dest", str(settings.dest)]
-    if job == "past_term":
-        if term_id:
-            args.extend(["--term-id", term_id])
-        elif term_name:
-            args.extend(["--term", term_name])
-        else:
-            raise ValueError("No past term was chosen.")
-    return args
+def sync_arguments(job: str, settings: Settings) -> list[str]:
+    """CLI arguments for a sync job with the settings from the settings window."""
+    return ["--base-url", settings.base_url, "sync", "--json", "--dest", str(settings.dest)]
 
 
 def login_arguments(settings: Settings) -> list[str]:
@@ -189,7 +171,6 @@ class RunOutcome:
     finished_at: datetime | None = None
     dest: str = ""
     courses: list[CourseChange] = field(default_factory=list)
-    past_term: str = ""
     warning_count: int = 0
     unreadable_courses: int = 0  # courses whose content could not be read at all
     # The sync first moved files of an older version into the University folder.
@@ -229,7 +210,6 @@ class RunOutcome:
             finished_at=parse_iso(data.get("finished_at")),
             dest=data.get("dest") or "",
             courses=courses,
-            past_term=data.get("past_term") or "",
             warning_count=len(data.get("warnings") or []) + sum(
                 len(c.get("warnings") or []) for c in data.get("courses") or []),
             unreadable_courses=sum(1 for c in data.get("courses") or [] if c.get("content_error")),
@@ -704,18 +684,6 @@ class AppModel:
         self.notebooklm_progress = None  # main_window_model.NotebookLMProgress of the running job
         self.notebooklm_again = False  # a sync finished during a run: look again once it ends
         self.busy: str | None = None  # "sync" | "login" | "move" | ...
-        self.past_term = ""  # only for the active one-time job; never saved as a default
-        self.past_term_id = ""  # ...and the Blackboard id of that term
-        self.past_terms: list[str] = []  # what the list shows
-        self.past_term_ids: dict[str, str] = {}  # entry of that list -> term id
-        # Genel in the main window lists the past terms; they are looked up once
-        # per sign-in and opening of the window, and ``past_message`` says how
-        # the last lookup or one-time download went.
-        self.past_terms_loaded = False
-        self.past_message = ""
-        self.past_lookup_stale = False  # the school changed while the lookup ran
-        # A lookup that found the lock taken or failed is repeated by itself, not only when the window reopens.
-        self.past_terms_retry_at: datetime | None = None
         # A job asked for by a destination change, started as soon as the slot is free:
         # MOVE_JOB (from ``move_from``) or "sync" (download into the new folder).
         self.pending: str | None = None
@@ -822,18 +790,12 @@ class AppModel:
 
         Nothing starts while an update downloads: it may end with the app quitting.
         """
-        if job in ("past_terms", "past_term") and not self.past_terms_available:
-            return False
         if self.busy is not None or self.updates.busy == "download":
             return False
         self.busy = job
         if job == self.pending:
             self.pending = None
         return True
-
-    @property
-    def past_terms_available(self) -> bool:
-        return PAST_TERMS_AVAILABLE
 
     def begin_notebooklm(self, action: str) -> bool:
         """Claim the NotebookLM slot; False while it runs, or for a sync while paused."""
@@ -863,65 +825,6 @@ class AppModel:
         again, self.notebooklm_again = self.notebooklm_again, False
         self.notebooklm_busy, self.notebooklm_progress, self.notebooklm = None, None, status
         return (again or connected) and not self.paused and status.connected and not status.needs_login
-
-    def past_terms_due(self, now: datetime | None = None) -> bool:
-        """The past-term list still has to be looked up (once Genel is in view)."""
-        now = now or datetime.now(timezone.utc)
-        return (
-            self.past_terms_available
-            and not self.past_terms_loaded
-            and (self.past_terms_retry_at is None or now >= self.past_terms_retry_at)
-            and self.configured
-            and self.account()[0] is not None
-            and self.busy is None
-            and self.updates.busy != "download"
-        )
-
-    def reload_past_terms(self) -> None:
-        """Look the past terms up again the next time Genel is shown."""
-        if self.busy != "past_terms":
-            self.past_terms_loaded = False
-            self.past_terms_retry_at = None
-            self.past_message = ""
-
-    def finish_past_terms(self, names: list[str] | dict[str, str], outcome: RunOutcome,
-                          now: datetime | None = None) -> None:
-        """``names`` are the list's entries, or a dict of each entry to its term id.
-
-        A lookup that met a running sync (the lock) or failed is not the answer "no past
-        terms": the list stays unloaded and is looked up again after a short wait.
-        """
-        now = now or datetime.now(timezone.utc)
-        self.busy = None
-        if self.past_lookup_stale:  # the old school's terms: look again
-            self.past_lookup_stale = False
-            return
-        retry = PAST_RETRY_DELAYS.get(outcome.status)
-        self.past_terms_loaded = retry is None
-        self.past_terms_retry_at = now + retry if retry is not None else None
-        self.past_terms = list(names) if outcome.status == "ok" else []
-        self.past_term_ids = dict(names) if outcome.status == "ok" and isinstance(names, dict) else {}
-        if outcome.status == "login_required":
-            self.auth_failed_at = outcome.finished_at or now
-            self.note = tr("Sign in and try again to see past terms.")
-        elif outcome.status == "locked":
-            self.note = tr("Another sync is running; past terms will load again shortly.")
-        else:
-            # The lookup runs by itself when Genel is shown: it keeps
-            # another job's note.
-            self.note = self.note if outcome.status == "ok" else shorten(outcome.message, 100)
-        self.past_message = "" if outcome.status == "ok" else self.note
-
-    def select_past_term(self, name: str) -> bool:
-        if not self.can_download_past_term or name not in self.past_terms:
-            return False
-        self.past_term = name
-        self.past_term_id = self.past_term_ids.get(name, "")
-        return True
-
-    @property
-    def can_download_past_term(self) -> bool:
-        return self.past_terms_available and self.busy is None and self.updates.busy != "download" and bool(self.past_terms)
 
     def record_refresh(self, result: RefreshResult, now: datetime) -> None:
         """A background sign-in ended. It worked: the session problem is over, and a later one tells again."""
@@ -961,42 +864,11 @@ class AppModel:
         return [Notification(title, summary, {"open": str(self.root)})]
 
     def _finish_sync(self, outcome: RunOutcome, now: datetime) -> list[Notification]:
-        job, self.busy = self.busy, None
+        self.busy = None
         self.note = ""
         notes: list[Notification] = []
         if outcome.status == "paused":
             # Duraklat stopped the run: nothing it had not finished counts, and the schedule waits.
-            if job == "past_term":
-                self.past_term = self.past_term_id = ""
-                self.past_message = tr("The past term download was paused; download it again.")
-            return notes
-        if job == "past_term":
-            term = outcome.past_term or self.past_term
-            self.past_term = self.past_term_id = ""
-            if outcome.status == "ok":
-                count = sum(c.counts.get(key, 0) for c in outcome.courses
-                            for key in ("new_files", "new_notes", "new_announcements"))
-                self.note = tr("{term} · {files} downloaded (past term).").format(term=term, files=files(count))
-                if outcome.unreadable_courses:
-                    # Not "nothing new": Blackboard refused the content, so the term is not complete.
-                    self.note += " " + tr("Could not read the content of {courses}; the past term is not complete, "
-                                          "try again.").format(courses=courses_text(outcome.unreadable_courses))
-                elif outcome.warning_count:
-                    self.note += " " + tr("{warnings}; try again for what is missing.").format(
-                        warnings=warnings_text(outcome.warning_count))
-                self.remember(outcome)
-                notes.append(Notification(tr("Blackboard: past term"), self.note,
-                                          {"open": str(self.root / Path(outcome.courses[0].folder).parent)
-                                           if outcome.courses else str(self.root)}))
-            elif outcome.status == "locked":
-                self.note = tr("Another sync is running; try again to download the past term.")
-            elif outcome.status == "login_required":
-                self.auth_failed_at = outcome.finished_at or now
-                self.note = tr("Sign in and try again to download the past term.")
-                notes.append(login_notification())
-            else:
-                self.note = shorten(tr("Could not download the past term: {error}").format(error=outcome.message), 100)
-            self.past_message = self.note
             return notes
         if outcome.status == "locked":
             # Another sync (e.g. from the terminal) is running; keep what we
@@ -1054,7 +926,6 @@ class AppModel:
         self.busy = None
         self.login_method = ""
         if ok:
-            self.past_terms_loaded = False  # the settings window lists them for this account
             self.auth_failed_at = None
             self.session_expired = False
             self.note = ""
@@ -1110,12 +981,6 @@ class AppModel:
                     self.pending = "sync"
         self.dest = dest
         if school_changed:
-            self.past_terms = []
-            self.past_term_ids = {}
-            self.past_term = self.past_term_id = ""
-            self.past_terms_loaded = False
-            self.past_message = ""
-            self.past_lookup_stale = self.busy == "past_terms"
             self.session = None
             self.auth_failed_at = None
             self.courses = []
@@ -1201,10 +1066,6 @@ class AppModel:
         """What is going on instead of the usual schedule ("" when nothing special)."""
         if self.busy == "sync":
             return tr("Checking for new content…")
-        if self.busy == "past_terms":
-            return T_PAST_LOADING
-        if self.busy == "past_term":
-            return tr("Downloading {term} (past term)…").format(term=self.past_term)
         if self.busy == "login":
             return login_waiting_line(self.login_method)
         if self.busy == MOVE_JOB:

@@ -3,8 +3,7 @@
 The settings live in the main window (``main_window_model``). Its Settings page
 is one scrolling page of sections, each a card of rows (``SECTIONS``, in the order of
 ``SECTION_ORDER``): Account (school address, who is signed in, sign in or out), Sync
-(sync interval, start at login, automatic re-sign-in, language), Folder (destination), Past terms (download a
-past term once), Updates (automatic checks, check now, version) and, last, a Danger
+(sync interval, start at login, automatic re-sign-in, language), Folder (destination), Updates (automatic checks, check now, version) and, last, a Danger
 zone (uninstall). Calendar connection actions sit between Sync and Folder. Dersler (``courses.py``) picks the courses that sync. The GUI layers (``main_window.py`` on macOS,
 ``windows/main_window.py``) only draw ``FormValues`` and ``WindowStatus`` and
 report which button was pressed.
@@ -28,7 +27,6 @@ from blackboard_sync.menubar.model import (
     T_LOGGING_IN,
     T_LOGIN,
     T_LOGOUT,
-    T_PAST_LOADING,
     AppModel,
     login_waiting_line,
 )
@@ -79,7 +77,6 @@ def language_code(title: str) -> str:
 
 T_SECTION_ACCOUNT = tr("Account")
 T_SECTION_FOLDER = tr("Folder")
-T_SECTION_PAST_TERMS = tr("Past terms")
 T_SECTION_GENERAL = tr("Sync")
 T_SECTION_UPDATES = tr("Updates")
 T_URL_LABEL = tr("Your school's Blackboard address")
@@ -91,13 +88,6 @@ T_DEST_ROOT_NOTE = tr("Files are saved in the University folder inside the folde
 T_DEST_CHANGE_NOTE = tr("If you change the folder you can move the downloaded files to the new one or "
                         "download them again.")
 T_DEST_HINT = T_DEST_ROOT_NOTE + " " + T_DEST_CHANGE_NOTE
-T_PAST_DOWNLOAD = tr("Download past term")
-T_COMING_SOON = tr("Coming soon")
-T_PAST_COMING_SOON = tr("Past-term downloads are being redesigned and will return soon.")
-T_PAST_DOWNLOADING = tr("Downloading…")
-T_PAST_NOTE = tr("A past term is downloaded once and not updated.")
-T_PAST_EMPTY = tr("No past terms to download.")
-T_PAST_SIGN_IN = tr("Sign in to see past terms.")
 T_UNINSTALL = uninstall.BUTTON_TITLE
 T_AUTOSTART = tr("Start when the computer starts")
 T_CHECK_UPDATES = tr("Check for updates automatically")
@@ -139,20 +129,18 @@ def window_height(content: float, chrome: float, available: float) -> int:
 # -- the Settings page: sections of rows -----------------------------------------------------------
 # A row is a title and a secondary description on the left and its control on the right. The
 # controls of rows with a ``field`` edit that ``FormValues`` field (saved with Save, dropped with
-# Cancel); the others act at once (a button) or only choose (the past term).
+# Cancel); the others act at once (a button).
 SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER = "account", "sync", "calendar", "folder"
-SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER = "past_terms", "updates", "danger"
+SECTION_UPDATES, SECTION_DANGER = "updates", "danger"
 SECTION_APPEARANCE = "appearance"  # the Windows WebView2 window only (``settings_sections(appearance=True)``)
 SECTION_NOTEBOOKLM = "notebooklm"  # only where the app has it (``settings_sections(notebooklm=True)``)
 # Top to bottom; Calendar actions are immediate, outside the saved form.
 SECTION_ORDER = (SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR, SECTION_NOTEBOOKLM,
-                 SECTION_FOLDER, SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER)
+                 SECTION_FOLDER, SECTION_UPDATES, SECTION_DANGER)
 
 CONTROL_FIELD, CONTROL_POPUP, CONTROL_SWITCH, CONTROL_BUTTON = "field", "popup", "switch", "button"
 
 T_SECTION_DANGER = tr("Danger zone")
-T_PAST_TERM_LABEL = tr("Term")
-T_PAST_DOWNLOAD_LABEL = tr("Download the selected term")
 T_INTERVAL_DETAIL = tr("How often Blackboard is checked for new files.")
 T_AUTOSTART_DETAIL = tr("Keeps syncing in the background after you sign in to the computer.")
 T_CHECK_UPDATES_DETAIL = tr("Looks for a new version once a day.")
@@ -222,10 +210,6 @@ SECTIONS = {section.key: section for section in (
     SettingsSection(SECTION_FOLDER, T_SECTION_FOLDER, (
         SettingRow("dest", T_DEST_LABEL, T_DEST_ROOT_NOTE, CONTROL_FIELD, field="dest", button=T_CHOOSE_FOLDER),
     ), footer=T_DEST_CHANGE_NOTE),
-    SettingsSection(SECTION_PAST_TERMS, T_SECTION_PAST_TERMS, (
-        SettingRow("past_term", T_PAST_TERM_LABEL, T_PAST_NOTE, CONTROL_POPUP),
-        SettingRow("past_download", T_PAST_DOWNLOAD_LABEL, "", CONTROL_BUTTON, button=T_PAST_DOWNLOAD),
-    )),
     SettingsSection(SECTION_UPDATES, T_SECTION_UPDATES, (
         SettingRow("check_updates", T_CHECK_UPDATES, T_CHECK_UPDATES_DETAIL, CONTROL_SWITCH, field="check_updates"),
         SettingRow("update", "", control=CONTROL_BUTTON, button=T_CHECK_NOW),  # the version and Check now / Update
@@ -262,11 +246,10 @@ class RowState:
     button: str | None = None
     enabled: bool = True
     warning: bool = False  # the title in the warning color
-    running: bool = False  # the past term is downloading: the illustration moves
 
 
 def row_states(status: "WindowStatus") -> dict[str, RowState]:
-    """The live part of the rows (who is signed in, past terms, the update button, uninstall)."""
+    """The live part of the rows (who is signed in, the update button, uninstall)."""
     calendar = calendar_presentation(status.calendar, status.calendar_busy, status.calendar_paused)
     return {
         "google_calendar": RowState(title=calendar.title, detail=calendar.detail, button=calendar.button,
@@ -275,12 +258,6 @@ def row_states(status: "WindowStatus") -> dict[str, RowState]:
         "google_calendar_disconnect": RowState(enabled=calendar.disconnect_enabled),
         "account": RowState(title=status.account, button=status.account_title, enabled=status.account_enabled,
                             warning=status.account_warning),
-        "past_term": RowState(enabled=status.past_available and bool(status.past_terms) and not status.past_running),
-        "past_download": RowState(detail=status.past_message,
-                                  button=(T_COMING_SOON if not status.past_available else
-                                          T_PAST_DOWNLOADING if status.past_running else T_PAST_DOWNLOAD),
-                                  enabled=status.past_available and status.past_enabled,
-                                  running=status.past_available and status.past_running),
         "update": RowState(title=status.version, button=status.update_title, enabled=status.update_enabled),
         "uninstall": RowState(enabled=status.uninstall_enabled),
     }
@@ -390,8 +367,7 @@ class Submission:
 class WindowStatus:
     """The live part of the window: who is signed in and which buttons work now.
 
-    Buttons that need the app's single job slot (sign in, sign out, download a
-    past term, uninstall) are disabled while a sync or a sign-in runs.
+    Buttons that need the app's single job slot (sign in, sign out, uninstall) are disabled while a sync or a sign-in runs.
     """
 
     account: str
@@ -403,39 +379,12 @@ class WindowStatus:
     update_title: str
     update_action: str  # "check_updates" | "update"
     update_enabled: bool
-    # Eski dönemler: the terms in the list (newest first, never the current one),
-    # the line under it (loading, empty, progress or result) and the button.
-    past_terms: tuple[str, ...] = ()
-    past_message: str = ""
-    past_enabled: bool = False
-    # A past term is downloading: the button says so, the list is locked and the illustration moves
-    # until the download is complete.
-    past_running: bool = False
-    past_available: bool = False
     uninstall_enabled: bool = False
     calendar: CalendarStatus = CalendarStatus()
     calendar_busy: str | None = None
     calendar_paused: bool = False
     notebooklm_connected: bool = False
     notebooklm_busy: bool = False
-
-
-def past_term_status(model: AppModel) -> tuple[tuple[str, ...], str, bool]:
-    """(terms, message, download enabled) for the Eski dönemler section."""
-    if not model.past_terms_available:
-        return (T_COMING_SOON,), T_PAST_COMING_SOON, False
-    if not model.configured or model.account()[0] is None:
-        return (), T_PAST_SIGN_IN, False
-    if model.busy == "past_terms" or (not model.past_terms_loaded and model.past_terms_retry_at is None):
-        return (), T_PAST_LOADING, False
-    if not model.past_terms_loaded:  # the last lookup met a running sync or failed; it repeats by itself
-        return (), model.past_message or T_PAST_LOADING, False
-    terms = tuple(model.past_terms)
-    if model.busy == "past_term":
-        message = model.activity()
-    else:
-        message = model.past_message or ("" if terms else T_PAST_EMPTY)
-    return terms, message, model.can_download_past_term
 
 
 def window_status(model: AppModel) -> WindowStatus:
@@ -458,7 +407,6 @@ def window_status(model: AppModel) -> WindowStatus:
         update_title, update_action = tr("Update to {version}").format(version=updates.available.version), "update"
     else:
         update_title, update_action = T_CHECK_NOW, "check_updates"
-    past_terms, past_message, past_enabled = past_term_status(model)
     return WindowStatus(
         calendar=model.calendar, calendar_busy=model.calendar_busy, calendar_paused=model.paused,
         notebooklm_connected=model.notebooklm.connected, notebooklm_busy=model.notebooklm_busy is not None,
@@ -471,11 +419,6 @@ def window_status(model: AppModel) -> WindowStatus:
         update_title=update_title,
         update_action=update_action,
         update_enabled=updates.busy is None,
-        past_terms=past_terms,
-        past_message=past_message,
-        past_enabled=past_enabled,
-        past_running=model.past_terms_available and model.busy == "past_term",
-        past_available=model.past_terms_available,
         uninstall_enabled=(idle and updates.busy is None and model.calendar_busy is None
                            and model.notebooklm_busy is None),
     )

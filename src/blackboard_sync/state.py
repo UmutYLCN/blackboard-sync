@@ -21,10 +21,9 @@ what was written locally:
   name was shortened to fit the path limit, keyed by its relative path. Moving
   to another destination folder needs it to give the folders the names a sync
   there would choose.
-* ``past_terms`` - term ids explicitly downloaded as one-time archives; normal
-  sync leaves their content alone. Missing files are restored only on request.
-  ``downloaded_at`` is when a download last read every course; ``incomplete``
-  marks one whose last download could not read a course's content.
+* ``past_terms`` - term ids an older version downloaded as one-time archives;
+  normal sync leaves their content alone. Nothing writes this any more; it is
+  kept (and saved back unchanged) so those terms stay frozen.
 * ``courses`` - the current term's courses the last normal sync found, keyed
   by Blackboard course primary key: code, title, term and folder. The Dersler
   section lists them (``courses.py``), the unticked ones too.
@@ -205,23 +204,6 @@ class State:
             return False
         self.save_error = None
         return True
-
-    def record_past_term(self, term_id: str, name: str, course_ids: list[str], complete: bool = True) -> None:
-        """Archive metadata is additive; version-1 items and outputs keep their keys.
-
-        Only a ``complete`` download (every course's content was read) sets
-        ``downloaded_at``; any other keeps the time of the last complete one.
-        """
-        entry = {"name": name, "courses": course_ids}
-        previous = (self.past_terms.get(term_id) or {}).get("downloaded_at")
-        if complete:
-            entry["downloaded_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        else:
-            if previous:
-                entry["downloaded_at"] = previous
-            entry["incomplete"] = True
-        self.past_terms[term_id] = entry
-        self.dirty = True
 
     # -- items ----------------------------------------------------------
     def record_announcement(self, key: str, entry: dict) -> None:

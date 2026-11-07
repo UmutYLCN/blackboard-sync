@@ -44,7 +44,7 @@ QUIT_GRACE = 10.0  # seconds pywebview's loop gets to end after Quit before the 
 # What the page may ask the window to do (``Bridge.action``, ``Bridge.setting``).
 NOTEBOOKLM_ACTIONS = ("notebooklm_connect", "notebooklm_sync", "notebooklm_open")
 ACTIONS = ("sync", "pause", "folder", "update", "home_action", "account", *NOTEBOOKLM_ACTIONS)
-SETTING_BUTTONS = ("account", "past_download", "update", "uninstall", "google_calendar", "google_calendar_sync",
+SETTING_BUTTONS = ("account", "update", "uninstall", "google_calendar", "google_calendar_sync",
                    "google_calendar_disconnect", "notebooklm_duplicates", "notebooklm_disconnect")
 BUTTON_ACTIONS = {"google_calendar": "calendar_connect", "google_calendar_sync": "calendar_sync",
                   "google_calendar_disconnect": "calendar_disconnect", "notebooklm_duplicates": "notebooklm_duplicates",
@@ -449,7 +449,7 @@ class WebMainWindow:
 
     def __init__(self, root, values, status, on_submit, on_action, on_close, on_values=None,
                  on_open=lambda path: None, on_courses=lambda: (),
-                 on_course_toggle=lambda course_id, enabled: None, on_past_term=lambda name: None,
+                 on_course_toggle=lambda course_id, enabled: None,
                  on_section=lambda section: None, on_deadlines=deadlines.DeadlinePage,
                  on_deadline=lambda target: None, recent_seen=None, on_seen=lambda: None,
                  on_announcements=lambda: (), on_open_announcement=lambda row: None,
@@ -459,7 +459,7 @@ class WebMainWindow:
         self.on_submit, self.on_action, self.on_close = on_submit, on_action, on_close
         self.on_values = on_values or (lambda: values)
         self.on_open, self.on_reveal = on_open, on_reveal
-        self.on_courses, self.on_course_toggle, self.on_past_term = on_courses, on_course_toggle, on_past_term
+        self.on_courses, self.on_course_toggle = on_courses, on_course_toggle
         self.on_section = on_section
         self.on_deadlines, self.on_deadline = on_deadlines, on_deadline
         self.recent_seen, self.on_seen = recent_seen, on_seen
@@ -547,9 +547,6 @@ class WebMainWindow:
             return
         if key == "account":
             self.account_pressed()
-        elif key == "past_download":
-            if value in self._ids.get("past_term", ()) and self.status.form.past_enabled:
-                self.on_past_term(value)
         elif key == "update":
             self.on_action(self.status.form.update_action)
         elif key == "uninstall":

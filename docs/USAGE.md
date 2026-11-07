@@ -91,8 +91,7 @@ no longer synced at all (no request is sent to Blackboard for it), and it does n
 **Announcements** or the recent downloads. Files downloaded earlier are not deleted. Tick it again and
 its missing files arrive with the sync that starts right away.
 
-The list fills after the first sync. Past terms are not in this list; download them separately from
-**Past terms** on the **Settings** page.
+The list fills after the first sync.
 
 ## Staying signed in (Mac and Windows)
 
@@ -122,7 +121,6 @@ page on Blackboard opens.
 
 The list comes from the local sync data; switching to this section sends no new request to
 Blackboard. If you updated from an earlier version, announcements are listed after the next sync.
-Announcements of past-term archives do not show in this list.
 
 ## Updates
 
@@ -139,22 +137,6 @@ Home** page of the main window. Press its **Update** button; you can also update
 
 An update does not start while a sync or a folder move runs; try again once it has finished. Your
 settings and downloaded course files are kept.
-
-## Downloading a past term
-
-In **Past terms** on the **Settings** page of the main window, choose a term from the list and press
-**Download past term**. The list loads when the **Settings** page opens while you are signed in; the
-current term is not in it. Files are downloaded into term/course folders in your current download
-folder: each term's folder is created next to the current term's folder (for example `2026-2027 Güz`
-next to `2025-2026 Bahar`). Even if Blackboard shows the same term under both a Turkish and an English
-name (`2025-2026 Bahar` / `2025-2026 Spring`), it is one term and one folder; a course listed twice is
-downloaded once. A past term is downloaded once and not updated automatically; downloading it again only
-fills in missing files. If a course's content cannot be read (for example access is closed), you are told,
-and trying again fills in what is missing. The normal sync keeps following the current term.
-
-From the terminal: `blackboard-sync sync --term "2025-2026 Bahar"` (the Turkish or English term name
-works) or `blackboard-sync sync --term-id <id>`. List the available terms and their ids with
-`blackboard-sync past-terms`.
 
 ## Uninstalling
 
@@ -320,12 +302,7 @@ Each prints one JSON line per step. `status` shows only the connection and the l
 session is never printed.
 
 
-## Version 1.6.0: past-term downloads
-
-The desktop Past terms section now shows **Coming soon** and cannot be clicked
-while its workflow is being redesigned. Opening Settings no longer starts a
-past-term lookup. Existing archived files remain on disk. The CLI's explicit
-archive commands remain available for terminal use.
+## Version 1.6.0
 
 Official release packages include the Desktop OAuth client configuration; Google
 Calendar Connect no longer needs terminal environment variables. Source checkouts

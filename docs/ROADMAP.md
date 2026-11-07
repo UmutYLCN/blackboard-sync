@@ -42,7 +42,7 @@ Apart from NotebookLM, no more big features are planned. From now on, only small
 
 ## Removal of the past-terms feature
 
-The past-terms feature is removed from every app. Its desktop controls already show **Coming soon** ([USAGE.md](USAGE.md#downloading-a-past-term)); this step removes the feature itself.
+The past-terms feature has been removed from every app: the desktop controls, the terminal options and the iPad row are gone. Syncing the current term works as before. Terms an older version downloaded keep their files and stay as they are.
 
 ## File-move fixes
 

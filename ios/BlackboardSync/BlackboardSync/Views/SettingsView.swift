@@ -45,7 +45,6 @@ struct SettingsView: View {
                     ComingSoon(title: "Choose another folder", symbol: "folder.badge.gearshape")
                 }
                 Section(model.text("More")) {
-                    ComingSoon(title: "Past terms", symbol: "archivebox")
                     ComingSoon(title: "Notes PDFs", symbol: "doc.text")
                 }
                 Section(model.text("About & privacy")) {

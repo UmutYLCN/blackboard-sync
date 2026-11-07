@@ -264,7 +264,6 @@ def make_window(**overrides):
         on_deadlines=lambda: page, on_deadline=lambda target: events.append(("deadline", target)),
         on_announcements=lambda: ROWS, on_open_announcement=lambda row: events.append(("announcement", row.key)),
         on_section=lambda section: events.append(("section", section)), recent_seen=Seen(),
-        on_past_term=lambda name: events.append(("past", name)),
         on_seen=lambda: events.append("seen"), today=lambda: date(2026, 10, 18))
     options.update(overrides)
     window = WebMainWindow(host.loop, None, status(),
@@ -419,16 +418,13 @@ def test_save_shows_the_error_and_success_drops_the_edits():
 
 def test_settings_buttons_act_only_while_shown_and_enabled():
     window, host, events = make_window()
-    window.status = status(form=replace(FORM, past_terms=("2025-2026 Bahar",), past_available=True, past_enabled=True,
-                                        uninstall_enabled=False))
+    window.status = status(form=replace(FORM, uninstall_enabled=False))
     window._draw()
-    window.run_setting("past_download", "2025-2026 Bahar")
-    window.run_setting("past_download", "../../other")
     window.run_setting("uninstall", "")  # disabled now
     window.run_setting("google_calendar", "")  # Connect
     window.run_setting("google_calendar_disconnect", "")  # not connected: not shown
     window.run_setting("update", "")
-    assert events == [("past", "2025-2026 Bahar"), ("action", "calendar_connect"), ("action", "check_updates")]
+    assert events == [("action", "calendar_connect"), ("action", "check_updates")]
 
 
 def test_course_switch_and_theme():

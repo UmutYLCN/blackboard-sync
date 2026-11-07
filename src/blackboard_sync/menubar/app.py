@@ -339,14 +339,12 @@ def build_app(config: Config, show_window: bool = False):
                 return
             log.info("%s started", job)
             self.refresh()
-            threading.Thread(target=self._sync_worker, args=(job, self.settings, self.model.past_term,
-                                                              self.model.past_term_id,
+            threading.Thread(target=self._sync_worker, args=(job, self.settings,
                                                               self.model.session_care.may_refresh(jobs.utcnow())),
                              daemon=True).start()
 
-        def _sync_worker(self, job: str, settings, term_name: str = "", term_id: str = "",
-                         may_refresh: bool = False) -> None:
-            outcome, refresh = jobs.run_sync_refreshing(job, settings, term_name, term_id, may_refresh,
+        def _sync_worker(self, job: str, settings, may_refresh: bool = False) -> None:
+            outcome, refresh = jobs.run_sync_refreshing(job, settings, may_refresh,
                                                         wanted=lambda: not self.model.paused)
             AppHelper.callAfter(self._sync_done, outcome, refresh)
 
@@ -382,29 +380,6 @@ def build_app(config: Config, show_window: bool = False):
                 log.info("session refreshed automatically (%.1f s)", refresh.seconds)
             else:
                 log.warning("automatic re-sign-in failed: %s", refresh.reason)
-
-        def start_past_terms(self) -> None:
-            """Look up the past terms for the list in Genel, in the background."""
-            if not self.model.begin("past_terms"):
-                return
-            threading.Thread(target=self._past_terms_worker, args=(self.settings,), daemon=True).start()
-
-        def _past_terms_worker(self, settings) -> None:
-            AppHelper.callAfter(self._past_terms_done, *jobs.run_past_terms(settings))
-
-        def _past_terms_done(self, names, outcome) -> None:
-            self.model.finish_past_terms(names, outcome)
-            self.start_next()  # a move the window saved meanwhile goes first
-            if self._login_after_job and self.model.busy is None:
-                self._login_after_job = False
-                self.start_login()
-            self.refresh()
-
-        def download_past_term(self, name: str) -> bool:
-            if not self.model.select_past_term(name):
-                return False
-            self.start_sync(job="past_term")
-            return True
 
         def start_calendar(self, action="sync", **options):
             if self.model.calendar_busy:
@@ -736,11 +711,6 @@ def build_app(config: Config, show_window: bool = False):
         def window_open(self) -> bool:
             return self._window is not None and self._window.state.open
 
-        def past_terms_wanted(self) -> bool:
-            """Genel is in view and its past-term list still has to be looked up."""
-            return (self.window_open and self._window.section == GENERAL and not self._uninstalling
-                    and self.model.past_terms_due())
-
         def show_window(self, section: str | None = None) -> None:
             """Open the main window (or bring it forward); the Dock icon comes with it."""
             if self._uninstalling:
@@ -767,16 +737,13 @@ def build_app(config: Config, show_window: bool = False):
                     on_open_announcement=self.open_announcement,
                     on_courses=lambda: courses.load_rows(self.config),
                     on_course_toggle=self.course_toggled,
-                    on_past_term=self.download_past_term,
                     on_section=lambda _section: self.refresh(),
                     recent_seen=self.model.recent_seen,
                     on_seen=self._save,
                 )
-            if not self.window_open:
-                self.model.reload_past_terms()
             log.info("showing the main window")
             self._window.show(section)
-            self.refresh()  # on Genel, starts looking up the past terms
+            self.refresh()
 
         def course_toggled(self, course_id: str, enabled: bool) -> None:
             """A Dersler checkbox: save the choice; a course ticked again syncs right away."""
@@ -952,7 +919,7 @@ def build_app(config: Config, show_window: bool = False):
             if self.model.notebooklm_busy == NOTEBOOKLM_SYNC:
                 jobs.notebooklm_child.stop()
             log.info("sync paused")
-            if self.model.busy in ("sync", "past_term"):
+            if self.model.busy == "sync":
                 jobs.stop_sync()  # the worker reports "paused" and frees the job slot
             self._save()
             self.refresh()
@@ -979,8 +946,6 @@ def build_app(config: Config, show_window: bool = False):
         def refresh(self) -> None:
             jobs.refresh_session(self.config, self.model, self.settings)
             self.model.autostart = launchagent.is_installed()
-            if self.past_terms_wanted():
-                self.start_past_terms()
             self._draw_icon(self.model.icon())
             if self.window_open:
                 self._window.update_status(self.window_status())

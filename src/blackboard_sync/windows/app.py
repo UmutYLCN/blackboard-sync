@@ -239,7 +239,6 @@ class TrayApp:
             self.model.login_method = jobs.login_method()
         self.refresh()
         settings, config = self.settings, self.config
-        term_name, term_id = self.model.past_term, self.model.past_term_id
         may_refresh = self.model.session_care.may_refresh(jobs.utcnow())
         def worker():
             refresh = None
@@ -249,7 +248,7 @@ class TrayApp:
                 elif job == MOVE_JOB:
                     result = jobs.run_move_guarded(config, old, new)
                 else:
-                    result, refresh = jobs.run_sync_refreshing(job, settings, term_name, term_id, may_refresh,
+                    result, refresh = jobs.run_sync_refreshing(job, settings, may_refresh,
                                                                wanted=lambda: not self.model.paused, runner=cli_runner)
             except Exception as exc:
                 log.exception("CLI job failed")
@@ -526,7 +525,7 @@ class TrayApp:
             self.calendar_cancel.set()
         if self.model.notebooklm_busy == NOTEBOOKLM_SYNC:
             jobs.notebooklm_child.stop()
-        if self.model.busy in ("sync", "past_term"):
+        if self.model.busy == "sync":
             jobs.stop_sync()  # the worker reports "paused" and frees the job slot
         self.save()
 
@@ -548,8 +547,6 @@ class TrayApp:
             self.model.autostart = autostart.is_installed()
         except OSError:
             log.exception("Could not read login item")
-        if self.past_terms_wanted():
-            self.start_past_terms()
         state = self.model.icon()
         # Session expiry can be detected before the first scheduled sync.
         if self.model.session_expired:
@@ -664,29 +661,6 @@ class TrayApp:
         ending it could leave its browser behind, so it finishes on its own in a moment."""
         return self.model.busy not in (None, SESSION_JOB) or self.model.updates.busy == "download"
 
-    def start_past_terms(self):
-        """Look up the past terms for the list in Genel, in the background."""
-        if not self.model.begin("past_terms"):
-            return
-        settings = self.settings
-        def worker():
-            self.post(self.past_terms_done, *jobs.run_past_terms(settings, runner=cli_runner))
-        threading.Thread(target=worker, daemon=True).start()
-
-    def past_terms_done(self, names, outcome):
-        self.model.finish_past_terms(names, outcome)
-        self.start_next()  # a move the window saved meanwhile goes first
-        if self.login_after_job and self.model.busy is None:
-            self.login_after_job = False
-            self.start_job("login")
-        self.refresh()
-
-    def download_past_term(self, name):
-        if not self.model.select_past_term(name):
-            return False
-        self.start_job("past_term")
-        return self.model.busy == "past_term"
-
     def start_uninstall(self):
         if package.is_packaged():
             self.show_message("info", "Blackboard Sync", uninstall.STORE_REMOVAL)
@@ -748,11 +722,6 @@ class TrayApp:
     def window_open(self):
         return self.window is not None and self.window.state.open
 
-    def past_terms_wanted(self):
-        """Genel is in view and its past-term list still has to be looked up."""
-        return (self.window_open and self.window.state.section == GENERAL and not self.uninstalling
-                and self.model.past_terms_due())
-
     def show_window(self, section=None):
         """Open the main window (or bring it forward); its taskbar button comes with it."""
         if self.web is not None:
@@ -777,13 +746,10 @@ class TrayApp:
                                      on_open_announcement=lambda row: self.dispatch("announcement", row),
                                      on_courses=lambda: courses.load_rows(self.config),
                                      on_course_toggle=self.course_toggled,
-                                     on_past_term=self.download_past_term,
                                      on_section=lambda _section: self.refresh(),
                                      recent_seen=self.model.recent_seen, on_seen=self.save, **web)
-        if not self.window_open:
-            self.model.reload_past_terms()
         self.window.show(section)
-        self.refresh()  # on Genel, starts looking up the past terms
+        self.refresh()
 
     def course_toggled(self, course_id, enabled):
         """A Dersler checkbox: save the choice; a course ticked again syncs right away."""
@@ -815,8 +781,8 @@ class TrayApp:
 
     def settings_submitted(self, values, login):
         # Do not apply a new destination/school to the result of an in-flight job;
-        # the past-term lookup the open window starts and a look at the session change no files.
-        if self.model.busy not in (None, "past_terms", SESSION_JOB) or self.model.updates.busy == "download":
+        # a look at the session changes no files.
+        if self.model.busy not in (None, SESSION_JOB) or self.model.updates.busy == "download":
             return settings_form.T_BUSY, "base_url"
         try:
             submission = settings_form.submit(values, self.settings)

@@ -188,9 +188,6 @@ COLUMN = (INNER - GAP) // 2
 FIELD_HEIGHT = 24
 BUTTON_HEIGHT = 32
 ROW_HEIGHT = 52
-# Genel, Eski dönemler: the button row is this tall and the illustration beside it this wide while a term downloads.
-PAST_ROW = 56
-PAST_SCENE_WIDTH = 96
 # Settings: a section's title, a card of rows, an optional note; a row is a title with its
 # description on the left and the control on the right.
 SETTINGS_PAD = 18  # inside a card, left and right
@@ -199,7 +196,7 @@ ROW_MIN = 56
 SECTION_GAP = 26
 CONTROL_GAP = 16  # between a row's text and its control
 FIELD_WIDTH, FIELD_WITH_BUTTON = 300, 230
-POPUP_WIDTH = {"interval": 190, "language": 160, "past_term": 230}
+POPUP_WIDTH = {"interval": 190, "language": 160}
 AVATAR = 34  # the sidebar's account card
 SCENE_HEIGHT = 84  # the small illustration in Home's status card while a sync runs
 UPDATE_BANNER_HEIGHT = 86
@@ -470,9 +467,6 @@ class _Target(NSObject):
     def update_(self, _sender):
         self.owner.on_action(self.owner.status.form.update_action)
 
-    def pastTerm_(self, _sender):
-        self.owner.download_past_term()
-
     def uninstall_(self, _sender):
         self.owner.on_action("uninstall")
 
@@ -590,19 +584,17 @@ ROW_ATTRIBUTES = {
     "notebooklm_auto": ("notebooklm_switch", None, None),
     "notebooklm_duplicates": (None, None, None),
     "notebooklm_disconnect": (None, None, None),
-    "past_term": ("past_popup", None, None),
-    "past_download": ("past_button", None, "past_label"),
     "check_updates": ("check_updates", None, None),
     "update": ("update_button", "version_label", None),
     "uninstall": ("uninstall_button", None, None),
 }
 # A button of a row that acts at once, and the buttons whose title changes keep one width.
 ROW_ACTIONS = {"google_calendar": "googleCalendar:", "google_calendar_sync": "googleCalendarSync:",
-               "google_calendar_disconnect": "googleCalendarDisconnect:", "account": "account:", "past_download": "pastTerm:", "update": "update:", "uninstall": "uninstall:",
+               "google_calendar_disconnect": "googleCalendarDisconnect:", "account": "account:", "update": "update:", "uninstall": "uninstall:",
                "notebooklm_disconnect": "notebooklmDisconnect:", "notebooklm_duplicates": "notebooklmDuplicates:"}
-ROW_BUTTON_WIDTH = {"google_calendar": 210, "account": ACTION_WIDTH, "update": ACTION_WIDTH, "past_download": 190}
+ROW_BUTTON_WIDTH = {"google_calendar": 210, "account": ACTION_WIDTH, "update": ACTION_WIDTH}
 # Rows whose description changes while the app runs keep room for two lines.
-LIVE_DETAIL_LINES = {"past_download": 2, "google_calendar": 3}
+LIVE_DETAIL_LINES = {"google_calendar": 3}
 
 
 def _pill(frame, color):
@@ -657,7 +649,6 @@ class MainWindow:
         on_open: Callable[[str], None] = lambda path: None,
         on_courses=lambda: (),
         on_course_toggle: Callable[[str, bool], None] = lambda course_id, enabled: None,
-        on_past_term: Callable[[str], object] = lambda name: None,
         on_section: Callable[[str], None] = lambda section: None,
         reopen_where: str = tr("Applications or Launchpad"),
         on_deadlines=deadlines.DeadlinePage,
@@ -680,7 +671,7 @@ class MainWindow:
         self.recent_seen, self.on_seen = recent_seen, on_seen
         self._recent_timer = None
         self.on_values = on_values or (lambda: self.saved)
-        self.on_open, self.on_past_term = on_open, on_past_term
+        self.on_open = on_open
         self.on_reveal = on_reveal
         self.on_courses, self.on_course_toggle = on_courses, on_course_toggle
         self.on_announcements, self.on_open_announcement = on_announcements, on_open_announcement
@@ -688,7 +679,6 @@ class MainWindow:
         self.status = status
         self.saved = values
         self.error = ""
-        self._past_terms: tuple[str, ...] | None = None
         self._drawn_recent = None
         self._drawn_announcements = None
         self._drawn_attention = None
@@ -1397,10 +1387,6 @@ class MainWindow:
             self.notebooklm_scene.start()
         else:
             self.notebooklm_scene.stop()
-        if self.status.form.past_running and self.state.open and self.state.section == GENERAL:
-            self.past_scene.start()
-        else:
-            self.past_scene.stop()
 
     def _build_activity(self, page) -> None:
         self._header(page, T_NAV_ACTIVITY)
@@ -1585,8 +1571,7 @@ class MainWindow:
             extra.setFrameSize_((max(extra.fittingSize().width + 16, 80), BUTTON_HEIGHT))
         controls = [view for view in (control, extra) if view is not None]
         occupied = sum(view.frame().size.width for view in controls) + 8 * (len(controls) - 1)
-        scene_width = PAST_SCENE_WIDTH + 12 if row.key == "past_download" else 0
-        text_width = right - occupied - scene_width - CONTROL_GAP - SETTINGS_PAD
+        text_width = right - occupied - CONTROL_GAP - SETTINGS_PAD
 
         title = _label(row.title, 13)
         title.setLineBreakMode_(NSLineBreakByTruncatingTail)
@@ -1599,8 +1584,6 @@ class MainWindow:
             detail_height = max(detail_height, lines * (_small() + 5))
         text_height = 18 + (2 + detail_height if detail is not None else 0)
         control_height = max(view.frame().size.height for view in controls)
-        if row.key == "past_download":
-            control_height = max(control_height, PAST_ROW)
         height = max(ROW_MIN, 2 * ROW_PAD + text_height, 2 * ROW_PAD + control_height)
 
         top = (height - text_height) / 2
@@ -1616,13 +1599,6 @@ class MainWindow:
             view.setFrame_(NSMakeRect(x, y + (height - size.height) / 2, size.width, size.height))
             content.addSubview_(view)
             x -= 8
-        if row.key == "past_download":
-            # The papers fly into the folder beside the button for as long as the term is downloading.
-            self.past_scene = SyncSceneView.alloc().initWithFrame_(
-                NSMakeRect(control.frame().origin.x - 12 - PAST_SCENE_WIDTH, y + (height - PAST_ROW) / 2,
-                           PAST_SCENE_WIDTH, PAST_ROW))
-            self.past_scene.setHidden_(True)
-            content.addSubview_(self.past_scene)
         if row.title:
             control.setAccessibilityLabel_(row.title)
         if row.detail:
@@ -1653,7 +1629,7 @@ class MainWindow:
             if titles:
                 popup.addItemsWithTitles_(titles)
                 popup.setTarget_(self.target)
-                popup.setAction_("changed:")  # a form value; the past term only chooses
+                popup.setAction_("changed:")
             return popup
         if row.control == CONTROL_SWITCH:
             switch = NSSwitch.alloc().initWithFrame_(NSMakeRect(0, 0, 40, 22))
@@ -1818,7 +1794,7 @@ class MainWindow:
     def select(self, section: str) -> None:
         self.state.select(section)
         self._show_section()
-        self._animate()  # the past-term illustration only moves while Genel is in view
+        self._animate()
         self.on_section(section)
 
     @property
@@ -1988,14 +1964,6 @@ class MainWindow:
         self._update_google_calendar(form)
         self._apply_row_state("notebooklm_disconnect", notebooklm_disconnect_state(form))
         self._apply_row_state("notebooklm_duplicates", notebooklm_disconnect_state(form))
-        if form.past_terms != self._past_terms:
-            selected = self.past_popup.titleOfSelectedItem()
-            self.past_popup.removeAllItems()
-            self.past_popup.addItemsWithTitles_(list(form.past_terms))
-            if selected in form.past_terms:
-                self.past_popup.selectItemWithTitle_(selected)
-            self._past_terms = form.past_terms
-        self.past_scene.setHidden_(not form.past_running)
         self._animate()
         self.refresh_announcements()
 
@@ -2172,12 +2140,6 @@ class MainWindow:
     def toggle_course(self, course_id: str, enabled: bool) -> None:
         self.on_course_toggle(course_id, enabled)
         self.refresh_courses()
-
-    def download_past_term(self) -> None:
-        """Start the one-time download of the term picked in Eski dönemler; the window stays open."""
-        name = self.past_popup.titleOfSelectedItem()
-        if name and self.status.form.past_enabled:
-            self.on_past_term(str(name))
 
     def account_pressed(self) -> None:
         if self.status.form.account_action == "login":

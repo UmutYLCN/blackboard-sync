@@ -388,7 +388,7 @@ def test_a_failure_holds_the_next_attempt_back():
 def stub_sync(monkeypatch, *statuses):
     runs = list(statuses)
     monkeypatch.setattr(jobs, "run_sync_guarded",
-                        lambda job, settings, term_name="", term_id="", runner=None: RunOutcome(status=runs.pop(0)))
+                        lambda job, settings, runner=None: RunOutcome(status=runs.pop(0)))
     return runs
 
 

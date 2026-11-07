@@ -165,9 +165,7 @@ def fixtures(now: datetime) -> dict[str, dict]:
     full = replace(synced, activity=activity, attention=(main.AttentionItem(
         tr("Blackboard Sync {version} is ready").format(version="1.7.0"), main.T_UPDATE_INTRO, "update", main.T_UPDATE,
         warning=False),))
-    settings_form = replace(form, past_terms=("2025-2026 Bahar", "2025-2026 Güz"), past_available=True,
-                            past_enabled=True, past_message=tr("A past term is downloaded once and not updated."),
-                            uninstall_enabled=True,
+    settings_form = replace(form, uninstall_enabled=True,
                             calendar=CalendarStatus(connected=True, last_sync="2026-10-18T12:05:00+00:00"))
     for name, section, current, extra in (
         ("activity", main.ACTIVITY, full, {}),

@@ -19,7 +19,7 @@ CHECK_NOTE_PDF = "--check-note-pdf"
 CHECK_GOOGLE_CALENDAR = "--check-google-calendar"
 # Hidden self-test used by CI: loads the NotebookLM library, which is imported only by a run.
 CHECK_NOTEBOOKLM = "--check-notebooklm"
-CLI_COMMANDS = {"login", "sync", "check", "past-terms", "uninstall", "calendar", "notebooklm", "--version", "-h", "--help"}
+CLI_COMMANDS = {"login", "sync", "check", "uninstall", "calendar", "notebooklm", "--version", "-h", "--help"}
 # CLI options that come before the subcommand; the menu bar app passes the
 # school from its settings window as ``--base-url URL sync ...``.
 CLI_GLOBAL_OPTIONS = {"--base-url", "--data-dir", "-v", "--verbose"}

@@ -11,7 +11,6 @@ Downloads your Blackboard course content to your computer automatically.
 - **Calendar:** See the due dates of assignments, exams and other graded work day by day, with the course name.
 - **Announcements:** Every synced announcement from your current-term courses in one place, newest first; open the saved notes from there.
 - **Courses:** Untick a course you don't want and it is no longer synced. The folder is a copy of Blackboard; deleted or damaged files come back by themselves.
-- **Past terms — coming soon:** The archive download flow is being redesigned; its desktop controls are temporarily disabled.
 - **Pause:** Stop syncing whenever you like and resume with one click.
 - **One-click updates:** When a new version is out you get a notification; just press **Update**.
 - **English or Turkish:** Pick the app's language in Settings (English / Türkçe).

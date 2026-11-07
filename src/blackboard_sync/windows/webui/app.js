@@ -37,7 +37,6 @@
   let edits = null;
   let savedForm = "";
   let savedKey = ""; // the saved values and Python's form generation (a new one drops the edits)
-  let pastTerm = "";
 
   // -- helpers --------------------------------------------------------------
 
@@ -582,17 +581,13 @@
           edits[row.field] = choice.value;
           drawSaveBar();
         };
-      } else if (row.key === "theme") {
+      } else {
         current = state.settings.theme;
         onchange = (event) => {
           const value = row.choices[event.target.selectedIndex].value;
           document.documentElement.dataset.theme = value; // at once; Python saves it
           call("set_theme", value);
         };
-      } else {
-        if (!row.choices.some((choice) => choice.value === pastTerm)) pastTerm = row.choices[0] ? row.choices[0].value : "";
-        current = pastTerm;
-        onchange = (event) => { pastTerm = row.choices[event.target.selectedIndex].value; };
       }
       return h("select", {
         class: "select", disabled: !row.enabled || !row.choices.length, "aria-label": row.title,
@@ -611,9 +606,8 @@
         () => call("setting", button.key, ""), { disabled: !button.enabled }));
     }
     if (row.control === "button") {
-      return [row.running ? scene(true) : null,
-        pill(row.button, row.destructive ? "danger" : "gray",
-          () => call("setting", row.key, row.key === "past_download" ? pastTerm : ""), { disabled: !row.enabled })];
+      return pill(row.button, row.destructive ? "danger" : "gray",
+        () => call("setting", row.key, ""), { disabled: !row.enabled });
     }
     return null;
   }

@@ -215,15 +215,11 @@ def test_handler_column_id_matches_nested_content_when_column_lacks_content_id(c
     assert (config.root / note["path"]).is_file()
 
 
-def test_archive_and_file_restore_leave_deadlines_alone(config, client, fake_bb):
+def test_file_restore_leaves_deadlines_alone(config, client, fake_bb):
     fake_bb.routes[ROOT] = {"results": [column()]}
     sync(config, client)
     before = State.load(config.state_file).deadline_courses
-    fake_bb.calls.clear()
-    sync(config, client, term_name="2025-2026 Bahar")
-    assert not any("gradebook" in call for call in fake_bb.calls)
     state = State.load(config.state_file)
-    assert state.deadline_courses == before
     note_key = f"note:{COURSE}:_c4_1"
     (config.root / state.output(note_key)["path"]).unlink()
     fake_bb.calls.clear()
