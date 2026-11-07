@@ -338,9 +338,9 @@ def test_signed_in_menu_structure():
         "",
         "Settings…", "Quit",
     ]
-    # Past terms and uninstalling live in the settings window.
+    # Uninstalling lives in the settings window.
     assert not any(e.action in ("login", "logout", "refetch", "autostart", "check_updates",
-                                "past_terms", "uninstall") for e in entries(menu))
+                                "uninstall") for e in entries(menu))
     assert not menu.entries[0].enabled and not menu.entries[1].enabled
 
 

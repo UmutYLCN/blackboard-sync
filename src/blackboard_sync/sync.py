@@ -21,7 +21,7 @@ from blackboard_sync.api import PARTIAL_PREFIX, PARTIAL_SUFFIX, BlackboardClient
 from blackboard_sync.announcements import metadata as announcement_metadata
 from blackboard_sync.config import Config
 from blackboard_sync.deadlines import column_deadline
-from blackboard_sync.errors import AlreadyRunning, ApiError, BlackboardSyncError, LoginRequired, SkippedMedia, human_size
+from blackboard_sync.errors import AlreadyRunning, ApiError, LoginRequired, SkippedMedia, human_size
 from blackboard_sync.htmltext import body_text, find_embedded_files
 from blackboard_sync.i18n import tr
 from blackboard_sync.notepdf import render_pdf
@@ -244,43 +244,6 @@ def term_age(term: Term) -> datetime:
     return term.start or max((parse_time(c.created) or floor for c in term.courses), default=floor)
 
 
-def choose_past_terms(terms: list[Term], now: datetime) -> list[Term]:
-    """Earlier terms with accessible courses: not one normal sync selects, nor one yet to start."""
-    current_ids = {term.id for term in choose_current_terms(terms, now)}
-    return sorted(
-        (term for term in terms
-         if term.id and term.courses and term.id not in current_ids and not (term.start and term.start > now)),
-        key=lambda term: (term_age(term), term.name),
-        reverse=True,
-    )
-
-
-def find_past_term(terms: list[Term], now: datetime, term_name: str | None = None,
-                   term_id: str | None = None) -> Term:
-    """The one past term asked for by any of its ids, or by its name in either language."""
-    if term_id is not None:
-        label = term_id
-        matches = [t for t in terms if term_id in t.ids]
-    else:
-        label = term_name
-        wanted, key = term_name.strip().casefold(), academic_term(term_name)
-        matches = [t for t in terms if t.id and (
-            wanted in {n.strip().casefold() for n in t.names} or (key and academic_term(t.name) == key))]
-    if not matches:
-        raise BlackboardSyncError(tr("No term named {name}.").format(name=repr(label)))
-    if len(matches) > 1:
-        raise BlackboardSyncError(
-            tr("More than one term is named {name}; choose one by its id (--term-id): ").format(name=repr(label))
-            + ", ".join(t.id for t in matches)
-        )
-    term = matches[0]
-    if term.id in {t.id for t in choose_current_terms(terms, now)}:
-        raise BlackboardSyncError(tr("{name} is the current term; the normal sync downloads it.").format(name=repr(term.name)))
-    if term.id not in {t.id for t in choose_past_terms(terms, now)}:
-        raise BlackboardSyncError(tr("{name} is not a past term that can be downloaded.").format(name=repr(term.name)))
-    return term
-
-
 @contextmanager
 def run_lock(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -340,7 +303,6 @@ class Syncer:
         state: State,
         dry_run: bool = False,
         windows: bool | None = None,
-        missing_only: bool = False,
     ):
         self.client = client
         self.config = config
@@ -349,7 +311,6 @@ class Syncer:
         self.dest = config.root  # every path below is relative to the University folder
         self.dry_run = dry_run
         self.windows = is_windows() if windows is None else windows
-        self.missing_only = missing_only
         self.deadline_content_ids: dict[str, str] = {}
 
     def checkpoint(self) -> None:
@@ -374,24 +335,18 @@ class Syncer:
             return False
         return intact(self.dest / out["path"], out) or is_media(None, out["path"])
 
-    def skip_output(self, key: str) -> bool:
-        """A past term downloaded again only gets what is not present; nothing is updated."""
-        return self.missing_only and self.state.output(key) is not None and self.present(key)
-
     # -- course discovery ----------------------------------------------
     def discover(
         self,
         user_id: str,
-        term_name: str | None = None,
         all_terms: bool = False,
         course_filters: list[str] | None = None,
         now: datetime | None = None,
         warnings: list[str] | None = None,
-        term_id: str | None = None,
     ) -> tuple[list[Term], list[Course]]:
         """Return (selected terms, their courses) for this student.
 
-        ``term_name`` or ``term_id`` selects one past term. A course listed in
+        A course listed in
         more than one membership (in the other language, or on two pages) is
         synced once, and the Turkish and English records of one term are one
         term (``merge_term_aliases``).
@@ -440,15 +395,13 @@ class Syncer:
             )
 
         all_found = merge_term_aliases(list(terms.values()))
-        # Mirrors run_sync's frozen terms: an archived term stays off the page unless it is today's.
+        # Mirrors run_sync's frozen terms: a term an older version archived stays off the page unless it is today's.
         self.current_course_ids = [
             c.id for t in choose_current_terms(all_found, now)
             if not (set(t.ids) & set(self.state.past_terms) and not in_date_range(t, now)) for c in t.courses
         ]
         if all_terms:
             selected = all_found
-        elif term_name is not None or term_id is not None:
-            selected = [find_past_term(all_found, now, term_name, term_id)]
         else:
             selected = choose_current_terms(all_found, now)
 
@@ -644,7 +597,7 @@ class Syncer:
             report.warnings.append(tr("Could not read course content: {error}").format(error=exc))
         else:
             self.walk(course, roots, course.rel_dir, report)
-        if not self.dry_run and not self.missing_only:
+        if not self.dry_run:
             self.sync_deadlines(course, report)
         try:
             self.sync_announcements(course, report)
@@ -1076,8 +1029,6 @@ class Syncer:
         if replaces and not self.dry_run and self.state.output(out_key) is None:
             self.state.move_output(replaces, out_key)
         previous = self.state.output(out_key)
-        if self.skip_output(out_key):
-            return previous["path"] if previous else desired_rel
         if self.dry_run:
             if previous:
                 if not self.present(out_key):
@@ -1106,7 +1057,7 @@ class Syncer:
                 download.path.unlink()
         # A long item may be cut off after this file; the next run then skips it.
         self.checkpoint()
-        if outcome == "new" or (self.missing_only and outcome == "updated"):
+        if outcome == "new":
             report.new_files.append(rel)
         elif outcome == "updated":
             report.updated_files.append(rel)
@@ -1165,9 +1116,6 @@ class Syncer:
         Unlike downloads, a changed note replaces the recorded file in place. With
         ``report`` None nothing is reported; ``hidden`` hides the file on Windows.
         """
-        if self.skip_output(out_key):
-            previous = self.state.output(out_key)
-            return previous["path"] if previous else desired_rel
         data = render()
         sha = hashlib.sha256(data).hexdigest()
         previous = self.state.output(out_key)
@@ -1195,7 +1143,7 @@ class Syncer:
             if tmp_path.exists():
                 tmp_path.unlink()
         if report is not None:
-            if outcome == "new" or (self.missing_only and outcome == "updated"):
+            if outcome == "new":
                 getattr(report, f"new_{kind}").append(rel)
             elif outcome == "updated":
                 getattr(report, f"updated_{kind}").append(rel)
@@ -1295,56 +1243,47 @@ def _now_iso() -> str:
 def run_sync(
     config: Config,
     client: BlackboardClient,
-    term_name: str | None = None,
     all_terms: bool = False,
     course_filters: list[str] | None = None,
     dry_run: bool = False,
     user_id: str | None = None,
     now: datetime | None = None,
     lock_held: bool = False,
-    term_id: str | None = None,
 ) -> SyncReport:
-    """Mirror the current courses, or download the missing files of one past term.
+    """Mirror the current courses.
 
     A course the student unticked in Dersler (``courses.py``) is skipped
     entirely; the file is read again before each course, so unticking one while
     a sync runs takes effect for the courses still to come.
 
-    The past term is chosen by ``term_id`` (any of its Blackboard ids) or by
-    ``term_name``. ``lock_held`` says the caller holds ``run_lock``, so no other
+    ``lock_held`` says the caller holds ``run_lock``, so no other
     sync is running and every ``.bbsync-*.partial`` file in the destination is
     left over from a run that was killed. Without it only the old ones are removed.
     """
     from blackboard_sync.courses import load_disabled  # it builds on this module's State
 
-    past = term_name is not None or term_id is not None
-    if past and (not (term_id or term_name or "").strip() or all_terms
-                 or (term_name is not None and term_id is not None)):
-        raise BlackboardSyncError(tr("Name a single past term to download."))
     now = now or datetime.now(timezone.utc)
-    report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.root),
-                        past_term=term_name or term_id or "")
+    report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.root))
     state = State.load(config.state_file, backup=not dry_run)
     if state.recovery:
         report.warnings.append(state.recovery)
     if not dry_run:
         remove_stale_partials(config.root, max_age=timedelta(0) if lock_held else STALE_PARTIAL_AGE)
-    syncer = Syncer(client, config, state, dry_run=dry_run, missing_only=past)
+    syncer = Syncer(client, config, state, dry_run=dry_run)
     me = client.me()  # also the cheapest way to prove the session still works
     user_id = me.get("id") or user_id
     if not user_id:
         raise LoginRequired(tr("Blackboard did not identify the signed-in user."))
     terms, courses = syncer.discover(
         user_id,
-        term_name=term_name,
         all_terms=all_terms,
         course_filters=course_filters,
         now=now,
         warnings=report.warnings,
-        term_id=term_id,
     )
-    if not past and not all_terms:
-        # An archived term stays frozen even if older memberships later become
+    if not all_terms:
+        # A term an older version downloaded as an archive (``state.past_terms``, no longer
+        # written) stays frozen even if older memberships later become
         # the fallback of choose_current_terms (e.g. current courses disappear).
         # A term whose dates contain today is never frozen: one an older version
         # archived under its English name is the current term itself.
@@ -1352,7 +1291,7 @@ def run_sync(
         courses = [c for c in courses if c.term_id not in frozen]
         terms = [t for t in terms if t.id not in frozen]
     report.terms = [t.name for t in terms]
-    everything = not past and not all_terms and not course_filters
+    everything = not all_terms and not course_filters
     if everything and not dry_run:
         # Dersler lists every current course, the unticked ones too.
         found = {c.id: {"code": c.code, "title": course_code_and_title(c.course_id, c.name)[1],
@@ -1369,10 +1308,6 @@ def run_sync(
         if active != state.deadline_courses:
             state.deadline_courses = active
             state.dirty = True
-    if past:
-        report.past_term = terms[0].name
-        if not dry_run:
-            state.record_past_term(terms[0].id, terms[0].name, [c.id for c in courses], complete=False)
     if not dry_run:
         state.record_current_courses(syncer.current_course_ids)
     for course in courses:
@@ -1389,17 +1324,6 @@ def run_sync(
             log.info("Syncing %s", course.rel_dir)
             report.courses.append(syncer.sync_course(course))
             syncer.checkpoint_now()  # keep progress even if a later course fails
-        if past:
-            unreadable = [c.code for c in report.courses if c.content_error]
-            if unreadable:
-                # Not a finished archive: say so instead of "0 files", and keep it open for a retry.
-                report.warnings.append(
-                    f"Could not read the content of {len(unreadable)} course{'' if len(unreadable) == 1 else 's'} "
-                    f"({', '.join(unreadable)}); the past term is not complete, try again."
-                )
-            if not dry_run:
-                state.record_past_term(terms[0].id, terms[0].name, [c.id for c in courses],
-                                       complete=not unreadable)
     finally:
         syncer.checkpoint_now()
         if state.save_error:

@@ -88,7 +88,6 @@ enum L10n {
         "Open": "Aç",
         "Open calendar": "Takvimi aç",
         "Open folder": "Klasörü aç",
-        "Past terms": "Eski dönemler",
         "Pause syncing": "Senkronu duraklat",
         "Paused": "Duraklatıldı",
         "Previous sync was interrupted. Sync now to continue.": "Önceki senkronizasyon yarıda kaldı. Devam etmek için şimdi senkronize edin.",

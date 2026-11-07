@@ -263,11 +263,9 @@ def test_dry_run_writes_nothing(config, client, fake_bb):
     assert SYLLABUS in cse.new_files
 
 
-def test_course_filter_and_explicit_term(config, client):
+def test_course_filter(config, client):
     report = sync(config, client, course_filters=["cse303"])
     assert [c.code for c in report.courses] == ["CSE303"]
-    report = sync(config, client, term_name="2025-2026 Bahar")
-    assert [c.folder for c in report.courses] == ["2025-2026 Bahar/CSE201 Data Structures"]
 
 
 def test_failed_announcements_are_a_warning_not_a_failure(config, client, fake_bb):

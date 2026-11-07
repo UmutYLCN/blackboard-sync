@@ -27,7 +27,6 @@ CATALOG = {
     "Blackboard Sync's app data was removed.": "Blackboard Sync uygulama verileri kaldırıldı.",
     "Session OK: signed in as {name}.": "Oturum geçerli: {name} olarak giriş yapıldı.",
     "Term(s): {terms}": "Dönem(ler): {terms}",
-    "No past terms to download.": "İndirilebilecek eski dönem yok.",
     "none found": "bulunamadı",
     "Network error talking to Blackboard: {error}": "Blackboard ile bağlantıda ağ hatası: {error}",
     "Unexpected error: {error}": "Beklenmeyen hata: {error}",
@@ -188,12 +187,10 @@ CATALOG = {
     "Could not save the course choice: {error}": "Ders seçimi kaydedilemedi: {error}",
     "Could not save the settings: {error}": "Ayarlar kaydedilemedi: {error}",
     "timed out": "zaman aşımı",
-    "Could not read the list of past terms.": "Eski dönem listesi okunamadı.",
     "Upcoming deadlines": "Yaklaşan teslim tarihleri",
     "The sync took too long and was stopped.": "Senkron çok uzun sürdü ve durduruldu.",
     "exit status {code}": "çıkış kodu {code}",
     "Could not start the menu bar app: {error}": "Menü çubuğu uygulaması başlatılamadı: {error}",
-    "Could not load past terms: {error}": "Eski dönemler yüklenemedi: {error}",
     "Blackboard Sync is running in the background": "Blackboard Sync arka planda çalışıyor",
     "Right-click the Blackboard Sync icon next to the clock for the menu. If you don't see it, click the ^ "
     "arrow that shows hidden icons.":
@@ -293,7 +290,6 @@ CATALOG = {
 
     # The menu and the app's state
     "Sync now": "Şimdi senkronize et",
-    "Loading past terms…": "Eski dönemler yükleniyor…",
     "Sign in": "Giriş yap",
     "Waiting for sign-in…": "Giriş bekleniyor…",
     "⚠ Session expired — Sign in": "⚠ Oturum sona erdi — Giriş yap",
@@ -347,15 +343,10 @@ CATALOG = {
     "Click to download the new version.": "Yeni sürümü indirmek için tıklayın.",
     "Blackboard session expired": "Blackboard oturumu sona erdi",
     "Choose “Sign in” in the menu to get new files.": "Yeni dosyaları almak için menüden “Giriş yap”ı seçin.",
-    "Sign in and try again to see past terms.": "Eski dönemleri görmek için giriş yapın ve tekrar deneyin.",
     "Some files could not be moved": "Bazı dosyalar taşınamadı",
     "Another sync is running; trying again shortly.": "Başka bir senkron sürüyor; birazdan tekrar denenecek.",
     "Another sync is running; the files will be moved shortly.":
         "Başka bir senkron sürüyor; dosyalar birazdan taşınacak.",
-    "Another sync is running; past terms will load again shortly.":
-        "Başka bir senkron sürüyor; eski dönemler birazdan yeniden yüklenecek.",
-    "Another sync is running; try again to download the past term.":
-        "Başka bir senkron sürüyor; eski dönemi indirmek için tekrar deneyin.",
     "Sign in for the new school.": "Yeni okul için giriş yapın.",
     "not synced yet": "henüz senkronize edilmedi",
     "synced at {time}": "{time} senkronize edildi",
@@ -366,9 +357,7 @@ CATALOG = {
     "Checking for new content…": "Yeni içerik kontrol ediliyor…",
     "Moving files to the new folder…": "Dosyalar yeni klasöre taşınıyor…",
     "Moving files to the {folder} folder…": "Dosyalar {folder} klasörüne taşınıyor…",
-    "Downloading {term} (past term)…": "{term} indiriliyor (eski dönem)…",
     "Choose “{settings}” to finish setting up": "Kurulumu tamamlamak için “{settings}” seçeneğini seçin",
-    "The past term download was paused; download it again.": "Eski dönem indirmesi duraklatıldı; tekrar indirin.",
     "Blackboard Sync {version} is ready — Update": "Blackboard Sync {version} hazır — Güncelle",
     "Blackboard Sync is up to date": "Blackboard Sync güncel",
     "You have the latest version ({version}).": "Kullandığınız sürüm ({version}) en yenisi.",
@@ -382,13 +371,6 @@ CATALOG = {
         "Blackboard Sync {version} yerine konamadı; {current} sürümü kullanılmaya devam ediyor.",
     "Blackboard Sync was updated to {version}": "Blackboard Sync {version} sürümüne güncellendi",
     "Update available: {version} — Update": "Güncelleme var: {version} — Güncelle",
-    "{term} · {files} downloaded (past term).": "{term} · {files} indirildi (eski dönem).",
-    "Could not read the content of {courses}; the past term is not complete, try again.":
-        "{courses} içeriği okunamadı; eski dönem tamamlanmadı, tekrar deneyin.",
-    "{warnings}; try again for what is missing.": "{warnings}; eksikler için tekrar deneyin.",
-    "Blackboard: past term": "Blackboard: eski dönem",
-    "Sign in and try again to download the past term.": "Eski dönemi indirmek için giriş yapın ve tekrar deneyin.",
-    "Could not download the past term: {error}": "Eski dönem indirilemedi: {error}",
     "Could not move the files: {error}": "Dosyalar taşınamadı: {error}",
     "Sign-in did not finish: {error}": "Giriş tamamlanamadı: {error}",
     "No courses yet": "Henüz ders yok",
@@ -401,8 +383,6 @@ CATALOG = {
     "Only manually": "Yalnızca elle",
     "Language": "Dil",
     "Danger zone": "Tehlikeli bölge",
-    "Term": "Dönem",
-    "Download the selected term": "Seçilen dönemi indir",
     "How often Blackboard is checked for new files.": "Blackboard'da yeni dosyaların ne sıklıkla aranacağı.",
     "Keeps syncing in the background after you sign in to the computer.":
         "Bilgisayarda oturum açtığınızda arka planda senkronize etmeye devam eder.",
@@ -413,7 +393,6 @@ CATALOG = {
     "Restart now": "Şimdi yeniden başlat",
     "Account": "Hesap",
     "Folder": "Klasör",
-    "Past terms": "Eski dönemler",
     "Sync": "Senkron",
     "Updates": "Güncellemeler",
     "Your school's Blackboard address": "Okulunuzun Blackboard adresi",
@@ -426,9 +405,6 @@ CATALOG = {
     "If you change the folder you can move the downloaded files to the new one or download them again.":
         "Klasörü değiştirirseniz indirilmiş dosyaları yeni klasöre taşımayı ya da yeniden indirmeyi "
         "seçebilirsiniz.",
-    "Download past term": "Eski dönemi indir",
-    "A past term is downloaded once and not updated.": "Eski dönem bir kez indirilir, güncellenmez.",
-    "Sign in to see past terms.": "Eski dönemleri görmek için giriş yapın.",
     "Start when the computer starts": "Bilgisayar açılınca başlat",
     "Check for updates automatically": "Güncellemeleri otomatik denetle",
     "Automatic re-sign-in": "Otomatik yeniden giriş",
@@ -475,7 +451,6 @@ CATALOG = {
     "Would sync {n} course(s) for {terms} into {folder}":
         "{terms} için {n} ders {folder} klasörüne senkronize edilecekti",
     "Synced {n} course(s) for {terms} into {folder}": "{terms} için {n} ders {folder} klasörüne senkronize edildi",
-    "Past term: downloaded once, not updated automatically.": "Eski dönem: bir kez indirilir, otomatik güncellenmez.",
     "Nothing new.": "Yeni bir şey yok.",
     "no changes": "değişiklik yok",
     "Moved {n} file(s) into {folder}": "{n} dosya {folder} klasörüne taşındı",
@@ -490,15 +465,8 @@ CATALOG = {
         "Blackboard'daki kopyayla aynı olan dosyalar olduğu gibi korunur, ikinci kez indirilmez.",
     "Could not read {name} ({error}); it would be set aside on a real sync.":
         "{name} okunamadı ({error}); gerçek bir senkronda kenara alınacak.",
-    "Name a single past term to download.": "İndirilecek tek bir eski dönem adı belirtin.",
     "Blackboard did not identify the signed-in user.": "Blackboard giriş yapan kullanıcıyı tanımlamadı.",
     "Another blackboard-sync run is already in progress.": "Başka bir blackboard-sync çalışması zaten sürüyor.",
-    "No term named {name}.": "{name} adlı dönem bulunamadı.",
-    "{name} is the current term; the normal sync downloads it.":
-        "{name} güncel dönem; indirmek için normal senkronu kullanın.",
-    "{name} is not a past term that can be downloaded.": "{name} indirilebilecek eski bir dönem değil.",
-    "More than one term is named {name}; choose one by its id (--term-id): ":
-        "{name} adında birden fazla dönem var; birini kimliğiyle seçin (--term-id): ",
     "Kept folder {old}: could not rename it to {new} because that folder already exists. Move your files into "
     "one of them to finish.":
         "{old} klasörü korundu: {new} olarak yeniden adlandırılamadı, çünkü o klasör zaten var. Tamamlamak "
@@ -629,8 +597,6 @@ CATALOG = {
     "Google requires this Desktop client's secret. Set BBSYNC_GOOGLE_CLIENT_SECRET locally and connect again.": "Google bu Masaüstü istemcisinin secret değerini istiyor. BBSYNC_GOOGLE_CLIENT_SECRET değişkenini yerel olarak ayarlayıp yeniden bağlanın.",
     "The calendar's saved ID is missing. Delete the existing Blackboard Deadlines calendar in Google Calendar settings.": 'Takvimin kayıtlı kimliği eksik. Mevcut Blackboard Deadlines takvimini Google Takvim ayarlarından silin.',
     'Please wait for the calendar operation to finish.': 'Takvim işleminin tamamlanmasını bekleyin.',
-    "Coming soon": "Çok yakında",
-    "Past-term downloads are being redesigned and will return soon.": "Eski dönem indirme özelliği yeniden tasarlanıyor; çok yakında geri dönecek.",
     # Settings → Appearance (the Windows window)
     "Appearance": "Görünüm",
     "Theme": "Tema",

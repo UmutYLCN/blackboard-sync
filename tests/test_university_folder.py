@@ -16,7 +16,6 @@ from blackboard_sync.settings import Settings, save_settings
 from blackboard_sync.state import State
 from blackboard_sync.system import sync_root
 
-from .test_past_terms import COURSE as PAST_COURSE, PAST, archive  # noqa: F401 (fixture)
 from .test_sync import CSE, SYLLABUS, files_under, sync
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
@@ -98,12 +97,6 @@ def test_folder_already_named_university_gets_no_second_one(config, client):
     config.dest = config.dest.parent / "UNIVERSITY"
     sync(config, client)
     assert (config.dest / CSE).is_dir() and not (config.dest / "University").exists()
-
-
-def test_past_term_download_goes_into_the_university_folder(icloud, client, archive):  # noqa: F811
-    sync(icloud, client, term_name=PAST)
-    assert (icloud.root / PAST_COURSE / "first.pdf").read_bytes() == b"first archive file"
-    assert not (icloud.dest / PAST_COURSE).exists()
 
 
 def test_stale_partials_are_cleaned_in_the_university_folder(icloud, client):

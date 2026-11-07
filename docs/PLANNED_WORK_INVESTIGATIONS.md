@@ -134,7 +134,7 @@ Line counts are from `wc -l`. Class sizes are the line span from the `class` lin
 Move the `ask_*` and `show_*` functions from both `main_window.py` files into `dialogs_macos.py` and `dialogs_windows.py`, or one `dialogs/` package per platform. Each file has about 120 lines of dialog code, with no state and no layout. It is a good first change to confirm the process.
 
 **R2. Split `sync.py` into a package, keeping `Syncer` as the coordinator.**
-Create `blackboard_sync/sync/` with `__init__.py` re-exporting every name other modules import today (`run_lock`, `sha256_file`, `markdown_key`, `run_sync`, `Syncer`, `choose_past_terms`, and so on). Then move the five jobs from the list above into `naming.py`, `items.py`, `announcements.py` and `files.py`. Patch the tests to target the module that uses each name. Keep the file moves separate from any behavior change.
+Create `blackboard_sync/sync/` with `__init__.py` re-exporting every name other modules import today (`run_lock`, `sha256_file`, `markdown_key`, `run_sync`, `Syncer`, and so on). Then move the five jobs from the list above into `naming.py`, `items.py`, `announcements.py` and `files.py`. Patch the tests to target the module that uses each name. Keep the file moves separate from any behavior change.
 
 **R3. Split `AppModel` by job.**
 Move the `finish_*` handlers and their helper notification functions into a `finish.py` module, and the scheduling functions into `schedule.py`. `AppModel` keeps its public methods as thin delegates, so both platforms and the 34 tests in `tests/test_menubar_model.py` keep working unchanged.

@@ -103,7 +103,7 @@ def test_the_choice_file_is_private_and_sorted(config):
     assert json.loads(config.courses_file.read_text(encoding="utf-8")) == {"version": 1, "disabled": ["_1_1"]}
 
 
-def test_filtered_and_past_term_runs_leave_the_course_list_alone(config, client):
+def test_filtered_and_dry_runs_leave_the_course_list_alone(config, client):
     sync(config, client)
     listed = State.load(config.state_file).courses
     sync(config, client, course_filters=["CSE303"])

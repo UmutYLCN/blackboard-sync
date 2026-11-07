@@ -269,20 +269,17 @@ def calendar_page(page: deadlines.DeadlinePage) -> dict:
     }
 
 
-def _choices(key: str, status_form: form.WindowStatus) -> list[dict]:
+def _choices(key: str) -> list[dict]:
     if key == "interval":
         return [{"value": minutes, "title": title} for minutes, title in form.INTERVAL_OPTIONS]
     if key == "language":
         return [{"value": code, "title": name} for code, name in form.LANGUAGE_OPTIONS]
     if key == "theme":
         return [{"value": value, "title": title} for value, title in form.THEME_OPTIONS]
-    if key == "past_term":
-        return [{"value": name, "title": name} for name in status_form.past_terms]
     return []
 
 
-def _row(definition: form.SettingRow, state: form.RowState | None, status_form: form.WindowStatus,
-         packaged: bool) -> dict:
+def _row(definition: form.SettingRow, state: form.RowState | None, packaged: bool) -> dict:
     state = state or form.RowState()
     title = definition.title if state.title is None else state.title
     detail = definition.detail if state.detail is None else state.detail
@@ -299,8 +296,7 @@ def _row(definition: form.SettingRow, state: form.RowState | None, status_form: 
         "destructive": definition.destructive,
         "enabled": state.enabled,
         "warning": state.warning,
-        "running": state.running,
-        "choices": _choices(definition.key, status_form),
+        "choices": _choices(definition.key),
         "hidden": False,
     }
 
@@ -336,7 +332,7 @@ def settings(status_form: form.WindowStatus, values: form.FormValues, error: tup
     for section in form.settings_sections(appearance=True, notebooklm=True, auto_relogin=True):
         if packaged and section.danger:
             continue  # the Store removes the app; the Updates card says so
-        rows = [_row(definition, states.get(definition.key), status_form, packaged) for definition in section.rows
+        rows = [_row(definition, states.get(definition.key), packaged) for definition in section.rows
                 if not (packaged and definition.key in PACKAGED_HIDDEN_ROWS)]
         if section.key == form.SECTION_CALENDAR:
             _calendar_rows(rows, status_form)
@@ -404,7 +400,6 @@ def ids(state: dict) -> dict[str, set[str]]:
         # The card's own buttons, while it shows them and they work.
         "notebooklm": ({card["button"]["id"]} if card["button"] and card["button"]["enabled"] else set())
                       | ({card["open"]["id"]} if card["open"] else set()),
-        "past_term": {choice["value"] for row in rows if row["key"] == "past_term" for choice in row["choices"]},
         # A settings button that is on the page and enabled.
         "button": ({row["key"] for row in rows
                     if row["control"] == form.CONTROL_BUTTON and row["enabled"] and not row["hidden"]}

@@ -14,7 +14,6 @@ from blackboard_sync.sync import Syncer
 from .conftest import SAMPLE_FILES, note_text
 from .test_announcement_files import add_announcement
 from .test_progress_saving import Killed, kill_on_item, writes  # noqa: F401
-from .test_past_terms import COURSE as PAST_COURSE, PAST, ROOT as PAST_ROOT, archive  # noqa: F401
 from .test_sync import COURSE, CSE, NOW, files_under, sync
 
 HEADING = "Video and audio files (open in Blackboard):"
@@ -303,16 +302,6 @@ def test_announcement_video_found_only_by_its_response_headers(config, client, f
     sync(config, client)
     assert path in fake_bb.calls and bodies(fake_bb) == [] and no_partials(config)
     assert "- rec: <" in note_text(config.dest / CSE / "Duyurular" / "2026-10-01 Exam rooms.pdf")
-
-
-def test_past_term_download_skips_videos_too(config, client, archive):  # noqa: F811
-    archive.routes[f"{PAST_ROOT}/contents/_archive_1/attachments"]["results"][0] = {
-        "id": "_old1", "fileName": "lecture.mp4", "mimeType": "video/mp4",
-    }
-    sync(config, client, term_name=PAST)
-    assert (config.dest / PAST_COURSE / "second.pdf").exists()
-    assert not (config.dest / PAST_COURSE / "lecture.mp4").exists()
-    assert "- lecture.mp4: <" in note_text(config.dest / PAST_COURSE / "Lecture.pdf")
 
 
 def test_every_fetch_file_path_goes_through_the_gate(config, client, fake_bb):

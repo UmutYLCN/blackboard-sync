@@ -34,7 +34,7 @@ final class NavigationTests: XCTestCase {
         capture("Calendar-signed-out")
         app.buttons["Settings"].tap()
         XCTAssertTrue(app.staticTexts["About & privacy"].exists || app.staticTexts["Account"].exists)
-        for item in ["Automatic background sync", "Connect Google Calendar", "Choose another folder", "Past terms", "Notes PDFs"] {
+        for item in ["Automatic background sync", "Connect Google Calendar", "Choose another folder", "Notes PDFs"] {
             XCTAssertFalse(app.buttons[item].exists, item)
         }
         app.buttons["Done"].tap()

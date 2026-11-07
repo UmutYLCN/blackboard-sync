@@ -70,15 +70,6 @@ def test_a_stopped_sync_changes_nothing_but_frees_the_slot(tmp_path):
     assert model.busy is None and model.last is last and model.next_run_at == scheduled and model.note == ""
 
 
-def test_a_stopped_past_term_download_says_so(tmp_path):
-    model = signed_in(tmp_path)
-    model.past_terms, model.past_term_ids = ["2025-2026 Bahar"], {"2025-2026 Bahar": "_t_1"}
-    model.past_terms_loaded = True
-    assert model.select_past_term("2025-2026 Bahar") and model.begin("past_term")
-    model.finish_sync(RunOutcome("paused", finished_at=NOW), NOW)
-    assert model.busy is None and model.past_term == "" and "paused" in model.past_message
-
-
 def test_the_pause_survives_a_restart(tmp_path):
     config = Config(base_url="https://school.edu", dest=tmp_path / "University", data_dir=tmp_path / "data")
     save_settings(config.data_dir, Settings("https://school.edu", config.dest))
@@ -216,8 +207,3 @@ def test_nothing_needs_attention_before_the_first_sign_in(tmp_path):
     assert attention_items(AppModel(tmp_path, NOW, configured=False)) == ()
     assert main_status(AppModel(tmp_path, NOW, configured=False), NOW).pause_enabled is False
 
-
-@pytest.fixture(autouse=True)
-def retained_archive_engine(monkeypatch):
-    """Exercise the retained archive engine; release-default guards have their own tests."""
-    monkeypatch.setattr("blackboard_sync.menubar.model.PAST_TERMS_AVAILABLE", True)

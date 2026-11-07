@@ -164,73 +164,6 @@ def test_open_recent_only_marks_a_successfully_opened_file_seen(tmp_path, monkey
     assert bool(saved) is (outcome == 'file')
 
 
-def test_settings_window_lists_past_terms_once_and_dispatches_one_time_job(tmp_path, monkeypatch):
-    import sys
-    from blackboard_sync.menubar import jobs
-    from blackboard_sync.windows import app as tray
-
-    app = make_app(tmp_path)
-    del app.refresh  # the real one: it starts the lookup while the window is open
-    app.post = lambda callback, *args: callback(*args)
-    app.start_next = lambda: None
-    app.notify = lambda note: None
-    app.icon = SimpleNamespace(icon=None, menu=None)
-    app.drawn = app.drawn_icon = None
-    statuses = []
-    app.window = SimpleNamespace(update_status=lambda status: statuses.append(status.form),
-                                 state=SimpleNamespace(open=True, section="overview"))
-
-    class Thread:
-        def __init__(self, target, args=(), **kwargs):
-            self.target, self.args = target, args
-        def start(self):
-            self.target(*self.args)
-
-    monkeypatch.setitem(sys.modules, "pystray", SimpleNamespace(Menu=Menu, MenuItem=Item))
-    monkeypatch.setattr(tray, "icon_image", lambda state: state)
-    monkeypatch.setattr(tray.autostart, "is_installed", lambda: False)
-    monkeypatch.setattr(tray.threading, "Thread", Thread)
-    monkeypatch.setattr(jobs, "refresh_session", lambda config, model, settings: None)
-    lookups = []
-    monkeypatch.setattr(jobs, "run_past_terms",
-                        lambda *args, **kwargs: lookups.append(kwargs) or (["2025-2026 - Spring"], RunOutcome("ok")))
-    calls = []
-    monkeypatch.setattr(jobs, "run_sync", lambda *args, **kwargs: calls.append((args, kwargs)) or RunOutcome("ok"))
-
-    app.refresh()  # not signed in: nothing to look up
-    assert lookups == [] and statuses[-1].past_message == "Sign in to see past terms."
-    app.model.session = {"saved_at": datetime.now(timezone.utc).timestamp(), "user": {"displayName": "Ada"}}
-    app.refresh()
-    assert lookups == []  # the overview does not ask the school; Genel does
-    app.window.state.section = "general"
-    app.refresh()
-    app.refresh()
-    assert len(lookups) == 1 and lookups[0]["runner"] is tray.cli_runner
-    status = statuses[-1]
-    assert status.past_terms == ("2025-2026 - Spring",) and status.past_enabled
-    assert app.model.busy is None
-    app.download_past_term("2025-2026 - Spring")
-    assert calls[0][0][0] == "past_term"
-    assert calls[0][1]["term_name"] == "2025-2026 - Spring"
-    assert calls[0][1]["runner"] is tray.cli_runner
-    assert app.model.past_term == "" and app.model.busy is None
-    assert statuses[-1].past_message == "2025-2026 - Spring · 0 files downloaded (past term)."
-    assert len(lookups) == 1
-    app.window.state.open = False  # closed: no lookup without the window
-    app.model.reload_past_terms()
-    app.refresh()
-    assert len(lookups) == 1
-
-
-def test_closing_settings_while_listing_past_terms_does_not_wedge_job(tmp_path):
-    app = make_app(tmp_path)
-    assert app.model.begin("past_terms")
-    app.window = None
-    app.past_terms_done(["2025-2026 - Fall"], RunOutcome("ok"))
-    assert app.model.busy is None
-    assert app.model.begin("sync")
-
-
 def test_uninstall_from_settings_closes_the_window_without_the_tray_hint(tmp_path, monkeypatch):
     import sys
     from blackboard_sync.windows import main_window
@@ -282,19 +215,23 @@ def test_settings_school_change_saves_and_starts_login(tmp_path, monkeypatch):
     assert (tmp_path / 'settings.json').exists()
 
 
-def test_school_change_saved_during_past_term_lookup_signs_in_afterwards(tmp_path, monkeypatch):
+def test_school_change_saved_during_a_session_check_signs_in_afterwards(tmp_path, monkeypatch):
+    from blackboard_sync import session_refresh
+    from blackboard_sync.menubar import jobs
+    from blackboard_sync.menubar.model import SESSION_JOB
+
     app = make_app(tmp_path)
     monkeypatch.setattr(autostart, 'set_enabled', lambda enabled: None)
     started = []
     app.start_job = started.append
-    assert app.model.begin('past_terms')  # the open window looks the terms up
+    app.start_next = lambda: None
+    assert app.model.begin(SESSION_JOB)  # the look at the session is running
     values = FormValues('new.school.edu', str(tmp_path / 'old'), False)
     assert app.settings_submitted(values, False) is None
     assert app.settings.base_url == 'https://new.school.edu'
     assert started == [] and app.login_after_job
-    app.past_terms_done(['Old school term'], RunOutcome('ok'))
+    app.session_done(jobs.SessionCheck(session_refresh.ALIVE))
     assert started == ['login'] and not app.login_after_job
-    assert app.model.past_terms == [] and not app.model.past_terms_loaded  # looked up again for the new school
 
 
 def test_settings_registry_failure_keeps_window_open(tmp_path, monkeypatch):
@@ -591,7 +528,7 @@ def test_windows_settings_are_sections_of_rows(monkeypatch, tmp_path):
     now = datetime.now(timezone.utc)
     window.update_status(main_status(model, now))
     heading = [w.options['text'] for w in widgets if w.options.get('font') == ("Segoe UI", 11, "bold") and w.options.get('text')]
-    titles = ['Account', 'Sync', 'Folder', 'Past terms', 'Updates', 'Danger zone']  # no Calendar yet
+    titles = ['Account', 'Sync', 'Folder', 'Updates', 'Danger zone']  # no Calendar yet
     assert [text for text in heading if text in titles] == titles
     assert set(window.settings_rows) == {row.key for section in form_module.settings_sections(notebooklm=True, auto_relogin=True)
                                          if section.key != form_module.SECTION_CALENDAR
@@ -623,15 +560,12 @@ def test_windows_settings_are_sections_of_rows(monkeypatch, tmp_path):
 
 def test_windows_settings_rows_follow_the_app_state(monkeypatch, tmp_path):
     from blackboard_sync.menubar.main_window_model import main_status
-    from blackboard_sync.menubar.model import RunOutcome
 
     window, model, _, _ = settings_window(monkeypatch, tmp_path, signed_in=False)
     now = datetime.now(timezone.utc)
     window.update_status(main_status(model, now))
     assert window.account_label.options['text'] == 'Not signed in yet.'
     assert window.account_button.options['text'] == 'Sign in' and window.account_button.options['state'] == 'normal'
-    assert window.past_label.options['text'] == 'Sign in to see past terms.'
-    assert window.past_button.options['state'] == 'disabled' and window.past_dropdown.options['state'] == 'disabled'
     assert window.version_label.options['text'].startswith('Version ')
     model.session = {'saved_at': now.timestamp(), 'user': {'displayName': 'Ada Student'}}
     window.update_status(main_status(model, now))
@@ -642,18 +576,6 @@ def test_windows_settings_rows_follow_the_app_state(monkeypatch, tmp_path):
     assert window.account_button.options['state'] == 'disabled'
     assert window.uninstall_button.options['state'] == 'disabled'
     model.busy = None
-
-    # A past term: the list, then the download with the papers flying.
-    model.finish_past_terms(['2025-2026 Bahar'], RunOutcome('ok'))
-    window.update_status(main_status(model, now))
-    assert window.past_dropdown.options['values'] == ['2025-2026 Bahar']
-    assert window.past_dropdown.options['state'] == 'readonly' and window.past_button.options['state'] == 'normal'
-    assert window.past_scene.canvas.removed
-    assert model.select_past_term('2025-2026 Bahar')
-    model.begin('past_term')
-    window.update_status(main_status(model, now))
-    assert window.past_button.options['text'] == 'Downloading…' and window.past_dropdown.options['state'] == 'disabled'
-    assert not window.past_scene.canvas.removed and 'Downloading' in window.past_label.options['text']
 
 
 def test_windows_settings_text_wraps_at_the_width_it_gets(monkeypatch, tmp_path):
@@ -1407,8 +1329,3 @@ def test_tray_menu_filters_stale_updater_actions_only_for_store(tmp_path, monkey
     assert any(entry.action == 'update' for entry in app.drawn.entries) is not packaged
     assert any(entry.action == 'settings' for entry in app.drawn.entries)
 
-
-@pytest.fixture(autouse=True)
-def retained_archive_engine(monkeypatch):
-    """Exercise the retained archive engine; release-default guards have their own tests."""
-    monkeypatch.setattr("blackboard_sync.menubar.model.PAST_TERMS_AVAILABLE", True)

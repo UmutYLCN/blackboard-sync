@@ -122,11 +122,9 @@ def run_sync(
     settings: Settings,
     runner: Runner = run_cancellable,
     now: Callable[[], datetime] = utcnow,
-    term_name: str = "",
-    term_id: str = "",
 ) -> RunOutcome:
     try:
-        args = sync_arguments(job, settings, term_name, term_id)
+        args = sync_arguments(job, settings)
         proc = runner(
             cli_command(*args),
             capture_output=True,
@@ -164,8 +162,6 @@ def run_session_refresh(settings: Settings, runner: Runner = run_cancellable) ->
 def run_sync_refreshing(
     job: str,
     settings: Settings,
-    term_name: str = "",
-    term_id: str = "",
     may_refresh: bool = False,
     wanted: Callable[[], bool] = lambda: True,
     runner: Runner = run_cancellable,
@@ -175,7 +171,7 @@ def run_sync_refreshing(
     Returns how the sync went and how the sign-in went (None: none was tried).
     ``wanted`` is False once the student paused. Worker threads call this.
     """
-    outcome = run_sync_guarded(job, settings, term_name=term_name, term_id=term_id, runner=runner)
+    outcome = run_sync_guarded(job, settings, runner=runner)
     if outcome.status != "login_required" or not may_refresh or not wanted():
         return outcome, None
     try:
@@ -189,7 +185,7 @@ def run_sync_refreshing(
         return outcome, result
     if not wanted():
         return RunOutcome(status="paused", finished_at=utcnow()), result
-    return run_sync_guarded(job, settings, term_name=term_name, term_id=term_id, runner=runner), result
+    return run_sync_guarded(job, settings, runner=runner), result
 
 
 @dataclass(frozen=True)
@@ -235,14 +231,13 @@ def run_login(settings: Settings, runner: Runner = subprocess.run) -> tuple[bool
     return False, lines[-1] if lines else tr("exit status {code}").format(code=proc.returncode)
 
 
-def run_sync_guarded(job: str, settings: Settings, term_name: str = "", term_id: str = "",
-                     runner: Runner = run_cancellable) -> RunOutcome:
+def run_sync_guarded(job: str, settings: Settings, runner: Runner = run_cancellable) -> RunOutcome:
     """``run_sync`` that turns any unexpected exception into a failed outcome.
 
     Worker threads must always report back, or the model stays busy forever.
     """
     try:
-        return run_sync(job, settings, runner=runner, term_name=term_name, term_id=term_id)
+        return run_sync(job, settings, runner=runner)
     except Exception as exc:
         log.exception("Sync job failed")
         return RunOutcome(status="error", message=str(exc), finished_at=utcnow())
@@ -379,33 +374,6 @@ def run_login_guarded(settings: Settings) -> tuple[bool, str]:
     except Exception as exc:
         log.exception("Login job failed")
         return False, str(exc)
-
-
-def run_past_terms(settings: Settings, runner: Runner = subprocess.run) -> tuple[dict[str, str], RunOutcome]:
-    """Discover on a worker, using the same session, executable and lock as sync.
-
-    Returns each entry of the list (a term's name, told apart from a same-named
-    term) mapped to the term's Blackboard id, which the download is started with.
-    """
-    try:
-        proc = runner(cli_command("--base-url", settings.base_url, "past-terms", "--json"),
-                      capture_output=True, text=True, timeout=LOGIN_TIMEOUT, stdin=subprocess.DEVNULL)
-        if proc.returncode:
-            return {}, parse_sync_output("", proc.returncode, proc.stderr, utcnow())
-        data = json.loads(proc.stdout)
-        options = data.get("options")
-        if options is None:
-            names = data["terms"]
-            if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
-                raise ValueError(tr("Could not read the list of past terms."))
-            options = [{"label": name, "id": ""} for name in names]
-        terms = {option["label"]: option["id"] for option in options}
-        if len(terms) != len(options) or not all(isinstance(k, str) and k and isinstance(v, str)
-                                                 for k, v in terms.items()):
-            raise ValueError(tr("Could not read the list of past terms."))
-        return terms, RunOutcome(status="ok")
-    except Exception as exc:
-        return {}, RunOutcome(status="error", message=tr("Could not load past terms: {error}").format(error=exc))
 
 
 def refresh_hidden_folders(config: Config, model: AppModel) -> None:

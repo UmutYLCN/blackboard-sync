@@ -64,7 +64,6 @@ class SyncReport:
     terms: list[str] = field(default_factory=list)
     courses: list[CourseReport] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-    past_term: str = ""
     # The one-time move of an older version's files from the chosen folder into
     # the University folder (``relocate.migrate_to_root``), done before syncing.
     moved_into_root: int = 0
@@ -112,8 +111,6 @@ class SyncReport:
             "Synced {n} course(s) for {terms} into {folder}")
         lines = self.migration_lines()
         lines.append(line.format(n=len(self.courses), terms=", ".join(self.terms) or tr("no term"), folder=self.dest))
-        if self.past_term:
-            lines.append(tr("Past term: downloaded once, not updated automatically."))
         for course in self.courses:
             lines.append(f"  {course.summary_line()}")
             for label, paths in (

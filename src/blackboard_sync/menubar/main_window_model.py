@@ -142,7 +142,7 @@ HOME_ANNOUNCEMENT_ROWS = 3  # attention items first, then the newest announcemen
 HOME_DEADLINE_ROWS = 4
 
 # Jobs that change files: the account card says a sync is running.
-SYNC_RUNNING_JOBS = ("sync", "past_term", MOVE_JOB)
+SYNC_RUNNING_JOBS = ("sync", MOVE_JOB)
 # How the illustration shows while one of them runs.
 SCENE_FIRST = "first"  # nothing downloaded yet: large, in place of the empty list
 SCENE_COMPACT = "compact"  # small, above the list

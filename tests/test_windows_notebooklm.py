@@ -356,7 +356,7 @@ def test_a_failed_refresh_is_tried_again_only_after_10_minutes(app, monkeypatch)
     app.start_session_check()
     tried = []
 
-    def sync(job, settings, term_name, term_id, may_refresh, wanted, runner):
+    def sync(job, settings, may_refresh, wanted, runner):
         tried.append((may_refresh, runner))
         return RunOutcome(status="login_required", finished_at=NOW), None
 

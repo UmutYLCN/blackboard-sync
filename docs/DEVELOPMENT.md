@@ -267,7 +267,7 @@ their control on the right (switches for the on/off settings on macOS, check box
 Windows window; the Store build has no update or uninstall controls and no Danger zone). The sections, their rows and
 the texts that follow the app are data in `settings_form.py` (`SECTIONS`, `SECTION_ORDER`,
 `row_states`); a slot between Sync and Folder is kept for a later Calendar section. They
-are, in order, Account, Sync, Folder, Past terms, Updates and a red Danger zone:
+are, in order, Account, Sync, Folder, Updates and a red Danger zone:
 
 - **Account** — **Your school's Blackboard address**, prefilled with
   `https://blackboard.istun.edu.tr`; students of another university type their
@@ -285,12 +285,6 @@ are, in order, Account, Sync, Folder, Past terms, Updates and a red Danger zone:
   the note under the field says so. Files an older version put directly into the
   chosen folder are moved into University once, at the next app start or sync
   (`relocate.migrate_to_root`); a file that cannot be moved stays and is reported.
-- **Past terms** — a list of past terms (newest first, never the current
-  one) and **Download past term**, which downloads the chosen term once into
-  the same folder; it is not updated afterwards. The list is looked up in the
-  background the first time **Settings** is shown after the window opens, while you
-  are signed in; until then it
-  says it is loading (a lookup that met a running sync tries again by itself), and **No past terms to download.** when there is none.
 - **Sync** — also **Automatic re-sign-in**, on by default (see
   [Signing in again by itself](#signing-in-again-by-itself)). **Start when the computer starts**, ticked by default (see
   [Start at login](#start-at-login)), and **Automatic sync**: every 30
@@ -309,9 +303,9 @@ are, in order, Account, Sync, Folder, Past terms, Updates and a red Danger zone:
 A bar with **Cancel** and **Save** appears under **Settings** once a field or
 check box was changed (**Unsaved changes**). **Save** saves them
 and the window stays open; **Cancel** (or Escape) puts back what is saved, and
-closing the window drops unsaved changes. **Sign in**, **Sign out**, **Download past term**, **Check now** and
+closing the window drops unsaved changes. **Sign in**, **Sign out**, **Check now** and
 **Uninstall app…** act right away. The buttons that need the app's single job
-slot (sign in, sign out, download a past term, uninstall) are greyed out while a sync or sign-in runs. Nothing is synced
+slot (sign in, sign out, uninstall) are greyed out while a sync or sign-in runs. Nothing is synced
 on a schedule until the settings have been saved once (on **Get started** with
 **Sign in**, or with **Save**). When you save later:
 
@@ -451,8 +445,8 @@ downloads the same files into the same folders as the command does.
 ```
 blackboard-sync [--base-url URL] [--data-dir DIR] [-v] login [--browser auto|chrome|edge|brave|vivaldi|opera|operagx|chromium|arc|inapp] [--timeout S]
 blackboard-sync [...] refresh-session [--json]
-blackboard-sync [...] check [--term NAME | --term-id ID | --all-terms] [--course CODE ...]
-blackboard-sync [...] sync  [--term NAME | --term-id ID | --all-terms] [--course CODE ...]
+blackboard-sync [...] check [--all-terms] [--course CODE ...]
+blackboard-sync [...] sync  [--all-terms] [--course CODE ...]
                             [--dest DIR] [--json] [--dry-run]
 blackboard-sync [...] notebooklm login | sync [--dest DIR] [--auto] | status | duplicates [--json] | remove-duplicates [--yes] [--source ID] [--json] | disconnect
 ```
@@ -460,8 +454,6 @@ blackboard-sync [...] notebooklm login | sync [--dest DIR] [--auto] | status | d
 | Option | Meaning |
 | --- | --- |
 | `--dest DIR` | Base folder (default: the folder saved in the menu bar app's settings, else `~/Documents/University`; env `BBSYNC_DEST`). Files go into its `University` subfolder unless the folder is already named University. |
-| `--term NAME` | Download one past term by its name, Turkish or English, e.g. `"2025-2026 Bahar"` or `"2025-2026 Spring"`. |
-| `--term-id ID` | The same by the term's Blackboard id, as `past-terms --json` lists it (`options[].id`); needed when two terms share a name. |
 | `--all-terms` | Sync every term, including past ones and courses without a term. |
 | `--course CODE` | Only this course (`CSE303`, or the course id); repeatable. Case and Turkish dots do not matter: `bil101` finds `BİL101`. |
 | `--dry-run` | Show what would be fetched; write and download nothing. |
@@ -557,9 +549,11 @@ On Windows a few more rules apply there only (see
   Dates update independently of content `modified`. Removed dates disappear
   on the next successful fetch; a failed fetch keeps the prior list and marks
   the calendar incomplete. Opening **Calendar** only reads this local cache.
-  Archive downloads leave the calendar alone.
 - `courses`: the current-term courses the last normal sync found (code, title,
   term, folder), the unticked ones too, for **Courses**.
+- `past_terms`: left by versions that could download an older term once. Nothing writes it any
+  more; the normal sync still reads it, so those terms stay frozen. A file with it, or with fields
+  this version does not know, loads without error.
 
 The source is documented in [Anthology's REST schema](https://developer.anthology.com/assets/lib/swagger-ui/swagger-index.html).
 Enrolled students can read `grading.due` when the course's My Grades tool and
@@ -1288,14 +1282,6 @@ shows on the card. Only a sync reaches it, so a computer off for a long time sti
 folder and keeps `state.json`.
 
 ## Release 1.6.0 controls
-
-Desktop archive downloads are temporarily unavailable behind the default-false
-`PAST_TERMS_AVAILABLE` product switch. The shared model rejects archive and lookup
-jobs; Settings displays a disabled Coming soon state and opening it causes no
-archive HTTP request. Tests of the retained engine explicitly opt in to exercise
-its scheduling and retry behavior for later reintroduction; release-default tests
-verify the unavailable presentation and job guards. CLI archive operations are
-unchanged.
 
 Desktop OAuth metadata comes from the gitignored local JSON for source/local
 builds, and from the Actions repository secret for release builds. PyInstaller

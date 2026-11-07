@@ -15,7 +15,6 @@ from blackboard_sync.menubar.settings_form import (
     SECTION_DANGER,
     SECTION_FOLDER,
     SECTION_ORDER,
-    SECTION_PAST_TERMS,
     SECTION_SYNC,
     SECTION_UPDATES,
     SECTIONS,
@@ -41,13 +40,13 @@ def all_rows():
 
 def test_the_sections_come_in_the_planned_order_with_a_slot_for_the_calendar():
     assert SECTION_ORDER == (SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR, SECTION_NOTEBOOKLM,
-                             SECTION_FOLDER, SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER)
+                             SECTION_FOLDER, SECTION_UPDATES, SECTION_DANGER)
     # The immediate Calendar controls occupy the reserved slot.
     assert SECTION_CALENDAR in SECTIONS
     assert [section.key for section in settings_sections()] == [
-        SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER, SECTION_PAST_TERMS, SECTION_UPDATES, SECTION_DANGER]
+        SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER, SECTION_UPDATES, SECTION_DANGER]
     assert [section.title for section in settings_sections()] == [
-        "Account", "Sync", "Google Calendar", "Folder", "Past terms", "Updates", "Danger zone"]
+        "Account", "Sync", "Google Calendar", "Folder", "Updates", "Danger zone"]
     # Appearance (the theme) only where the window can change it: the Windows WebView2 window.
     assert [section.key for section in settings_sections(appearance=True)][:4] == [
         SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR]
@@ -61,7 +60,6 @@ def test_the_rows_of_each_section():
         SECTION_SYNC: ["interval", "autostart", "language"],
         SECTION_CALENDAR: ["google_calendar", "google_calendar_sync", "google_calendar_disconnect"],
         SECTION_FOLDER: ["dest"],
-        SECTION_PAST_TERMS: ["past_term", "past_download"],
         SECTION_UPDATES: ["check_updates", "update"],
         SECTION_DANGER: ["uninstall"],
     }
@@ -83,15 +81,14 @@ def test_controls_match_what_they_edit():
     assert by_field["sync_interval_minutes"].control == by_field["language"].control == CONTROL_POPUP
     # What acts at once (or only chooses) has no field, so Save and Cancel never touch it.
     immediate = {row.key: row.control for row in all_rows() if not row.field}
-    assert immediate == {"account": CONTROL_BUTTON, "past_term": CONTROL_POPUP, "past_download": CONTROL_BUTTON,
-                         "update": CONTROL_BUTTON, "uninstall": CONTROL_BUTTON,
+    assert immediate == {"account": CONTROL_BUTTON, "update": CONTROL_BUTTON, "uninstall": CONTROL_BUTTON,
                          "google_calendar": CONTROL_BUTTON, "google_calendar_sync": CONTROL_BUTTON,
                          "google_calendar_disconnect": CONTROL_BUTTON, "notebooklm_disconnect": CONTROL_BUTTON,
                          "notebooklm_duplicates": CONTROL_BUTTON}
 
 
 def test_every_row_has_a_description_or_a_live_one():
-    live = {"account", "update", "past_download", "google_calendar"}  # the status supplies their text
+    live = {"account", "update", "google_calendar"}  # the status supplies their text
     for row in all_rows():
         assert row.title or row.key in live, row.key
         if row.key not in live:
@@ -113,7 +110,7 @@ def test_the_folder_note_and_the_hint_say_what_they_said_before():
 
 
 def status(**kwargs):
-    values = dict(past_available=True, account="Signed in as Ada", account_warning=False, account_title="Sign out", account_action="logout",
+    values = dict(account="Signed in as Ada", account_warning=False, account_title="Sign out", account_action="logout",
                   account_enabled=True, version="Version 1.5.5", update_title="Check now", update_action="check_updates",
                   update_enabled=True)
     values.update(kwargs)
@@ -135,19 +132,3 @@ def test_update_and_uninstall_rows():
         "Version 1.5.5", "Update to 1.6.0", False)
     assert states["uninstall"].enabled
     assert not row_states(status())["uninstall"].enabled  # a sync or sign-in holds the job slot
-
-
-def test_past_term_rows_follow_the_download():
-    idle = row_states(status(past_terms=("2025-2026 Bahar",), past_message="", past_enabled=True))
-    assert idle["past_term"].enabled
-    assert (idle["past_download"].button, idle["past_download"].enabled, idle["past_download"].running) == (
-        "Download past term", True, False)
-    running = row_states(status(past_terms=("2025-2026 Bahar",), past_message="Downloading…", past_running=True))
-    assert not running["past_term"].enabled  # the list is locked while a term downloads
-    assert (running["past_download"].button, running["past_download"].detail, running["past_download"].running) == (
-        "Downloading…", "Downloading…", True)
-    empty = row_states(status(past_message="Sign in to see past terms."))
-    assert not empty["past_term"].enabled and not empty["past_download"].enabled
-    assert empty["past_download"].detail == "Sign in to see past terms."
-    # Rows without live text keep the definition's.
-    assert row_states(status())["past_term"].title is None and row_states(status())["past_term"].detail is None

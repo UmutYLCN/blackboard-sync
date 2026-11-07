@@ -52,13 +52,14 @@ def test_current_terms_filter_archives(config, client, fake_bb):
         {"title": "Old announcement"}, "old", "Old course", "/ultra/courses/old/announcements", "old-note"))
     state.save()
     assert all(r.title != "Old announcement" for r in announcements.load_rows(config))
-    # An explicitly archived term cannot become current when old courses are the fallback.
+    # A term an older version archived cannot become current when old courses are the fallback.
     memberships = next(v for k, v in fake_bb.routes.items() if k.endswith("/courses") and "/users/" in k)
     memberships["results"] = [m for m in memberships["results"] if m.get("course", {}).get("termId") != "_50_1"]
     sync(config, client)
     state = State.load(config.state_file)
     old_term = next(v for k, v in fake_bb.routes.items() if k.endswith("/terms/_40_1"))["name"]
-    state.record_past_term("_40_1", old_term, state.current_courses)
+    state.past_terms["_40_1"] = {"name": old_term, "courses": list(state.current_courses)}
+    state.dirty = True
     state.save()
     sync(config, client)
     assert announcements.load_rows(config) == ()

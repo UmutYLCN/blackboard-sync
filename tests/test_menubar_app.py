@@ -847,7 +847,7 @@ def test_settings_page_is_sections_of_rows(tmp_path):
 
         # Every row: the control at the card's right edge, clear of the row's text.
         edge = INNER - SETTINGS_PAD
-        for key in ('base_url', 'account', 'interval', 'autostart', 'language', 'past_term', 'past_download',
+        for key in ('base_url', 'account', 'interval', 'autostart', 'language',
                     'check_updates', 'update', 'uninstall'):
             row = window.settings_rows[key]
             frame = row.control.frame()
@@ -917,8 +917,7 @@ def test_settings_rows_follow_the_app_state(tmp_path):
     try:
         window.select(GENERAL)
         window.update_status(main_status(model, NOW))
-        assert str(window.account_button.title()) == 'Sign in' and window.past_scene.isHidden()
-        assert str(window.past_label.stringValue()) == 'Sign in to see past terms.'
+        assert str(window.account_button.title()) == 'Sign in'
         signed_in(model)
         window.update_status(main_status(model, NOW))
         assert str(window.account_button.title()) == 'Sign out' and window.account_button.isEnabled()
@@ -927,56 +926,30 @@ def test_settings_rows_follow_the_app_state(tmp_path):
         window.update_status(main_status(model, NOW))
         assert not window.account_button.isEnabled() and not window.uninstall_button.isEnabled()
         model.busy = None
-
-        # A past term downloading: the list is locked, the button says so and the papers fly.
-        from blackboard_sync.menubar.model import RunOutcome
-        model.finish_past_terms(['2025-2026 Bahar'], RunOutcome('ok'))
-        window.update_status(main_status(model, NOW))
-        assert window.past_popup.isEnabled() and window.past_button.isEnabled() and window.past_scene.isHidden()
-        assert model.select_past_term('2025-2026 Bahar')
-        model.begin('past_term')
-        window.update_status(main_status(model, NOW))
-        assert str(window.past_button.title()) == 'Downloading…' and not window.past_popup.isEnabled()
-        assert not window.past_scene.isHidden() and 'Downloading' in str(window.past_label.stringValue())
     finally:
         window.window.close()
 
 
-def test_genel_past_terms_section_and_uninstall_button(tmp_path):
+def test_settings_sections_and_uninstall_button(tmp_path):
     from blackboard_sync.menubar.main_window_model import main_status
-    from blackboard_sync.menubar.model import RunOutcome
 
-    actions, downloads = [], []
-    window, model, _ = make_window(tmp_path, on_action=actions.append, on_past_term=downloads.append)
+    actions = []
+    window, model, _ = make_window(tmp_path, on_action=actions.append)
     try:
         labels = [text for _, text in settings_texts(window)]
         sections = [label for label in labels if label in ('Account', 'Folder', 'Past terms', 'Google Calendar', 'Sync', 'Updates',
                                                            'Danger zone')]
-        assert sections == ['Account', 'Sync', 'Google Calendar', 'Folder', 'Past terms', 'Updates', 'Danger zone']
-        assert 'A past term is downloaded once and not updated.' in labels
-        assert str(window.past_button.title()) == 'Download past term'
-        assert str(window.past_label.stringValue()) == 'Sign in to see past terms.'
-        assert not window.past_button.isEnabled() and not window.past_popup.isEnabled()
+        assert sections == ['Account', 'Sync', 'Google Calendar', 'Folder', 'Updates', 'Danger zone']
+        assert not any('past term' in label.lower() for label in labels)
         assert str(window.uninstall_button.title()) == 'Uninstall app…'
         window.target.uninstall_(None)
         assert actions == ['uninstall']
 
         model.session = {'saved_at': NOW.timestamp(), 'user': {'displayName': 'Ada'}}
         window.update_status(main_status(model, NOW))
-        assert str(window.past_label.stringValue()) == 'Loading past terms…'
-        model.finish_past_terms(['2025-2026 Bahar', '2025-2026 Güz'], RunOutcome('ok'))
-        window.update_status(main_status(model, NOW))
-        assert [str(t) for t in window.past_popup.itemTitles()] == ['2025-2026 Bahar', '2025-2026 Güz']
-        window.past_popup.selectItemWithTitle_('2025-2026 Güz')
-        window.update_status(main_status(model, NOW))
-        assert str(window.past_popup.titleOfSelectedItem()) == '2025-2026 Güz'
-        window.target.pastTerm_(None)
-        assert downloads == ['2025-2026 Güz']
         model.begin('sync')
         window.update_status(main_status(model, NOW))
-        assert not window.past_button.isEnabled() and not window.uninstall_button.isEnabled()
-        window.target.pastTerm_(None)
-        assert downloads == ['2025-2026 Güz']
+        assert not window.uninstall_button.isEnabled()
         window.target.account_(None)  # signed in: "Sign out"
         assert actions[-1] == 'logout'
     finally:
@@ -1114,12 +1087,6 @@ def test_ayarlar_opens_genel_and_closing_keeps_the_app_running(menu_app):
     assert window.shown == [GENERAL] and menu_app.docks == [True]
     menu_app.refresh()
     assert window.statuses  # the open window follows the app
-    assert menu_app.past_terms_wanted() is False  # not signed in: nothing to look up
-    menu_app.model.configured = True
-    menu_app.model.session = {'saved_at': NOW.timestamp(), 'user': {'displayName': 'Ada'}}
-    assert menu_app.past_terms_wanted()  # Genel lists them
-    window.state.select('overview')
-    assert not menu_app.past_terms_wanted()  # opening the app does not ask the school
     window.close()
     assert menu_app.docks == [True, False]  # the Dock icon leaves with the window
     count = len(window.statuses)
@@ -1184,8 +1151,3 @@ def test_pause_stops_a_running_sync_and_resume_syncs_again(menu_app, monkeypatch
     menu_app.toggle_pause()  # a running sync is ended
     assert menu_app.model.paused and stopped == [True]
 
-
-@pytest.fixture(autouse=True)
-def retained_archive_engine(monkeypatch):
-    """Exercise the retained archive engine; release-default guards have their own tests."""
-    monkeypatch.setattr("blackboard_sync.menubar.model.PAST_TERMS_AVAILABLE", True)

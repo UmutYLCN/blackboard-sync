@@ -36,7 +36,7 @@ from blackboard_sync.session import (
     write_private_json,
 )
 from blackboard_sync.state import State
-from blackboard_sync.sync import Syncer, choose_past_terms, run_lock, run_sync
+from blackboard_sync.sync import Syncer, run_lock, run_sync
 from blackboard_sync.system import is_windows
 
 STATUS_EXIT = {
@@ -85,8 +85,6 @@ def build_parser() -> argparse.ArgumentParser:
     check = sub.add_parser("check", help="verify the session and list the courses that would sync")
     _add_selection_args(check)
     check.add_argument("--dest", type=Path, help=argparse.SUPPRESS)
-    past = sub.add_parser("past-terms", help="list the past terms that can be downloaded")
-    past.add_argument("--json", action="store_true", help="print as JSON")
     uninstall = sub.add_parser("uninstall", help="remove the app and all of its data")
     uninstall.add_argument("--delete-course-files", action="store_true",
                            help="also move the downloaded course files to the Trash (default: keep them)")
@@ -117,11 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _add_selection_args(p: argparse.ArgumentParser) -> None:
-    selection = p.add_mutually_exclusive_group()
-    selection.add_argument("--term", help='download a past term once, e.g. "2025-2026 Bahar"; it is not updated afterwards')
-    selection.add_argument("--term-id", metavar="ID",
-                           help="download a past term once by its Blackboard id (the id in past-terms --json)")
-    selection.add_argument("--all-terms", action="store_true", help="sync every term, including past ones")
+    p.add_argument("--all-terms", action="store_true", help="sync every term, including past ones")
     p.add_argument(
         "--course",
         action="append",
@@ -177,9 +171,7 @@ def cmd_check(args, config: Config) -> int:
     # The recorded files decide the folders, as in a real sync; nothing is written.
     syncer = Syncer(client, config, State.load(config.state_file, backup=False), dry_run=True)
     warnings: list[str] = []
-    terms, courses = syncer.discover(
-        me["id"], args.term, args.all_terms, args.course, warnings=warnings, term_id=args.term_id
-    )
+    terms, courses = syncer.discover(me["id"], args.all_terms, args.course, warnings=warnings)
     print(tr("Term(s): {terms}").format(terms=", ".join(t.name for t in terms) or tr("none found")))
     for course in courses:
         print(f"  {config.root / course.rel_dir}")
@@ -190,8 +182,7 @@ def cmd_check(args, config: Config) -> int:
 
 
 def cmd_sync(args, config: Config) -> int:
-    past = args.term is not None or args.term_id is not None
-    report = SyncReport(dry_run=args.dry_run, dest=str(config.root), past_term=args.term or args.term_id or "")
+    report = SyncReport(dry_run=args.dry_run, dest=str(config.root))
     migrated = None
     try:
         config.ensure_data_dir()
@@ -205,8 +196,6 @@ def cmd_sync(args, config: Config) -> int:
                 report = run_sync(
                     config,
                     client,
-                    term_name=args.term,
-                    term_id=args.term_id,
                     all_terms=args.all_terms,
                     course_filters=args.course,
                     dry_run=args.dry_run,
@@ -233,7 +222,7 @@ def cmd_sync(args, config: Config) -> int:
         report.moved_into_root = migrated.moved
         report.left_outside_root = [rel for rel, _reason in migrated.kept]
 
-    if not args.dry_run and report.status != "locked" and not past:
+    if not args.dry_run and report.status != "locked":
         write_private_json(config.last_run_file, report.to_dict())
     if args.json:
         print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
@@ -242,44 +231,6 @@ def cmd_sync(args, config: Config) -> int:
     else:
         print(report.message, file=sys.stderr)
     return STATUS_EXIT[report.status]
-
-
-def cmd_past_terms(args, config: Config) -> int:
-    client, session_data = open_client(config)
-    try:
-        with run_lock(config.lock_file):
-            me = client.me()
-            warnings: list[str] = []
-            terms, _courses = Syncer(
-                client, config, State.load(config.state_file, backup=False), dry_run=True,
-            ).discover(me["id"], all_terms=True, warnings=warnings)
-            past = choose_past_terms(terms, datetime.now(timezone.utc))
-    finally:
-        refresh_saved_cookies(config.session_file, session_data, client.http)
-    options = past_term_options(past)
-    if args.json:
-        # "terms" (names only) is what versions before term ids read.
-        print(json.dumps({"terms": [o["label"] for o in options], "options": options, "warnings": warnings},
-                         ensure_ascii=False))
-    else:
-        print("\n".join(f"{o['label']}  (--term-id {o['id']})" for o in options) or tr("No past terms to download."))
-    return EXIT_OK
-
-
-def past_term_options(terms) -> list[dict]:
-    """One choice per past term: its id, name, folder and a label no other choice has.
-
-    Two terms with the same name are told apart by their folders, or by their ids.
-    """
-    names = [term.name.casefold() for term in terms]
-    folders = [term.folder.casefold() for term in terms]
-
-    def label(term) -> str:
-        if names.count(term.name.casefold()) == 1:
-            return term.name
-        return term.folder if folders.count(term.folder.casefold()) == 1 else f"{term.name} ({term.id})"
-
-    return [{"id": term.id, "name": term.name, "folder": term.folder, "label": label(term)} for term in terms]
 
 
 def cmd_uninstall(args, config: Config) -> int:
@@ -413,7 +364,7 @@ def main(argv: list[str] | None = None) -> int:
         logging.getLogger("urllib3").setLevel(logging.WARNING)
     config = make_config(args)
     handlers = {"login": cmd_login, "refresh-session": cmd_refresh_session, "sync": cmd_sync, "check": cmd_check,
-                "past-terms": cmd_past_terms, "uninstall": cmd_uninstall, "calendar": cmd_calendar,
+                "uninstall": cmd_uninstall, "calendar": cmd_calendar,
                 "notebooklm": cmd_notebooklm}
     try:
         return handlers[args.command](args, config)

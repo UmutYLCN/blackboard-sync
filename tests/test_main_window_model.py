@@ -161,10 +161,8 @@ def test_signed_in_card_shows_the_last_sync_once():
     assert status.sync_title == "Sync now" and status.sync_enabled
 
 
-@pytest.mark.parametrize("job", ["sync", "past_term", "move"])
-def test_while_syncing_the_card_keeps_the_last_sync_time(job, monkeypatch):
-    if job == "past_term":
-        monkeypatch.setattr("blackboard_sync.menubar.model.PAST_TERMS_AVAILABLE", True)
+@pytest.mark.parametrize("job", ["sync", "move"])
+def test_while_syncing_the_card_keeps_the_last_sync_time(job):
     model = synced()
     model.begin(job)
     card = main_status(model, NOW).account
@@ -205,10 +203,9 @@ def test_other_jobs_that_change_files_show_it_with_their_own_line(job, line):
     assert sync_scene(model) == (SCENE_COMPACT, line)
 
 
-@pytest.mark.parametrize("job", ["login", "past_terms"])
-def test_jobs_that_do_not_download_show_no_illustration(job):
+def test_jobs_that_do_not_download_show_no_illustration():
     model = synced()
-    model.begin(job)
+    model.begin("login")
     assert sync_scene(model) == ("", "")
 
 
