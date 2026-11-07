@@ -312,6 +312,7 @@ class Syncer:
         self.dry_run = dry_run
         self.windows = is_windows() if windows is None else windows
         self.deadline_content_ids: dict[str, str] = {}
+        self._placed = False  # a file was put on disk since the last save (``save_placed``)
 
     def checkpoint(self) -> None:
         """Save progress so far (throttled) so a run that is killed keeps what it finished."""
@@ -322,6 +323,19 @@ class Syncer:
         """Save progress now: at the end of a course and of the run."""
         if not self.dry_run:
             self.state.checkpoint(force=True)
+
+    def save_placed(self) -> None:
+        """Save at once when a file was put on disk since the last save, else ``checkpoint``.
+
+        A run stopped right after that (Pause ends the process; on Windows nothing
+        runs then) must not leave a file in the folder that state.json does not
+        know: moving the files to another folder (``relocate``) follows the state.
+        """
+        if self._placed:
+            self._placed = False
+            self.checkpoint_now()
+        else:
+            self.checkpoint()
 
     def present(self, out_key: str) -> bool:
         """The file recorded as ``out_key`` is on disk and not broken (``state.intact``).
@@ -589,8 +603,7 @@ class Syncer:
         report = CourseReport(code=code, name=title, folder=course.rel_dir)
         self.deadline_content_ids = {}
         try:
-            if not self.dry_run:
-                (self.dest / course.rel_dir).mkdir(parents=True, exist_ok=True)
+            # No folder yet: it is created with the course's first file (``_move_into``).
             roots = self.client.contents(course.id)
         except (ApiError, *ITEM_ERRORS) as exc:
             report.content_error = str(exc)
@@ -640,8 +653,6 @@ class Syncer:
             if self.is_folder(item):
                 try:
                     sub_dir = self.folder_path(rel_dir, item.get("title") or "Folder", report.warnings)
-                    if not self.dry_run:
-                        (self.dest / sub_dir).mkdir(parents=True, exist_ok=True)
                     children = self.client.children(course.id, item["id"])
                 except (ApiError, *ITEM_ERRORS) as exc:
                     report.warnings.append(tr("Could not open folder {name}: {error}").format(
@@ -698,8 +709,6 @@ class Syncer:
         handled = set(previous_item.get("outputs", [])) | set(previous_item.get("media", []))
         if set(embedded_keys) <= handled and self.state.item_unchanged(key, modified, self.present):
             return
-        if instruction_files and not self.dry_run:
-            (self.dest / rel_dir).mkdir(parents=True, exist_ok=True)
         hid = handler_id(item)
         outputs: list[str] = []
         saved: list[str] = []
@@ -916,8 +925,6 @@ class Syncer:
             media: list[tuple[str, str, str, int | None]] = []
             kept = self.kept_attachments(previous_item, modified)
             failure: Exception | None = None
-            if embedded_files and not self.dry_run:
-                (self.dest / folder).mkdir(parents=True, exist_ok=True)
             for embedded, file_key in zip(embedded_files, embedded_keys):
                 if file_key in kept:
                     outputs.append(file_key)
@@ -1037,7 +1044,7 @@ class Syncer:
             rel = desired_rel or join_rel(fallback_dir, out_key.rsplit(":", 1)[-1])
             report.new_files.append(rel)
             return rel
-        target_dir = self.dest / (PurePosixPath(desired_rel).parent if desired_rel else fallback_dir)
+        target_dir = self.staging_dir(self.dest / (PurePosixPath(desired_rel).parent if desired_rel else fallback_dir))
         expected = PurePosixPath(desired_rel).name if desired_rel else ""
         known = None
         if previous and (previous.get("etag") or previous.get("last_modified")) and self.present(out_key):
@@ -1055,8 +1062,7 @@ class Syncer:
         finally:
             if download.path.exists():
                 download.path.unlink()
-        # A long item may be cut off after this file; the next run then skips it.
-        self.checkpoint()
+        self.save_placed()
         if outcome == "new":
             report.new_files.append(rel)
         elif outcome == "updated":
@@ -1078,6 +1084,7 @@ class Syncer:
             self.hide_legacy_note(out_key, md_key)
         rel = self.write_output(out_key, desired_rel, lambda: render_pdf(text), report, kind)
         self.write_output(md_key, markdown_twin(rel), lambda: text.encode("utf-8"), None, kind, hidden=True)
+        self.save_placed()
         return rel
 
     def hide_legacy_note(self, out_key: str, md_key: str) -> None:
@@ -1128,8 +1135,7 @@ class Syncer:
                 elif previous["sha256"] != sha:
                     getattr(report, f"updated_{kind}").append(previous["path"])
             return previous["path"] if previous else desired_rel
-        target_dir = self.dest / PurePosixPath(desired_rel).parent
-        target_dir.mkdir(parents=True, exist_ok=True)
+        target_dir = self.staging_dir(self.dest / PurePosixPath(desired_rel).parent)
         fd, tmp = tempfile.mkstemp(prefix=PARTIAL_PREFIX, suffix=PARTIAL_SUFFIX, dir=target_dir)
         set_hidden(Path(tmp), True)
         with os.fdopen(fd, "wb") as fh:
@@ -1198,6 +1204,8 @@ class Syncer:
             if not adopt:
                 self._move_into(tmp, self.dest / rel, hidden)
             self.record_placed(out_key, rel, sha, size)
+            if rel != previous["path"] and prev_abs.is_file():
+                self.state.keep_edited_original(previous["path"])
             return "updated", rel
 
         rel, adopt = self.free_path(out_key, desired_rel, sha)
@@ -1213,6 +1221,7 @@ class Syncer:
         except OSError:
             mtime_ns = None
         self.state.record_output(out_key, rel, sha, size, mtime_ns)
+        self._placed = True
 
     def free_path(self, out_key: str, desired_rel: str, sha: str) -> tuple[str, bool]:
         """First "name", "name (2)", ... that is free; (path, adopt-existing-identical)."""
@@ -1228,6 +1237,22 @@ class Syncer:
                     return candidate, True
             n += 1
             candidate = numbered_variant(desired_rel, n, windows=self.windows)
+
+    def staging_dir(self, target_dir: Path) -> Path:
+        """Where a file for ``target_dir`` is written before it is put in place.
+
+        That is ``target_dir`` itself or its nearest existing parent folder (the
+        same drive, so placing it is a rename). Folders are only created when a
+        file is put into them (``_move_into``): a course or a Blackboard folder
+        without files leaves no empty folder behind.
+        """
+        folder = target_dir
+        while not folder.is_dir():
+            if folder == self.dest or self.dest not in folder.parents:
+                self.dest.mkdir(parents=True, exist_ok=True)
+                return self.dest
+            folder = folder.parent
+        return folder
 
     @staticmethod
     def _move_into(tmp: Path, target: Path, hidden: bool = False) -> None:

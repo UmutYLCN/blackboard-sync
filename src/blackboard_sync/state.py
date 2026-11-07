@@ -21,6 +21,11 @@ what was written locally:
   name was shortened to fit the path limit, keyed by its relative path. Moving
   to another destination folder needs it to give the folders the names a sync
   there would choose.
+* ``edited_originals`` - paths of files the student changed whose Blackboard
+  update was saved beside them as "name (2).ext" (``Syncer.place``). The
+  update owns the output entry; this keeps the student's copy tracked, so
+  moving the files to another folder (``relocate``) takes it along and keeps
+  the path current. Removing course files and NotebookLM leave it alone.
 * ``past_terms`` - term ids an older version downloaded as one-time archives;
   normal sync leaves their content alone. Nothing writes this any more; it is
   kept (and saved back unchanged) so those terms stay frozen.
@@ -110,6 +115,7 @@ class State:
         self.items: dict[str, dict] = data.get("items", {})
         self.outputs: dict[str, dict] = data.get("outputs", {})
         self.folders: dict[str, str] = data.get("folders", {})
+        self.edited_originals: list[str] = list(data.get("edited_originals", []))
         self.past_terms: dict[str, dict] = data.get("past_terms", {})
         self.deadline_courses: dict[str, dict] = data.get("deadline_courses", {})
         self.announcements: dict[str, dict] = data.get("announcements", {})
@@ -170,6 +176,8 @@ class State:
             data["current_courses"] = self.current_courses
         if self.folders:
             data["folders"] = self.folders
+        if self.edited_originals:
+            data["edited_originals"] = self.edited_originals
         if self.past_terms:
             data["past_terms"] = self.past_terms
         if self.deadline_courses:
@@ -269,6 +277,16 @@ class State:
             self.outputs[key] = entry
             self.dirty = True
         self._claimed[rel_path] = key
+        if rel_path in self.edited_originals:
+            # The path holds a synced file again (the student's copy went away).
+            self.edited_originals.remove(rel_path)
+            self.dirty = True
+
+    def keep_edited_original(self, rel_path: str) -> None:
+        """Track the student's changed file at ``rel_path``, left beside its Blackboard update."""
+        if rel_path not in self.edited_originals and self._claimed.get(rel_path) is None:
+            self.edited_originals.append(rel_path)
+            self.dirty = True
 
     def set_validators(self, key: str, etag: str | None, last_modified: str | None) -> None:
         """Remember the HTTP validators of the copy recorded under ``key``.
@@ -296,6 +314,11 @@ class State:
             if path.startswith(prefix):
                 entry["path"] = new_dir.rstrip("/") + "/" + path[len(prefix):]
                 moved += 1
+        originals = [new_dir.rstrip("/") + "/" + rel[len(prefix):] if rel.startswith(prefix) else rel
+                     for rel in self.edited_originals]
+        if originals != self.edited_originals:
+            self.edited_originals = originals
+            self.dirty = True
         if moved:
             self._claimed = {o["path"]: key for key, o in self.outputs.items()}
             self.dirty = True
@@ -320,6 +343,10 @@ class State:
             if entry["path"] != target:
                 entry["path"] = target
                 changed = True
+        originals = [paths.get(rel, rel) for rel in self.edited_originals]
+        if originals != self.edited_originals:
+            self.edited_originals = originals
+            self.dirty = True
         if changed:
             self._claimed = {o["path"]: key for key, o in self.outputs.items()}
             self.dirty = True

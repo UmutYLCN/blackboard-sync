@@ -47,7 +47,7 @@ def test_oserror_while_placing_a_file_becomes_a_warning(config, client, monkeypa
     assert any("Access is denied" in w for c in report.courses for w in c.warnings)
     # Other items and the other courses still synced.
     assert f"{CSE}/Course Website - Visualizations.pdf" in files_under(config.dest)
-    assert (config.dest / "2026-2027 Güz" / "MTH201 Linear Algebra").is_dir()
+    assert sorted(c.code for c in report.courses) == ["COE305", "CSE303", "MTH201"]
     assert not list(config.dest.rglob("*.partial"))
 
 
@@ -81,7 +81,7 @@ def test_one_network_error_skips_only_that_item(config, client, fake_bb):
     report = sync(config, client)
 
     assert any("connection reset" in w for c in report.courses for w in c.warnings)
-    assert "MTH201 Linear Algebra" in [p.name for p in (config.dest / "2026-2027 Güz").iterdir()]
+    assert "MTH201" in [c.code for c in report.courses]
     assert f"{CSE}/hw1.pdf" in files_under(config.dest)
 
 

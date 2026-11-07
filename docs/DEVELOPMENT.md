@@ -18,7 +18,6 @@ finds your courses for the current term, and copies everything in them to
         Week 1/
           Intro - Asymptotic Notation.pdf
           week1-slides.pdf
-        Week 2/
       Course Website - Visualizations.pdf
       Duyurular/
         2026-09-20 Welcome to CSE303.pdf
@@ -28,6 +27,9 @@ finds your courses for the current term, and copies everything in them to
 
 - **Files** (PDFs, slides, documents, files embedded in pages) are downloaded
   with their original names.
+- **Folders** are made only when a file (or a note) is written into them: a
+  course, or a Blackboard folder, with nothing in it has no folder, and gets
+  one when its first file arrives. Empty folders already there are left alone.
 - **Video and audio** stay in Blackboard and are linked from the note. Other files
   larger than 500 MB are also linked instead of downloaded; the note shows the
   reported size and the sync summary counts them. A size skipped this way is
@@ -313,12 +315,17 @@ on a schedule until the settings have been saved once (on **Get started** with
   opens as soon as you save.
 - A different folder, when the old one holds downloaded files, asks what to do
   with them:
-  - **Move** (the default) moves every downloaded file to the same place in
-    the new folder without downloading it again. A file that cannot be moved
-    (a different file of that name is already there, or it is open in another
-    program) stays in the old folder and is reported; nothing is overwritten.
-    Your own files in the old folder are left alone, and the old folders are
-    removed only once every downloaded file moved and they are empty.
+  - **Move** (the default) moves every file in the term folders to the same
+    place in the new folder without downloading it again: the downloaded files
+    and notes, and also files `state.json` does not record, such as your own
+    files in a course folder or your edited copy beside a `name (2).pdf`
+    update. A file that cannot be moved (a different file of that name is
+    already there, or it is open in another program) stays in the old folder
+    and is reported; nothing is overwritten. Files outside the term folders
+    are left alone and reported too, so a move never says it took everything
+    while files are still there. System leftovers (`.DS_Store`, `Thumbs.db`,
+    `desktop.ini`) and temporary download files do not count. The old folders
+    are removed only once every file moved and they are empty.
     Files left behind retain their recorded source paths, including Windows
     folder names shortened for the old location, so repeating a move from
     that location can still find them. Between drives, the copy's contents
@@ -543,6 +550,13 @@ On Windows a few more rules apply there only (see
   time — an unchanged item is skipped without any download;
 - every local file written (attachment, embedded file or note), with its path,
   SHA-256, size and the modification time it had right after it was written.
+  The file is saved to `state.json` as soon as it is in place, so a sync
+  stopped with **Pause** (or a crash) never leaves a file the state does not
+  know; other progress is saved at most every few seconds. On a Mac, Pause
+  also lets the sync save on its way out.
+- `edited_originals`: your edited copy of a file whose newer Blackboard
+  version was saved beside it as `name (2).pdf`, so it stays tracked and moves
+  with the rest when you change the folder.
 - `deadline_courses`: complete student-visible grade-column metadata for each
   synced course. The normal sync reads the paginated public v2
   `/courses/{courseId}/gradebook/columns` endpoint and uses only `grading.due`.
