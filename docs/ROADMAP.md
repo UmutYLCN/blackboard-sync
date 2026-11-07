@@ -11,7 +11,7 @@ Status key: `Todo` · `In progress` · `Done` · `Blocked`
 | Step | Work | Status |
 |------|------|--------|
 | 1 | Publish version 1.7.0 on the Microsoft Store | Todo |
-| 2 | Mac work: school list, latest-term rule, past-terms removal, file-move fixes, UI cleanup | Todo |
+| 2 | Mac work: school list, latest-term rule, past-terms removal, file-move fixes, no empty course folders, UI cleanup | Todo |
 | 3 | Port the Mac work to Windows | Todo |
 | 4 | Microsoft Store release of the ported version | Todo |
 | 5 | Correct the website | Todo |
@@ -22,6 +22,7 @@ Status key: `Todo` · `In progress` · `Done` · `Blocked`
    - [Simple latest-term rule](#simple-latest-term-rule)
    - [Removal of the past-terms feature](#removal-of-the-past-terms-feature)
    - [File-move fixes](#file-move-fixes)
+   - [No folders for courses without files](#no-folders-for-courses-without-files)
    - [UI cleanup](#ui-cleanup)
 3. **Windows port.** The finished Mac work is ported to Windows.
 4. **Microsoft Store release.** The ported Windows version is released on the Microsoft Store last. After this release, no new version is planned for a long time.
@@ -63,6 +64,12 @@ The past-terms feature is removed from every app. Its desktop controls already s
 ## File-move fixes
 
 The known file-move problems already noted in [TODO.md](TODO.md) get fixed. The investigation notes are in [PLANNED_WORK_INVESTIGATIONS.md](PLANNED_WORK_INVESTIGATIONS.md).
+
+## No folders for courses without files
+
+- A course folder and its subfolders are created only when the first file (including a generated note PDF) is written for that course, so a course with no files leaves no empty folder; if files arrive later, the folder is created then.
+- Existing empty folders are not touched or deleted.
+- This touches the same code area as the [file-move fixes](#file-move-fixes) (folders are created up front in the sync, around `sync_course`), so plan the two together.
 
 ## UI cleanup
 
