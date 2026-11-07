@@ -81,7 +81,11 @@ own way. A file you changed (for example a PDF you annotated) is never overwritt
 new version, it is downloaded next to it as `name (2).pdf`.
 
 If you change the folder in Settings, **Move** moves the files to the new folder, while **Download
-again** downloads them into the new folder without touching the old one.
+again** downloads them into the new folder without touching the old one. **Move** takes everything in
+the term and course folders, your own files there included; anything it cannot move stays in the old
+folder and is reported.
+
+A course gets a folder only once it has a file (or a note); a course with nothing in it has none.
 
 ## Courses
 

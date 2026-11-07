@@ -193,13 +193,33 @@ def test_force_ignores_the_interval(tmp_path, writes, clock):
     assert len(writes) == 2 and not state.dirty
 
 
-def test_a_run_writes_far_less_often_than_it_has_items(config, client, monkeypatch, writes, clock):
+def test_a_run_saves_once_per_placed_file_and_otherwise_rarely(config, client, writes, clock):
     sync(config, client)
-    throttled = len(writes)
+    files = files_under(config.dest)
+    # One save per file (a note and its hidden Markdown copy share one), plus the
+    # start of the run, one per course and the end.
+    assert len(writes) <= len(files) + 5
+    writes.clear()
+    sync(config, client)  # nothing new: the items alone are throttled
     items = len(State.load(config.state_file).items)
-    assert items > 3
-    # first change at once, then one per course plus the end of the run
-    assert throttled < items
+    assert items > 3 and len(writes) < items
+
+
+def test_a_placed_file_is_recorded_before_the_run_goes_on(config, client, monkeypatch, writes, clock):
+    """Pause ends the sync at any moment; a file already in the folder is in state.json then."""
+    real = Syncer.fetch_file
+
+    def fetch_file(self, *args, **kwargs):
+        real(self, *args, **kwargs)
+        writes.dead = True
+        raise Killed  # right after the first download is in place
+
+    monkeypatch.setattr(Syncer, "fetch_file", fetch_file)
+    with pytest.raises(Killed):
+        sync(config, client)
+    on_disk = files_under(config.dest)
+    recorded = {o["path"] for o in State.load(config.state_file).outputs.values()}
+    assert len(on_disk) == 1 and set(on_disk) <= recorded
 
 
 def test_complete_run_ends_with_the_same_state_however_often_it_saved(config, client, tmp_path, monkeypatch):

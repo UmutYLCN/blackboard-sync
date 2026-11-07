@@ -3,6 +3,7 @@
 import errno
 import os
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -73,7 +74,7 @@ def cross_drive(monkeypatch, windows_error=False):
 
 @pytest.fixture
 def nested_move_fixture(config, client, fake_bb, tmp_path, monkeypatch, request):
-    """Downloaded PDFs, a presentation and notes, beside a student-owned file."""
+    """Downloaded PDFs, a presentation and notes, beside the student's own file."""
     from blackboard_sync import sync as sync_mod
     from .test_windows_long_paths import COURSE, _deep_tree
 
@@ -103,7 +104,8 @@ def test_settings_move_nested_files_and_retry(nested_move_fixture, tmp_path, mon
     from blackboard_sync.settings import Settings
 
     config, before, slides, own = nested_move_fixture
-    shown = sum(not Path(rel).name.startswith(".") for rel in before)
+    own_rel = own.relative_to(config.root).as_posix()
+    shown = sum(not Path(rel).name.startswith(".") for rel in before) + 1  # the student's file goes too
     old = config.dest
     new = tmp_path / "A longer destination location"
     # Exercise the real Settings submission and the worker used by both apps.
@@ -113,8 +115,8 @@ def test_settings_move_nested_files_and_retry(nested_move_fixture, tmp_path, mon
     app.model.dest = old
     monkeypatch.setattr(jobs, "synced_file_count",
                         lambda cfg, dest: relocate.count_synced_files(cfg.state_file, dest))
-    targets = {rel: relocate.Placement(state(config), sync_root(new), relocate.is_windows()).file(rel)
-               for rel in before}
+    placement = relocate.Placement(state(config), sync_root(new), relocate.is_windows())
+    targets = {rel: placement.file(rel) for rel in [*before, own_rel]}
     if relocate.is_windows():
         assert targets[slides] != slides
     blocked = sync_root(new) / targets[slides]
@@ -136,7 +138,8 @@ def test_settings_move_nested_files_and_retry(nested_move_fixture, tmp_path, mon
     assert result.status == "ok"
     assert result.kept == ([(slides, CONFLICT if failure == "conflict" else FAILED)] if failure else [])
     assert result.moved == shown - bool(failure)
-    assert own.read_bytes() == b"student notes" and not result.old_removed
+    assert (sync_root(new) / targets[own_rel]).read_bytes() == b"student notes" and not own.exists()
+    assert result.old_removed == (not failure)
     for rel, data in before.items():
         if failure and rel == slides:
             assert (config.root / rel).read_bytes() == data
@@ -155,14 +158,12 @@ def test_settings_move_nested_files_and_retry(nested_move_fixture, tmp_path, mon
 
     # Retry from disk, after the conflict/lock clears. The failed file must still be tracked.
     again = jobs.run_move_guarded(config, old, new)
-    assert again.kept == [] and again.moved == bool(failure)
+    assert again.kept == [] and again.moved == bool(failure) and again.old_removed
     assert file_contents(sync_root(new)) == {
-        targets[rel]: data for rel, data in before.items()}
-    assert file_contents(config.root) == {own.relative_to(config.root).as_posix(): b"student notes"}
-    own.unlink()
+        **{targets[rel]: data for rel, data in before.items()}, targets[own_rel]: b"student notes"}
+    assert not config.root.exists()
     final = jobs.run_move_guarded(config, old, new)
     assert final.moved == 0 and final.kept == [] and final.old_removed
-    assert not config.root.exists()
 
 
 @pytest.mark.parametrize("nested_move_fixture", [False], indirect=True)
@@ -196,8 +197,8 @@ def test_destination_hard_link_is_verified_and_original_is_removed(nested_move_f
     target.parent.mkdir(parents=True)
     os.link(config.root / slides, target)
     result = move(config, new)
-    assert result.moved == shown and result.kept == []
-    assert files_under(config.root) == [own.relative_to(config.root).as_posix()]
+    assert result.moved == shown + 1 and result.kept == [] and result.old_removed  # with the student's file
+    assert (sync_root(new) / own.relative_to(config.root)).read_bytes() == b"student notes"
     assert target.read_bytes() == before[slides]
 
 
@@ -252,6 +253,7 @@ def test_destination_appearing_during_move_is_not_overwritten(
 
 def test_move_takes_every_synced_file_and_nothing_is_downloaded_again(config, client, fake_bb, tmp_path):
     files = synced(config, client)
+    (config.dest / CSE / "Lecture Notes" / "Week 2").mkdir()  # an empty folder an older version made
     downloads = len(fake_bb.downloads())
     before = state(config)
     new = tmp_path / "Okul"
@@ -261,7 +263,7 @@ def test_move_takes_every_synced_file_and_nothing_is_downloaded_again(config, cl
     assert result.status == "ok" and result.moved == len(files) and result.kept == []
     assert files_under(sync_root(new)) == files
     assert result.old_removed and not config.dest.exists()  # it held nothing else
-    assert (sync_root(new) / CSE / "Lecture Notes" / "Week 2").is_dir()  # empty Blackboard folders come along
+    assert (sync_root(new) / CSE / "Lecture Notes" / "Week 2").is_dir()  # empty folders come along
     after = state(config)
     assert after.outputs == before.outputs and after.items == before.items  # paths are relative
 
@@ -272,24 +274,42 @@ def test_move_takes_every_synced_file_and_nothing_is_downloaded_again(config, cl
     assert files_under(sync_root(new)) == files
 
 
-def test_move_leaves_the_students_own_files_and_their_folder(config, client, tmp_path):
+def test_move_relocates_student_files_inside_course_folders(config, client, tmp_path):
     files = synced(config, client)
-    own = config.dest / CSE / "my notes.txt"
-    own.write_text("mine", encoding="utf-8")
+    own = {f"{CSE}/my notes.txt": b"mine",
+           f"{CSE}/Lecture Notes/Week 1/exported slides.pptx": b"PK student export",
+           f"{CSE}/Study/summary.pdf": b"%PDF summary"}
+    for rel, data in own.items():
+        (config.dest / rel).parent.mkdir(parents=True, exist_ok=True)
+        (config.dest / rel).write_bytes(data)
     (config.dest / CSE / ".DS_Store").write_bytes(b"finder")
+    new = tmp_path / "Okul"
+
+    # The Settings prompt counts what the move takes.
+    assert relocate.count_synced_files(config.state_file, config.dest) == len(files) + len(own)
+    result = move(config, new)
+
+    assert result.moved == len(files) + len(own) and result.kept == []
+    assert result.old_removed and not config.dest.exists()
+    assert files_under(sync_root(new)) == sorted([*files, *own])
+    assert all((sync_root(new) / rel).read_bytes() == data for rel, data in own.items())
+
+
+def test_files_outside_the_term_folders_stay_and_are_reported(config, client, tmp_path):
+    files = synced(config, client)
+    (config.dest / "my plan.txt").write_bytes(b"not a course file")
+    (config.dest / "Other").mkdir()
+    (config.dest / "Other" / "photo.jpg").write_bytes(b"jpeg")
     new = tmp_path / "Okul"
 
     result = move(config, new)
 
     assert result.moved == len(files) and not result.old_removed
-    assert own.read_text(encoding="utf-8") == "mine"
-    assert files_under(config.dest) == [f"{CSE}/my notes.txt"]
-    assert (config.dest / CSE / ".DS_Store").exists()
-    assert not list(config.dest.rglob("*.md"))  # the notes' hidden copies moved too
+    assert sorted(result.kept) == [("Other/photo.jpg", relocate.LEFT), ("my plan.txt", relocate.LEFT)]
+    assert (config.dest / "my plan.txt").read_bytes() == b"not a course file"
+    assert (config.dest / "Other" / "photo.jpg").read_bytes() == b"jpeg"
+    assert not (config.dest / "2026-2027 Güz").exists()  # every course file went
     assert files_under(sync_root(new)) == files
-    # Only the folder with the student's file is left.
-    assert [p.name for p in (config.dest / "2026-2027 Güz").iterdir()] == ["CSE303 Algorithm Analysis"]
-    assert [p.name for p in config.dest.iterdir()] == ["2026-2027 Güz"]
 
 
 def test_old_folder_with_only_system_leftovers_is_removed(config, client, tmp_path):
@@ -751,3 +771,170 @@ def test_macos_alert_buttons_map_to_choices(monkeypatch):
         Alert.response = response
         assert main_window.ask_dest_choice(Path("/a"), Path("/b"), 2) == choice
     assert Alert.buttons == ["Move", "Download again", "Cancel"]
+
+
+# -- Files a move used to leave behind (docs/TODO.md) ----------------------------
+
+def _unrecorded(root, files):
+    """Files on disk that state.json does not know, as a stopped sync could leave them."""
+    for rel, data in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_bytes(data)
+
+
+def test_move_includes_files_from_interrupted_sync_before_checkpoint(config, client, tmp_path):
+    files = synced(config, client)
+    # Placed by a sync that was paused before it saved them (as on Windows, where
+    # the process is ended without running anything).
+    placed = {f"{CSE}/Lecture Notes/Week 1/Lecture 01 Slides.pptx": b"PK slides",
+              f"{CSE}/Lecture Notes/Week 2/Deep Learning Notes.pdf": b"%PDF notes"}
+    _unrecorded(config.root, placed)
+    recorded = {o["path"] for o in state(config).outputs.values()}
+    assert not set(placed) & recorded
+    new = tmp_path / "Okul"
+
+    result = move(config, new)
+
+    assert result.status == "ok" and result.kept == [] and result.old_removed
+    assert result.moved == len(files) + len(placed)
+    assert files_under(sync_root(new)) == sorted([*files, *placed])
+    assert all((sync_root(new) / rel).read_bytes() == data for rel, data in placed.items())
+    assert not config.root.exists()
+
+
+def test_move_includes_locally_annotated_file_beside_numbered_update(config, client, fake_bb, tmp_path):
+    from .test_sync import SYLLABUS_DL
+
+    synced(config, client)
+    (config.root / SYLLABUS).write_bytes(b"%PDF syllabus + my highlights")
+    children = fake_bb.routes["/learn/api/public/v1/courses/_13004_1/contents/_c1_1/children"]
+    children["results"][0]["modified"] = "2026-10-01T00:00:00.000Z"
+    fake_bb.files[SYLLABUS_DL] = b"%PDF syllabus v2"
+    sync(config, client)
+    update = SYLLABUS.replace("_v1.pdf", "_v1 (2).pdf")
+    files = files_under(config.root)
+    assert SYLLABUS in files and update in files
+    new = tmp_path / "Okul"
+
+    result = move(config, new)
+
+    assert result.kept == [] and result.old_removed and result.moved == len(files)
+    assert (sync_root(new) / SYLLABUS).read_bytes() == b"%PDF syllabus + my highlights"
+    assert (sync_root(new) / update).read_bytes() == b"%PDF syllabus v2"
+    assert state(config).edited_originals == [SYLLABUS]  # still tracked, relative to the new folder
+
+
+def test_failed_move_does_not_leave_empty_parent_folder_at_destination(config, tmp_path, monkeypatch):
+    locked_rel = f"{CSE}/Locked Module/Week 3/Slides.pptx"
+    _unrecorded(config.root, {locked_rel: b"PK locked", f"{CSE}/hw.pdf": b"%PDF hw"})
+    st = State.load(config.state_file)
+    for key, rel in (("attachment:c:1", locked_rel), ("attachment:c:2", f"{CSE}/hw.pdf")):
+        data = (config.root / rel).read_bytes()
+        st.record_output(key, rel, relocate.sha256_file(config.root / rel), len(data))
+    st.save()
+    rename = relocate._rename_no_replace
+
+    def locked(src, dst):
+        if src == config.root / locked_rel:
+            raise PermissionError(errno.EACCES, "file is open in another program", str(src))
+        return rename(src, dst)
+
+    monkeypatch.setattr(relocate, "_rename_no_replace", locked)
+    new = tmp_path / "Okul"
+    result = move(config, new)
+
+    assert result.kept == [(locked_rel, FAILED)] and not result.old_removed
+    assert (config.root / locked_rel).read_bytes() == b"PK locked"
+    assert (sync_root(new) / CSE / "hw.pdf").read_bytes() == b"%PDF hw"
+    assert not (sync_root(new) / CSE / "Locked Module").exists()
+
+
+def test_read_only_file_moves_between_drives(config, client, tmp_path, monkeypatch):
+    """Windows refuses to remove a read-only file; the move clears the attribute first."""
+    import stat
+
+    files = synced(config, client)
+    (config.root / SYLLABUS).chmod(stat.S_IREAD)
+    cross_drive(monkeypatch)
+    unlink = Path.unlink
+
+    def windows_unlink(path, missing_ok=False):
+        if path.exists() and not path.lstat().st_mode & stat.S_IWRITE:
+            raise PermissionError(errno.EACCES, "Access is denied", str(path))
+        return unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", windows_unlink)
+    new = tmp_path / "USB"
+    result = move(config, new)
+    assert result.kept == [] and result.moved == len(files) and result.old_removed
+    assert (sync_root(new) / SYLLABUS).read_bytes() == b"%PDF syllabus v1"
+
+
+def test_windows_move_disambiguates_colliding_shortened_filenames(config, tmp_path, monkeypatch):
+    monkeypatch.setattr(relocate, "is_windows", lambda platform=None: True)
+    monkeypatch.chdir(tmp_path)
+    config.dest = SHORT_DEST
+    folder = f"{CSE}/Module_05_Relational_Database_Design_" + "A" * 28
+    parts = {f"{folder}/Lecture_05_Normalization_Slides_Part_{n}.pptx": f"part {n}".encode() for n in (1, 2)}
+    _unrecorded(config.root, parts)
+    st = State.load(config.state_file)
+    for n, (rel, data) in enumerate(parts.items()):
+        st.record_output(f"attachment:c:{n}", rel, relocate.sha256_file(config.root / rel), len(data))
+    st.save()
+    new = Path("D" * 150)  # deep enough that both names shorten to the same one
+
+    result = move(config, new)
+
+    assert result.kept == [] and result.moved == 2 and result.old_removed
+    moved = {o["path"]: (sync_root(new) / o["path"]).read_bytes() for o in state(config).outputs.values()}
+    assert sorted(moved.values()) == sorted(parts.values())
+    first = min((Path(rel).name for rel in moved), key=len)
+    assert {Path(rel).name for rel in moved} == {first, first.replace(".pptx", " (2).pptx")}
+
+
+def test_windows_move_records_newly_shortened_folders_in_state(config, tmp_path, monkeypatch):
+    from blackboard_sync.paths import ELLIPSIS
+
+    monkeypatch.setattr(relocate, "is_windows", lambda platform=None: True)
+    monkeypatch.chdir(tmp_path)
+    config.dest = SHORT_DEST
+    week = "Week 05 Materials " + "m" * 40  # full length at the short path, shortened at the long one
+    rel = f"{CSE}/{week}/slides.pdf"
+    _unrecorded(config.root, {rel: b"%PDF slides"})
+    st = State.load(config.state_file)
+    st.record_output("attachment:c:1", rel, relocate.sha256_file(config.root / rel), 11)
+    st.save()
+    assert st.folders == {}
+
+    result = move(config, LONG_DEST)
+    assert result.kept == [] and result.old_removed
+    there = state(config)
+    (fitted, name), = there.folders.items()
+    assert name == week and ELLIPSIS in fitted
+    assert there.outputs["attachment:c:1"]["path"] == f"{fitted}/slides.pdf"
+
+    config.dest = LONG_DEST
+    back = move(config, SHORT_DEST)
+    assert back.kept == [] and back.old_removed
+    assert state(config).outputs["attachment:c:1"]["path"] == rel  # the full name again
+    assert state(config).folders == {}
+    assert (sync_root(SHORT_DEST) / rel).read_bytes() == b"%PDF slides"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows ends a process without a signal")
+def test_paused_sync_runs_its_finally_blocks(monkeypatch):
+    import signal
+
+    from blackboard_sync import cli
+
+    saved = []
+    before = signal.getsignal(signal.SIGTERM)
+    with pytest.raises(SystemExit) as stopped:
+        with cli._exit_on_sigterm():
+            try:
+                os.kill(os.getpid(), signal.SIGTERM)  # what Pause sends
+                time.sleep(5)  # not reached: the handler ends the run first
+            finally:
+                saved.append(True)  # run_sync saves state.json here
+    assert stopped.value.code == 143 and saved == [True]
+    assert signal.getsignal(signal.SIGTERM) == before

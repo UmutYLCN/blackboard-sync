@@ -39,14 +39,12 @@ def test_first_sync_mirrors_the_course_tree(config, client):
             f"{CSE}/Duyurular/2026-09-20 Welcome to CSE303.pdf",
         ]
     )
-    # Empty folders on Blackboard exist locally too, so the structure matches.
-    assert (config.dest / CSE / "Lecture Notes" / "Week 2").is_dir()
-    # Every current-term course gets a folder; past terms and private courses do not.
-    assert sorted(p.name for p in (config.dest / "2026-2027 Güz").iterdir()) == [
-        "COE305 Software Project Management",
-        "CSE303 Algorithm Analysis",
-        "MTH201 Linear Algebra",
-    ]
+    # A folder is only made for a file: an empty Blackboard folder has none.
+    assert not (config.dest / CSE / "Lecture Notes" / "Week 2").exists()
+    # So only the current-term course with files has a folder (the other two are
+    # empty); past terms and private courses have none either.
+    assert sorted(p.name for p in (config.dest / "2026-2027 Güz").iterdir()) == ["CSE303 Algorithm Analysis"]
+    assert sorted(c.code for c in report.courses) == ["COE305", "CSE303", "MTH201"]
     assert (config.dest / SYLLABUS).read_bytes() == b"%PDF syllabus v1"
 
     cse = next(c for c in report.courses if c.code == "CSE303")
@@ -130,6 +128,7 @@ def test_changed_file_never_overwrites_local_edits(config, client, fake_bb):
     sync(config, client)
     assert (config.dest / SYLLABUS).read_bytes() == b"%PDF syllabus v1 + my highlights"
     updated = SYLLABUS.replace("_v1.pdf", "_v1 (2).pdf")
+    assert State.load(config.state_file).edited_originals == [SYLLABUS]  # the student's copy stays tracked
     assert (config.dest / updated).read_bytes() == b"%PDF syllabus v2"
 
 
@@ -261,6 +260,61 @@ def test_dry_run_writes_nothing(config, client, fake_bb):
     assert fake_bb.downloads() == []
     cse = next(c for c in report.courses if c.code == "CSE303")
     assert SYLLABUS in cse.new_files
+
+
+MTH_CONTENTS = "/learn/api/public/v1/courses/_13010_1/contents"
+MTH = "2026-2027 Güz/MTH201 Linear Algebra"
+
+
+def _give_mth201_a_file(fake_bb):
+    fake_bb.routes[MTH_CONTENTS]["results"].append({
+        "id": "_mf1_1", "title": "Matrices", "position": 0, "hasChildren": True,
+        "modified": "2026-10-01T10:00:00.000Z", "contentHandler": {"id": "resource/x-bb-folder"},
+    })
+    fake_bb.routes[f"{MTH_CONTENTS}/_mf1_1/children"] = {"results": [{
+        "id": "_mx1_1", "title": "matrices.pdf", "position": 0, "modified": "2026-10-01T10:00:00.000Z",
+        "contentHandler": {"id": "resource/x-bb-file", "file": {"fileName": "matrices.pdf"}},
+    }]}
+    fake_bb.routes[f"{MTH_CONTENTS}/_mx1_1/attachments"] = {
+        "results": [{"id": "_mxa_1", "fileName": "matrices.pdf", "mimeType": "application/pdf"}]}
+    fake_bb.files[f"{MTH_CONTENTS}/_mx1_1/attachments/_mxa_1/download"] = b"%PDF matrices"
+
+
+def test_course_without_files_leaves_no_folder(config, client):
+    report = sync(config, client)
+    assert "MTH201" in [c.code for c in report.courses]
+    assert not (config.dest / MTH).exists()
+    assert not [p for p in config.dest.rglob("*") if p.is_dir() and not any(p.iterdir())]  # no empty folder
+    sync(config, client)
+    assert not (config.dest / MTH).exists()
+
+
+def test_course_folder_appears_with_its_first_file(config, client, fake_bb):
+    sync(config, client)
+    assert not (config.dest / MTH).exists()
+    _give_mth201_a_file(fake_bb)
+    report = sync(config, client)
+    mth = next(c for c in report.courses if c.code == "MTH201")
+    assert mth.new_files == [f"{MTH}/Matrices/matrices.pdf"]
+    assert (config.dest / MTH / "Matrices" / "matrices.pdf").read_bytes() == b"%PDF matrices"
+    assert not list(config.dest.rglob("*.partial"))
+
+
+def test_existing_empty_folders_are_left_alone(config, client):
+    week2 = config.dest / CSE / "Lecture Notes" / "Week 2"
+    mth = config.dest / MTH
+    for folder in (week2, mth):
+        folder.mkdir(parents=True)
+    sync(config, client)
+    assert week2.is_dir() and mth.is_dir() and not any(mth.iterdir())
+
+
+def test_dry_run_creates_no_course_folder(config, client, fake_bb):
+    _give_mth201_a_file(fake_bb)
+    report = sync(config, client, dry_run=True)
+    assert not config.dest.exists()
+    mth = next(c for c in report.courses if c.code == "MTH201")
+    assert mth.new_files == [f"{MTH}/Matrices/matrices.pdf"]
 
 
 def test_course_filter(config, client):

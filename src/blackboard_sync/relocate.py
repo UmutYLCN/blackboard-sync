@@ -1,10 +1,13 @@
 """Moving the mirrored files when the student picks another destination folder.
 
 The settings window asks what to do with the files already downloaded; "Taşı"
-lands here. Every file the sync recorded in ``state.json`` (attachments,
-embedded files, notes) is moved from the old folder to the same relative path
-in the new one. Recorded paths are relative to the destination, so the state
-stays valid as it is and nothing is downloaded again.
+lands here. Every file in the term folders the sync created is moved from the
+old folder to the same relative path in the new one: the files ``state.json``
+records (attachments, embedded files, notes), and also what it does not know,
+such as files a stopped sync placed before saving the state, the student's
+edited copy beside a "(2)" update, or the student's own files in a course
+folder. Recorded paths are relative to the destination, so the state stays
+valid as it is and nothing is downloaded again.
 
 On Windows deep folder names are shortened to fit the path limit, and how much
 depends on the length of the destination path (``fit_windows_folder``). The
@@ -22,9 +25,13 @@ Nothing is ever overwritten or lost:
 * between drives a file is copied and its contents verified first; the original
   is removed only once the copy is in place; if the original cannot be removed
   the copy is dropped again;
-* the student's own files in the old folder are never touched, and old folders
-  are only removed once they are empty and every file moved (empty course
-  folders are recreated in the new folder).
+* files outside the term folders the sync created are never touched, and old
+  folders are only removed once they are empty and every file moved (empty
+  course folders are recreated in the new folder);
+* whatever stays behind is reported (``kept``), so a move never claims it took
+  everything while files are still in the old folder. Only system leftovers
+  (``SYSTEM_JUNK``) and temporary download files are not counted; they go with
+  their folder.
 
 A file left behind is missing in the new folder, so the next sync downloads it
 there again (the folder mirrors Blackboard); the copy in the old folder stays.
@@ -42,6 +49,7 @@ import errno
 import logging
 import os
 import shutil
+import stat
 import sys
 import tempfile
 from dataclasses import dataclass, field
@@ -49,7 +57,7 @@ from pathlib import Path, PurePosixPath
 
 from blackboard_sync.api import PARTIAL_PREFIX, PARTIAL_SUFFIX
 from blackboard_sync.errors import AlreadyRunning
-from blackboard_sync.paths import fit_windows_folder, fit_windows_path, join_rel
+from blackboard_sync.paths import fit_windows_folder, fit_windows_path, join_rel, numbered_variant
 from blackboard_sync.state import State
 from blackboard_sync.sync import run_lock, sha256_file
 from blackboard_sync.system import is_windows, set_hidden, sync_root
@@ -69,6 +77,9 @@ COURSE_DEPTH = 2
 
 CONFLICT = "exists"  # the new folder already has a different file of that name
 FAILED = "error"  # moving raised an error (locked, no permission, ...)
+# Not moved on purpose: a link, an iCloud placeholder or another special entry,
+# or a file outside the term folders the sync created.
+LEFT = "left"
 
 
 @dataclass
@@ -83,8 +94,68 @@ class MoveResult:
 
 def synced_files(state: State, dest: Path) -> list[str]:
     """Recorded files (relative paths) that are present under ``dest``."""
-    paths = sorted({entry["path"] for entry in state.outputs.values()})
+    paths = sorted({entry["path"] for entry in state.outputs.values()} | set(state.edited_originals))
     return [rel for rel in paths if (dest / rel).is_file()]
+
+
+def term_folders(state: State, dest: Path) -> list[Path]:
+    """The term folders in ``dest`` the sync created: where a recorded file or a course is.
+
+    Only a plain name directly in ``dest`` counts, never a link.
+    """
+    paths = [entry["path"] for entry in state.outputs.values()] + state.edited_originals
+    paths += [course.get("folder") or "" for course in state.courses.values()]
+    names = {PurePosixPath(rel).parts[0] for rel in paths
+             if len(PurePosixPath(rel).parts) > 1 and not PurePosixPath(rel).is_absolute()}
+    folders = []
+    for name in sorted(names - {".", ".."}):
+        folder = dest / name
+        if folder.parent == dest and folder.is_dir() and not folder.is_symlink():
+            folders.append(folder)
+    return folders
+
+
+def _not_counted(name: str) -> bool:
+    """System leftovers and temporary download files: they go with their folder."""
+    return name in SYSTEM_JUNK or (name.startswith(PARTIAL_PREFIX) and name.endswith(PARTIAL_SUFFIX))
+
+
+def _movable(path: Path) -> bool:
+    """A regular file, not a link or an iCloud placeholder (".name.icloud") that only stands for one."""
+    return (not path.is_symlink() and path.is_file()
+            and not (path.name.startswith(".") and path.name.endswith(".icloud")))
+
+
+def _walk(top: Path, skip: Path | None = None):
+    """(folder, sub-folders, files) below ``top``, never into ``skip`` or a linked folder."""
+    for dirpath, dirs, names in os.walk(top):
+        folder = Path(dirpath)
+        dirs[:] = [d for d in dirs if folder / d != skip]
+        yield folder, dirs, names
+
+
+def files_to_move(state: State, old: Path, new: Path | None = None) -> list[str]:
+    """Every file (relative path) a move takes from ``old``: recorded or found in its term folders."""
+    files = set(synced_files(state, old))
+    for top in term_folders(state, old):
+        for folder, _dirs, names in _walk(top, new):
+            for name in names:
+                if not _not_counted(name) and _movable(folder / name):
+                    files.add((folder / name).relative_to(old).as_posix())
+    return sorted(files)
+
+
+def _left_behind(old: Path, new: Path, tops: list[Path]) -> list[str]:
+    """Files (and linked folders) still in ``tops`` below ``old``, besides what goes with a folder."""
+    left = []
+    for top in tops:
+        if not top.is_dir():
+            continue
+        for folder, dirs, names in _walk(top, new):
+            entries = [name for name in names if not _not_counted(name)]
+            entries += [d for d in dirs if (folder / d).is_symlink()]
+            left += [(folder / name).relative_to(old).as_posix() for name in entries]
+    return sorted(left)
 
 
 def _shown(rel: str) -> bool:
@@ -95,13 +166,15 @@ def _shown(rel: str) -> bool:
 def count_synced_files(state_file: Path, dest: Path) -> int:
     """How many mirrored files the chosen folder ``dest`` holds; 0 also when the state cannot be read.
 
-    Until ``migrate_to_root`` ran, the files directly in ``dest`` count too. Hidden
-    Markdown copies of notes are not counted.
+    These are the files a move takes (``files_to_move``). Until ``migrate_to_root``
+    ran, the files directly in ``dest`` count too. Hidden Markdown copies of
+    notes are not counted.
     """
     try:
         state = State.load(state_file, backup=False)
-        files = synced_files(state, sync_root(dest)) + (
-            synced_files(state, dest) if migration_pending(state, dest) else [])
+        root = sync_root(dest)
+        files = files_to_move(state, root) + (
+            files_to_move(state, dest, root) if migration_pending(state, dest) else [])
         return sum(_shown(rel) for rel in files)
     except OSError as exc:
         log.warning("Could not look for synced files in %s: %s", dest, exc)
@@ -180,16 +253,21 @@ def move_destination(state_file: Path, lock_file: Path, old: Path, new: Path) ->
 
 def move_files(state: State, old: Path, new: Path, windows: bool | None = None,
                remove_emptied: bool = False) -> MoveResult:
-    """Move the recorded files from ``old`` to ``new`` (both the folders the term folders are in).
+    """Move the files from ``old`` to ``new`` (both the folders the term folders are in).
 
-    The old folders are only cleaned up when every file moved, unless
-    ``remove_emptied`` asks to remove the ones that are empty anyway.
+    That is every file ``files_to_move`` finds. The old folders are only
+    cleaned up when every file moved, unless ``remove_emptied`` asks to remove
+    the ones that are empty anyway. Whatever is still there afterwards is
+    reported in ``kept``: below ``old`` as a whole, or only in its term folders
+    with ``remove_emptied`` (``old`` is then the chosen folder, which holds
+    other things too).
     """
     result = MoveResult()
     if _same_folder(old, new):
         return result
     place = Placement(state, new, is_windows() if windows is None else windows)
-    present = synced_files(state, old)
+    tops = term_folders(state, old)
+    present = files_to_move(state, old, new)
     for rel in present:
         src, dst = old / rel, new / place.file(rel)
         try:
@@ -216,8 +294,14 @@ def move_files(state: State, old: Path, new: Path, windows: bool | None = None,
     if not result.kept or remove_emptied:
         # A retry can have no files left to move but still have empty managed
         # folders. Recorded paths identify their term folders even then.
-        result.old_removed = _move_empty_folders(
-            sorted({entry["path"] for entry in state.outputs.values()}), old, new, place)
+        result.old_removed = _move_empty_folders(tops, old, new, place)
+    if not result.old_removed:
+        reported = {rel for rel, _reason in result.kept}
+        everything = [] if remove_emptied or not old.is_dir() else [old]
+        for rel in _left_behind(old, new, everything or tops):
+            if rel not in reported:
+                log.warning("Left %s in the old folder %s", rel, old)
+                result.kept.append((rel, LEFT))
     place.record({rel for rel, _reason in result.kept}, keep_old_folders=not result.old_removed)
     log.info("Moved %d file(s) from %s to %s; %d kept", result.moved, old, new, len(result.kept))
     return result
@@ -229,6 +313,8 @@ class Placement:
     def __init__(self, state: State, new: Path, windows: bool):
         self.state, self.new, self.windows = state, new, windows
         self._folders: dict[str, str] = {}
+        self._files: dict[str, str] = {}  # source path -> target path
+        self._taken: dict[str, str] = {}  # target path (casefolded) -> source path
 
     def folder(self, rel_dir: str) -> str:
         if not self.windows or rel_dir in ("", "."):
@@ -244,10 +330,32 @@ class Placement:
         return self._folders[rel_dir]
 
     def file(self, rel: str) -> str:
+        """The target of ``rel``; two files never get the same one.
+
+        Shortening long names for a longer destination can give two files in a
+        folder the same name ("Lecture_.pptx"); the later one is numbered then,
+        as a sync would name it ("Lecture (2).pptx"). A path another recorded
+        file already has counts as taken too (an earlier move put it there).
+        """
         if not self.windows:
             return rel
-        path = PurePosixPath(rel)
-        return fit_windows_path(self.new, join_rel(self.folder(str(path.parent)), path.name))
+        if rel not in self._files:
+            path = PurePosixPath(rel)
+            placed = join_rel(self.folder(str(path.parent)), path.name)
+            fitted = fit_windows_path(self.new, placed)  # leaves room for the number
+            target, n = fitted, 1
+            while self._claimed(target, rel):
+                n += 1
+                target = numbered_variant(fitted, n, windows=True)
+            self._files[rel] = target
+            self._taken[target.casefold()] = rel
+        return self._files[rel]
+
+    def _claimed(self, target: str, rel: str) -> bool:
+        if self._taken.get(target.casefold(), rel) != rel:
+            return True
+        owner = self.state.owner_of(target)
+        return owner is not None and target != rel and owner != self.state.owner_of(rel)
 
     def record(self, kept: set[str], keep_old_folders: bool) -> None:
         """Record new names, retaining source names needed to retry failed moves.
@@ -259,12 +367,15 @@ class Placement:
         """
         if not self.windows:
             return
-        paths = {entry["path"]: self.file(entry["path"]) for entry in self.state.outputs.values()
-                 if entry["path"] not in kept}
+        paths = {rel: self.file(rel) for rel in
+                 [entry["path"] for entry in self.state.outputs.values()] + self.state.edited_originals
+                 if rel not in kept}
         # Update from the original paths together: a fitted target can also
         # be another output's original path.
         self.state.move_paths(paths)
         folders = {self.folder(rel): name for rel, name in self.state.folders.items()}
+        # Folders shortened for the first time here (their full name fitted at the old path).
+        folders.update({fitted: self.state.folder_name(rel) for rel, fitted in self._folders.items()})
         folders = {rel: name for rel, name in folders.items() if PurePosixPath(rel).name != name}
         if keep_old_folders:
             folders = {**self.state.folders, **folders}
@@ -281,13 +392,23 @@ def _same_folder(a: Path, b: Path) -> bool:
 
 
 def _move_file(src: Path, dst: Path) -> None:
+    """Move one file; when that fails, the folders made for it are removed again."""
+    created = [folder for folder in (dst.parent, *dst.parent.parents) if not folder.exists()]
     dst.parent.mkdir(parents=True, exist_ok=True)
     try:
-        _rename_no_replace(src, dst)
-    except OSError as exc:
-        if exc.errno != errno.EXDEV and getattr(exc, "winerror", None) != _WINDOWS_NOT_SAME_DEVICE:
-            raise
-        _copy_then_remove(src, dst)
+        try:
+            _rename_no_replace(src, dst)
+        except OSError as exc:
+            if exc.errno != errno.EXDEV and getattr(exc, "winerror", None) != _WINDOWS_NOT_SAME_DEVICE:
+                raise
+            _copy_then_remove(src, dst)
+    except OSError:
+        for folder in created:  # deepest first
+            try:
+                folder.rmdir()
+            except OSError:
+                break
+        raise
 
 
 def _rename_no_replace(src: Path, dst: Path) -> None:
@@ -338,13 +459,29 @@ def _copy_then_remove(src: Path, dst: Path) -> None:
         if tmp.exists():
             tmp.unlink()
     try:
-        src.unlink()
+        _unlink(src)
     except OSError:
-        dst.unlink()  # our own copy: the original stays the only one
+        _unlink(dst)  # our own copy: the original stays the only one
         raise
 
 
-def _move_empty_folders(rel_paths: list[str], old: Path, new: Path, place: Placement) -> bool:
+def _unlink(path: Path) -> None:
+    """Remove a file, also when it is read-only (Windows refuses to remove such a file)."""
+    try:
+        path.unlink()
+    except PermissionError:
+        mode = path.lstat().st_mode
+        if mode & stat.S_IWRITE:
+            raise
+        os.chmod(path, mode | stat.S_IWRITE)
+        try:
+            path.unlink()
+        except OSError:
+            os.chmod(path, mode)
+            raise
+
+
+def _move_empty_folders(tops: list[Path], old: Path, new: Path, place: Placement) -> bool:
     """Carry the folder structure over and remove the old folders once they are empty.
 
     Only the term folders the sync created are walked, so folders elsewhere in
@@ -352,8 +489,7 @@ def _move_empty_folders(rel_paths: list[str], old: Path, new: Path, place: Place
     yet) is created in ``new``. A folder that still holds anything besides
     system leftovers stays. Returns whether ``old`` itself went.
     """
-    tops = {old / PurePosixPath(rel).parts[0] for rel in rel_paths if len(PurePosixPath(rel).parts) > 1}
-    for top in sorted(tops):
+    for top in tops:
         for dirpath, _dirs, _files in os.walk(top, topdown=False):
             folder = Path(dirpath)
             if folder == new or new in folder.parents or folder in new.parents:
@@ -368,7 +504,7 @@ def _move_empty_folders(rel_paths: list[str], old: Path, new: Path, place: Place
 def _remove_if_empty(folder: Path) -> bool:
     try:
         entries = list(folder.iterdir())
-        if any(entry.name not in SYSTEM_JUNK or not entry.is_file() for entry in entries):
+        if any(not _not_counted(entry.name) or entry.is_symlink() or not entry.is_file() for entry in entries):
             return False
         for entry in entries:
             entry.unlink()

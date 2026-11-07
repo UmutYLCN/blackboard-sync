@@ -6,7 +6,7 @@ Items in this list must be investigated before implementation. An investigation 
 
 ## Destination change can leave downloaded files behind
 
-- **Status:** Investigation needed
+- **Status:** Fixed: **Move** walks every file in the term folders, not only the recorded ones, and reports what stays; a placed file is saved to `state.json` at once; the Windows long-path cases are handled. See the investigation notes in [PLANNED_WORK_INVESTIGATIONS.md](PLANNED_WORK_INVESTIGATIONS.md) and the [roadmap](ROADMAP.md#file-move-fixes).
 - **Reported behavior:** In Settings, after changing the save location and choosing **Move**, the folder structure appears at the new location, but nested downloaded files such as PDFs and PowerPoint presentations do not all arrive. This is a user report and has not yet been reproduced in this task.
 - **Expected behavior:** Move every Blackboard Sync managed file into the matching relative path under the new `University` folder. Once relocation succeeds, no moved files should remain under the old `University` location, and its now-empty folders should be removed. Preserve user-owned files, avoid overwriting destination files, and report files that cannot be moved; do not remove an old file before its move is verified.
 - **Investigate first:** Reproduce the same settings flow with nested course folders and several file types; compare the old and new trees; capture any warnings; and trace where files are skipped or left behind. Check conflicts, open files, permissions, path handling, and differences between macOS and Windows. Compare findings with the documented **Move** behavior in `DEVELOPMENT.md`.

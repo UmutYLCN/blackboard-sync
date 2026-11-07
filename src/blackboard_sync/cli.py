@@ -7,6 +7,8 @@ import json
 import logging
 import signal
 import sys
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -181,12 +183,32 @@ def cmd_check(args, config: Config) -> int:
     return EXIT_OK
 
 
+@contextmanager
+def _exit_on_sigterm():
+    """End with ``SystemExit`` on SIGTERM, so ``finally`` blocks still run.
+
+    Pausing a sync ends its process with SIGTERM on macOS. Without a handler
+    Python stops at once and the files placed since the last save of
+    state.json would be unknown to it; ``run_sync`` saves in its ``finally``.
+    Ctrl+C (SIGINT) already raises ``KeyboardInterrupt``. On Windows the process
+    is ended without running anything; the sync saves after every file there.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous = signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
 def cmd_sync(args, config: Config) -> int:
     report = SyncReport(dry_run=args.dry_run, dest=str(config.root))
     migrated = None
     try:
         config.ensure_data_dir()
-        with run_lock(config.lock_file):
+        with _exit_on_sigterm(), run_lock(config.lock_file):
             if not args.dry_run:
                 # Before anything is downloaded, so files an older version put
                 # straight into the chosen folder are not fetched again.
