@@ -206,18 +206,6 @@ actor LibraryStore {
         return Activity(id: key, name: target.lastPathComponent, relativePath: relative, status: conflict ? .conflict : .downloaded)
     }
 
-    /// Which of these library paths are plain files on disk. A deleted file or an unsafe path is left out.
-    func localFiles(_ relatives: [String]) -> [String: LocalFile] {
-        var found: [String: LocalFile] = [:]
-        for relative in relatives {
-            guard let file = try? url(relative),
-                  let values = try? file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-                  values.isRegularFile == true else { continue }
-            found[relative] = LocalFile(url: file, size: Int64(values.fileSize ?? 0))
-        }
-        return found
-    }
-
     func files(in relative: String) throws -> [LocalEntry] {
         let folder = relative.isEmpty ? documents.appendingPathComponent("University", isDirectory: true) : try url(relative)
         guard folder.resolvingSymlinksInPath().path == folder.standardizedFileURL.path else { throw SyncFailure(message: "Unsafe local path rejected.") }
