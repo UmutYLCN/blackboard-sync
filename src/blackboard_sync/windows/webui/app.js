@@ -413,11 +413,23 @@
 
   // -- Get started ------------------------------------------------------------
 
+  // The school address field offers the known schools while the student types a name.
+  function schoolList() {
+    let list = document.getElementById("school-list");
+    if (!list) {
+      list = h("datalist", { id: "school-list" });
+      document.body.append(list);
+    }
+    list.replaceChildren(...(state.schools || []).map((name) => h("option", { value: name })));
+    return "school-list";
+  }
+
   function field(name, props) {
     const error = state.settings.error_field === name && state.settings.error;
     return h("input", {
       class: error ? "input invalid" : "input", type: "text", value: edits[name], "data-key": `field-${name}`,
-      spellcheck: "false", oninput: (event) => { edits[name] = event.target.value; drawSaveBar(); }, ...props,
+      spellcheck: "false", oninput: (event) => { edits[name] = event.target.value; drawSaveBar(); },
+      list: name === "base_url" ? schoolList() : null, ...props,
     });
   }
 

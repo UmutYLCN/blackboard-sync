@@ -83,7 +83,7 @@ T_SECTION_PAST_TERMS = tr("Past terms")
 T_SECTION_GENERAL = tr("Sync")
 T_SECTION_UPDATES = tr("Updates")
 T_URL_LABEL = tr("Your school's Blackboard address")
-T_URL_PLACEHOLDER = tr("https://blackboard.school.edu")
+T_URL_PLACEHOLDER = tr("School name or https://blackboard.school.edu")
 T_URL_HINT = tr("If you change the address you need to sign in again for the new school.")
 T_DEST_LABEL = tr("Folder to save files in")
 # Under the folder field: what ``system.sync_root`` does with the chosen folder.

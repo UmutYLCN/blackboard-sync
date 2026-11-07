@@ -28,6 +28,7 @@ from AppKit import (
     NSBoxSeparator,
     NSButton,
     NSColor,
+    NSComboBox,
     NSControlSizeSmall,
     NSEventModifierFlagCommand,
     NSEventModifierFlagDeviceIndependentFlagsMask,
@@ -75,7 +76,7 @@ from AppKit import (
 )
 from Foundation import NSURL, NSMakeRect, NSObject, NSTimer, NSRunLoop, NSRunLoopCommonModes
 
-from blackboard_sync import __version__, courses, deadlines
+from blackboard_sync import __version__, courses, deadlines, schools
 from blackboard_sync.menubar.main_window_model import (
     ACTIVITY,
     COURSES,
@@ -458,6 +459,11 @@ class _Target(NSObject):
     def controlTextDidChange_(self, notification):
         self.owner.changed(notification.object())
 
+    def comboBoxSelectionDidChange_(self, notification):
+        box = notification.object()
+        box.setStringValue_(box.objectValueOfSelectedItem())  # the box still holds the old text at this point
+        self.owner.changed(box)
+
     def courseToggled_(self, sender):
         self.owner.toggle_course(self.owner.course_ids[int(sender.tag())], bool(sender.state()))
 
@@ -481,6 +487,16 @@ class _Target(NSObject):
 
     def windowWillClose_(self, _notification):
         self.owner.closed()
+
+
+def _school_box(placeholder: str):
+    """The school address field: typing a school's name or abbreviation offers the known schools."""
+    box = NSComboBox.alloc().initWithFrame_(NSMakeRect(0, 0, FIELD_WIDTH, FIELD_HEIGHT))
+    box.addItemsWithObjectValues_(schools.suggestions())
+    box.setNumberOfVisibleItems_(10)
+    box.setCompletes_(True)
+    box.setPlaceholderString_(placeholder)
+    return box
 
 
 def _label(text: str, size: float | None = None, bold: bool = False, secondary: bool = False):
@@ -913,8 +929,7 @@ class MainWindow:
         label.setFrame_(NSMakeRect(20, y, inner, 17))
         content.addSubview_(label)
         y += 22
-        self.start_url = NSTextField.textFieldWithString_("")
-        self.start_url.setPlaceholderString_(T_URL_PLACEHOLDER)
+        self.start_url = _school_box(T_URL_PLACEHOLDER)
         self.start_url.setDelegate_(self.target)
         self.start_url.setFrame_(NSMakeRect(20, y, inner, FIELD_HEIGHT))
         content.addSubview_(self.start_url)
@@ -1621,9 +1636,12 @@ class MainWindow:
     def _row_control(self, row):
         """The row's own control, sized but not placed."""
         if row.control == CONTROL_FIELD:
-            field = NSTextField.textFieldWithString_("")
-            if row.placeholder:
-                field.setPlaceholderString_(row.placeholder)
+            if row.key == "base_url":
+                field = _school_box(row.placeholder)
+            else:
+                field = NSTextField.textFieldWithString_("")
+                if row.placeholder:
+                    field.setPlaceholderString_(row.placeholder)
             field.setDelegate_(self.target)
             field.setFrameSize_((FIELD_WITH_BUTTON if row.button else FIELD_WIDTH, FIELD_HEIGHT))
             return field

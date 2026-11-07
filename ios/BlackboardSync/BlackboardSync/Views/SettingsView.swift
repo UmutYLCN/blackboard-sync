@@ -11,6 +11,8 @@ struct SettingsView: View {
                     TextField(model.text("Your school's Blackboard address"), text: $model.tenantText)
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .disabled(model.hasSession || model.needsSignIn || model.hasStoredSession || model.busy)
+                    SchoolMenu()
+                        .disabled(model.hasSession || model.needsSignIn || model.hasStoredSession || model.busy)
                     if model.hasSession || model.needsSignIn || model.hasStoredSession {
                         Button(model.text("Sign out"), role: .destructive) { model.signOut() }.disabled(model.busy && !model.syncing)
                     } else {

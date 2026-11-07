@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from blackboard_sync import schools
 from blackboard_sync.i18n import DEFAULT_LANGUAGE, normalize_language, tr
 from blackboard_sync.session import write_private_json
 from blackboard_sync.system import make_private_dir
@@ -120,6 +121,9 @@ def normalize_base_url(text: str) -> str:
     text = (text or "").strip()
     if not text:
         raise SettingsError(tr("Enter your school's Blackboard address."), "base_url")
+    known = schools.resolve(text)
+    if known:  # the school's name, abbreviation or web domain instead of its address
+        return known
     if "://" not in text:
         text = "https://" + text
     example = tr("Enter a valid address, for example https://blackboard.school.edu")

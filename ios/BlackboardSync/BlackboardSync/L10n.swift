@@ -47,6 +47,7 @@ enum L10n {
         "Cancelled. Sync now to continue.": "İptal edildi. Devam etmek için şimdi senkronize edin.",
         "Checking your account…": "Hesabınız kontrol ediliyor…",
         "Choose another folder": "Başka klasör seç",
+        "Choose your school": "Okulunuzu seçin",
         "Choose the courses to sync. Your downloaded files remain when a course is turned off.": "Senkronize edilecek dersleri seçin. Bir dersi kapattığınızda indirilen dosyalarınız kalır.",
         "Coming soon": "Çok yakında",
         "Complete school sign-in, then try again.": "Okul girişini tamamlayıp tekrar deneyin.",

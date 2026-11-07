@@ -332,7 +332,22 @@ struct WelcomeCard: View {
                 .font(.callout).lineSpacing(8)
             TextField(model.text("Your school's Blackboard address"), text: $model.tenantText)
                 .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL).textFieldStyle(.roundedBorder)
+            SchoolMenu().disabled(model.busy)
             Button(model.text("Sign in to Blackboard")) { model.signIn() }.buttonStyle(.borderedProminent).disabled(model.busy)
+        }
+    }
+}
+
+/// Lists the known schools; picking one fills in its Blackboard address.
+struct SchoolMenu: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        Menu {
+            ForEach(Schools.all, id: \.url) { school in
+                Button(school.name) { model.tenantText = school.url }
+            }
+        } label: {
+            Label(model.text("Choose your school"), systemImage: "building.columns")
         }
     }
 }

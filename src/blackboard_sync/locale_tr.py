@@ -417,7 +417,7 @@ CATALOG = {
     "Sync": "Senkron",
     "Updates": "Güncellemeler",
     "Your school's Blackboard address": "Okulunuzun Blackboard adresi",
-    "https://blackboard.school.edu": "https://blackboard.okul.edu.tr",
+    "School name or https://blackboard.school.edu": "Okul adı veya https://blackboard.okul.edu.tr",
     "If you change the address you need to sign in again for the new school.":
         "Adresi değiştirirseniz yeni okul için tekrar giriş yapmanız gerekir.",
     "Folder to save files in": "Dosyaların kaydedileceği klasör",

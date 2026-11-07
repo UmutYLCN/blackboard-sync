@@ -12,7 +12,7 @@ import logging
 import sys
 from pathlib import Path
 
-from blackboard_sync import __version__, announcements, courses, deadlines, runtime, updater, uninstall
+from blackboard_sync import __version__, announcements, courses, deadlines, runtime, schools, updater, uninstall
 from . import package
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
@@ -298,7 +298,8 @@ class MainWindow:
         card.grid(row=2, column=1, sticky="new")
         card.columnconfigure(0, weight=1)
         ttk.Label(card, text=form.T_URL_LABEL).grid(row=0, column=0, columnspan=2, sticky="w")
-        self.start_fields = {"base_url": ttk.Entry(card, textvariable=self.url, width=40)}
+        self.start_fields = {"base_url": ttk.Combobox(card, textvariable=self.url, width=40,
+                                                       values=schools.suggestions())}
         self.start_fields["base_url"].grid(row=1, column=0, columnspan=2, sticky="ew", pady=(4, 12))
         ttk.Label(card, text=form.T_DEST_LABEL).grid(row=2, column=0, columnspan=2, sticky="w")
         self.start_fields["dest"] = ttk.Entry(card, textvariable=self.dest)
@@ -671,6 +672,8 @@ class MainWindow:
                      "past_term": self.past_term, "auto_relogin": self.auto_relogin,
                      "notebooklm_auto": self.notebooklm_auto}
         if kind == form.CONTROL_FIELD:
+            if key == "base_url":  # typing a school's name offers the known schools
+                return ttk.Combobox(frame, textvariable=variables[key], width=34, values=schools.suggestions())
             return ttk.Entry(frame, textvariable=variables[key], width=26 if definition.button else 34)
         if kind == form.CONTROL_POPUP:
             choices = {"interval": [title for _, title in form.INTERVAL_OPTIONS],

@@ -271,4 +271,24 @@ final class SyncLogicTests: XCTestCase {
         XCTAssertEqual(L10n.text("Network error (NSURLErrorDomain -1009).", language: "en"), "Network error (NSURLErrorDomain -1009).")
     }
 
+    func testSchoolNamesBecomeTheirBlackboardAddress() throws {
+        XCTAssertEqual(try SyncLogic.tenant("King Saud University").absoluteString, "https://lms.ksu.edu.sa")
+        XCTAssertEqual(try SyncLogic.tenant("  ksu ").host, "lms.ksu.edu.sa")
+        XCTAssertEqual(try SyncLogic.tenant("ksu.edu.sa").host, "lms.ksu.edu.sa")
+        XCTAssertEqual(try SyncLogic.tenant("جامعه الملك سعود").host, "lms.ksu.edu.sa")
+        XCTAssertEqual(try SyncLogic.tenant("istanbul saglik ve teknoloji universitesi").host, "blackboard.istun.edu.tr")
+        XCTAssertEqual(try SyncLogic.tenant("https://blackboard.example.edu").host, "blackboard.example.edu")
+        XCTAssertThrowsError(try SyncLogic.tenant("Unknown School"))
+        XCTAssertNil(Schools.resolve("https://lms.ksu.edu.sa"))
+    }
+
+    func testEverySchoolIsFoundByEachOfItsNames() {
+        for school in Schools.all {
+            XCTAssertTrue(school.url.hasPrefix("https://"), school.name)
+            for key in [school.name] + school.localNames + school.aliases + [school.domain] {
+                XCTAssertEqual(Schools.find(key)?.url, school.url, key)
+            }
+        }
+    }
+
 }

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from blackboard_sync import __version__, announcements, courses, deadlines, uninstall, updater
+from blackboard_sync import __version__, announcements, courses, deadlines, schools, uninstall, updater
 from blackboard_sync.i18n import tr
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
@@ -381,6 +381,7 @@ def window_state(status: main.MainStatus, section: str, page: str, announcement_
         "courses": courses_page(course_rows),
         "calendar": calendar_page(deadline_page),
         "settings": settings(status.form, values, error, packaged, theme),
+        "schools": schools.suggestions(),  # offered while typing the school's address
         "dialog": dialog,
     }
 

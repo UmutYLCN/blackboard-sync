@@ -21,6 +21,7 @@ enum SyncLogic {
     static let defaultTenant = "https://blackboard.istun.edu.tr"
 
     static func tenant(_ text: String) throws -> URL {
+        if let known = Schools.resolve(text) { return known } // a school's name, abbreviation or web domain
         guard let parts = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
               parts.scheme == "https", let host = parts.host, !host.isEmpty,
               parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,

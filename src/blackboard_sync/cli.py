@@ -24,6 +24,7 @@ from blackboard_sync.errors import (
     BlackboardSyncError,
     LoginRequired,
 )
+from blackboard_sync import schools
 from blackboard_sync.i18n import tr
 from blackboard_sync.inapp import INAPP
 from blackboard_sync.login import BROWSER_LABELS
@@ -132,7 +133,7 @@ def _add_selection_args(p: argparse.ArgumentParser) -> None:
 def make_config(args: argparse.Namespace) -> Config:
     config = Config.from_env(data_dir=args.data_dir)
     if args.base_url:
-        config.base_url = args.base_url.rstrip("/")
+        config.base_url = schools.resolve(args.base_url) or args.base_url.rstrip("/")
     if getattr(args, "dest", None):
         config.dest = args.dest.expanduser()
     return config

@@ -155,6 +155,7 @@ final class AppModel: ObservableObject {
             if let api, !SyncLogic.sameOrigin(api.tenant, tenant) {
                 throw SyncFailure(message: "Sign out before changing your school address.")
             }
+            tenantText = tenant.absoluteString // a school's name typed in the field becomes its address
             let config = WKWebViewConfiguration()
             config.websiteDataStore = websiteStore
             let view = WKWebView(frame: .zero, configuration: config)

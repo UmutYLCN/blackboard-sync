@@ -63,6 +63,12 @@ def test_file_kinds(extension, kind):
     assert webui_state.file_kind(extension) == kind
 
 
+def test_page_offers_the_known_schools_for_the_address_field():
+    data = state()
+    assert "King Saud University" in data["schools"] and "جامعة الملك سعود" in data["schools"]
+    assert 'list: name === "base_url"' in APP_JS and 'id: "school-list"' in APP_JS
+
+
 def test_window_state_is_plain_json_with_home_and_sidebar():
     data = state()
     assert json.loads(json.dumps(data)) == data

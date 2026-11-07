@@ -272,7 +272,10 @@ are, in order, Account, Sync, Folder, Past terms, Updates and a red Danger zone:
 - **Account** — **Your school's Blackboard address**, prefilled with
   `https://blackboard.istun.edu.tr`; students of another university type their
   school's Blackboard address instead (it must be `https://`; a pasted course
-  link is reduced to the site address). Below it, who is signed in and
+  link is reduced to the site address). The field also takes a known school's
+  name, abbreviation or web domain (`King Saud University`, `KSU`, `ksu.edu.sa`,
+  the Arabic or Turkish name) and offers the known schools while typing; see
+  [Known schools](#known-schools). Below it, who is signed in and
   **Sign in** (saves the window and opens the Blackboard sign-in window) or
   **Sign out** (asks first; removes the session and all login browser data, so the next sign-in asks for the school credentials again; downloaded files, settings and sync state are kept).
 - **Folder** — **Folder to save files in**, prefilled with
@@ -463,7 +466,7 @@ blackboard-sync [...] notebooklm login | sync [--dest DIR] [--auto] | status | d
 | `--course CODE` | Only this course (`CSE303`, or the course id); repeatable. Case and Turkish dots do not matter: `bil101` finds `BİL101`. |
 | `--dry-run` | Show what would be fetched; write and download nothing. |
 | `--json` | Print the run summary as JSON (see below). |
-| `--base-url URL` | Another Blackboard site (default: the saved school address, else İSTÜN; env `BBSYNC_BASE_URL`). |
+| `--base-url URL` | Another Blackboard site, or a [known school](#known-schools)'s name (default: the saved school address, else İSTÜN; env `BBSYNC_BASE_URL`). |
 | `--data-dir DIR` | Where the session and state live (env `BBSYNC_DATA_DIR`). |
 
 The announcements folder is called `Duyurular` like on the site; set
@@ -482,6 +485,29 @@ one term, named the Turkish way; each course is synced once. Every term gets its
 own folder beside the others: a course keeps the folder its files are in even
 when Blackboard renames the term or course, and a term whose folder name would be
 another term's gets its id added.
+
+## Known schools
+
+The school address field takes a known school's name instead of its address, so a student does not
+have to know it. `blackboard_sync.schools` holds the list (`SCHOOLS`): English name, Blackboard
+address, the school's web domain, country, local-language names and abbreviations. `resolve(text)`
+matches a name, abbreviation, web domain or Blackboard host ignoring case, accents and spacing
+(`İstanbul` = `istanbul`; Arabic `ة`/`ه`, `ى`/`ي` and the hamza forms of alef are interchangeable).
+Text with a scheme (`https://…`) is an address, never a name. `settings.normalize_base_url` and the
+CLI's `--base-url` call it first, so Windows, macOS and the command line share it.
+
+- **Windows (web page and Tk window) and macOS:** the field is a combo box (`<datalist>` in the page,
+  `ttk.Combobox`, `NSComboBox`) that lists `suggestions()`; any other text still works as an address.
+- **iPad:** `Core/Schools.swift` has the same list and matching, and **Choose your school** in the
+  sign-in card and in Settings fills the address. `scripts/generate-schools.py` writes the list part of
+  that file; `tests/test_schools.py` fails when it is out of date (`--check` does the same by hand).
+
+Add a school by adding a `School(...)` entry, running `scripts/generate-schools.py`, then
+`scripts/verify-schools.py`. The latter sends each address one request to Blackboard's public
+`/learn/api/public/v1/system/version`, which a Blackboard Learn host answers without a sign-in. Only
+addresses that answered, and that belong to the school (they sit under its own web domain), go in the
+list; `verified` is the day it was checked. The app itself never contacts a school's server to look an
+address up, and the tests never use the network.
 
 ## Where things go
 
