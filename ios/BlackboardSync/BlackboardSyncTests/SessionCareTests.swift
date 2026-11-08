@@ -599,6 +599,19 @@ final class SessionCareModelTests: XCTestCase {
     }
 
     @MainActor
+    func testNoCoursesOnBlackboardSaysSoInTheStatus() async {
+        let h = harness(page: alive)
+        await started(h, page: alive)  // the account answers, and its course list is empty
+        h.model.refreshCourses()
+        await waitUntil { !h.model.busy }
+        XCTAssertTrue(h.model.terms.isEmpty)
+        XCTAssertEqual(h.model.status, AppModel.noCoursesFound)
+        // Shown in the app's language from the shared string table.
+        XCTAssertEqual(L10n.text(AppModel.noCoursesFound, language: "en"), AppModel.noCoursesFound)
+        XCTAssertTrue(L10n.text(AppModel.noCoursesFound, language: "tr").hasPrefix("Blackboard'da ders bulunamadı"))
+    }
+
+    @MainActor
     func testASessionBackAfterReconnectWasShownEndsTheReconnectState() async {
         let h = harness(page: alive)
         var over = true

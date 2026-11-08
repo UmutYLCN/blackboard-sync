@@ -204,7 +204,7 @@ final class AppModel: ObservableObject {
             for course in term.courses { _ = try await store.courseFolder(course, term: term, scope: scope) }
         }
         await reloadLibrary()
-        status = found.isEmpty ? "No current-term courses found." : "Ready to sync"
+        status = found.isEmpty ? Self.noCoursesFound : "Ready to sync"
         if accountChanged {
             connectFeatures(http: ShellHTTP { [weak self] in self?.api }, tenant: api.tenant)
         } else {
@@ -332,6 +332,8 @@ final class AppModel: ObservableObject {
 
     // MARK: Staying signed in
 
+    /// The desktop app's wording when Blackboard lists no course at all (sync.py, PR #140).
+    static let noCoursesFound = "No courses found on Blackboard, so the current term could not be determined. Your courses will be synced as soon as Blackboard lists them."
     private static let sessionExpired = SyncFailure(message: "Session expired. Sign in again.", authRequired: true)
 
     private var canRefreshSession: Bool {

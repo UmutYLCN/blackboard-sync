@@ -483,7 +483,11 @@ synced with the group, in a `No term` folder. When no term can be dated at all,
 every course is current. When Blackboard lists no course at all, the sync says
 so in its result (`message` and a warning) and the app shows **no courses found**
 with one notification, instead of staying silent. Courses the instructor has
-not opened yet (shown as private) are skipped until they open.
+not opened yet (shown as private) are skipped until they open. The iPad app
+follows the same rule and term merging (`Term.current` in
+`ios/BlackboardSync/BlackboardSync/Core/SyncLogic.swift`), shows the same
+no-courses message in its status line, and keeps every course and term folder
+recorded in its saved library, so an existing `2026-2027 Güz` folder stays in use there too.
 
 **One term, one folder.** Term folders keep the school's own term names as
 written (`2026-2027 Fall` stays `Fall`; nothing is renamed to Turkish).

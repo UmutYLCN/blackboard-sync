@@ -80,6 +80,7 @@ enum L10n {
         "Local file is missing. Retry sync.": "Yerel dosya bulunamadı. Tekrar senkronize edin.",
         "More": "Diğer",
         "No current-term courses found.": "Güncel döneme ait ders bulunamadı.",
+        "No courses found on Blackboard, so the current term could not be determined. Your courses will be synced as soon as Blackboard lists them.": "Blackboard'da ders bulunamadı, bu yüzden güncel dönem belirlenemedi. Dersleriniz Blackboard'da görünür görünmez senkronize edilecek.",
         "No downloaded files yet.": "Henüz indirilen dosya yok.",
         "Not signed in": "Giriş yapılmadı",
         "Not signed in yet.": "Henüz giriş yapılmadı.",

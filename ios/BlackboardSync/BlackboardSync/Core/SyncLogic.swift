@@ -113,6 +113,8 @@ struct Course: Identifiable, Codable, Hashable {
     var code: String = ""
 }
 
+/// A Blackboard term and the courses listed under it. The rule is a port of the desktop
+/// `merge_term_aliases` and `choose_current_terms` (sync.py, PR #140).
 struct Term: Codable, Hashable, Identifiable {
     let id: String
     let name: String
@@ -120,58 +122,109 @@ struct Term: Codable, Hashable, Identifiable {
     let end: Date?
     var courses: [Course]
 
-    // The desktop folds bilingual records of one academic semester into one folder.
-    static func academicName(_ name: String) -> (key: String, turkish: Bool)? {
+    /// The group of courses Blackboard lists without a term (an empty termId); it is always synced.
+    static let noTerm = "No term"
+    /// Courses open before the first lecture, so the next term may take over this early.
+    static let leadTime: TimeInterval = 30 * 86400
+    /// The age of a term nothing dates: older than any real term.
+    static let undated = Date.distantPast
+
+    /// The seasons of one semester in Turkish and English: "2025-2026 Bahar" and "2025-2026 Spring"
+    /// are the same semester when Blackboard returns them as two term records. Used only to
+    /// recognise such a pair; a term keeps the name the school gave it.
+    static let seasons = ["güz": "fall", "fall": "fall", "autumn": "fall",
+                          "bahar": "spring", "spring": "spring", "yaz": "summer", "summer": "summer"]
+
+    struct AcademicTerm: Hashable {
+        let first: String
+        let second: String
+        let season: String
+    }
+
+    /// ("2025", "2026", "spring") for "2025-2026 Spring", "2025/2026 Bahar Dönemi", ...; else nil.
+    /// Only for telling whether two term records are the same semester; it never names a folder.
+    static func academicTerm(_ name: String) -> AcademicTerm? {
         let pattern = #"(?i)^(\d{4})\s*[-–/]\s*(\d{4})\s*[-–:]?\s*(\w+)(?:\s+(?:dönemi|yarıyılı|okulu|term|semester|school))?$"#
         let regex = try! NSRegularExpression(pattern: pattern)
         let text = name.trimmingCharacters(in: .whitespacesAndNewlines).precomposedStringWithCanonicalMapping
         guard let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
         let ns = text as NSString
-        let season = ns.substring(with: match.range(at: 3)).lowercased()
-        let seasons = ["güz": "Güz", "fall": "Güz", "autumn": "Güz", "bahar": "Bahar", "spring": "Bahar", "yaz": "Yaz", "summer": "Yaz"]
-        guard let canonical = seasons[season] else { return nil }
-        return (ns.substring(with: match.range(at: 1)) + "-" + ns.substring(with: match.range(at: 2)) + " " + canonical,
-                ["güz", "bahar", "yaz"].contains(season))
+        guard let season = seasons[ns.substring(with: match.range(at: 3)).lowercased()] else { return nil }
+        return AcademicTerm(first: ns.substring(with: match.range(at: 1)), second: ns.substring(with: match.range(at: 2)), season: season)
     }
 
+    private static func datesOverlap(_ a: Term, _ b: Term) -> Bool {
+        if let aStart = a.start, let aEnd = a.end, let bStart = b.start, let bEnd = b.end {
+            return aStart <= bEnd && bStart <= aEnd
+        }
+        return true
+    }
+
+    /// Merge the records of one semester that Blackboard returns under two names.
+    ///
+    /// Two records are one term only when their names give the same academic year and semester
+    /// ("2025-2026 Bahar" and "2025-2026 Spring") and their dates, when both have them, overlap.
+    /// Other terms are never merged, whatever their names. Names are kept as the school wrote
+    /// them: the merged term takes the name and id of the record holding most of its courses
+    /// (the first listed on a tie), and a term with one record keeps its own name.
     static func mergeAliases(_ terms: [Term]) -> [Term] {
-        var merged: [Term] = []
+        var groups: [[Term]] = []
         for term in terms {
-            guard !term.id.isEmpty, let name = academicName(term.name) else { merged.append(term); continue }
-            let index = merged.firstIndex { other in
-                guard academicName(other.name)?.key == name.key else { return false }
-                if let a = other.start, let b = other.end, let c = term.start, let d = term.end { return a <= d && c <= b }
-                return true
+            let key = term.id.isEmpty ? nil : academicTerm(term.name)
+            let index = key.flatMap { key in
+                groups.firstIndex { group in
+                    !group[0].id.isEmpty && academicTerm(group[0].name) == key && group.allSatisfy { datesOverlap($0, term) }
+                }
             }
-            if let index {
-                let other = merged[index]
-                let prefer = name.turkish && academicName(other.name)?.turkish != true ? term : other
-                merged[index] = Term(id: prefer.id, name: prefer.name,
-                    start: [other.start, term.start].compactMap { $0 }.min(),
-                    end: [other.end, term.end].compactMap { $0 }.max(), courses: other.courses + term.courses)
-            } else { merged.append(term) }
+            if let index { groups[index].append(term) } else { groups.append([term]) }
         }
-        return merged.map { term in
-            guard let name = academicName(term.name) else { return term }
-            return Term(id: term.id, name: name.turkish ? term.name : name.key, start: term.start, end: term.end,
-                        courses: term.courses.map { Course(id: $0.id, name: $0.name, termID: term.id, created: $0.created, code: $0.code) })
+        return groups.map { group in
+            guard group.count > 1 else { return group[0] }
+            var main = 0
+            for i in group.indices where group[i].courses.count > group[main].courses.count { main = i }
+            let head = group[main]
+            let records = [head] + group.indices.filter { $0 != main }.map { group[$0] }
+            return Term(id: head.id, name: head.name, start: group.compactMap(\.start).min(), end: group.compactMap(\.end).max(),
+                        courses: records.flatMap(\.courses).map {
+                            Course(id: $0.id, name: $0.name, termID: head.id, created: $0.created, code: $0.code)
+                        })
         }
     }
 
+    /// When the term started, or else when its newest course was created (`undated` if neither is known).
+    static func age(_ term: Term) -> Date {
+        term.start ?? term.courses.map { $0.created ?? undated }.max() ?? undated
+    }
+
+    /// The current term group of Blackboard's term records, after merging one semester's records.
     static func current(_ terms: [Term], now: Date = Date()) -> [Term] {
-        let eligible = mergeAliases(terms).filter { !$0.id.isEmpty && !$0.courses.isEmpty }
-        let active = eligible.filter {
-            guard let start = $0.start, let end = $0.end else { return false }
-            return start.addingTimeInterval(-30 * 86400) <= now && now <= end
+        chooseCurrent(mergeAliases(terms), now: now)
+    }
+
+    /// Pick the term(s) a student means by "this term": the top group on Blackboard.
+    ///
+    /// 1. The term that started most recently; a term without a start date counts from its
+    ///    newest course's creation date. Every term starting at that same moment belongs to the
+    ///    group (a year-long and a semester term, or two records of one semester).
+    /// 2. Once that group has ended, a term starting within a month takes over early, since
+    ///    courses open before the first lecture; while it runs (exam weeks) it stays. Before any
+    ///    term has started, the first upcoming one.
+    /// 3. Courses without a term (an empty termId) are always included.
+    /// 4. When no term can be dated at all, every course is current.
+    static func chooseCurrent(_ terms: [Term], now: Date) -> [Term] {
+        let termless = terms.filter { $0.id.isEmpty }
+        let known = terms.filter { !$0.id.isEmpty && age($0) != undated }
+        guard !known.isEmpty else { return terms }
+        func starting(at moment: Date) -> [Term] { known.filter { age($0) == moment } }
+        let started = known.map(age).filter { $0 <= now }
+        let upcoming = known.map(age).filter { $0 > now }
+        guard let moment = started.max() ?? upcoming.min() else { return termless }
+        var group = starting(at: moment)
+        if !started.isEmpty, group.allSatisfy({ $0.end.map { $0 < now } ?? false }),
+           let soon = upcoming.filter({ $0 <= now.addingTimeInterval(leadTime) }).min() {
+            group = starting(at: soon)
         }
-        if !active.isEmpty { return active }
-        let started = eligible.filter { $0.start.map { $0 <= now } ?? false }
-        if let latest = started.max(by: { $0.start! < $1.start! }) { return [latest] }
-        let newest = eligible.max {
-            ($0.courses.compactMap(\.created).max() ?? .distantPast)
-                < ($1.courses.compactMap(\.created).max() ?? .distantPast)
-        }
-        return newest.map { [$0] } ?? []
+        return group + termless
     }
 }
 
