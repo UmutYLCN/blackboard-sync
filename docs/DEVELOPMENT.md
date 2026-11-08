@@ -524,8 +524,14 @@ CLI's `--base-url` call it first, so Windows, macOS and the command line share i
 Add a school by adding a `School(...)` entry, running `scripts/generate-schools.py`, then
 `scripts/verify-schools.py`. The latter sends each address one request to Blackboard's public
 `/learn/api/public/v1/system/version`, which a Blackboard Learn host answers without a sign-in. Only
-addresses that answered, and that belong to the school (they sit under its own web domain), go in the
-list; `verified` is the day it was checked. The app itself never contacts a school's server to look an
+addresses that answered, and that belong to the school, go in the list; `verified` is the day it was
+checked. An address belongs to the school when it sits under the school's own web domain (`domain`), or
+is a `https://<school>.blackboard.com` host that only this school uses (`tests/test_schools.py`). A
+school hosted under another domain of its own (for example `blackboard.soton.ac.uk`) uses that domain
+as `domain` and keeps the web domain students know (`southampton.ac.uk`) as an alias. No name, local
+name, abbreviation (alias), domain or host may belong to two schools; when two schools share an
+abbreviation, leave it out of both. The list has about 143 schools (the first 16, then the rest grouped by
+country, then by name). The app itself never contacts a school's server to look an
 address up, and the tests never use the network.
 
 ## Where things go

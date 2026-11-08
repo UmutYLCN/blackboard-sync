@@ -392,7 +392,8 @@ final class SyncLogicTests: XCTestCase {
     func testEverySchoolIsFoundByEachOfItsNames() {
         for school in Schools.all {
             XCTAssertTrue(school.url.hasPrefix("https://"), school.name)
-            for key in [school.name] + school.localNames + school.aliases + [school.domain] {
+            let host = URL(string: school.url)?.host ?? ""
+            for key in [school.name] + school.localNames + school.aliases + [school.domain, host] {
                 XCTAssertEqual(Schools.find(key)?.url, school.url, key)
             }
         }

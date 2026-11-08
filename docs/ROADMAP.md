@@ -38,13 +38,13 @@ In 1.7.1:
 - The [simple latest-term rule](#simple-latest-term-rule), on the desktop and iPad apps.
 - The [UI cleanup](#ui-cleanup): the profile card and the calendar error card.
 - The English and Turkish [Store listings](#microsoft-store-listings) with NotebookLM.
+- School list growth: the known-schools list grew from 16 to about 143 schools, including 5 more Turkish schools, all checked on 2026-11-08.
 - The version bump to 1.7.1 with release notes.
 - The [Pre-Store checklist](#pre-store-checklist).
 
 Waiting for 1.7.2:
 
 - The Arabic PDF font ([Arabic text in PDF notes](#risks-of-other-schools-data)).
-- School list growth: 5 more Turkish schools.
 - The medium and low priority [risks of other schools' data](#risks-of-other-schools-data).
 
 ## Platform scope
