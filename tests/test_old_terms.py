@@ -141,17 +141,18 @@ def test_english_record_of_an_earlier_term_is_the_same_term(config, client, arch
     assert len(old_downloads(archive)) == 4  # two files of each course, each once
 
 
-def test_english_only_term_is_named_in_turkish():
-    assert academic_term("2025-2026 Spring") == academic_term("2025/2026 Bahar Dönemi") == ("2025", "2026", "Bahar")
-    assert academic_term("2026-2027 - Fall") == ("2026", "2027", "Güz")
+def test_turkish_and_english_season_names_are_one_semester():
+    assert academic_term("2025-2026 Spring") == academic_term("2025/2026 Bahar Dönemi") == ("2025", "2026", "spring")
+    assert academic_term("2026-2027 - Fall") == academic_term("2026-2027 Güz") == ("2026", "2027", "fall")
     assert academic_term("Yaz Okulu") is None and academic_term("2025-2026 Ek Dönem") is None
 
 
-def test_earlier_term_named_in_english_gets_the_turkish_folder(config, client, archive):
+def test_earlier_term_named_in_english_keeps_its_english_folder(config, client, archive):
     archive.routes[f"{TERMS}/_40_1"]["name"] = "2025-2026 Spring"
     report = sync(config, client, all_terms=True)
-    assert COURSE in {c.folder for c in report.courses}
-    assert has_files(config.root / COURSE)
+    assert "2025-2026 Spring/CSE201 Data Structures" in {c.folder for c in report.courses}
+    assert has_files(config.root / "2025-2026 Spring/CSE201 Data Structures")
+    assert top_folders(config) == ["2025-2026 Spring", CURRENT]
 
 
 def test_renamed_term_and_course_keep_the_folder_holding_their_files(config, client, archive):

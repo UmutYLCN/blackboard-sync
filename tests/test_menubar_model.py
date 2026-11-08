@@ -441,3 +441,35 @@ def test_status_line_is_stable_while_time_passes():
     assert overdue.status_lines[0].endswith("next: soon")
     assert m.menu(local + timedelta(minutes=6)) == overdue
     assert m.menu(local + timedelta(days=1)).status_lines[0].startswith("Synced at yesterday 14:00 · ")
+
+
+# -- a sync that found no course at all --------------------------------------
+
+NONE_FOUND = report(message="No courses found on Blackboard, so the current term could not be determined. "
+                            "Your courses will be synced as soon as Blackboard lists them.")
+
+
+def test_no_courses_found_is_told_once_and_shown_in_the_status():
+    m = model()
+    m.begin("sync")
+    [note] = m.finish_sync(outcome(NONE_FOUND), NOW)
+    assert note.title == "Blackboard: no courses found"
+    assert note.message == NONE_FOUND["message"]
+    assert note.data == {"open": str(DEST)}
+    assert m.detail(NOW)[0] == "no courses found"
+    assert m.status_lines(NOW)[0].startswith("Synced at")
+    later = NOW + SYNC_INTERVAL
+    m.begin("sync")
+    assert m.finish_sync(outcome(NONE_FOUND), later) == []  # not again on every run
+    m.begin("sync")
+    m.finish_sync(outcome(), later)
+    assert "no courses found" not in m.detail(later)
+    m.begin("sync")
+    assert len(m.finish_sync(outcome(NONE_FOUND), later)) == 1  # courses were found in between
+
+
+def test_all_courses_unticked_is_not_no_courses_found():
+    m = model()
+    m.begin("sync")
+    assert m.finish_sync(outcome(report()), NOW) == []
+    assert "no courses found" not in m.detail(NOW)

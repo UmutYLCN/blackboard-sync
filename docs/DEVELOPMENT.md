@@ -471,18 +471,32 @@ blackboard-sync [...] notebooklm login | sync [--dest DIR] [--auto] | status | d
 The announcements folder is called `Duyurular` like on the site; set
 `BBSYNC_ANNOUNCEMENTS_FOLDER` to rename it.
 
-**Which term is "current"?** The term whose dates include today (counting from
-a month before it starts, since courses open early). Between terms it is the
-most recently started term. Courses the instructor has not opened yet
-(shown as private) are skipped until they open.
+**Which term is "current"?** The latest one, the way the top group appears on
+Blackboard: the term that started most recently. A term without a start date
+counts from its newest course's creation date. Every term starting at that same
+moment belongs to the group, so a student in a year-long and a semester term
+gets both, and each course is synced once. Once that group has ended, a term
+starting within a month takes over early, since courses open before the first
+lecture; while the group still runs (exam weeks) it stays. Before any term has
+started, the first upcoming one is current. Courses without a term (`termId` empty) are always
+synced with the group, in a `No term` folder. When no term can be dated at all,
+every course is current. When Blackboard lists no course at all, the sync says
+so in its result (`message` and a warning) and the app shows **no courses found**
+with one notification, instead of staying silent. Courses the instructor has
+not opened yet (shown as private) are skipped until they open.
 
-**One term, one folder.** Blackboard can return a semester as two term records,
-one Turkish and one English ("2025-2026 Bahar", "2025-2026 Spring"), and a course
-in more than one membership. Terms whose names give the same academic year and
-semester (Güz/Fall/Autumn, Bahar/Spring, Yaz/Summer) and whose dates overlap are
-one term, named the Turkish way; each course is synced once. Every term gets its
+**One term, one folder.** Term folders keep the school's own term names as
+written (`2026-2027 Fall` stays `Fall`; nothing is renamed to Turkish).
+Blackboard can return one semester as two term records, one Turkish and one
+English ("2025-2026 Bahar", "2025-2026 Spring"), and a course in more than one
+membership. Only such records are merged: their names give the same academic
+year and semester (Güz/Fall/Autumn, Bahar/Spring, Yaz/Summer) and their dates,
+when both have them, overlap. The merged term takes the name of the record
+holding most of its courses (the first listed on a tie). Every term gets its
 own folder beside the others: a course keeps the folder its files are in even
-when Blackboard renames the term or course, and a term whose folder name would be
+when Blackboard renames the term or course (an older version named an
+English-only `2026-2027 Fall` term `2026-2027 Güz`; that folder stays in use and
+a new course of the term joins it), and a term whose folder name would be
 another term's gets its id added.
 
 ## Known schools
