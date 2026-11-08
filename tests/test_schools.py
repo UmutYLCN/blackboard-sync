@@ -76,11 +76,26 @@ def test_the_command_line_accepts_a_school_name_too(tmp_path):
     assert make_config(args).base_url == "https://blackboard.okul.edu.tr"
 
 
-def test_suggestions_offer_english_and_local_names():
+def test_suggestions_list_each_school_once_by_its_english_name():
     offered = schools.suggestions()
-    assert "King Saud University" in offered and "جامعة الملك سعود" in offered
-    assert len(offered) == len(set(offered))
-    assert "KSU" not in offered  # abbreviations are matched, not listed
+    assert offered == [school.name for school in schools.SCHOOLS]  # same order as SCHOOLS
+    assert len(offered) == len(schools.SCHOOLS) and len(offered) == len(set(offered))
+    for school in schools.SCHOOLS:
+        assert offered.count(school.name) == 1, school.name
+    listed = set(offered)
+    for school in schools.SCHOOLS:
+        for other in (*school.local_names, *school.aliases, school.domain):
+            assert other not in listed, f"{other!r} is matched, not listed"
+    assert "KSU" not in listed and "جامعة الملك سعود" not in listed
+    assert all(name.isascii() for name in offered)  # English names only
+
+
+def test_every_school_is_still_found_by_local_name_abbreviation_domain_and_host():
+    for school in schools.SCHOOLS:
+        host = urlsplit(school.url).hostname
+        for typed in (school.name, *school.local_names, *school.aliases, school.domain, host):
+            assert schools.find(typed) is school, f"{typed!r} no longer finds {school.name}"
+            assert schools.resolve(typed) == school.url, typed
 
 
 def test_the_ipad_list_is_generated_from_this_one():

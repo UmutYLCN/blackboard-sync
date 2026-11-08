@@ -22,7 +22,7 @@ class School:
     url: str  # https://host, the Blackboard address
     domain: str  # the school's own web domain, which students know best
     country: str  # ISO 3166-1 alpha-2
-    local_names: tuple[str, ...] = ()  # the name in the local language, shown in lists too
+    local_names: tuple[str, ...] = ()  # the name in the local language; matched, never shown
     aliases: tuple[str, ...] = ()  # abbreviations; matched, never shown
     verified: str = ""  # the day the address answered the Blackboard check
 
@@ -108,5 +108,8 @@ def resolve(text: str) -> str | None:
 
 
 def suggestions() -> list[str]:
-    """What a search list offers: every school's English and local-language names."""
-    return [name for school in SCHOOLS for name in (school.name, *school.local_names)]
+    """What a search list offers: each school once, by its English name, in ``SCHOOLS`` order.
+
+    Local-language names are not listed, but ``find`` and ``resolve`` still match them.
+    """
+    return [school.name for school in SCHOOLS]
