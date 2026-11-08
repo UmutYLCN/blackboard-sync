@@ -192,6 +192,7 @@ final class AppModel: ObservableObject {
         accountName = display.isEmpty ? (me["userName"] as? String ?? "Blackboard") : display
         hasSession = true; needsSignIn = false
         status = "Finding your courses…"
+        try await store.useSchool(api.tenant)
         let found = try await api.courses(userID: id)
         try Task.checkCancellation()
         let snapshot = await store.snapshot()

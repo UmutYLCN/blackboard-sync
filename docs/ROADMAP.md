@@ -86,7 +86,7 @@ Notes:
 
 - The rule was checked against 28 synthetic school setups (`tests/test_term_scenarios.py`); at the first school it gives exactly the result it gave before.
 - The real term and course data from the first school must be checked once to confirm which fields can be trusted. The real data check is part of the 1.7.1 test by hand at the first school.
-- Done on the desktop apps (Mac and Windows share the code). The iPad app follows the first version of the rule (an iPad course keeps the folder its files are already in); the fixes from the 28-setup check are ported to it next.
+- Done on the desktop apps (Mac and Windows share the code) and the iPad app, which runs the same 28 setups with the same results (an iPad course keeps the folder its files are already in).
 
 ## Removal of the past-terms feature
 
