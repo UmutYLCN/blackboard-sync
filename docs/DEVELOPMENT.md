@@ -471,23 +471,53 @@ blackboard-sync [...] notebooklm login | sync [--dest DIR] [--auto] | status | d
 The announcements folder is called `Duyurular` like on the site; set
 `BBSYNC_ANNOUNCEMENTS_FOLDER` to rename it.
 
-**Which term is "current"?** The latest one, the way the top group appears on
-Blackboard: the term that started most recently. A term without a start date
-counts from its newest course's creation date. Every term starting at that same
-moment belongs to the group, so a student in a year-long and a semester term
-gets both, and each course is synced once. Once that group has ended, a term
-starting within a month takes over early, since courses open before the first
-lecture; while the group still runs (exam weeks) it stays. Before any term has
-started, the first upcoming one is current. Courses without a term (`termId` empty) are always
-synced with the group, in a `No term` folder. When no term can be dated at all,
-every course is current. When Blackboard lists no course at all, the sync says
-so in its result (`message` and a warning) and the app shows **no courses found**
-with one notification, instead of staying silent. Courses the instructor has
-not opened yet (shown as private) are skipped until they open. The iPad app
-follows the same rule and term merging (`Term.current` in
-`ios/BlackboardSync/BlackboardSync/Core/SyncLogic.swift`), shows the same
-no-courses message in its status line, and keeps every course and term folder
-recorded in its saved library, so an existing `2026-2027 Güz` folder stays in use there too.
+**Which term is "current"?** The term that started most recently, plus every
+term running now, in `choose_current_terms` (`sync.py`):
+
+- **Terms with dates.** The term that started most recently is current, with every
+  term starting at that same moment. Every other term that has started and not
+  ended comes along: a year-long term beside a semester (in spring too), a full
+  term beside an 8-week block, sections starting on different days. Ended terms
+  and terms far in the future never do. Once the latest group has ended, a term
+  starting within a month takes over early, since courses open before the first
+  lecture; while the group still runs (exam weeks) it stays. Before any term has
+  started, the first upcoming one is current.
+- **Terms without dates** count from their newest course's creation date, on a
+  clock of their own: they never push out a dated term that is running. One joins
+  the running terms when its newest course was created once they opened (a month
+  before they started) and its name does not give another academic year or season,
+  so `Ortak Dersler` comes along while an undated `2026-2027 Bahar` shell made in
+  November, or an old `2025-2026 Yaz` term that got a new course, stays out. When
+  no dated term runs, the newer of the latest dated term and the undated ones is
+  current. When no term has dates, the undated terms whose newest courses were
+  created within 45 days of the newest one are current together (one undated term
+  per section, or an Arabic and an English record), leaving out any whose name
+  gives another year or season than the newest's.
+- **Safeguards.** A term that ended before any of its courses was created has dates
+  left from the year it was copied from and counts as undated. A term an older
+  version archived (`past_terms`) is left out before choosing, so it can never be
+  chosen and leave no course at all. Courses and memberships that are closed (`No`,
+  `Disabled`), courses that open with a term that is closed, and Blackboard
+  Organizations (clubs and communities, `organization: true`) are skipped. A term
+  holding the merged (cross-listed) parent of a current course comes along, since
+  the files are there.
+- When nothing can be dated at all, the terms whose names give the latest academic
+  year and season are current (term names are read in Turkish, English and Arabic,
+  full official names such as `2026-2027 Eğitim-Öğretim Yılı Güz Dönemi`, ordinal
+  and Hijri names such as `1448 First Semester`); when no name gives one, every course.
+
+Courses without a term (`termId` empty) are always synced with the current terms,
+in a `No term` folder, and each course is synced once. When Blackboard lists no
+course at all, the sync says so in its result (`message` and a warning) and the
+app shows **no courses found** with one notification, instead of staying silent.
+Courses the instructor has not opened yet (shown as private) are skipped until
+they open. `tests/test_term_scenarios.py` checks the rule against 28 synthetic
+school setups (`tests/fixtures/term_scenarios.json`); at the first school (İSTÜN)
+its result is exactly that of 1.7.0. The iPad app follows the earlier rule and the
+same term merging (`Term.current` in
+`ios/BlackboardSync/BlackboardSync/Core/SyncLogic.swift`) until it is ported, shows
+the same no-courses message in its status line, and keeps every course and term
+folder recorded in its saved library, so an existing `2026-2027 Güz` folder stays in use there too.
 
 **One term, one folder.** Term folders keep the school's own term names as
 written (`2026-2027 Fall` stays `Fall`; nothing is renamed to Turkish).
@@ -594,6 +624,11 @@ On Windows a few more rules apply there only (see
 - `past_terms`: left by versions that could download an older term once. Nothing writes it any
   more; the normal sync still reads it, so those terms stay frozen. A file with it, or with fields
   this version does not know, loads without error.
+- `school`: the host of the Blackboard address the files come from. Blackboard numbers its
+  ids per school, so after a change of school the files recorded so far keep their school's
+  host on their entry, and their course folders are not reused for the other school's course
+  with the same id; switching back uses them again. A file from before this was recorded
+  belongs to the school in use, so nothing changes for it.
 
 The source is documented in [Anthology's REST schema](https://developer.anthology.com/assets/lib/swagger-ui/swagger-index.html).
 Enrolled students can read `grading.due` when the course's My Grades tool and

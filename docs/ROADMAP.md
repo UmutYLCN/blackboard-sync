@@ -63,19 +63,29 @@ Apart from NotebookLM, no more big features are planned. From now on, only small
 
 ## Simple latest-term rule
 
-Download the latest term the way the top group appears on Blackboard, and keep the school's own term names. The term-name merging that turns English season names such as `Fall` into Turkish `Güz` was added on 13 October 2026 (PR #98) as a side effect of the past-terms download work, to avoid an empty duplicate English folder at the first school (whose Blackboard returns one semester as a Turkish and an English term record).
+Download the current term the way a student means "this term", and keep the school's own term names. The term-name merging that turns English season names such as `Fall` into Turkish `Güz` was added on 13 October 2026 (PR #98) as a side effect of the past-terms download work, to avoid an empty duplicate English folder at the first school (whose Blackboard returns one semester as a Turkish and an English term record).
 
-1. Pick the term that started most recently. Term records that share that start date (for example, a Turkish and an English copy of the same semester) count as one group. When a term has no start date, use the newest course creation date instead.
-2. Download every course in that group, each course once.
-3. Keep the school's own term names as written, with no renaming such as `Fall` to `Güz` and no Turkish-first naming. The Turkish/English merge stays only for the case where the same semester truly appears under two names.
-4. If no course is found, do not stay silent: tell the user the current term could not be determined and let them choose courses.
+1. Download the term that started most recently, plus every term that is running now: a year-long term beside a semester, a full term beside an 8-week block, sections that start on different days. Term records that share a start date (for example, a Turkish and an English copy of the same semester) count as one group. Ended terms and terms far in the future are not downloaded. Once the latest term has ended, the next one takes over a month before it starts.
+2. A term with no dates counts from its newest course's creation date, but it never pushes out a dated term that is running. It is downloaded beside the running term when its courses were made for it: created once that term opened, and not named for another year or season (so a next-term shell or an old summer term that got a new course stays out). When no term has dates, the undated terms whose newest courses were created close together (within 45 days) are downloaded together.
+3. Download every course in those terms, each course once.
+4. Keep the school's own term names as written, with no renaming such as `Fall` to `Güz` and no Turkish-first naming. The Turkish/English merge stays only for the case where the same semester truly appears under two names; full official names (`2026-2027 Eğitim-Öğretim Yılı Güz Dönemi`) and Arabic, ordinal and Hijri names (`الفصل الدراسي الأول 1448`, `1448 First Semester`) are recognised too.
+5. If no course is found, do not stay silent: tell the user the current term could not be determined and let them choose courses.
+
+Safeguards:
+
+- Courses with no term at all (`termId` empty) are included.
+- Closed courses and enrolments, courses that open with a closed term, and Blackboard Organizations (clubs and communities listed among the courses) are skipped.
+- A term whose dates ended before any of its courses was created has dates copied from an earlier year; it is dated by its courses instead.
+- A term an older version archived stays frozen and can never be picked, so it cannot leave the student with no course at all.
+- A term holding the merged (cross-listed) parent of a current course is downloaded too, since the files are there.
+- When nothing can be dated, the term whose name gives the latest academic year and season is downloaded instead of every past term.
+- `state.json` records the school; after a change of school, the other school's course folders are not reused. A state file from before this belongs to the school in use, so existing users keep their term and course folders and nothing is downloaded again or moved.
 
 Notes:
 
-- Courses with no term at all (`termId` empty) are included.
-- A student in both a year-long and a semester term gets both, because all terms sharing the latest start date are one group.
-- The real term and course data from the first school must be checked once to confirm which fields can be trusted before coding.
-- Done on the desktop apps (Mac and Windows share the code) and on the iPad app, which follows the same rule; an iPad course keeps the folder its files are already in. The real data check above is part of the 1.7.1 test by hand at the first school.
+- The rule was checked against 28 synthetic school setups (`tests/test_term_scenarios.py`); at the first school it gives exactly the result it gave before.
+- The real term and course data from the first school must be checked once to confirm which fields can be trusted. The real data check is part of the 1.7.1 test by hand at the first school.
+- Done on the desktop apps (Mac and Windows share the code). The iPad app follows the first version of the rule (an iPad course keeps the folder its files are already in); the fixes from the 28-setup check are ported to it next.
 
 ## Removal of the past-terms feature
 
@@ -122,6 +132,7 @@ Syncing other schools' data may break where the app's assumptions differ from ho
 - **Term-name aliases.** Term-name aliases rewrite English term names to Turkish (`Güz`, `Bahar`, `Yaz`) and miss other formats.
   Fixed on the desktop and iPad apps by the [Simple latest-term rule](#simple-latest-term-rule).
 - **Unscoped desktop state files.** Desktop `state.json` and `courses.json` are not scoped by school or account, so switching schools can collide on Blackboard internal IDs; the iPad app already scopes them.
+  Course folders recorded in `state.json` are no longer reused across schools ([Simple latest-term rule](#simple-latest-term-rule)); the rest of `state.json` and `courses.json` are still unscoped.
 - **Course-code pattern.** The course-code pattern misses hyphenated codes like `CS-101` and can read a term prefix such as `FALL2026` as the course code.
 - **Windows path-length limit.** On Windows, term and course folder names are not shortened to fit the 259-character path limit (only subfolders are), which matters in OneDrive folders.
 - **English-only attachment check.** The check for items that do not support attachments looks for one English sentence, so a localized Blackboard server makes every such item fail and retry.
