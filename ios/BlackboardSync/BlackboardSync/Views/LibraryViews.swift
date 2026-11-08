@@ -37,6 +37,46 @@ struct CoursesView: View {
     }
 }
 
+/// The card before the first download at a school whose current term is not clear (`TermConfirm`): the
+/// terms and courses found, ticked as in Courses. Confirm saves the ticks and syncs; Not now, or closing
+/// the card, saves nothing.
+struct FirstCoursesCard: View {
+    @EnvironmentObject var model: AppModel
+    let card: TermConfirm.Card
+    @State private var ticked: Set<String>
+
+    init(card: TermConfirm.Card, selected: Set<String>) {
+        self.card = card
+        _ticked = State(initialValue: TermConfirm.initialTicks(card, selected: selected))
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text(model.text(TermConfirm.title)).font(.title3.weight(.semibold))
+                    Text(TermConfirm.message(card, language: model.language)).font(.callout).foregroundStyle(.secondary)
+                }
+                Section {
+                    ForEach(TermConfirm.rows(card)) { row in
+                        Toggle(row.label, isOn: Binding(get: { ticked.contains(row.id) },
+                                                        set: { if $0 { ticked.insert(row.id) } else { ticked.remove(row.id) } }))
+                            .toggleStyle(.checkboxStyle).padding(.vertical, 4)
+                    }
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(model.text(TermConfirm.notNow)) { model.notNowFirstCourses() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(model.text(TermConfirm.confirmLabel)) { model.confirmFirstCourses(ticked: ticked) }
+                }
+            }
+        }
+    }
+}
+
 private struct CourseCheckbox: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button { configuration.isOn.toggle() } label: {

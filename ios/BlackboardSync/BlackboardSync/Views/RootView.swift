@@ -81,6 +81,7 @@ struct RootView: View {
             if model.loginAfterSettings { model.loginAfterSettings = false; model.signIn() }
         }) { SettingsView().environmentObject(model) }
         .sheet(isPresented: $model.showingLogin) { SignInView().environmentObject(model) }
+        .sheet(item: $model.termConfirm) { card in FirstCoursesCard(card: card, selected: model.selected).environmentObject(model) }
     }
     /// "4/5" beside Courses while some course is unticked, as on the Mac; nothing otherwise.
     private var courseCount: String? {

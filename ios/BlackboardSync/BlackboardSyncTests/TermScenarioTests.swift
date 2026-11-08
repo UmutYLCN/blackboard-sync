@@ -11,7 +11,8 @@ import XCTest
 /// right and must stay exactly so.
 @MainActor
 final class TermScenarioTests: XCTestCase {
-    private static let scenarios: [String: [String: Any]] = {
+    /// The scenarios by id ("S01"); `TermConfirmTests` uses them too.
+    static let scenarios: [String: [String: Any]] = {
         guard let url = Bundle(for: TermScenarioTests.self).url(forResource: "term_scenarios", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let file = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
@@ -20,7 +21,7 @@ final class TermScenarioTests: XCTestCase {
     }()
     private static let user = "_900_1"
     /// The first school's checks (research report, part 3): their result must not change at all.
-    private static let firstSchool = ["S01", "S02", "S03", "S12", "S15"]
+    static let firstSchool = ["S01", "S02", "S03", "S12", "S15"]
     /// Where the test expects something other than the report's ideal pick, and why (as on desktop).
     private static let expected: [String: [String: [String]]] = [
         // The spring term's start is set to the day registration opens, inside the fall term. The
@@ -44,7 +45,7 @@ final class TermScenarioTests: XCTestCase {
     }
 
     /// The current terms the iPad finds at a scenario's school, on the scenario's date.
-    private func discover(_ scenario: [String: Any]) async throws -> [Term] {
+    static func discover(_ scenario: [String: Any]) async throws -> [Term] {
         let routes = scenario["api_routes"] as? [String: Any] ?? [:]
         let api = BlackboardAPI(tenant: URL(string: "https://blackboard.example.edu")!, cookies: [], pageLoader: { path in
             let route = (path.split(separator: "?").first.map(String.init) ?? path).removingPercentEncoding ?? path
@@ -75,7 +76,7 @@ final class TermScenarioTests: XCTestCase {
         for sid in Self.scenarios.keys.sorted() {
             let scenario = Self.scenarios[sid]!
             let expected = Self.expected[sid] ?? scenario["expected_ideal_output"] as? [String: [String]] ?? [:]
-            let terms = try await discover(scenario)
+            let terms = try await Self.discover(scenario)
             let courses = terms.flatMap(\.courses)
             XCTAssertEqual(terms.map(\.name).sorted(), expected["ideal_term_names"]?.sorted(), sid)
             XCTAssertEqual(courses.map(\.id).sorted(), expected["ideal_course_ids"]?.sorted(), sid)
@@ -111,7 +112,7 @@ final class TermScenarioTests: XCTestCase {
         for sid in Self.firstSchool {
             let scenario = Self.scenarios[sid]!
             let before = scenario["current_rule_output"] as? [String: Any] ?? [:]
-            let terms = try await discover(scenario)
+            let terms = try await Self.discover(scenario)
             let courses = Self.ordered(terms)
             let store = try newLibrary()
             XCTAssertEqual(terms.map(\.name), before["selected_term_names"] as? [String], sid)
@@ -127,7 +128,7 @@ final class TermScenarioTests: XCTestCase {
 
     /// S14: the archived term is left out first, so the running term is current, not nothing.
     func testArchivedTermWithANewCourseDoesNotLeaveTheStudentWithNothing() async throws {
-        let terms = try await discover(Self.scenarios["S14"]!)
+        let terms = try await Self.discover(Self.scenarios["S14"]!)
         XCTAssertEqual(terms.map(\.name), ["2026-2027 Güz"])
         XCTAssertEqual(terms.flatMap(\.courses).map(Self.code), ["CSE303"])
     }

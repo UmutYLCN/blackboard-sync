@@ -43,6 +43,8 @@ final class AppModel: ObservableObject {
     @Published var library = LibraryState()
     @Published var libraryRevision = 0
     @Published var showingSettings = false
+    /// The card before the first download at a school whose current term is not clear (`TermConfirm`).
+    @Published var termConfirm: TermConfirm.Card?
     /// Announcements and due dates for the signed-in account; nil while signed out.
     @Published private(set) var features: FeatureModels?
     var loginAfterSettings = false
@@ -63,12 +65,19 @@ final class AppModel: ObservableObject {
     var backgroundTasks: any BackgroundScheduling = SystemBackgroundTasks()
     var saveSession: (URL, [HTTPCookie]) throws -> Void = SessionVault.save(tenant:cookies:)
     var loadSession: () throws -> SavedSession? = SessionVault.load
+    /// Where the library lives; tests use a folder of their own.
+    var libraryFolders: () -> (documents: URL, support: URL) = {
+        let fm = FileManager.default
+        return (fm.urls(for: .documentDirectory, in: .userDomainMask)[0], fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0])
+    }
     let websiteStore = WKWebsiteDataStore(forIdentifier: UUID(uuidString: "1A1FAFC3-8243-4C32-81A1-026D23F22B6D")!)
     var courses: [Course] { terms.flatMap(\.courses).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
     var featureCourses: [FeatureCourse] {
         courses.filter { selected.contains($0.id) }.map { FeatureCourse(id: $0.id, name: $0.name) }
     }
-    var canSync: Bool { api != nil && hasSession && !needsSignIn && !busy && !selected.isEmpty && store != nil && !paused }
+    var canSync: Bool { !busy && canStartSync }
+    /// `canSync` without the running work: what a sync started by that work needs.
+    private var canStartSync: Bool { api != nil && hasSession && !needsSignIn && !selected.isEmpty && store != nil && !paused }
     /// Like the Mac, Pause waits for the first sign-in; a pause already set can always be lifted.
     var canTogglePause: Bool { !signingOut && (paused || hasSession || hasStoredSession || needsSignIn) }
     /// Home's status headline: a pause shows unless a sync is still winding down.
@@ -93,9 +102,8 @@ final class AppModel: ObservableObject {
         guard !started else { return }
         started = true
         do {
-            let fm = FileManager.default
-            store = try LibraryStore(documents: fm.urls(for: .documentDirectory, in: .userDomainMask)[0],
-                                     support: fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0])
+            let folders = libraryFolders()
+            store = try LibraryStore(documents: folders.documents, support: folders.support)
             await reloadLibrary()
             terms = library.cachedScope == scope ? library.terms : []
             selected = library.selected[scope] ?? []
@@ -278,6 +286,13 @@ final class AppModel: ObservableObject {
     }
     private func performSync() async throws {
         guard let api, let store else { return }
+        if let card = TermConfirm.card(library: await store.snapshot(), tenant: api.tenant, scope: scope, terms: terms) {
+            // The first sync at this school found no clear term: nothing is downloaded or saved until
+            // the student confirms the courses on the card.
+            termConfirm = card
+            status = TermConfirm.waiting
+            return
+        }
         syncing = true; progress = SyncProgress(); status = "Syncing…"
         let engine = SyncEngine(api: api, store: store, scope: scope) { [weak self] progress in self?.progress = progress }
         let result = try await engine.run(terms: terms, selected: selected)
@@ -286,6 +301,24 @@ final class AppModel: ObservableObject {
         care.checkedAt = Date() // a sync keeps the session alive as well
     }
     func cancel() { operation?.cancel() }
+
+    /// Confirm on the card: saves the ticked courses as the selection and the school as asked, then syncs.
+    func confirmFirstCourses(ticked: Set<String>) {
+        guard let card = termConfirm else { return }
+        termConfirm = nil
+        // The school changed or other work started meanwhile: nothing is saved, and the next sync asks again.
+        guard !busy, let api, let store, TermConfirm.school(api.tenant) == card.school else { return }
+        let selected = selected, scope = scope
+        run { [self] in
+            self.selected = try await TermConfirm.confirm(card, ticked: ticked, selected: selected, scope: scope, store: store)
+            refreshFeatures()
+            guard canStartSync else { status = "Ready to sync"; return }
+            try await recovering { try await self.performSync() }
+        }
+    }
+
+    /// Not now (or closing the card): nothing is saved, so the next sync asks again.
+    func notNowFirstCourses() { termConfirm = nil }
 
     /// Pause also ends a sync that is running right now; Resume syncs right away when Sync on app open is on.
     func togglePause() {
@@ -312,6 +345,7 @@ final class AppModel: ObservableObject {
         let refresh = sessionRefresh
         refresh?.cancel()
         featureRefreshPending = false; featureHTTP = nil; featureTenant = nil; features = nil
+        termConfirm = nil
         let previous = operation
         Task {
             await previous?.value
