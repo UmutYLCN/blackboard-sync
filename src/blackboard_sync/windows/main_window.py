@@ -222,28 +222,12 @@ class MainWindow:
         self.pause_button.pack(side="left", padx=(0, 6))
         self.gear_button = ttk.Button(bar, text="⚙", width=3, command=lambda: self.select(main.GENERAL))
         self.gear_button.pack(side="left", padx=(0, 6))
-        # The account (initials) opens a small menu: who is signed in, sign out or in, Ayarlar.
+        # The account (initials) only shows who is signed in; Ayarlar has Sign in / Sign out.
         self.avatar = tk.Canvas(bar, width=AVATAR, height=AVATAR, highlightthickness=0, borderwidth=0,
-                                background=background_of(window), cursor="hand2")
+                                background=background_of(window))
         self.avatar.pack(side="left")
-        self.avatar.bind("<Button-1>", self.show_account_menu)
         bar.place(relx=1.0, x=-24, y=14, anchor="ne")
         bar.lift()
-
-    def show_account_menu(self, event=None):
-        import tkinter as tk
-
-        status = self.status.form
-        menu = tk.Menu(self.window, tearoff=0)
-        menu.add_command(label=status.account, state="disabled")
-        menu.add_separator()
-        menu.add_command(label=status.account_title, command=self.account_pressed,
-                         state="normal" if status.account_enabled else "disabled")
-        menu.add_command(label=main.T_NAV_GENERAL, command=lambda: self.select(main.GENERAL))
-        try:
-            menu.tk_popup(self.avatar.winfo_rootx(), self.avatar.winfo_rooty() + AVATAR)
-        finally:
-            menu.grab_release()
 
     def _header(self, page, title, row=0):
         from tkinter import ttk

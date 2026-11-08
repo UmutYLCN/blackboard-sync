@@ -251,8 +251,12 @@ def run_calendar_guarded(config: Config, action: str = "sync", *, cancel=None, *
         from dataclasses import replace
         from blackboard_sync.errors import BlackboardSyncError, CalendarAuthExpired
         saved = gcal.status(config)
-        return replace(saved, last_error=str(exc) if isinstance(exc, BlackboardSyncError)
-                       else tr("Google Calendar operation failed."),
+        message = str(exc) if isinstance(exc, BlackboardSyncError) else tr("Google Calendar operation failed.")
+        if action == "connect":
+            # Cancelled, timed out or refused: nothing is stored, the card stays as it was
+            # ("Not connected" with Connect) and the window shows the message for a moment.
+            return replace(saved, notice=message)
+        return replace(saved, last_error=message,
                        needs_reconnect=saved.needs_reconnect or isinstance(exc, CalendarAuthExpired))
     return gcal.status(config)
 

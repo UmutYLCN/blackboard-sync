@@ -285,6 +285,106 @@ def test_connect_pkce_and_loopback(client, monkeypatch):
     assert gcal.status(client.config).connected
 
 
+def _no_browser_answer(monkeypatch):
+    """A loopback server that never gets a request: the browser sign-in is never finished."""
+    class Server:
+        server_port = 32123
+
+        def __init__(self, address, handler):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def handle_request(self):
+            pass
+    monkeypatch.setattr(gcal, 'HTTPServer', Server)
+
+
+def test_connect_timeout_is_reported_but_never_stored(client, monkeypatch):
+    _no_browser_answer(monkeypatch)
+    client.path.unlink(missing_ok=True)
+    monkeypatch.setattr(gcal, 'CalendarClient', lambda config, cancel=None: client)
+    client.data = {}
+    with pytest.raises(BlackboardSyncError, match='authorization timed out'):
+        gcal.perform(client.config, 'connect', timeout=0, open_browser=lambda url: True)
+    # Nothing was written, so a restart shows "Not connected" and no error.
+    assert not client.path.exists()
+    status = gcal.status(client.config)
+    assert (status.connected, status.last_error, status.needs_reconnect) == (False, None, False)
+
+
+def test_failed_connect_keeps_a_connected_calendars_state(client, monkeypatch):
+    """Cancelling a reconnect leaves the stored state alone; only the message is shown."""
+    write_private_json(client.path, {'connected': True, 'needs_reconnect': True,
+                                     'last_error': 'Google Calendar needs to be reconnected'})
+    before = client.path.read_text()
+    monkeypatch.setattr(gcal, 'CalendarClient', lambda config, cancel=None: client)
+    client.cancel.set()
+    with pytest.raises(BlackboardSyncError, match='cancelled'):
+        gcal.perform(client.config, 'connect', open_browser=lambda url: True)
+    assert client.path.read_text() == before
+
+
+def test_refused_code_during_connect_does_not_store_a_reconnect_error(client, monkeypatch):
+    client.http.responses = [Response({'error': 'invalid_grant'}, 400)]
+    client.data = {}
+
+    class Server:
+        server_port = 1
+
+        def __init__(self, address, handler):
+            self.handler = handler
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def handle_request(self):
+            import io
+            handler = object.__new__(self.handler)
+            handler.path = '/?state=' + params['state'][0] + '&code=authorization'
+            handler.send_response = handler.send_header = lambda *_: None
+            handler.end_headers = lambda: None
+            handler.wfile = io.BytesIO()
+            handler.do_GET()
+    monkeypatch.setattr(gcal, 'HTTPServer', Server)
+    params = {}
+
+    def browser(url):
+        params.update(parse_qs(urlsplit(url).query))
+        return True
+    with pytest.raises(CalendarAuthExpired):
+        client.connect(open_browser=browser)
+    assert not client._connecting
+    assert not client.path.exists() or not json.loads(client.path.read_text()).get('needs_reconnect')
+
+
+def test_failed_sync_while_connected_is_still_stored(client, monkeypatch):
+    client.http.responses = [Response(status=500)] * 5
+    monkeypatch.setattr(gcal, 'CalendarClient', lambda config, cancel=None: client)
+    with pytest.raises(ApiError):
+        gcal.perform(client.config, 'sync')
+    status = gcal.status(client.config)
+    assert status.connected and status.last_error
+
+
+def test_an_old_stored_connect_error_is_ignored_while_not_connected(tmp_path):
+    """Earlier versions stored a timed-out connect as ``last_error``; it must not show again."""
+    write_private_json(tmp_path / 'google-calendar.json',
+                       {'last_error': 'Google Calendar authorization timed out.'})
+    status = gcal.status(Config(data_dir=tmp_path))
+    assert (status.connected, status.last_error, status.needs_reconnect) == (False, None, False)
+    write_private_json(tmp_path / 'google-calendar.json',
+                       {'connected': True, 'last_error': 'Google Calendar sync failed.'})
+    assert gcal.status(Config(data_dir=tmp_path)).last_error == 'Google Calendar sync failed.'
+
+
 def test_pagination(client):
     client.access_token, client.expires = 'access', float('inf')
     event = {'id': 'one', 'extendedProperties': {'private': {'bbKey': 'course:column'}}}

@@ -5,10 +5,10 @@ import pytest
 
 from blackboard_sync import gcal
 from blackboard_sync.config import Config
-from blackboard_sync.errors import CalendarAuthExpired
+from blackboard_sync.errors import BlackboardSyncError, CalendarAuthExpired
 from blackboard_sync.menubar import jobs, settings_form as form
 from blackboard_sync.menubar.main_window_model import attention_items
-from blackboard_sync.menubar.model import AppModel, RunOutcome
+from blackboard_sync.menubar.model import CALENDAR_NOTICE_SECONDS, AppModel, RunOutcome
 
 NOW = datetime(2026, 10, 18, tzinfo=timezone.utc)
 
@@ -108,3 +108,60 @@ def test_calendar_card_keeps_one_action_group_for_each_connection_state():
         assert not waiting.sync_enabled and not waiting.disconnect_enabled
     authorization = form.calendar_presentation(gcal.CalendarStatus(), 'connect')
     assert authorization.show_connect and authorization.button == 'Cancel'
+
+
+@pytest.mark.parametrize('error', [BlackboardSyncError('Google Calendar authorization timed out.'),
+                                   RuntimeError('internal detail')])
+def test_a_connect_that_does_not_finish_gives_a_notice_not_an_error(tmp_path, monkeypatch, error):
+    config = Config(data_dir=tmp_path)
+    monkeypatch.setattr(gcal, 'status', lambda _: gcal.CalendarStatus())
+    def perform(config, action, **options):
+        raise error
+    monkeypatch.setattr(gcal, 'perform', perform)
+    result = jobs.run_calendar_guarded(config, 'connect')
+    assert result.notice == (str(error) if isinstance(error, BlackboardSyncError)
+                             else 'Google Calendar operation failed.')
+    assert (result.connected, result.last_error, result.needs_reconnect) == (False, None, False)
+    value = form.calendar_presentation(result, notice=result.notice)
+    assert (value.title, value.button, value.warning, value.detail) == (
+        'Not connected', 'Connect Google Calendar', False, result.notice)
+
+
+def test_a_failed_reconnect_leaves_the_reconnect_card(tmp_path, monkeypatch):
+    config = Config(data_dir=tmp_path)
+    saved = gcal.CalendarStatus(True, last_error='Revoked', needs_reconnect=True)
+    monkeypatch.setattr(gcal, 'status', lambda _: saved)
+    monkeypatch.setattr(gcal, 'perform', lambda *a, **k: (_ for _ in ()).throw(
+        BlackboardSyncError('Google Calendar authorization timed out.')))
+    result = jobs.run_calendar_guarded(config, 'connect')
+    assert (result.last_error, result.needs_reconnect) == ('Revoked', True)
+    assert result.notice == 'Google Calendar authorization timed out.'
+
+
+def test_the_notice_is_short_lived_and_never_saved(tmp_path):
+    model = AppModel(tmp_path, NOW)
+    model.calendar_busy = 'connect'
+    model.finish_calendar(gcal.CalendarStatus(notice='Google Calendar authorization timed out.'), clock=lambda: 100.0)
+    assert model.calendar_busy is None
+    assert model.calendar == gcal.CalendarStatus()  # the notice is not part of the saved status
+    assert 'notice' not in model.saved_state()['calendar']
+    assert model.saved_state()['calendar']['connected'] is False
+    assert model.current_calendar_notice(clock=lambda: 101.0) == 'Google Calendar authorization timed out.'
+    assert model.current_calendar_notice(clock=lambda: 100.0 + CALENDAR_NOTICE_SECONDS + 1) == ''
+    model.finish_calendar(gcal.CalendarStatus(True))  # the next result clears the earlier message
+    assert model.current_calendar_notice() == ''
+
+
+def test_window_status_carries_the_notice(tmp_path):
+    model = AppModel(tmp_path, NOW)
+    model.finish_calendar(gcal.CalendarStatus(notice='Google Calendar operation was cancelled.'))
+    assert form.window_status(model).calendar_notice == 'Google Calendar operation was cancelled.'
+
+
+def test_attention_ignores_an_error_left_by_an_unconnected_calendar(tmp_path):
+    model = AppModel(tmp_path, NOW, last=RunOutcome(status='ok', finished_at=NOW),
+                     session={'user': {'displayName': 'Student'}})
+    model.calendar = gcal.CalendarStatus(False, last_error='Google Calendar authorization timed out.')
+    assert not any(item.action == 'calendar_settings' for item in attention_items(model))
+    model.calendar = gcal.CalendarStatus(True, last_error='Google Calendar sync failed.')
+    assert any(item.action == 'calendar_settings' for item in attention_items(model))

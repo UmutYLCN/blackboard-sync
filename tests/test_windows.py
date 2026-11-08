@@ -558,6 +558,13 @@ def test_windows_settings_are_sections_of_rows(monkeypatch, tmp_path):
     assert 'style' not in window.uninstall_button.options  # the fake Tk has no styles: the default look
 
 
+def test_windows_avatar_opens_no_menu_and_settings_keeps_sign_out(monkeypatch, tmp_path):
+    window, _model, _, _ = settings_window(monkeypatch, tmp_path)
+    assert not hasattr(window, 'show_account_menu')
+    assert '<Button-1>' not in getattr(window.avatar, 'bindings', {})
+    assert window.account_button.options['text'] == 'Sign out'  # the way out is Settings > Account
+
+
 def test_windows_settings_rows_follow_the_app_state(monkeypatch, tmp_path):
     from blackboard_sync.menubar.main_window_model import main_status
 

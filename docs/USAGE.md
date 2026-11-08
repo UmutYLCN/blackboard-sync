@@ -9,8 +9,8 @@ and the main window opens; if the app is already running, the same window comes 
 window is laid out like Google Drive's desktop app. The **Open folder** button is at the top left,
 with the sections below it: **Get started** until you first sign in, then **Home**, **Sync activity**,
 **Announcements**, **Courses** and **Calendar**. At the top right are round buttons: **Pause / Resume**,
-**Settings** (the gear) and your account (your initials; click for the account menu). **Settings…**
-in the menu opens the same window on the **Settings** page.
+**Settings** (the gear) and your account (your initials, which only show who is signed in). Sign in
+and **Sign out** are under **Settings → Account**.
 
 - **Home** is a summary: the sync state (**Up to date**, **Syncing…**, **Paused**, **Sign-in needed**;
   an animation of files flying into a folder while a sync runs), the latest downloads, what needs your
@@ -167,7 +167,9 @@ environment yourself. Only dragging the app to the Trash in Finder does not clea
 ## Google Calendar (optional)
 
 Open **Settings → Google Calendar → Connect Google Calendar** (macOS and Windows). Consent
-opens in your browser; you can cancel in the app while it waits. Connection and
+opens in your browser; you can cancel in the app while it waits. If you cancel or the wait runs
+out, the card says **Not connected** again and shows a short message for a few seconds; nothing is
+saved as an error. Connection and
 Disconnect take effect immediately, independently of the settings Save/Cancel
 buttons. A Google Desktop OAuth client must first be configured by the developer;
 see [Google Calendar setup](GOOGLE_CALENDAR_SETUP.md).

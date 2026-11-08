@@ -32,6 +32,7 @@ from blackboard_sync.menubar.main_window_model import (
     shows_window_at_launch,
 )
 from blackboard_sync.menubar.model import (
+    CALENDAR_NOTICE_SECONDS,
     MOVE_JOB,
     NOTEBOOKLM_CONNECT,
     NOTEBOOKLM_DUPLICATES,
@@ -324,10 +325,11 @@ class TrayApp:
             log.exception("Could not save the theme")
 
     def calendar_done(self, status):
-        self.model.calendar_busy = None
-        self.model.calendar = status
+        self.model.finish_calendar(status)
         self.save()
         self.refresh()
+        if status.notice:  # draw the card again once the notice has run out
+            self.root.after(int((CALENDAR_NOTICE_SECONDS + 0.5) * 1000), self.refresh)
 
     def start_notebooklm(self, action=NOTEBOOKLM_SYNC, auto=False):
         """Run beside the Blackboard jobs; whatever happens shows only on Home's card."""

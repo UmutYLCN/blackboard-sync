@@ -716,14 +716,6 @@
   document.getElementById("open-folder").addEventListener("click", () => call("action", "folder"));
   document.getElementById("pause").addEventListener("click", () => call("action", "pause"));
   document.getElementById("gear").addEventListener("click", () => navigate("general"));
-  document.getElementById("avatar").addEventListener("click", (event) => {
-    const account = state.chrome.account;
-    openMenu(event.currentTarget, [
-      { icon: account.action === "login" ? "login" : "logout", title: account.action_title,
-        disabled: !account.action_enabled, run: () => call("action", "account") },
-      { icon: "settings", title: state.text.settings, run: () => navigate("general") },
-    ], account.header);
-  });
 
   // Which of the last files are on screen, while the window has the focus (RecentSeen).
   let sampling = false;

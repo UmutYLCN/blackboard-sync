@@ -71,6 +71,7 @@ ENTRY_LABELS = {
     "updated_announcement": tr("Announcement updated"),
 }
 ACTIVITY_LIMIT = 300
+CALENDAR_NOTICE_SECONDS = 12  # how long the "Connect did not finish" message stays on the calendar card
 
 # What "Recent downloads" lists: things that appeared or changed locally.
 RECENT_KEYS = ("new_files", "updated_files", "new_notes", "new_announcements")
@@ -677,6 +678,8 @@ class AppModel:
         from blackboard_sync.gcal import CalendarStatus
         self.calendar = CalendarStatus()
         self.calendar_busy: str | None = None
+        self.calendar_notice = ""  # why the last Connect did not finish; shown for a moment, never stored
+        self.calendar_notice_until = 0.0  # ``time.monotonic()`` when it goes away
         from blackboard_sync.notebooklm.store import NotebookLMStatus
         self.notebooklm = NotebookLMStatus()
         # Beside the job slot, like the calendar: uploads take minutes and must never hold up a sync.
@@ -737,6 +740,17 @@ class AppModel:
     def schedule(self, now: datetime, delay: timedelta | None) -> datetime | None:
         """The next automatic run; None (never) in manual mode."""
         return None if self.sync_interval is None or delay is None else now + delay
+
+    def finish_calendar(self, status, clock: Callable[[], float] = time.monotonic) -> None:
+        """Take the result of a calendar job; its notice (a Connect that did not finish) is short-lived."""
+        from dataclasses import replace
+        self.calendar_busy = None
+        self.calendar = replace(status, notice=None)
+        self.calendar_notice = status.notice or ""
+        self.calendar_notice_until = clock() + CALENDAR_NOTICE_SECONDS
+
+    def current_calendar_notice(self, clock: Callable[[], float] = time.monotonic) -> str:
+        return self.calendar_notice if self.calendar_notice and clock() < self.calendar_notice_until else ""
 
     def pause(self) -> None:
         """Duraklat: no scheduled sync until ``resume``. (The app also stops a running one.)"""
@@ -1166,7 +1180,7 @@ class AppModel:
             "recent_seen": self.recent_seen.saved_state(self.recent),
             "updates": self.updates.saved_state(),
             "pending": self.saved_pending(),
-            "calendar": vars(self.calendar),
+            "calendar": {key: value for key, value in vars(self.calendar).items() if key != "notice"},
             "reminders": self.reminders_sent,
             "paused": self.paused,
             "activity": [vars(item) for item in self.activity_log],

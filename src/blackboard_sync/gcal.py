@@ -71,6 +71,9 @@ class CalendarStatus:
     last_sync: str | None = None
     last_error: str | None = None
     needs_reconnect: bool = False
+    # A short-lived message about a connect that did not finish (cancelled, timed out, ...).
+    # It is never stored: the card goes back to "Not connected" and the window shows it for a moment.
+    notice: str | None = None
 
 
 class CredentialStore:
@@ -165,6 +168,7 @@ class CalendarClient:
         self.sleep = sleep
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.cancel = cancel or threading.Event()
+        self._connecting = False
         self.path = config.data_dir / "google-calendar.json"
         self.mapping_path = config.data_dir / "google-calendar-events.json"
         # Non-secret resource handle survives a disconnect that keeps the calendar.
@@ -203,8 +207,9 @@ class CalendarClient:
                     "Google requires this Desktop client's secret. Set BBSYNC_GOOGLE_CLIENT_SECRET locally and connect again."
                 ))
             if body.get("error") == "invalid_grant" or response.status_code == 401:
-                self.data.update(needs_reconnect=True, last_error=tr("Google Calendar needs to be reconnected"))
-                self._save()
+                if not self._connecting:  # a connect that fails is not stored; the account was not connected yet
+                    self.data.update(needs_reconnect=True, last_error=tr("Google Calendar needs to be reconnected"))
+                    self._save()
                 raise CalendarAuthExpired()
             error = body.get("error")
             reasons = [e.get("reason") for e in error.get("errors", [])] if isinstance(error, dict) else []
@@ -238,6 +243,13 @@ class CalendarClient:
         return fields
 
     def connect(self, *, timeout=240, open_browser=webbrowser.open):
+        self._connecting = True
+        try:
+            self._connect(timeout=timeout, open_browser=open_browser)
+        finally:
+            self._connecting = False
+
+    def _connect(self, *, timeout, open_browser):
         fields = self._client_fields()
         verifier, state = secrets.token_urlsafe(64), secrets.token_urlsafe(32)
         result = {}
@@ -463,8 +475,11 @@ class CalendarClient:
 
 def status(config: Config) -> CalendarStatus:
     data = _read(config.data_dir / "google-calendar.json")
-    return CalendarStatus(bool(data.get("connected")), data.get("last_sync"), data.get("last_error"),
-                          bool(data.get("needs_reconnect")))
+    connected, needs_reconnect = bool(data.get("connected")), bool(data.get("needs_reconnect"))
+    # Only a connected calendar has an error to show. A cancelled or timed-out connect used to be stored
+    # as ``last_error``; that old leftover is ignored, so the card says "Not connected".
+    last_error = data.get("last_error") if connected or needs_reconnect else None
+    return CalendarStatus(connected, data.get("last_sync"), last_error, needs_reconnect)
 
 
 def perform(config: Config, action: str, *, cancel=None, **options):
@@ -477,6 +492,8 @@ def perform(config: Config, action: str, *, cancel=None, **options):
         try:
             return getattr(client, action)(**options)
         except Exception as exc:
+            if action == "connect":
+                raise  # a connect that does not finish is reported once, never stored
             client.data["last_error"] = (str(exc) if isinstance(exc, BlackboardSyncError)
                                          else tr("Google Calendar operation failed."))
             if isinstance(exc, CalendarAuthExpired):

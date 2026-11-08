@@ -90,8 +90,8 @@ def nav(status: main.MainStatus, course_count: str = "") -> list[dict]:
 
 
 def chrome(status: main.MainStatus) -> dict:
-    """The round buttons at the top right and the account menu behind the initials."""
-    card, status_form = status.account, status.form
+    """The round buttons at the top right and the account initials."""
+    card = status.account
     return {
         "shows_account": status.shows_account,
         "pause": {"title": status.pause_title, "paused": status.paused, "enabled": status.pause_enabled},
@@ -99,10 +99,6 @@ def chrome(status: main.MainStatus) -> dict:
             "initials": card.initials,
             "name": card.title,
             "warning": card.warning,
-            "header": status_form.account,
-            "action": status_form.account_action,
-            "action_title": status_form.account_title,
-            "action_enabled": status_form.account_enabled,
         },
     }
 
@@ -306,7 +302,8 @@ CONTROL_BUTTONS = "buttons"  # a row with several buttons (Google Calendar)
 
 def _calendar_rows(rows: list[dict], status_form: form.WindowStatus) -> None:
     """One row: the connection's state on the left, the buttons that apply now on the right."""
-    shown = form.calendar_presentation(status_form.calendar, status_form.calendar_busy, status_form.calendar_paused)
+    shown = form.calendar_presentation(status_form.calendar, status_form.calendar_busy, status_form.calendar_paused,
+                                    status_form.calendar_notice)
     by_key = {row["key"]: row for row in rows}
     buttons = []
     for key, visible in (("google_calendar", shown.show_connect), ("google_calendar_sync", shown.show_sync),

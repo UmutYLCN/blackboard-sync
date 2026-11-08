@@ -3,6 +3,7 @@
 from dataclasses import fields
 
 from blackboard_sync import uninstall
+from blackboard_sync.gcal import CalendarStatus
 from blackboard_sync.menubar import settings_form as f
 from blackboard_sync.menubar.settings_form import (
     CONTROL_BUTTON,
@@ -132,3 +133,54 @@ def test_update_and_uninstall_rows():
         "Version 1.5.5", "Update to 1.6.0", False)
     assert states["uninstall"].enabled
     assert not row_states(status())["uninstall"].enabled  # a sync or sign-in holds the job slot
+
+
+def calendar_row(calendar, **kwargs):
+    return row_states(status(calendar=calendar, **kwargs))["google_calendar"]
+
+
+def test_calendar_card_after_a_cancelled_or_timed_out_connect_is_not_connected():
+    # Nothing is stored for a connect that did not finish, so the saved status is the plain one.
+    plain = f.calendar_presentation(CalendarStatus())
+    assert (plain.title, plain.button, plain.warning, plain.show_connect) == (
+        "Not connected", "Connect Google Calendar", False, True)
+    assert not plain.show_sync and not plain.show_disconnect
+    state = calendar_row(CalendarStatus())
+    assert (state.title, state.button, state.enabled, state.warning) == (
+        "Not connected", "Connect Google Calendar", True, False)
+    # An error left behind by an older version does not turn the card into an error card.
+    stale = f.calendar_presentation(CalendarStatus(False, last_error="Google Calendar authorization timed out."))
+    assert (stale.title, stale.warning, stale.button) == ("Not connected", False, "Connect Google Calendar")
+
+
+def test_the_notice_replaces_only_the_explanation_for_a_moment():
+    notice = "Google Calendar authorization timed out."
+    shown = f.calendar_presentation(CalendarStatus(), notice=notice)
+    assert (shown.title, shown.detail, shown.button, shown.warning) == (
+        "Not connected", notice, "Connect Google Calendar", False)
+    assert f.calendar_presentation(CalendarStatus()).detail == "Connect to see Blackboard deadlines in Google Calendar."
+    assert calendar_row(CalendarStatus(), calendar_notice=notice).detail == notice
+    # While a connect is running the card is about that, not about the last attempt.
+    busy = f.calendar_presentation(CalendarStatus(), "connect", notice=notice)
+    assert busy.title == "Google Calendar operation in progress…" and busy.detail != notice
+
+
+def test_calendar_card_when_connected():
+    shown = f.calendar_presentation(CalendarStatus(True, last_sync="2026-10-18T10:00:00+00:00"))
+    assert (shown.title, shown.warning, shown.show_connect, shown.show_sync, shown.show_disconnect) == (
+        "Connected", False, False, True, True)
+
+
+def test_calendar_card_keeps_the_error_when_a_connected_sync_fails():
+    shown = f.calendar_presentation(CalendarStatus(True, last_error="Google Calendar sync failed."))
+    assert (shown.title, shown.detail, shown.button, shown.warning) == (
+        "Google Calendar error", "Google Calendar sync failed.", "Reconnect", True)
+    assert shown.show_connect and shown.show_disconnect and not shown.show_sync
+
+
+def test_calendar_card_when_it_needs_a_reconnect():
+    shown = f.calendar_presentation(
+        CalendarStatus(True, last_error="Google Calendar needs to be reconnected", needs_reconnect=True))
+    assert (shown.title, shown.button, shown.warning) == (
+        "Google Calendar needs to be reconnected", "Reconnect", True)
+    assert shown.show_connect and shown.show_disconnect and not shown.sync_enabled

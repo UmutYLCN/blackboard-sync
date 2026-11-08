@@ -82,9 +82,8 @@ def test_window_state_is_plain_json_with_home_and_sidebar():
     assert home["recent"][0]["new"] and not home["recent"][1]["new"]
     assert home["recent_count"] == "5 files"
     assert [row["id"] for row in home["deadlines"]] == ["Term/CSE301/Proposal.pdf", "https://bb.example/report"]
-    assert data["chrome"]["account"] == {"initials": "UY", "name": "UMUT YALÇIN", "warning": False,
-                                         "header": FORM.account, "action": "logout", "action_title": "Sign out",
-                                         "action_enabled": True}
+    # The initials are only a badge: the menu behind them is gone (Settings has Sign out).
+    assert data["chrome"]["account"] == {"initials": "UY", "name": "UMUT YALÇIN", "warning": False}
 
 
 def test_home_button_follows_the_state():
@@ -309,3 +308,15 @@ def test_settings_form_edits_save_and_theme_in_a_browser():
         if "Executable doesn't exist" in str(exc):
             pytest.skip(f"no Chromium: {exc}")
         raise
+
+
+def test_the_avatar_is_a_plain_badge_in_the_page():
+    """The initials open no menu: Settings has Sign out. No click handler, no popup attribute."""
+    from pathlib import Path
+    import blackboard_sync.windows as windows
+
+    page = Path(windows.__file__).parent / "webui"
+    script = (page / "app.js").read_text(encoding="utf-8")
+    html = (page / "index.html").read_text(encoding="utf-8")
+    assert 'getElementById("avatar").addEventListener' not in script
+    assert 'id="avatar"' in html and 'id="avatar" type="button"' not in html and "aria-haspopup" not in html.split('id="avatar"')[1].split(">")[0]

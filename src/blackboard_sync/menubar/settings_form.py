@@ -250,7 +250,8 @@ class RowState:
 
 def row_states(status: "WindowStatus") -> dict[str, RowState]:
     """The live part of the rows (who is signed in, the update button, uninstall)."""
-    calendar = calendar_presentation(status.calendar, status.calendar_busy, status.calendar_paused)
+    calendar = calendar_presentation(status.calendar, status.calendar_busy, status.calendar_paused,
+                                      status.calendar_notice)
     return {
         "google_calendar": RowState(title=calendar.title, detail=calendar.detail, button=calendar.button,
                                      enabled=calendar.enabled, warning=calendar.warning),
@@ -285,8 +286,19 @@ class CalendarPresentation:
 
 
 def calendar_presentation(status: CalendarStatus, busy: str | None = None,
-                          paused: bool = False) -> CalendarPresentation:
-    reconnect = status.needs_reconnect or bool(status.last_error)
+                          paused: bool = False, notice: str = "") -> CalendarPresentation:
+    """The Google Calendar card.
+
+    The error card is for a calendar that was connected (a failed sync, access taken back by
+    Google). A connect that was cancelled or timed out is no error: the card says "Not connected"
+    and ``notice`` (short-lived, never stored) replaces its explanation for a moment.
+    """
+    shown = _calendar_card(status, busy, paused)
+    return replace(shown, detail=notice) if notice and not busy else shown
+
+
+def _calendar_card(status: CalendarStatus, busy: str | None, paused: bool) -> CalendarPresentation:
+    reconnect = status.needs_reconnect or (status.connected and bool(status.last_error))
     connect = not status.connected or reconnect or busy == "connect"
     controls = dict(show_connect=connect, show_sync=status.connected and not connect,
                     show_disconnect=status.connected,
@@ -383,6 +395,7 @@ class WindowStatus:
     calendar: CalendarStatus = CalendarStatus()
     calendar_busy: str | None = None
     calendar_paused: bool = False
+    calendar_notice: str = ""
     notebooklm_connected: bool = False
     notebooklm_busy: bool = False
 
@@ -409,6 +422,7 @@ def window_status(model: AppModel) -> WindowStatus:
         update_title, update_action = T_CHECK_NOW, "check_updates"
     return WindowStatus(
         calendar=model.calendar, calendar_busy=model.calendar_busy, calendar_paused=model.paused,
+        calendar_notice=model.current_calendar_notice(),
         notebooklm_connected=model.notebooklm.connected, notebooklm_busy=model.notebooklm_busy is not None,
         account=account,
         account_warning=expired and model.busy != "login",
