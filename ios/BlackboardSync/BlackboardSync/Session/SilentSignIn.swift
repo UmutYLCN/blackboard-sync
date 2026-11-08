@@ -26,12 +26,19 @@ protocol SilentPage: AnyObject {
     /// would refresh nothing. The sign-on's cookies stay.
     func open(_ tenant: URL) async
     func cookies() async -> [HTTPCookie]
-    /// The page shows a password field. It is only looked at, never touched.
+    /// The page shows a password, username/email, account picker or one-time code field. It is only looked at, never touched.
     func wantsStudent() -> Bool
     var host: String? { get }
+    var url: URL? { get }
+    var contentSummary: String { get }
     /// Set when the page cannot go on.
     var failure: SilentOutcome? { get }
     func close()
+}
+
+extension SilentPage {
+    var url: URL? { host.flatMap { URL(string: "https://\($0)") } }
+    var contentSummary: String { "" }
 }
 
 /// Whether Blackboard accepts these cookies: the app's own account check, with nothing saved.
@@ -66,6 +73,10 @@ final class BrowserSilentSignIn: SilentSignIn {
         defer { page.close() }
         await page.open(tenant)
         let deadline = now().addingTimeInterval(timeout)
+        var lastURL = page.url?.absoluteString ?? ""
+        var lastContent = page.contentSummary
+        var stillSince = now()
+
         while now() < deadline {
             guard !Task.isCancelled else { return SilentResult(outcome: .cancelled) }
             let cookies = SessionCare.sessionCookies(await page.cookies(), tenant: tenant)
@@ -74,33 +85,78 @@ final class BrowserSilentSignIn: SilentSignIn {
                 return SilentResult(outcome: .refreshed, cookies: cookies)
             }
             guard !Task.isCancelled else { return SilentResult(outcome: .cancelled) }
+
+            let currentNow = now()
+            let currentURL = page.url?.absoluteString ?? ""
+            let currentContent = page.contentSummary
+            if currentURL != lastURL || currentContent != lastContent {
+                lastURL = currentURL
+                lastContent = currentContent
+                stillSince = currentNow
+            } else if currentNow.timeIntervalSince(stillSince) >= SessionCare.stillnessTimeout {
+                return SilentResult(outcome: .needsInteraction)
+            }
+
             if page.wantsStudent() { return SilentResult(outcome: .needsInteraction) }
+
+            let path = page.url?.path.lowercased() ?? ""
+            if path.contains("/webapps/login") && currentNow.timeIntervalSince(stillSince) >= 2.0 {
+                return SilentResult(outcome: .needsInteraction)
+            }
+
             if let failure = page.failure { return SilentResult(outcome: failure) }
             await pause()
         }
-        // Still somewhere else after all this time: a page that asks for something other than a password.
-        let away = page.host.map { $0.lowercased() != tenant.host?.lowercased() } ?? false
-        return SilentResult(outcome: away ? .needsInteraction : .timedOut)
+
+        let isAway = page.host.map { $0.lowercased() != tenant.host?.lowercased() } ?? false
+        let isLoginPath = (page.url?.path.lowercased() ?? "").contains("/webapps/login")
+        return SilentResult(outcome: (isAway || isLoginPath) ? .needsInteraction : .timedOut)
     }
 }
 
 /// A web view the student never sees or touches. No UI delegate, so popups and dialogs go nowhere.
 @MainActor
 final class WebSilentPage: NSObject, SilentPage, WKNavigationDelegate {
-    private static let passwordField = """
-        Array.from(document.querySelectorAll('input[type=password]')).some(function (field) {
-            var box = field.getBoundingClientRect();
-            return box.width > 0 && box.height > 0 && getComputedStyle(field).visibility !== 'hidden';
-        })
+    private static let fastPathScript = """
+        (function() {
+            var selectors = [
+                'input[type=password]',
+                'input[type=email]',
+                'input[type=text][name*="user" i]',
+                'input[type=text][name*="login" i]',
+                'input[type=text][name*="email" i]',
+                'input[type=text][id*="user" i]',
+                'input[type=text][id*="login" i]',
+                'input[type=text][id*="email" i]',
+                'input[name*="otp" i]',
+                'input[name*="code" i]',
+                'input[id*="otp" i]',
+                'input[id*="code" i]',
+                'input[autocomplete*="one-time-code" i]',
+                '[data-testid*="account" i]',
+                '[id*="account-list" i]',
+                '[class*="account-tile" i]',
+                '[class*="account-item" i]',
+                'div[role="listbox"]'
+            ];
+            return selectors.some(function(sel) {
+                return Array.from(document.querySelectorAll(sel)).some(function(el) {
+                    var box = el.getBoundingClientRect();
+                    return box.width > 0 && box.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+                });
+            });
+        })()
         """
     private let store: WKWebsiteDataStore
     private var view: WKWebView?
-    private var passwordShown = false
+    private var studentNeeded = false
     private(set) var failure: SilentOutcome?
 
     init(store: WKWebsiteDataStore) { self.store = store }
 
     var host: String? { view?.url?.host }
+    var url: URL? { view?.url }
+    var contentSummary: String { view?.title ?? "" }
 
     func open(_ tenant: URL) async {
         let cookieStore = store.httpCookieStore
@@ -109,7 +165,7 @@ final class WebSilentPage: NSObject, SilentPage, WKNavigationDelegate {
         }
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = store
-        // A page's size, so that sign-on pages lay out and the password field can be seen.
+        // A page's size, so that sign-on pages lay out and the fields can be seen.
         let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 1024, height: 768), configuration: configuration)
         view.navigationDelegate = self
         view.isUserInteractionEnabled = false
@@ -125,10 +181,10 @@ final class WebSilentPage: NSObject, SilentPage, WKNavigationDelegate {
 
     /// Answers from the look before: a suspended page never replies, and that must not stop the deadline.
     func wantsStudent() -> Bool {
-        view?.evaluateJavaScript(Self.passwordField) { [weak self] result, _ in
-            if result as? Bool == true { self?.passwordShown = true }
+        view?.evaluateJavaScript(Self.fastPathScript) { [weak self] result, _ in
+            if result as? Bool == true { self?.studentNeeded = true }
         }
-        return passwordShown
+        return studentNeeded
     }
 
     func close() {

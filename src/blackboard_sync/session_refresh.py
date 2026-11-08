@@ -65,7 +65,8 @@ from blackboard_sync.system import CREATE_NO_WINDOW, end_with_this_process, is_w
 
 log = logging.getLogger("blackboard_sync.session_refresh")
 
-SILENT_TIMEOUT = 45.0  # seconds; a sign-on that needs nobody takes a few
+SILENT_TIMEOUT = 20.0  # seconds; a sign-on that needs nobody takes a few
+STILLNESS_TIMEOUT = 6.0  # seconds without address or page change on an invalid session means interaction needed
 BROWSER_START_TIMEOUT = 20.0
 BROWSER_QUIT_TIMEOUT = 8.0
 POLL_SECONDS = 1.0
@@ -95,6 +96,29 @@ ALIVE, EXPIRED, UNREACHABLE = "alive", "expired", "unreachable"
 # Opera GX) is a launcher that leaves, so the browser it starts could not be ended for sure.
 NO_SILENT_START = (BROWSERS["arc"], "opera.exe")
 PASSWORD_FIELD = "input[type=password]:visible"
+
+# Fast-path selectors that signal a student's input is needed before stillness kicks in:
+# (a) password fields, (b) username/email fields, (c) account pickers, (d) one-time-code fields.
+FAST_PATH_SELECTORS = [
+    PASSWORD_FIELD,
+    "input[type=email]:visible",
+    "input[type=text][name*='user' i]:visible",
+    "input[type=text][name*='login' i]:visible",
+    "input[type=text][name*='email' i]:visible",
+    "input[type=text][id*='user' i]:visible",
+    "input[type=text][id*='login' i]:visible",
+    "input[type=text][id*='email' i]:visible",
+    "input[name*='otp' i]:visible",
+    "input[name*='code' i]:visible",
+    "input[id*='otp' i]:visible",
+    "input[id*='code' i]:visible",
+    "input[autocomplete*='one-time-code' i]:visible",
+    "[data-testid*='account' i]:visible",
+    "[id*='account-list' i]:visible",
+    "[class*='account-tile' i]:visible",
+    "[class*='account-item' i]:visible",
+    "div[role='listbox']:visible",
+]
 
 
 @dataclass(frozen=True)
@@ -192,11 +216,50 @@ def _stop_browser(process, timeout: float = BROWSER_QUIT_TIMEOUT) -> None:
 
 
 def _wants_student(page) -> bool:
-    """The page shows a password field. It is only looked at, never touched."""
+    """The page shows a password, username/email, account picker or one-time code field.
+
+    It is only looked at, never touched.
+    """
+    for selector in FAST_PATH_SELECTORS:
+        try:
+            if page.locator(selector).count() > 0:
+                return True
+        except Exception:  # the page is changing to the next one
+            continue
+    return False
+
+
+def _page_snapshot(page) -> tuple[str, str]:
+    """A lightweight representation of the current page (url and title or visible content summary)."""
     try:
-        return page.locator(PASSWORD_FIELD).count() > 0
-    except Exception:  # the page is changing to the next one
-        return False
+        url = str(getattr(page, "url", "") or "")
+    except Exception:
+        url = ""
+    try:
+        if hasattr(page, "title"):
+            content = str(page.title() or "")
+        elif hasattr(page, "content"):
+            content = str(page.content() or "")[:500]
+        else:
+            content = ""
+    except Exception:
+        content = ""
+    return url, content
+
+
+def _is_login_page(page, base_url: str) -> bool:
+    """True if the page is on an IdP host or Blackboard's login endpoints."""
+    host = _page_host(page)
+    bb_host = host_of(base_url)
+    if host not in ("", "about", bb_host):
+        return True
+    try:
+        url = str(getattr(page, "url", "") or "").lower()
+        if "/webapps/login" in url or "/auth-saml" in url or "/webapps/bb-auth-provider" in url:
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def _page_host(page) -> str:
@@ -206,7 +269,14 @@ def _page_host(page) -> str:
         return ""
 
 
-def _wait_for_session(cdp_browser, base_url: str, timeout: float, check_user) -> tuple[str, dict | None, list[dict]]:
+def _wait_for_session(
+    cdp_browser,
+    base_url: str,
+    timeout: float,
+    check_user,
+    stillness_timeout: float = STILLNESS_TIMEOUT,
+    clock: Callable[[], float] = time.monotonic,
+) -> tuple[str, dict | None, list[dict]]:
     """Open Blackboard and wait; returns (a reason, the user, their cookies).
 
     The old Blackboard cookies go first: they may still work for a few minutes, and
@@ -218,22 +288,47 @@ def _wait_for_session(cdp_browser, base_url: str, timeout: float, check_user) ->
     context = contexts[0]
     context.clear_cookies(domain=host_of(base_url))
     page = context.pages[0] if context.pages else context.new_page()
-    deadline = time.monotonic() + timeout
+    deadline = clock() + timeout
     try:
         page.goto(base_url + "/", wait_until="commit", timeout=timeout * 1000)
     except Exception as exc:  # also a redirect that interrupts it: the watching below decides
         log.debug("opening Blackboard: %s", type(exc).__name__)
-    while time.monotonic() < deadline:
+
+    last_snap = None
+    snap_since = clock()
+
+    while clock() < deadline:
         # Also how Playwright hears about the page: it only listens during its own calls.
         cookies = context.cookies(base_url)
         user = check_user(base_url, cookies) if cookies else None
         if user:
             return REFRESHED, user, cookies
+
+        now = clock()
+        snap = _page_snapshot(page)
+        if snap != last_snap:
+            last_snap = snap
+            snap_since = now
+        elif (now - snap_since) >= stillness_timeout:
+            # Page has been completely still for stillness_timeout seconds and session is still not valid
+            return NEEDS_INTERACTION, None, []
+
         if _wants_student(page):
             return NEEDS_INTERACTION, None, []
+
+        # Blackboard's own login page that stays put
+        try:
+            url_str = str(getattr(page, "url", "") or "").lower()
+            if "/webapps/login" in url_str and (now - snap_since) >= 2.0:
+                return NEEDS_INTERACTION, None, []
+        except Exception:
+            pass
+
         time.sleep(POLL_SECONDS)
-    away = _page_host(page) not in ("", "about", host_of(base_url))
-    return (NEEDS_INTERACTION if away else TIMED_OUT), None, []
+
+    if _is_login_page(page, base_url):
+        return NEEDS_INTERACTION, None, []
+    return TIMED_OUT, None, []
 
 
 def silent_sign_in(
@@ -245,6 +340,7 @@ def silent_sign_in(
     app_dirs: list[Path] | None = None,
     platform: str | None = None,
     clock: Callable[[], float] = time.monotonic,
+    stillness_timeout: float = STILLNESS_TIMEOUT,
 ) -> RefreshResult:
     """Try to sign in again with no window; never raises for an expected failure."""
     started = clock()
@@ -259,7 +355,10 @@ def silent_sign_in(
         with run_lock(config.lock_file), profile_lock(config):
             if profile_in_use(config.profile_dir, platform=platform):
                 return RefreshResult(PROFILE_BUSY)
-            reason = _sign_in_with_profile(config, app, timeout, spawn, connect, check_user, platform)
+            reason = _sign_in_with_profile(
+                config, app, timeout, spawn, connect, check_user, platform,
+                stillness_timeout=stillness_timeout, clock=clock,
+            )
     except AlreadyRunning:
         return RefreshResult(LOCKED)
     except ProfileBusy:
@@ -273,7 +372,10 @@ def silent_sign_in(
     return RefreshResult(reason, clock() - started)
 
 
-def _sign_in_with_profile(config, app, timeout, spawn, connect, check_user, platform) -> str:
+def _sign_in_with_profile(
+    config, app, timeout, spawn, connect, check_user, platform,
+    stillness_timeout: float = STILLNESS_TIMEOUT, clock: Callable[[], float] = time.monotonic,
+) -> str:
     stale = config.profile_dir / DEVTOOLS_PORT_FILE
     if stale.exists():
         stale.unlink()
@@ -294,7 +396,10 @@ def _sign_in_with_profile(config, app, timeout, spawn, connect, check_user, plat
             except Exception as exc:
                 raise BrowserStartError(type(exc).__name__) from exc
             try:
-                reason, user, cookies = _wait_for_session(cdp_browser, config.base_url, timeout, check_user)
+                reason, user, cookies = _wait_for_session(
+                    cdp_browser, config.base_url, timeout, check_user,
+                    stillness_timeout=stillness_timeout, clock=clock,
+                )
                 if reason == REFRESHED:
                     save_session(config.session_file, config.base_url, cookies, user)
                 return reason

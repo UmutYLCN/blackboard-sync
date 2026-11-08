@@ -718,8 +718,12 @@ like `sync`, so Playwright never runs in the app. Details that matter:
   without it Chromium deletes the profile's session cookies at start.
 - The profile's Blackboard cookies are cleared first. They may still work for minutes, and
   saving them again would refresh nothing. The sign-on cookies stay.
-- It never fills in anything. A visible password field ends the attempt at once. After
-  `SILENT_TIMEOUT` (45 s) a page away from Blackboard counts as wanting the student.
+- It never fills in anything. Visible password, username/email, account picker or one-time code
+  fields end the attempt at once. If the page address and content remain completely still for
+  `STILLNESS_TIMEOUT` (6 s) on an unauthenticated session, it exits with `sso-needs-interaction`
+  without waiting for the full timeout. Blackboard's own login page (`/webapps/login`) that stays
+  put also exits quickly. After `SILENT_TIMEOUT` (20 s), a page away from Blackboard or on a
+  login-like page counts as wanting the student (`sso-needs-interaction`).
 - SIGTERM (Pause) exits through the `finally` blocks that stop the browser. Windows runs no
   handler when it ends a process, so there the browser joins a job object that is closed with
   this process (`system.end_with_this_process`).

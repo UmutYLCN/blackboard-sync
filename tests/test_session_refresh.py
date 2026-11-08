@@ -3,11 +3,14 @@
 The browser is faked: real-browser behaviour is measured by hand (docs/DEVELOPMENT.md).
 """
 
+import http.server
 import json
 import os
 import plistlib
 import subprocess
 import sys
+import threading
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -38,26 +41,54 @@ NEW = [{"name": "BbRouter", "value": "new", "domain": "blackboard.example.edu", 
 
 
 class FakeLocator:
-    def __init__(self, page):
+    def __init__(self, page, selector=""):
         self.page = page
+        self.selector = selector
 
     def count(self):
-        return 1 if self.page.password else 0
+        if self.page.password and "password" in self.selector:
+            return 1
+        if self.page.email and "email" in self.selector:
+            return 1
+        if self.page.username and ("user" in self.selector or "login" in self.selector):
+            return 1
+        if self.page.otp and ("otp" in self.selector or "code" in self.selector):
+            return 1
+        if self.page.account_picker and ("account" in self.selector or "listbox" in self.selector):
+            return 1
+        return 0
 
 
 class FakePage:
     """Only what may be done with a page; filling in a form would fail here."""
 
-    def __init__(self, url="about:blank", password=False):
-        self.url, self.password = url, password
+    def __init__(
+        self,
+        url="about:blank",
+        password=False,
+        email=False,
+        username=False,
+        otp=False,
+        account_picker=False,
+        page_title="",
+    ):
+        self.url = url
+        self.password = password
+        self.email = email
+        self.username = username
+        self.otp = otp
+        self.account_picker = account_picker
+        self.page_title = page_title
         self.opened = []
 
     def goto(self, url, **kwargs):
         self.opened.append(url)
 
+    def title(self):
+        return self.page_title
+
     def locator(self, selector):
-        assert "password" in selector
-        return FakeLocator(self)
+        return FakeLocator(self, selector)
 
 
 class FakeContext:
@@ -178,14 +209,86 @@ def test_a_password_page_ends_it_at_once_and_keeps_the_old_session(rig):
 
 def test_stuck_at_the_school_means_it_wants_the_student(rig):
     page = FakePage("https://login.school.edu/pick-an-account")
+    # Changing title every poll avoids stillness exit in this test to test timeout branch
+    page.page_title = "step 1"
     result = rig.run(FakeBrowser(FakeContext([], page)), check_user=lambda base, cookies: None, timeout=0.05)
     assert result.reason == sr.NEEDS_INTERACTION
 
 
 def test_stuck_on_blackboard_is_a_timeout(rig):
     page = FakePage(BASE_URL + "/ultra")
+    page.page_title = "step 1"
     result = rig.run(FakeBrowser(FakeContext(OLD, page)), check_user=lambda base, cookies: None, timeout=0.05)
     assert result.reason == sr.TIMED_OUT
+
+
+def test_stillness_on_any_host_ends_with_needs_interaction(rig):
+    page = FakePage(BASE_URL + "/ultra")
+    # No changes to URL or content, stillness timeout is reached
+    result = rig.run(
+        FakeBrowser(FakeContext(OLD, page)),
+        check_user=lambda base, cookies: None,
+        timeout=10,
+    )
+    assert result.reason == sr.NEEDS_INTERACTION
+
+
+def test_username_first_page_ends_with_needs_interaction_at_once(rig):
+    page = FakePage("https://login.school.edu/idp", username=True)
+    result = rig.run(FakeBrowser(FakeContext(OLD, page)), check_user=lambda base, cookies: None, timeout=30)
+    assert result.reason == sr.NEEDS_INTERACTION
+
+
+def test_email_first_page_ends_with_needs_interaction_at_once(rig):
+    page = FakePage("https://login.microsoftonline.com/common", email=True)
+    result = rig.run(FakeBrowser(FakeContext(OLD, page)), check_user=lambda base, cookies: None, timeout=30)
+    assert result.reason == sr.NEEDS_INTERACTION
+
+
+def test_account_picker_page_ends_with_needs_interaction_at_once(rig):
+    page = FakePage("https://accounts.google.com/AccountChooser", account_picker=True)
+    result = rig.run(FakeBrowser(FakeContext(OLD, page)), check_user=lambda base, cookies: None, timeout=30)
+    assert result.reason == sr.NEEDS_INTERACTION
+
+
+def test_one_time_code_page_ends_with_needs_interaction_at_once(rig):
+    page = FakePage("https://login.school.edu/mfa", otp=True)
+    result = rig.run(FakeBrowser(FakeContext(OLD, page)), check_user=lambda base, cookies: None, timeout=30)
+    assert result.reason == sr.NEEDS_INTERACTION
+
+
+def test_blackboard_login_page_that_stays_put_ends_with_needs_interaction(rig):
+    page = FakePage(BASE_URL + "/webapps/login/?action=relogin")
+    result = rig.run(FakeBrowser(FakeContext(OLD, page)), check_user=lambda base, cookies: None, timeout=10)
+    assert result.reason == sr.NEEDS_INTERACTION
+
+
+def test_slow_redirect_that_still_succeeds(rig):
+    page = FakePage(BASE_URL + "/ultra")
+    ticks = [0]
+
+    def check_user(base, cookies):
+        ticks[0] += 1
+        page.page_title = f"loading {ticks[0]}"  # page is active
+        if ticks[0] >= 3:
+            return USER
+        return None
+
+    result = rig.run(FakeBrowser(FakeContext(NEW, page)), check_user=check_user, timeout=10)
+    assert result.ok and result.reason == sr.REFRESHED
+
+
+def test_timeout_on_login_like_page_reports_needs_interaction(rig):
+    page = FakePage(BASE_URL + "/webapps/login/custom")
+    ticks = [0]
+
+    def poll_user(base, cookies):
+        ticks[0] += 1
+        page.page_title = f"step {ticks[0]}"
+        return None
+
+    result = rig.run(FakeBrowser(FakeContext(OLD, page)), check_user=poll_user, timeout=0.05)
+    assert result.reason == sr.NEEDS_INTERACTION
 
 
 def test_the_browser_is_always_stopped(config, tmp_path, monkeypatch):
@@ -345,12 +448,18 @@ def test_keep_alive_stays_out_of_a_running_sync(config, monkeypatch):
     assert http.urls == []
 
 
-def test_the_expiry_is_read_from_blackboards_cookie_only():
+def test_the_expiry_is_read_from_blackboards_cookie_or_fallback():
     router = {"name": "BbRouter", "value": "expires:1800000000,id:A,signature:b,timeout:10800"}
     assert session_expires_at({"cookies": [{"name": "JSESSIONID", "value": "expires:1"}, router]}) == 1800000000
     assert session_expires_at({"cookies": [{"name": "BbRouter", "value": "something else"}]}) is None
     assert session_expires_at({"cookies": [{"name": "BbRouter", "value": None}]}) is None
     assert session_expires_at({}) is None
+    # Fallback to JSESSIONID or s_session_id when BbRouter has no usable expiry
+    jsession = {"name": "JSESSIONID", "value": "xyz", "expires": 1800005000}
+    assert session_expires_at({"cookies": [jsession]}) == 1800005000.0
+    assert session_expires_at({"cookies": [{"name": "BbRouter", "value": "invalid"}, jsession]}) == 1800005000.0
+    s_session = {"name": "s_session_id", "value": "xyz", "expires": 1800006000}
+    assert session_expires_at({"cookies": [s_session]}) == 1800006000.0
 
 
 def test_a_session_about_to_end_is_replaced_before_the_next_look():
@@ -623,4 +732,170 @@ def test_the_row_is_only_where_the_app_does_it():
     rows = lambda **kw: [row.key for section in settings_form.settings_sections(**kw) for row in section.rows]
     assert "auto_relogin" in rows(auto_relogin=True)
     assert "auto_relogin" not in rows() and "auto_relogin" not in rows(appearance=True)  # Windows
+
+
+# -- end-to-end tests with real browser and static server -------------------------------------------
+class StaticAuthServer(http.server.ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, routes):
+        super().__init__(("127.0.0.1", 0), self._make_handler(routes))
+        self.routes = routes
+
+    @staticmethod
+    def _make_handler(routes):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                route = routes.get(self.path.split("?")[0])
+                if route is None:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                status, headers, body = route(self)
+                self.send_response(status)
+                for k, v in headers.items():
+                    self.send_header(k, v)
+                self.end_headers()
+                if body:
+                    self.wfile.write(body.encode("utf-8") if isinstance(body, str) else body)
+
+            def log_message(self, format, *args):
+                pass
+
+        return Handler
+
+
+@pytest.fixture
+def static_server():
+    servers = []
+
+    def start(routes):
+        srv = StaticAuthServer(routes)
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        servers.append(srv)
+        return f"http://127.0.0.1:{srv.server_port}"
+
+    yield start
+    for s in servers:
+        s.shutdown()
+        s.server_close()
+
+
+def test_e2e_successful_auto_redirect(config, static_server, monkeypatch):
+    app = login_mod.discover_browser("auto")
+    if app is None:
+        pytest.skip("no Chromium-based browser installed")
+
+    # School that redirects and sets BbRouter session cookie
+    def bb_root(handler):
+        cookie = handler.headers.get("Cookie", "")
+        if "BbRouter=" in cookie:
+            return (200, {"Content-Type": "text/html"}, "<html><body>Welcome Ada</body></html>")
+        # Redirect to SSO
+        return (302, {"Location": "/sso"}, "")
+
+    def sso_page(handler):
+        # Auto redirect back to Blackboard root with new session cookie
+        return (302, {"Location": "/", "Set-Cookie": "BbRouter=expires:2000000000; Path=/"}, "")
+
+    base_url = static_server({"/": bb_root, "/sso": sso_page})
+    config.ensure_data_dir()
+    config.profile_dir.mkdir(exist_ok=True)
+    save_session(config.session_file, base_url, OLD, USER)
+
+    cfg = replace(config, base_url=base_url)
+    res = sr.silent_sign_in(
+        cfg,
+        timeout=10.0,
+        stillness_timeout=3.0,
+        check_user=lambda base, cookies: USER if any(c.get("name") == "BbRouter" for c in cookies) else None,
+    )
+    assert res.ok
+    assert res.reason == sr.REFRESHED
+
+
+def test_e2e_username_first_page_exits_fast(config, static_server):
+    app = login_mod.discover_browser("auto")
+    if app is None:
+        pytest.skip("no Chromium-based browser installed")
+
+    def bb_root(handler):
+        return (302, {"Location": "/login"}, "")
+
+    def login_page(handler):
+        html = "<html><body><form><input type='text' name='username' id='user_id'></form></body></html>"
+        return (200, {"Content-Type": "text/html"}, html)
+
+    base_url = static_server({"/": bb_root, "/login": login_page})
+    config.ensure_data_dir()
+    config.profile_dir.mkdir(exist_ok=True)
+    save_session(config.session_file, base_url, OLD, USER)
+
+    cfg = replace(config, base_url=base_url)
+    res = sr.silent_sign_in(
+        cfg,
+        timeout=10.0,
+        stillness_timeout=3.0,
+        check_user=lambda base, cookies: None,
+    )
+    assert not res.ok
+    assert res.reason == sr.NEEDS_INTERACTION
+
+
+def test_e2e_account_picker_exits_fast(config, static_server):
+    app = login_mod.discover_browser("auto")
+    if app is None:
+        pytest.skip("no Chromium-based browser installed")
+
+    def bb_root(handler):
+        return (302, {"Location": "/accounts"}, "")
+
+    def accounts_page(handler):
+        html = "<html><body><div role='listbox'><div class='account-item'>student@school.edu</div></div></body></html>"
+        return (200, {"Content-Type": "text/html"}, html)
+
+    base_url = static_server({"/": bb_root, "/accounts": accounts_page})
+    config.ensure_data_dir()
+    config.profile_dir.mkdir(exist_ok=True)
+    save_session(config.session_file, base_url, OLD, USER)
+
+    cfg = replace(config, base_url=base_url)
+    res = sr.silent_sign_in(
+        cfg,
+        timeout=10.0,
+        stillness_timeout=3.0,
+        check_user=lambda base, cookies: None,
+    )
+    assert not res.ok
+    assert res.reason == sr.NEEDS_INTERACTION
+
+
+def test_e2e_stillness_exit_when_no_form_elements(config, static_server):
+    app = login_mod.discover_browser("auto")
+    if app is None:
+        pytest.skip("no Chromium-based browser installed")
+
+    def bb_root(handler):
+        return (302, {"Location": "/sso-button-page"}, "")
+
+    def sso_button_page(handler):
+        # A page with just an SSO button / prompt that stays still
+        html = "<html><body><button id='sso-btn'>Sign in with University SSO</button></body></html>"
+        return (200, {"Content-Type": "text/html"}, html)
+
+    base_url = static_server({"/": bb_root, "/sso-button-page": sso_button_page})
+    config.ensure_data_dir()
+    config.profile_dir.mkdir(exist_ok=True)
+    save_session(config.session_file, base_url, OLD, USER)
+
+    cfg = replace(config, base_url=base_url)
+    res = sr.silent_sign_in(
+        cfg,
+        timeout=10.0,
+        stillness_timeout=2.0,
+        check_user=lambda base, cookies: None,
+    )
+    assert not res.ok
+    assert res.reason == sr.NEEDS_INTERACTION
 

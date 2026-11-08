@@ -19,7 +19,8 @@ final class SessionCareRulesTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     func testFollowsTheMacsTimes() {
-        XCTAssertEqual(SessionCare.silentTimeout, 45)
+        XCTAssertEqual(SessionCare.silentTimeout, 20)
+        XCTAssertEqual(SessionCare.stillnessTimeout, 6)
         XCTAssertEqual(SessionCare.keepAliveEvery, 25 * 60)
         XCTAssertEqual(SessionCare.expiryMargin, 30 * 60)
         XCTAssertEqual(SessionCare.failedRetryAfter, 10 * 60)
@@ -143,7 +144,13 @@ private final class FakePage: SilentPage {
     var pageCookies: () -> [HTTPCookie] = { [] }
     var student = false
     var host: String?
+    var currentURL: URL?
+    var summary: String = ""
     var failure: SilentOutcome?
+
+    var url: URL? { currentURL ?? host.flatMap { URL(string: "https://\($0)") } }
+    var contentSummary: String { summary }
+
     func open(_ tenant: URL) async { events.append("open") }
     func cookies() async -> [HTTPCookie] { pageCookies() }
     func wantsStudent() -> Bool { student }
@@ -164,7 +171,7 @@ final class SilentAttemptTests: XCTestCase {
         checks = 0
     }
 
-    private func attempt(timeout: TimeInterval = 45) async -> SilentResult {
+    private func attempt(timeout: TimeInterval = 20) async -> SilentResult {
         let signIn = BrowserSilentSignIn(page: { self.page }, check: { [self] _, cookies, left in
             checks += 1
             XCTAssertLessThanOrEqual(left, 10, "one slow answer must not outlast the attempt")
@@ -198,12 +205,25 @@ final class SilentAttemptTests: XCTestCase {
 
     func testStuckOnBlackboardIsATimeoutAfterTheDeadline() async {
         page.host = "school.example.edu"
-        page.pageCookies = { [cookie("anonymous")] }
-        let result = await attempt()
+        var tick = 0
+        page.pageCookies = {
+            tick += 1
+            self.page.summary = "step \(tick)" // changing page avoids stillness trigger
+            return [cookie("anonymous")]
+        }
+        let result = await attempt(timeout: 20)
         XCTAssertEqual(result.outcome, .timedOut)
-        XCTAssertEqual(clock, Date(timeIntervalSince1970: 1_800_000_045))
-        XCTAssertEqual(checks, 45)
+        XCTAssertEqual(clock, Date(timeIntervalSince1970: 1_800_000_020))
+        XCTAssertEqual(checks, 20)
         XCTAssertEqual(page.events, ["open", "close"])
+    }
+
+    func testStillnessOnBlackboardEndsWithNeedsInteraction() async {
+        page.host = "school.example.edu"
+        page.pageCookies = { [cookie("anonymous")] }
+        let result = await attempt(timeout: 20)
+        XCTAssertEqual(result.outcome, .needsInteraction)
+        XCTAssertEqual(clock, Date(timeIntervalSince1970: 1_800_000_006))
     }
 
     func testStuckAtTheSchoolWantsTheStudent() async {
@@ -257,8 +277,13 @@ final class WebSilentPageTests: XCTestCase {
     }
 
     func testDoesNotCountAHiddenPasswordField() async throws {
-        let seen = try await sees("<input type=email><input type=password style='display:none'><input type=password style='visibility:hidden'>")
+        let seen = try await sees("<input type=text style='display:none'><input type=password style='display:none'><input type=password style='visibility:hidden'>")
         XCTAssertFalse(seen)
+    }
+
+    func testSeesAnEmailField() async throws {
+        let seen = try await sees("<form><input type=email></form>")
+        XCTAssertTrue(seen)
     }
 
     func testClearsBlackboardsCookiesAndLeavesTheSignOns() async throws {
@@ -387,7 +412,7 @@ final class SessionCareModelTests: XCTestCase {
         let h = harness(cookies: [router(endingIn: 600)], page: alive)
         await h.model.tendSession()
         XCTAssertEqual(h.silent.attempts, 1)
-        XCTAssertEqual(h.silent.timeouts, [45])
+        XCTAssertEqual(h.silent.timeouts, [20])
         XCTAssertEqual(h.vault.saves.count, 1)
         XCTAssertTrue(h.model.sessionNoteVisible)
         // The client now has the new session: the next look finds nothing to do.
