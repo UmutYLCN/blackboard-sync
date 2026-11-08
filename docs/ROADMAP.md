@@ -19,7 +19,7 @@ Status key: `Todo` · `In progress` · `Done` · `Blocked`
 1. **Store publication of 1.7.0.** Version 1.7.0 is not yet officially published on the Microsoft Store. This comes before everything else. See the [Pre-Store checklist](#pre-store-checklist) and the [Store listings](#microsoft-store-listings) section. Packaging steps are in [MSIX.md](MSIX.md).
 2. **Mac work.** All changes below are made on the Mac app first:
    - [School list with link fallback](#school-list-with-link-fallback)
-   - [Simple latest-term rule](#simple-latest-term-rule)
+   - [Simple latest-term rule](#simple-latest-term-rule) ✓ Done (desktop apps)
    - [Removal of the past-terms feature](#removal-of-the-past-terms-feature)
    - [File-move fixes](#file-move-fixes)
    - [No folders for courses without files](#no-folders-for-courses-without-files)
@@ -27,6 +27,25 @@ Status key: `Todo` · `In progress` · `Done` · `Blocked`
 3. **Windows port.** The finished Mac work is ported to Windows.
 4. **Microsoft Store release.** The ported Windows version is released on the Microsoft Store last. After this release, no new version is planned for a long time.
 5. **Website correction.** The website is corrected only after all of the steps above are finished.
+
+## Release 1.7.1
+
+Version 1.7.1 gathers the Mac work that is ready, is tested by hand at the end against the first school (İSTÜN), and must not disturb existing users' term and course folders.
+
+In 1.7.1:
+
+- Everything merged since 1.7.0: the [file-move fixes](#file-move-fixes), [no folders for courses without files](#no-folders-for-courses-without-files) and the [removal of the past-terms feature](#removal-of-the-past-terms-feature).
+- The [simple latest-term rule](#simple-latest-term-rule).
+- The [UI cleanup](#ui-cleanup): the profile card and the calendar error card.
+- The English and Turkish [Store listings](#microsoft-store-listings) with NotebookLM.
+- The version bump to 1.7.1 with release notes.
+- The [Pre-Store checklist](#pre-store-checklist).
+
+Waiting for 1.7.2:
+
+- The Arabic PDF font ([Arabic text in PDF notes](#risks-of-other-schools-data)).
+- School list growth: 5 more Turkish schools.
+- The medium and low priority [risks of other schools' data](#risks-of-other-schools-data).
 
 ## Platform scope
 
@@ -56,6 +75,7 @@ Notes:
 - Courses with no term at all (`termId` empty) are included.
 - A student in both a year-long and a semester term gets both, because all terms sharing the latest start date are one group.
 - The real term and course data from the first school must be checked once to confirm which fields can be trusted before coding.
+- Done on the desktop apps (Mac and Windows share the code); the iPad app keeps its own rule. The real data check above is part of the 1.7.1 test by hand at the first school.
 
 ## Removal of the past-terms feature
 
@@ -95,12 +115,12 @@ Nothing else changes in the UI.
 Syncing other schools' data may break where the app's assumptions differ from how another school sets up Blackboard. Track these as the school list grows.
 
 - **Undated terms and term titles.** Some schools leave terms without dates and only name them (such as `2026-2027` or `Fall 2026`), or name them differently from the expected format. The current-term choice in `sync.py` and its iPad twin can then pick the wrong term, sort courses under the wrong term, or drop active ones.
-  Planned fix: see [Simple latest-term rule](#simple-latest-term-rule).
+  Fixed on the desktop apps by the [Simple latest-term rule](#simple-latest-term-rule); the iPad app is unchanged.
 - **Courses without a term.** Courses with no term (`termId` null) are silently skipped, so the user sees zero courses and no error.
-  Planned fix: see [Simple latest-term rule](#simple-latest-term-rule).
+  Fixed on the desktop apps by the [Simple latest-term rule](#simple-latest-term-rule); the iPad app is unchanged.
 - **Arabic text in PDF notes.** Arabic text in generated PDF notes shows as replacement characters because the bundled fonts cover only Latin, Turkish and Greek and shaping tables were stripped. This matters for the Saudi universities in the school list.
 - **Term-name aliases.** Term-name aliases rewrite English term names to Turkish (`Güz`, `Bahar`, `Yaz`) and miss other formats.
-  Planned fix: see [Simple latest-term rule](#simple-latest-term-rule).
+  Fixed on the desktop apps by the [Simple latest-term rule](#simple-latest-term-rule); the iPad app is unchanged.
 - **Unscoped desktop state files.** Desktop `state.json` and `courses.json` are not scoped by school or account, so switching schools can collide on Blackboard internal IDs; the iPad app already scopes them.
 - **Course-code pattern.** The course-code pattern misses hyphenated codes like `CS-101` and can read a term prefix such as `FALL2026` as the course code.
 - **Windows path-length limit.** On Windows, term and course folder names are not shortened to fit the 259-character path limit (only subfolders are), which matters in OneDrive folders.

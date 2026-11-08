@@ -63,19 +63,21 @@ NO_TERM = "No term"
 TERM_LEAD_TIME = timedelta(days=30)
 # One failing file or request must not stop the rest of the sync: it becomes a warning.
 ITEM_ERRORS = (OSError, requests.RequestException)
-# The Turkish and English names of one semester: "2025-2026 Bahar" and "2025-2026 Spring"
-# are the same term even when Blackboard returns them as two term records.
+# The seasons of one semester in Turkish and English: "2025-2026 Bahar" and "2025-2026 Spring"
+# are the same semester when Blackboard returns them as two term records. Used only to
+# recognise such a pair; a term keeps the name the school gave it.
 SEASONS = {
-    "güz": "Güz", "fall": "Güz", "autumn": "Güz",
-    "bahar": "Bahar", "spring": "Bahar",
-    "yaz": "Yaz", "summer": "Yaz",
+    "güz": "fall", "fall": "fall", "autumn": "fall",
+    "bahar": "spring", "spring": "spring",
+    "yaz": "summer", "summer": "summer",
 }
-TURKISH_SEASONS = {"güz", "bahar", "yaz"}
 ACADEMIC_TERM = re.compile(
     r"(\d{4})\s*[-–/]\s*(\d{4})\s*[-–:]?\s*(\w+)"
     r"(?:\s+(?:dönemi|yarıyılı|okulu|term|semester|school))?",
     re.IGNORECASE,
 )
+# The age of a term nothing dates: older than any real term.
+UNDATED = datetime.min.replace(tzinfo=timezone.utc)
 
 
 @dataclass
@@ -99,11 +101,11 @@ class Term:
     start: datetime | None = None
     end: datetime | None = None
     courses: list[Course] = field(default_factory=list)
-    # Every Blackboard id and name this term goes by: the Turkish and English
-    # records of one semester are merged into one term (``merge_term_aliases``).
+    # Every Blackboard id and name this term goes by: the records of one semester
+    # under two names are merged into one term (``merge_term_aliases``).
     ids: list[str] = field(default_factory=list)
     names: list[str] = field(default_factory=list)
-    folder: str = ""  # the term's folder in the destination, e.g. "2026-2027 Güz"
+    folder: str = ""  # the term's folder in the destination, e.g. "2026-2027 Güz" or "Fall 2026"
 
     def __post_init__(self):
         self.ids = self.ids or ([self.id] if self.id else [])
@@ -128,15 +130,13 @@ def term_dates(term: dict | None) -> tuple[datetime | None, datetime | None]:
 
 
 def academic_term(name: str) -> tuple[str, str, str] | None:
-    """("2025", "2026", "Bahar") for "2025-2026 Spring", "2025/2026 Bahar Dönemi", ...; else None."""
+    """("2025", "2026", "spring") for "2025-2026 Spring", "2025/2026 Bahar Dönemi", ...; else None.
+
+    Only for telling whether two term records are the same semester; it never names a folder.
+    """
     match = ACADEMIC_TERM.fullmatch(name.strip())
     season = SEASONS.get(match.group(3).casefold()) if match else None
     return (match.group(1), match.group(2), season) if season else None
-
-
-def _is_turkish(name: str) -> bool:
-    match = ACADEMIC_TERM.fullmatch(name.strip())
-    return bool(match) and match.group(3).casefold() in TURKISH_SEASONS
 
 
 def _dates_overlap(a: Term, b: Term) -> bool:
@@ -146,43 +146,45 @@ def _dates_overlap(a: Term, b: Term) -> bool:
 
 
 def merge_term_aliases(terms: list[Term]) -> list[Term]:
-    """Merge the records of one semester that Blackboard returns under different names.
+    """Merge the records of one semester that Blackboard returns under two names.
 
-    Two terms are one when their names give the same academic year and semester
-    ("2025-2026 Bahar" and "2025-2026 Spring") and their dates, when both have
-    them, overlap. Other terms are never merged, whatever their names. The
-    merged term keeps the Turkish record's id and name, and a term known only
-    by an English name is named the Turkish way ("2026-2027 Fall" becomes
-    "2026-2027 Güz"), so a term has one folder whatever language Blackboard
-    answers in.
+    Two records are one term only when their names give the same academic year
+    and semester ("2025-2026 Bahar" and "2025-2026 Spring") and their dates, when
+    both have them, overlap (the copies of one semester start on the same day).
+    Other terms are never merged, whatever their names. Names are kept as the
+    school wrote them: the merged term takes the name and id of the record holding
+    most of its courses (the first listed on a tie), and a term with one record
+    keeps its own name, in whatever language.
     """
-    merged: list[Term] = []
-    by_key: dict[tuple[str, str, str], list[Term]] = {}
+    groups: list[list[Term]] = []
     for term in terms:
         key = academic_term(term.name) if term.id else None
-        same = next((m for m in by_key.get(key, []) if _dates_overlap(m, term)), None) if key else None
-        if same is None:
-            merged.append(term)
-            if key:
-                by_key.setdefault(key, []).append(term)
-            continue
-        log.info("Term %s (%s) is the same term as %s (%s)", term.id, term.name, same.id, same.name)
-        if _is_turkish(term.name) and not _is_turkish(same.name):
-            same.id, same.name = term.id, term.name
-            same.ids.insert(0, term.id)
-            same.names.insert(0, term.name)
+        group = next((g for g in groups if key and g[0].id and academic_term(g[0].name) == key
+                      and all(_dates_overlap(m, term) for m in g)), None)
+        if group is None:
+            groups.append([term])
         else:
-            same.ids.append(term.id)
-            same.names.append(term.name)
-        same.start = min(filter(None, (same.start, term.start)), default=None)
-        same.end = max(filter(None, (same.end, term.end)), default=None)
-        same.courses += term.courses
-    for key, group in by_key.items():
-        for term in group:
-            if not _is_turkish(term.name):
-                term.name = f"{key[0]}-{key[1]} {key[2]}"
-            for course in term.courses:
-                course.term_id, course.term_name = term.id, term.name
+            group.append(term)
+    merged: list[Term] = []
+    for group in groups:
+        if len(group) == 1:
+            merged.append(group[0])
+            continue
+        main = max(group, key=lambda t: len(t.courses))  # max keeps the first on a tie
+        records = [main, *(t for t in group if t is not main)]
+        log.info("Terms %s are one term: %s", ", ".join(f"{t.id} ({t.name})" for t in records), main.name)
+        term = Term(
+            main.id,
+            main.name,
+            min((t.start for t in group if t.start), default=None),
+            max((t.end for t in group if t.end), default=None),
+            courses=[c for t in records for c in t.courses],
+            ids=[t.id for t in records],
+            names=[t.name for t in records],
+        )
+        for course in term.courses:
+            course.term_id, course.term_name = term.id, term.name
+        merged.append(term)
     return merged
 
 
@@ -191,30 +193,40 @@ def in_date_range(term: Term, now: datetime) -> bool:
     return bool(term.id and term.start and term.end and term.start - TERM_LEAD_TIME <= now <= term.end)
 
 
+def term_age(term: Term) -> datetime:
+    """When the term started, or else when its newest course was created (``UNDATED`` if neither is known)."""
+    return term.start or max((parse_time(c.created) or UNDATED for c in term.courses), default=UNDATED)
+
+
 def choose_current_terms(terms: list[Term], now: datetime) -> list[Term]:
-    """Pick the term(s) a student means by "this term".
+    """Pick the term(s) a student means by "this term": the top group on Blackboard.
 
-    1. Terms whose date range contains today (opening a month early, because
-       courses usually appear before the first lecture).
-    2. Otherwise the most recently started term.
-    3. Without any dates, the term holding the most recently created course.
-    Courses without a term are never "current"; use ``--all-terms`` for them.
+    1. The term that started most recently; a term without a start date counts
+       from its newest course's creation date. Every term starting at that same
+       moment belongs to the group (a year-long and a semester term, or two
+       records of one semester).
+    2. Once that group has ended, a term starting within a month takes over
+       early, since courses open before the first lecture; while it runs (exam
+       weeks) it stays. Before any term has started, the first upcoming one.
+    3. Courses without a term (``termId`` empty) are always included.
+    4. When no term can be dated at all, every course is current.
     """
-    current = [t for t in terms if in_date_range(t, now)]
-    if current:
-        return current
-    started = [t for t in terms if t.id and t.start and t.start <= now]
-    if started:
-        return [max(started, key=lambda t: t.start)]
-    candidates = [t for t in terms if t.id and t.courses]
-    if not candidates:
-        return []
+    termless = [t for t in terms if not t.id]
+    known = [t for t in terms if t.id and term_age(t) != UNDATED]
+    if not known:
+        return list(terms)
 
-    def newest_course(t: Term) -> datetime:
-        stamps = [parse_time(c.created) for c in t.courses]
-        return max((s for s in stamps if s), default=datetime.min.replace(tzinfo=timezone.utc))
+    def starting_at(age: datetime) -> list[Term]:
+        return [t for t in known if term_age(t) == age]
 
-    return [max(candidates, key=newest_course)]
+    started = [term_age(t) for t in known if term_age(t) <= now]
+    upcoming = [term_age(t) for t in known if term_age(t) > now]
+    group = starting_at(max(started)) if started else starting_at(min(upcoming))
+    if started and all(t.end and t.end < now for t in group):
+        soon = [age for age in upcoming if age <= now + TERM_LEAD_TIME]
+        if soon:
+            group = starting_at(min(soon))
+    return group + termless
 
 
 def markdown_key(out_key: str) -> str:
@@ -236,12 +248,6 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: fh.read(1 << 16), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def term_age(term: Term) -> datetime:
-    """When the term started, or else when its newest course was created."""
-    floor = datetime.min.replace(tzinfo=timezone.utc)
-    return term.start or max((parse_time(c.created) or floor for c in term.courses), default=floor)
 
 
 @contextmanager
@@ -362,8 +368,9 @@ class Syncer:
 
         A course listed in
         more than one membership (in the other language, or on two pages) is
-        synced once, and the Turkish and English records of one term are one
-        term (``merge_term_aliases``).
+        synced once, and the records of one semester under two names (Turkish
+        and English) are one term (``merge_term_aliases``). The selected terms
+        are the current group (``choose_current_terms``) unless ``all_terms``.
         """
         warnings = warnings if warnings is not None else []
         now = now or datetime.now(timezone.utc)
@@ -1339,8 +1346,13 @@ def run_sync(
         syncer.migrate_course_folder(course, report.warnings)
     if not dry_run:
         state.checkpoint(force=True)  # a renamed folder must never be left with stale recorded paths
-    if not discovered:
+    if not discovered and course_filters:
         report.warnings.append("No courses found for the selected term.")
+    elif not discovered:
+        # Not silent: the sync result says so, and the app shows it (``menubar.model``).
+        report.message = tr("No courses found on Blackboard, so the current term could not be determined. "
+                            "Your courses will be synced as soon as Blackboard lists them.")
+        report.warnings.append(report.message)
     try:
         for course in courses:
             if course.id in load_disabled(config):

@@ -184,6 +184,11 @@ class RunOutcome:
     def changed(self) -> list[CourseChange]:
         return [c for c in self.courses if c.changes]
 
+    @property
+    def found_nothing(self) -> bool:
+        """The sync found no course at all on Blackboard (its message says so); unticked courses do not count."""
+        return self.status == "ok" and not self.courses and bool(self.message)
+
     @classmethod
     def from_report(cls, data: dict) -> "RunOutcome":
         courses = []
@@ -323,6 +328,11 @@ def changes_notification(outcome: RunOutcome, dest: Path) -> Notification | None
         message="\n".join(course_line(c) for c in changed),
         data={"open": target},
     )
+
+
+def no_courses_notification(outcome: RunOutcome, dest: Path) -> Notification:
+    """The sync found no course at all, so the current term could not be determined (said once, not every run)."""
+    return Notification(title=tr("Blackboard: no courses found"), message=outcome.message, data={"open": str(dest)})
 
 
 def update_notification(release: Release) -> Notification:
@@ -890,7 +900,7 @@ class AppModel:
             self.note = tr("Another sync is running; trying again shortly.")
             self.next_run_at = self.schedule(now, self.retry_delay)
             return notes
-        self.last = outcome
+        previous, self.last = self.last, outcome
         if outcome.status == "ok":
             self.login_prompted = False
             self.session_expired = False
@@ -902,6 +912,8 @@ class AppModel:
             notification = changes_notification(outcome, self.root)
             if notification:
                 notes.append(notification)
+            if outcome.found_nothing and not (previous is not None and previous.found_nothing):
+                notes.append(no_courses_notification(outcome, self.root))
         elif outcome.status == "login_required":
             self.auth_failed_at = outcome.finished_at or now
             self.next_run_at = self.schedule(now, self.sync_interval)
@@ -1095,7 +1107,9 @@ class AppModel:
     def detail(self, now: datetime) -> list[str]:
         """What the last sync brought and when the next one runs."""
         parts = []
-        if self.last is not None and self.last.status == "ok":
+        if self.last is not None and self.last.found_nothing:
+            parts.append(tr("no courses found"))
+        elif self.last is not None and self.last.status == "ok":
             totals: dict[str, int] = {}
             for course in self.last.courses:
                 for key, count in course.counts.items():

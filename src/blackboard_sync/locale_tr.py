@@ -27,6 +27,10 @@ CATALOG = {
     "Blackboard Sync's app data was removed.": "Blackboard Sync uygulama verileri kaldırıldı.",
     "Session OK: signed in as {name}.": "Oturum geçerli: {name} olarak giriş yapıldı.",
     "Term(s): {terms}": "Dönem(ler): {terms}",
+    "No courses found on Blackboard, so the current term could not be determined. "
+    "Your courses will be synced as soon as Blackboard lists them.":
+        "Blackboard'da ders bulunamadı, bu yüzden güncel dönem belirlenemedi. "
+        "Dersleriniz Blackboard'da görünür görünmez senkronize edilecek.",
     "none found": "bulunamadı",
     "Network error talking to Blackboard: {error}": "Blackboard ile bağlantıda ağ hatası: {error}",
     "Unexpected error: {error}": "Beklenmeyen hata: {error}",
@@ -374,6 +378,8 @@ CATALOG = {
     "Could not move the files: {error}": "Dosyalar taşınamadı: {error}",
     "Sign-in did not finish: {error}": "Giriş tamamlanamadı: {error}",
     "No courses yet": "Henüz ders yok",
+    "Blackboard: no courses found": "Blackboard: ders bulunamadı",
+    "no courses found": "ders bulunamadı",
 
     # Settings
     "Automatic sync": "Otomatik senkron",
