@@ -46,6 +46,7 @@ STATUS_EXIT = {
     "login_required": EXIT_LOGIN_REQUIRED,
     "locked": EXIT_LOCKED,
     "error": EXIT_ERROR,
+    "confirm": EXIT_OK,  # nothing failed: the app asks the student first (``term_confirm``)
 }
 
 
@@ -81,6 +82,9 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--dest", type=Path, help="base folder (env BBSYNC_DEST, default Documents/University)")
     sync.add_argument("--json", action="store_true", help="print the run summary as JSON")
     sync.add_argument("--dry-run", action="store_true", help="show what would be fetched, write nothing")
+    # The desktop apps: the first sync at a school with an unclear term downloads nothing and
+    # lists the courses for the app to confirm (``term_confirm``).
+    sync.add_argument("--confirm-first", action="store_true", help=argparse.SUPPRESS)
     # Every sync restores missing files now; the flag stays accepted for old scripts.
     sync.add_argument("--refetch-missing", action="store_true", help=argparse.SUPPRESS)
 
@@ -222,6 +226,7 @@ def cmd_sync(args, config: Config) -> int:
                     course_filters=args.course,
                     dry_run=args.dry_run,
                     lock_held=True,
+                    confirm_first=args.confirm_first,
                     user_id=(session_data.get("user") or {}).get("id"),
                 )
             finally:
@@ -244,7 +249,7 @@ def cmd_sync(args, config: Config) -> int:
         report.moved_into_root = migrated.moved
         report.left_outside_root = [rel for rel, _reason in migrated.kept]
 
-    if not args.dry_run and report.status != "locked":
+    if not args.dry_run and report.status not in ("locked", "confirm"):
         write_private_json(config.last_run_file, report.to_dict())
     if args.json:
         print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))

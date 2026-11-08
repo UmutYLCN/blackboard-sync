@@ -523,6 +523,21 @@ existing `2026-2027 Güz` folder stays in use there too. Its library records the
 (`LibraryState.school`); a library saved before that is the school's in use, and its
 folders were always kept per school and account.
 
+**Asking before the first download at a new school.** The first sync at a school
+(no state for it in `state.json`) downloads at once when the term choice is clear.
+When it is not (a chosen term has no dates or dates left from an earlier year,
+chosen terms started on different days, or a term's name gives no year and
+season), the desktop apps (Mac and Windows) show a card first: the term(s) found
+and their courses, all ticked. The apps run `sync --confirm-first` (a hidden flag);
+that sync downloads and saves nothing and reports status `confirm` with the card's
+contents. **Confirm** unticks the cleared courses in Dersler (`courses.json`),
+records the school in `term-confirm.json` in the data folder so it is asked once,
+and syncs. **Not now** (or closing the window) saves nothing, so the next sync asks
+again. A school that already has state (every existing user, such as the first
+school with its files) never sees the card, and neither does the terminal's `sync`.
+The logic is in `src/blackboard_sync/term_confirm.py`, tested in
+`tests/test_term_confirm.py`. The iPad app gets its own card later.
+
 **One term, one folder.** Term folders keep the school's own term names as
 written (`2026-2027 Fall` stays `Fall`; nothing is renamed to Turkish).
 Blackboard can return one semester as two term records, one Turkish and one

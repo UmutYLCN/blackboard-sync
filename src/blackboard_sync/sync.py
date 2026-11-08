@@ -1476,6 +1476,7 @@ def run_sync(
     user_id: str | None = None,
     now: datetime | None = None,
     lock_held: bool = False,
+    confirm_first: bool = False,
 ) -> SyncReport:
     """Mirror the current courses.
 
@@ -1486,7 +1487,12 @@ def run_sync(
     ``lock_held`` says the caller holds ``run_lock``, so no other
     sync is running and every ``.bbsync-*.partial`` file in the destination is
     left over from a run that was killed. Without it only the old ones are removed.
+
+    ``confirm_first`` (the desktop apps): on the first sync at a school, when the
+    term choice is not clear (``term_confirm``), nothing is downloaded or saved; the
+    report has status ``confirm`` and the terms and courses found, for the app to ask.
     """
+    from blackboard_sync import term_confirm  # it builds on this module
     from blackboard_sync.courses import load_disabled  # it builds on this module's State
 
     now = now or datetime.now(timezone.utc)
@@ -1496,6 +1502,10 @@ def run_sync(
         report.warnings.append(state.recovery)
     if not dry_run:
         remove_stale_partials(config.root, max_age=timedelta(0) if lock_held else STALE_PARTIAL_AGE)
+    # Before ``Syncer`` claims the state for the school in use (``State.use_school``).
+    ask = (confirm_first and not dry_run and not all_terms and not course_filters
+           and not term_confirm.has_school_state(state, config.base_url)
+           and term_confirm.school_of(config.base_url) not in term_confirm.load_confirmed(config))
     syncer = Syncer(client, config, state, dry_run=dry_run)
     me = client.me()  # also the cheapest way to prove the session still works
     user_id = me.get("id") or user_id
@@ -1510,6 +1520,14 @@ def run_sync(
     )
     # Terms an older version archived (``state.past_terms``) are left out by ``discover``.
     report.terms = [t.name for t in terms]
+    card = term_confirm.proposal(config.base_url, terms, courses) if ask else None
+    if card is not None:
+        # Nothing is written: no file, no state.json, so the next sync asks again until confirmed.
+        log.info("First sync at %s: the term is not clear (%s); asking first", card["school"],
+                 ", ".join(card["reasons"]))
+        report.status, report.confirm, report.message = "confirm", card, term_confirm.T_WAITING
+        report.finished_at = _now_iso()
+        return report
     everything = not all_terms and not course_filters
     if everything and not dry_run:
         # Dersler lists every current course, the unticked ones too.

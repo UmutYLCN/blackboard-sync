@@ -150,16 +150,25 @@
     if (shownDialog === data.id) return;
     shownDialog = data.id;
     let checked = false;
+    // A list of choices (the first courses at a school): the ids left ticked are the answer.
+    const picked = data.choices ? new Set(data.choices.filter((c) => c.checked).map((c) => c.id)) : null;
     const detail = data.checkbox && data.checkbox.detail
       ? h("p", { class: "dialog-detail", text: data.checkbox.detail, hidden: true }) : null;
     const answer = (button) => {
-      call("dialog_answer", data.id, button, checked);
+      call("dialog_answer", data.id, button, picked ? [...picked] : checked);
       dialog.close();
     };
     dialog.replaceChildren(...[ // replaceChildren would print a null as the word
       h("h2", { class: "dialog-title", text: data.title }),
       data.message ? h("p", { class: "dialog-message", text: data.message }) : null,
       data.list ? h("pre", { class: "dialog-list", tabindex: "0", text: data.list }) : null,
+      data.choices ? h("div", { class: "dialog-choices" }, data.choices.map((choice) =>
+        h("label", { class: "check", title: choice.label },
+          h("input", {
+            type: "checkbox", checked: choice.checked,
+            onchange: (event) => { if (event.target.checked) picked.add(choice.id); else picked.delete(choice.id); },
+          }),
+          h("span", { text: choice.label })))) : null,
       data.checkbox ? h("label", { class: "check" },
         h("input", {
           class: "switch", type: "checkbox",

@@ -523,3 +523,30 @@ def test_tray_app_calendar_actions_and_theme(tmp_path, monkeypatch):
     save_settings(tmp_path, app.settings)
     app.theme_chosen("light")
     assert load_settings(tmp_path).theme == "light"
+
+
+def test_first_courses_question_ticks_every_course_and_returns_only_known_ids():
+    window, host, events = make_window()
+    window.show()
+    card = {"school": "bb.example.edu", "terms": ["T"], "reasons": ["undated"],
+            "courses": [{"id": "_1_1", "code": "CSE303", "title": "Algorithms", "term": "T"},
+                        {"id": "_2_1", "code": "MTH201", "title": "Linear Algebra", "term": "T"}]}
+    asked = []
+    host.ask = lambda question: asked.append(question) or ("confirm", ["_1_1", "_evil"])
+    assert host.ask_first_courses(card) == {"_1_1"}
+    (question,) = asked
+    assert [(c["id"], c["checked"]) for c in question["choices"]] == [("_1_1", True), ("_2_1", True)]
+    assert [b["id"] for b in question["buttons"]] == ["cancel", "confirm"]
+    for answer in (("cancel", ["_1_1"]), None, ("confirm", True)):
+        host.ask = lambda question, answer=answer: answer
+        assert host.ask_first_courses(card) is None  # Not now, a closed window or a stray answer: nothing
+
+
+def test_bridge_answers_a_list_of_choices_with_its_text_ids_only():
+    answers = []
+    host = SimpleNamespace(answer=lambda *args: answers.append(args))
+    bridge = Bridge(host)
+    bridge.dialog_answer("q1", "confirm", ["_1_1", 3, None])
+    bridge.dialog_answer("q2", "uninstall", True)
+    bridge.dialog_answer("q3", "uninstall", "yes")
+    assert answers == [("q1", "confirm", ["_1_1"]), ("q2", "uninstall", True), ("q3", "uninstall", False)]

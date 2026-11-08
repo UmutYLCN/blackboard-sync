@@ -20,7 +20,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable
 
-from blackboard_sync import __version__
+from blackboard_sync import __version__, term_confirm
 from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
 from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.inapp import INAPP
@@ -134,7 +134,7 @@ DEST_MOVE, DEST_REFETCH = "move", "refetch"
 
 def sync_arguments(job: str, settings: Settings) -> list[str]:
     """CLI arguments for a sync job with the settings from the settings window."""
-    return ["--base-url", settings.base_url, "sync", "--json", "--dest", str(settings.dest)]
+    return ["--base-url", settings.base_url, "sync", "--json", "--dest", str(settings.dest), "--confirm-first"]
 
 
 def login_arguments(settings: Settings) -> list[str]:
@@ -167,7 +167,7 @@ class CourseChange:
 class RunOutcome:
     """The result of one ``blackboard-sync sync --json`` run."""
 
-    status: str  # ok | login_required | locked | error
+    status: str  # ok | login_required | locked | error | confirm
     message: str = ""
     finished_at: datetime | None = None
     dest: str = ""
@@ -179,6 +179,8 @@ class RunOutcome:
     left_outside_root: int = 0  # ...and these could not be moved
     # Every file, note and announcement the run brought: (course code, path, kind) with a kind of ENTRY_KINDS.
     entries: list[tuple[str, str, str]] = field(default_factory=list)
+    # Status ``confirm``: the card to show before the first download at a school (``term_confirm``).
+    confirm: dict | None = None
 
     @property
     def changed(self) -> list[CourseChange]:
@@ -222,6 +224,7 @@ class RunOutcome:
             moved_into_root=data.get("moved_into_root") or 0,
             left_outside_root=len(data.get("left_outside_root") or []),
             entries=entries,
+            confirm=data.get("confirm") if isinstance(data.get("confirm"), dict) else None,
         )
 
 
@@ -899,6 +902,16 @@ class AppModel:
             # knew and look again soon.
             self.note = tr("Another sync is running; trying again shortly.")
             self.next_run_at = self.schedule(now, self.retry_delay)
+            return notes
+        if outcome.status == "confirm":
+            # The session works; nothing was downloaded. The app shows the card (``term_confirm``);
+            # until the student confirms, every sync asks again.
+            self.login_prompted = False
+            self.session_expired = False
+            self.auth_failed_at = None
+            self.session_care.checked_at = now
+            self.note = term_confirm.T_WAITING
+            self.next_run_at = self.schedule(now, self.sync_interval)
             return notes
         previous, self.last = self.last, outcome
         if outcome.status == "ok":

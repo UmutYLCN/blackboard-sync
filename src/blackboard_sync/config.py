@@ -99,6 +99,11 @@ class Config:
         return self.data_dir / "courses.json"
 
     @property
+    def term_confirm_file(self) -> Path:
+        """The schools whose first courses the student confirmed (``term_confirm.py``)."""
+        return self.data_dir / "term-confirm.json"
+
+    @property
     def notebooklm_dir(self) -> Path:
         """The Google session and upload record of the NotebookLM step (``notebooklm.store``)."""
         return self.data_dir / "notebooklm"

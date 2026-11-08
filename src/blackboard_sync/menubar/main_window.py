@@ -76,7 +76,7 @@ from AppKit import (
 )
 from Foundation import NSURL, NSMakeRect, NSObject, NSTimer, NSRunLoop, NSRunLoopCommonModes
 
-from blackboard_sync import __version__, courses, deadlines, schools
+from blackboard_sync import __version__, courses, deadlines, schools, term_confirm
 from blackboard_sync.menubar.main_window_model import (
     ACTIVITY,
     COURSES,
@@ -2220,6 +2220,46 @@ def ask_uninstall(dest: Path) -> bool | None:
     if alert.runModal() != NSAlertFirstButtonReturn:
         return None
     return bool(checkbox.state())
+
+
+FIRST_COURSES_WIDTH = 460
+FIRST_COURSES_ROW = 24
+FIRST_COURSES_VISIBLE = 264  # taller lists scroll
+
+
+def ask_first_courses(card: dict) -> set[str] | None:
+    """The card before the first download at a school (``term_confirm``).
+
+    Every course is ticked; returns the ids left ticked on Confirm, None for Not now
+    (Escape), which saves nothing.
+    """
+    rows = term_confirm.card_rows(card)
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_(term_confirm.T_TITLE)
+    alert.setInformativeText_(term_confirm.card_message(card))
+    alert.addButtonWithTitle_(term_confirm.T_CONFIRM)
+    alert.addButtonWithTitle_(term_confirm.T_NOT_NOW).setKeyEquivalent_("\x1b")
+    height = FIRST_COURSES_ROW * len(rows) + 8
+    document = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, FIRST_COURSES_WIDTH - 18, height))
+    boxes = []
+    for index, (course_id, label) in enumerate(rows):
+        box = NSButton.checkboxWithTitle_target_action_(label, None, None)
+        box.setState_(1)
+        box.setToolTip_(label)
+        box.cell().setLineBreakMode_(NSLineBreakByTruncatingTail)
+        box.setFrame_(NSMakeRect(8, 4 + index * FIRST_COURSES_ROW, FIRST_COURSES_WIDTH - 34, FIRST_COURSES_ROW))
+        document.addSubview_(box)
+        boxes.append((course_id, box))
+    scroll = NSScrollView.alloc().initWithFrame_(
+        NSMakeRect(0, 0, FIRST_COURSES_WIDTH, min(height, FIRST_COURSES_VISIBLE) + 2))
+    scroll.setHasVerticalScroller_(height > FIRST_COURSES_VISIBLE)
+    scroll.setBorderType_(NSBezelBorder)
+    scroll.setDocumentView_(document)
+    alert.setAccessoryView_(scroll)
+    NSApp.activateIgnoringOtherApps_(True)
+    if alert.runModal() != NSAlertFirstButtonReturn:
+        return None
+    return {course_id for course_id, box in boxes if box.state()}
 
 
 def ask_notebooklm_disconnect() -> bool:

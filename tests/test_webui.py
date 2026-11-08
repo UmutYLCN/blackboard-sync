@@ -187,8 +187,16 @@ def test_page_renders_without_script_errors(tmp_path):
                 assert page.locator(".nav-item").count() == len(main.NAV_SECTIONS)
                 if data["dialog"]:  # modal: the page behind it takes no clicks
                     assert page.is_visible("dialog[open]")
-                    page.click('dialog [data-default="true"]')
-                    assert ["dialog_answer", data["dialog"]["id"], "cancel", False] in page.evaluate("window.__calls")
+                    if data["dialog"].get("choices"):  # the first courses: untick one, confirm the rest
+                        page.click("dialog .dialog-choices label:first-child input")
+                        page.click('dialog [data-default="true"]')
+                        ticked = [choice["id"] for choice in data["dialog"]["choices"][1:]]
+                        assert ["dialog_answer", data["dialog"]["id"], "confirm", ticked] in page.evaluate(
+                            "window.__calls")
+                    else:
+                        page.click('dialog [data-default="true"]')
+                        assert ["dialog_answer", data["dialog"]["id"], "cancel", False] in page.evaluate(
+                            "window.__calls")
                 else:
                     page.click("#open-folder")
                     assert ["action", "folder"] in page.evaluate("window.__calls")

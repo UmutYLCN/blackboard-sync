@@ -26,7 +26,7 @@ import sys
 import threading
 from datetime import datetime
 
-from blackboard_sync import deadlines, uninstall, updater
+from blackboard_sync import deadlines, term_confirm, uninstall, updater
 from blackboard_sync.i18n import LANGUAGES, language, tr
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
@@ -172,7 +172,12 @@ class Bridge:
 
     def dialog_answer(self, ident, button=None, checked=False):
         if _text(ident) and (button is None or _text(button)):
-            self._host.answer(ident, button, checked is True)
+            # A dialog with ``choices`` answers with the ids ticked; any other, with its one checkbox.
+            if isinstance(checked, list):
+                checked = [choice for choice in checked if isinstance(choice, str)]
+            else:
+                checked = checked is True
+            self._host.answer(ident, button, checked)
 
     def _post_id(self, method, ident):
         ident = _text(ident)
@@ -261,8 +266,10 @@ class WebHost:
         except Exception:
             log.debug("The window was already gone", exc_info=True)
 
-    def ask(self, question: dict) -> tuple[str | None, bool] | None:
+    def ask(self, question: dict) -> tuple[str | None, bool | list[str]] | None:
         """Show ``question`` as the page's dialog and wait for (button id, checkbox); None if it went away.
+
+        A question with ``choices`` (checkboxes: id, label, checked) answers with the ids ticked.
 
         Runs on the app's thread, which waits: pywebview's threads draw the page and bring the answer.
         """
@@ -324,6 +331,18 @@ class WebHost:
                                        {"id": "confirm", "title": button, "style": "danger filled"}]})
         return bool(answer) and answer[0] == "confirm"
 
+    def ask_first_courses(self, card: dict) -> set[str] | None:
+        """The card before the first download at a school (``term_confirm``): the ids left ticked, or None."""
+        rows = term_confirm.card_rows(card)
+        answer = self.ask({
+            "title": term_confirm.T_TITLE, "message": term_confirm.card_message(card),
+            "choices": [{"id": course_id, "label": label, "checked": True} for course_id, label in rows],
+            "buttons": [{"id": "cancel", "title": term_confirm.T_NOT_NOW, "style": "gray"},
+                        {"id": "confirm", "title": term_confirm.T_CONFIRM, "style": "filled", "default": True}]})
+        if not answer or answer[0] != "confirm" or not isinstance(answer[1], list):
+            return None
+        return set(answer[1]) & {course_id for course_id, _label in rows}
+
     def ask_duplicates(self, title: str, text: str, remove: str) -> bool:
         """What is there twice, in a box that scrolls; True for ``remove``, the button of any copy that can go."""
         close = [{"id": "cancel", "title": tr("Close"), "style": "gray", "default": True}]
@@ -340,7 +359,7 @@ class WebHost:
                 return {"revision": self._revision, "state": self._state}
             return None
 
-    def answer(self, ident: str, button: str | None, checked: bool) -> None:
+    def answer(self, ident: str, button: str | None, checked: bool | list[str]) -> None:
         question = self._question
         if question is not None and question[0] == ident:
             question[2].append((button, checked))

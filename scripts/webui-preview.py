@@ -37,7 +37,7 @@ def fixtures(now: datetime) -> dict[str, dict]:
     """name -> window state, built through the app's own model and serializer."""
     from dataclasses import replace
 
-    from blackboard_sync import __version__, deadlines
+    from blackboard_sync import __version__, deadlines, term_confirm
     from blackboard_sync.announcements import AnnouncementRow
     from blackboard_sync.i18n import tr
     from blackboard_sync.menubar import main_window_model as main
@@ -184,6 +184,15 @@ def fixtures(now: datetime) -> dict[str, dict]:
                     "    older: 2026-09-30\n    newer: 2026-10-01 (the file changed since then, both stay)",
             "buttons": [{"id": "cancel", "title": tr("Close"), "style": "gray", "default": True},
                         {"id": "remove", "title": tr("Remove"), "style": "filled"}]}}),
+        ("first-courses-dialog", main.OVERVIEW, full, {"dialog": {
+            "id": "q3", "title": term_confirm.T_TITLE,
+            "message": term_confirm.T_MESSAGE.format(terms="Term 1 2026, Year-long 2026"),
+            "choices": [{"id": f"_{i}_1", "label": label, "checked": True} for i, label in enumerate((
+                "CSE301 Database Management · Term 1 2026", "CSE303 Algorithm Analysis · Term 1 2026",
+                "MTH201 Linear Algebra · Term 1 2026", "PHY101 Physics I · Term 1 2026",
+                "CSE499 Senior Project with a long title that does not fit on one line · Year-long 2026"))],
+            "buttons": [{"id": "cancel", "title": term_confirm.T_NOT_NOW, "style": "gray"},
+                        {"id": "confirm", "title": term_confirm.T_CONFIRM, "style": "filled", "default": True}]}}),
         ("uninstall-dialog", main.GENERAL, replace(full, form=settings_form), {"dialog": {
             "id": "q1", "title": uninstall.TITLE, "message": uninstall.MESSAGE,
             "checkbox": {"label": tr("Also delete the downloaded course files"), "detail": "C:\\Users\\umut\\Documents\\University"},
