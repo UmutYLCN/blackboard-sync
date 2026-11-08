@@ -510,7 +510,9 @@ Text with a scheme (`https://…`) is an address, never a name. `settings.normal
 CLI's `--base-url` call it first, so Windows, macOS and the command line share it.
 
 - **Windows (web page and Tk window) and macOS:** the field is a combo box (`<datalist>` in the page,
-  `ttk.Combobox`, `NSComboBox`) that lists `suggestions()`; any other text still works as an address.
+  `ttk.Combobox`, `NSComboBox`) that lists `suggestions()`: each school once, by its English name only
+  (the local-language names and abbreviations are matched when typed, never listed); any other text still
+  works as an address.
 - **iPad:** `Core/Schools.swift` has the same list and matching, and **Choose your school** in the
   sign-in card and in Settings fills the address. `scripts/generate-schools.py` writes the list part of
   that file; `tests/test_schools.py` fails when it is out of date (`--check` does the same by hand).
