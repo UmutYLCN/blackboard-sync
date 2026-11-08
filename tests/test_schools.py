@@ -17,19 +17,41 @@ KSU = "https://lms.ksu.edu.sa"
 ISTUN = "https://blackboard.istun.edu.tr"
 
 
+def _own_blackboard_host(host: str) -> bool:
+    """``istinye.blackboard.com``: Blackboard hosts the site under one school-specific name."""
+    label = host.removesuffix(".blackboard.com")
+    return host.endswith(".blackboard.com") and "." not in label and sum(
+        urlsplit(other.url).hostname == host for other in schools.SCHOOLS) == 1
+
+
 def test_every_school_is_a_plain_https_address_under_its_own_domain():
     for school in schools.SCHOOLS:
         parts = urlsplit(school.url)
         assert parts.scheme == "https" and parts.path == "" and not parts.query, school.name
-        assert parts.hostname == school.domain or parts.hostname.endswith("." + school.domain), school.name
+        assert parts.port is None and not parts.fragment and not parts.username, school.name
+        assert (parts.hostname == school.domain or parts.hostname.endswith("." + school.domain)
+                or _own_blackboard_host(parts.hostname)), school.name
         assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", school.verified), f"{school.name} needs the day it was checked"
         assert re.fullmatch(r"[A-Z]{2}", school.country), school.name
+
+
+def test_only_a_blackboard_com_host_with_one_school_specific_label_may_leave_the_schools_domain():
+    outside = [s for s in schools.SCHOOLS
+               if not (urlsplit(s.url).hostname == s.domain or urlsplit(s.url).hostname.endswith("." + s.domain))]
+    assert outside, "some schools are hosted by Blackboard under blackboard.com"
+    for school in outside:
+        host = urlsplit(school.url).hostname
+        assert host.endswith(".blackboard.com") and host.count(".") == 2, f"{school.name}: {host}"
+    assert not _own_blackboard_host("blackboard.com")
+    assert not _own_blackboard_host("a.b.blackboard.com")
+    assert not _own_blackboard_host("blackboard.example.com")
+    assert not _own_blackboard_host("nobody.blackboard.com")  # no school has this host
 
 
 def test_no_name_belongs_to_two_schools():
     owner: dict[str, str] = {}
     for school in schools.SCHOOLS:
-        for key in (school.name, *school.local_names, *school.aliases, school.domain):
+        for key in (school.name, *school.local_names, *school.aliases, school.domain, urlsplit(school.url).hostname):
             folded = schools.fold(key)
             assert owner.setdefault(folded, school.name) == school.name, f"{key!r} is used twice"
 
@@ -104,3 +126,38 @@ def test_the_ipad_list_is_generated_from_this_one():
     spec.loader.exec_module(generator)
     current = generator.SWIFT.read_text(encoding="utf-8")
     assert generator.render(current, schools) == current, "run scripts/generate-schools.py"
+
+
+def test_the_list_has_the_original_sixteen_first_and_every_school_once():
+    assert len(schools.SCHOOLS) >= 143
+    assert [s.name for s in schools.SCHOOLS[:2]] == ["Istanbul Health and Technology University", "King Saud University"]
+    assert schools.SCHOOLS[15].name == "Jazan University"
+    assert all(s.verified == "2026-11-07" for s in schools.SCHOOLS[:16])
+    assert all(s.verified == "2026-11-08" for s in schools.SCHOOLS[16:])
+    rest = schools.SCHOOLS[16:]
+    assert [(s.country, s.name.casefold()) for s in rest] == sorted((s.country, s.name.casefold()) for s in rest)
+    assert len({s.url for s in schools.SCHOOLS}) == len(schools.SCHOOLS)
+
+
+def test_the_five_new_turkish_schools_are_found_by_their_own_names():
+    for typed, address in [
+        ("Istinye University", "https://istinye.blackboard.com"),
+        ("istinye.edu.tr", "https://istinye.blackboard.com"),
+        ("İstinye Üniversitesi", "https://istinye.blackboard.com"),
+        ("MEF Üniversitesi", "https://mef.blackboard.com"),
+        ("Fenerbahçe Üniversitesi", "https://blackboard.fbu.edu.tr"),
+        ("Maltepe University", "https://blackboard.maltepe.edu.tr"),
+        ("Istanbul Okan University", "https://olearn.okan.edu.tr"),
+    ]:
+        assert schools.resolve(typed) == address, typed
+
+
+def test_the_first_sixteen_schools_keep_every_match_they_had():
+    for school in schools.SCHOOLS[:16]:
+        for typed in (school.name, *school.local_names, *school.aliases, school.domain, urlsplit(school.url).hostname):
+            assert schools.find(typed) is school, f"{typed!r} no longer finds {school.name}"
+
+
+@pytest.mark.parametrize("typed", ["King", "University", "Universidad", "Üniversitesi", "جامعة", "blackboard.com", "learn.example.edu"])
+def test_a_generic_word_names_no_school(typed):
+    assert schools.resolve(typed) is None
