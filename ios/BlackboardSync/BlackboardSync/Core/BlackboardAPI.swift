@@ -226,7 +226,7 @@ final class BlackboardAPI: MirrorAPI {
                 do { raw = try await json("/learn/api/v1/terms/\(Self.segment(id))", label: "Term fallback") }
                 catch {
                     if Task.isCancelled || (error as? SyncFailure)?.authRequired == true { throw error }
-                    log("Term dates unavailable; newest-course fallback may apply. " + SyncLogic.safeError(error)) }
+                    log("Term dates unavailable; the newest course dates this term. " + SyncLogic.safeError(error)) }
             }
             var duration = (raw["availability"] as? [String: Any])?["duration"] as? [String: Any] ?? [:]
             if let type = duration["type"] as? String, type != "DateRange" { duration = [:] }
@@ -234,7 +234,8 @@ final class BlackboardAPI: MirrorAPI {
                 start: SyncLogic.date(duration["start"] as? String),
                 end: SyncLogic.date(duration["end"] as? String), courses: groups[id] ?? []))
         }
-        if groups[""] != nil { log("Courses without a term excluded, matching desktop current-term selection.") }
+        // Courses with an empty termId are one "No term" group, always synced with the current term.
+        if let termless = groups[""] { terms.append(Term(id: "", name: Term.noTerm, start: nil, end: nil, courses: termless)) }
         return Term.current(terms)
     }
 

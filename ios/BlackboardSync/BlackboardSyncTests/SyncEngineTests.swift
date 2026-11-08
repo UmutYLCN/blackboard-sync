@@ -68,6 +68,58 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertTrue(api.requests.isEmpty)
     }
 
+    /// An older version named an English-only "2026-2027 Fall" term "2026-2027 Güz"; its folder stays
+    /// in use, nothing is downloaded again or moved, and the saved library loads unchanged.
+    @MainActor
+    func testExistingGuzFolderStaysInUseWhenTheTermIsNamedFall() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let documents = root.appendingPathComponent("Documents"), support = root.appendingPathComponent("Support")
+        let university = documents.appendingPathComponent("University")
+        let api = FakeMirrorAPI()
+        var item = ContentItem(id: "item", title: "Syllabus", hasChildren: false, handlerID: "resource/x-bb-file",
+                               attachments: [Attachment(id: "1", contentID: "item", name: "syllabus.pdf")])
+        item.modified = "v1"
+        api.listings["root"] = [item]
+        let start = SyncLogic.date("2026-09-21T00:00:00Z"), end = SyncLogic.date("2027-01-31T23:59:59Z")
+        let algorithms = Course(id: "_13000_1", name: "CSE303 Algorithm Analysis", termID: "_50_1", created: nil)
+        let systems = Course(id: "_13777_1", name: "CSE331 Operating Systems", termID: "_50_1", created: nil)
+
+        let old = try LibraryStore(documents: documents, support: support)
+        let before = try await SyncEngine(api: api, store: old, scope: "me", update: { _ in })
+            .run(terms: [Term(id: "_50_1", name: "2026-2027 Güz", start: start, end: end, courses: [algorithms])], selected: [algorithms.id])
+        XCTAssertEqual(before.downloaded, 1)
+        let file = university.appendingPathComponent("2026-2027 Güz/CSE303 Algorithm Analysis/syllabus.pdf")
+        let modified = try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date
+        let stateURL = support.appendingPathComponent("library-v1.json")
+        let savedBefore = try Data(contentsOf: stateURL)
+        let recordsBefore = await old.snapshot().records
+
+        // The saved library loads unchanged.
+        let store = try LibraryStore(documents: documents, support: support)
+        XCTAssertEqual(try Data(contentsOf: stateURL), savedBefore)
+        let loaded = await store.snapshot()
+        XCTAssertEqual(loaded.records, recordsBefore)
+        XCTAssertEqual(loaded.folders["me:course:_13000_1"], "2026-2027 Güz/CSE303 Algorithm Analysis")
+
+        // Blackboard now names the term in English, and a new course appears in it.
+        let terms = Term.current([Term(id: "_50_1", name: "2026-2027 Fall", start: start, end: end, courses: [algorithms, systems])],
+                                 now: SyncLogic.date("2026-10-03T12:00:00Z")!)
+        XCTAssertEqual(terms.map(\.name), ["2026-2027 Fall"])
+        api.requests = []
+        let after = try await SyncEngine(api: api, store: store, scope: "me", update: { _ in })
+            .run(terms: terms, selected: [algorithms.id, systems.id])
+        XCTAssertEqual(after.downloaded, 1)
+        XCTAssertEqual(after.unchanged, 1)
+        XCTAssertEqual(api.requests, ["syllabus.pdf"], "only the new course's file is downloaded")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: university.path), ["2026-2027 Güz"])
+        let folder = await store.folder(courseID: systems.id, scope: "me")
+        XCTAssertEqual(folder, "2026-2027 Güz/CSE331 Operating Systems")
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date, modified)
+        let recordsAfter = await store.snapshot().records
+        for (key, record) in recordsBefore { XCTAssertEqual(recordsAfter[key]?.relativePath, record.relativePath) }
+    }
+
     @MainActor
     func testCancellationStopsWindowAndRetryUsesCompletedCheckpoints() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

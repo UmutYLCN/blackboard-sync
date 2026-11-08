@@ -121,6 +121,30 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertTrue(differentAccount.hasPrefix("2026 Fall (2)/"))
     }
 
+    /// An older version kept the Turkish record of one semester; the new rule may keep the English one.
+    /// The term's courses already sit in "2026-2027 Güz", so a new course goes there too.
+    func testTermUnderANewIdKeepsTheFolderItsCoursesAreIn() async throws {
+        let algorithms = Course(id: "a", name: "CSE303 Algorithm Analysis", termID: "_tr", created: nil)
+        let old = Term(id: "_tr", name: "2026-2027 Güz", start: nil, end: nil, courses: [algorithms])
+        let folder1 = try await store.courseFolder(algorithms, term: old, scope: "me")
+        XCTAssertEqual(folder1, "2026-2027 Güz/CSE303 Algorithm Analysis")
+        let systems = Course(id: "b", name: "CSE331 Operating Systems", termID: "_en", created: nil)
+        let renamed = Term(id: "_en", name: "2026-2027 Fall", start: nil, end: nil, courses: [algorithms, systems])
+        let folder2 = try await store.courseFolder(algorithms, term: renamed, scope: "me")
+        XCTAssertEqual(folder2, "2026-2027 Güz/CSE303 Algorithm Analysis")
+        let folder3 = try await store.courseFolder(systems, term: renamed, scope: "me")
+        XCTAssertEqual(folder3, "2026-2027 Güz/CSE331 Operating Systems")
+        // A term met for the first time keeps the school's own name.
+        let next = Term(id: "_sp", name: "2026-2027 Spring", start: nil, end: nil,
+                        courses: [Course(id: "c", name: "CSE332 Compilers", termID: "_sp", created: nil)])
+        let folder4 = try await store.courseFolder(next.courses[0], term: next, scope: "me")
+        XCTAssertEqual(folder4, "2026-2027 Spring/CSE332 Compilers")
+        let termless = Term(id: "", name: Term.noTerm, start: nil, end: nil,
+                            courses: [Course(id: "d", name: "Library Orientation", termID: "", created: nil, code: "LIB100-1")])
+        let folder5 = try await store.courseFolder(termless.courses[0], term: termless, scope: "me")
+        XCTAssertEqual(folder5, "No term/LIB100 Library Orientation")
+    }
+
     func testReadableNamingAndByteLimitsPreserveExtension() {
         XCTAssertEqual(MirrorPaths.name("../Week 1: Intro / notes.pdf"), "-Week 1 - Intro - notes.pdf")
         XCTAssertEqual(MirrorPaths.name(".."), "untitled")

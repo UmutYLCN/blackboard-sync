@@ -63,16 +63,38 @@ actor LibraryStore {
     func setTerms(_ terms: [Term], scope: String) throws { state.terms = terms; state.cachedScope = scope; try save() }
     func select(_ ids: Set<String>, scope: String) throws { state.selected[scope] = ids; try save() }
 
+    /// A course keeps the folder it already has, so nothing is moved or downloaded again. A term
+    /// keeps its folder too, even when it is now named differently (an older version named
+    /// "2026-2027 Fall" as "2026-2027 Güz"); a term met for the first time under another id uses
+    /// the folder most of its courses are already in. Only a term with no folder yet is named
+    /// after the term.
     func courseFolder(_ course: Course, term: Term, scope: String) throws -> String {
+        let key = scope + ":course:" + course.id
+        if let existing = state.folders[key] { return existing }
         let termKey = scope + ":term:" + term.id
         let termFolder: String
         if let existing = state.folders[termKey] { termFolder = existing }
-        else {
+        else if let existing = folderOfCourses(term.courses, scope: scope) {
+            termFolder = existing
+            state.folders[termKey] = existing
+            try save()
+        } else {
             termFolder = try allocateFolder(key: termKey, desired: MirrorPaths.name(term.name))
         }
-        let key = scope + ":course:" + course.id
-        if let existing = state.folders[key] { return existing }
         return try allocateFolder(key: key, desired: termFolder + "/" + MirrorPaths.course(course))
+    }
+
+    /// The term folder holding most of these courses' folders (the first one met on a tie).
+    private func folderOfCourses(_ courses: [Course], scope: String) -> String? {
+        var counts: [String: Int] = [:]
+        var order: [String] = []
+        for course in courses {
+            guard let folder = state.folders[scope + ":course:" + course.id],
+                  let top = folder.split(separator: "/").first.map(String.init) else { continue }
+            if counts[top] == nil { order.append(top) }
+            counts[top, default: 0] += 1
+        }
+        return order.max { counts[$0]! < counts[$1]! }
     }
 
     private func allocateFolder(key: String, desired: String) throws -> String {

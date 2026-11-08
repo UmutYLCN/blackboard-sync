@@ -201,49 +201,153 @@ final class SyncLogicTests: XCTestCase {
         XCTAssertFalse(transport.takeMessages().joined().contains("FAKE_SECRET"))
     }
 
-    func testCurrentTermsUseThirtyDayLeadAndExcludeUntaggedCourses() {
-        let now = Date(timeIntervalSince1970: 1_700_000_000)
-        let course = Course(id: "1", name: "Course", termID: "active", created: now)
-        let active = Term(id: "active", name: "Active", start: now.addingTimeInterval(10 * 86400),
-                          end: now.addingTimeInterval(100 * 86400), courses: [course])
-        let past = Term(id: "past", name: "Past", start: now.addingTimeInterval(-200 * 86400),
-                        end: now.addingTimeInterval(-100 * 86400), courses: [course])
-        let untagged = Term(id: "", name: "No term", start: nil, end: nil, courses: [course])
-        XCTAssertEqual(Term.current([past, active, untagged], now: now).map(\.id), ["active"])
-        XCTAssertEqual(Term.current([past, untagged], now: now).map(\.id), ["past"])
-        XCTAssertTrue(Term.current([untagged], now: now).isEmpty)
+    // MARK: The latest term is the current one (a port of the desktop tests/test_latest_term.py, PR #140)
+
+    private let now = SyncLogic.date("2026-10-03T12:00:00Z")!
+    private let fall = "2026-09-21T00:00:00.000Z", fallEnd = "2027-01-31T23:59:59.000Z"
+
+    /// A term; `created` gives one course per creation stamp ("x" is a course without a date).
+    private func term(_ id: String, _ name: String? = nil, _ start: String? = nil, _ end: String? = nil,
+                      created: [String] = [], courses: [String] = []) -> Term {
+        var list = created.enumerated().map { Course(id: "\(id)_\($0.offset)", name: "X\($0.offset)", termID: id, created: SyncLogic.date($0.element)) }
+        list += courses.map { Course(id: $0, name: $0, termID: id, created: nil) }
+        return Term(id: id, name: name ?? id, start: SyncLogic.date(start), end: SyncLogic.date(end), courses: list)
     }
 
-    func testCurrentTermFallsBackToNewestCourseWithoutDates() {
-        let old = Course(id: "1", name: "Old", termID: "a", created: .distantPast)
-        let recent = Course(id: "2", name: "Recent", termID: "b", created: Date())
-        let terms = [Term(id: "a", name: "A", start: nil, end: nil, courses: [old]),
-                     Term(id: "b", name: "B", start: nil, end: nil, courses: [recent])]
-        XCTAssertEqual(Term.current(terms).map(\.id), ["b"])
-    }
-    func testBilingualAcademicAliasesMergeWithDesktopFolderName() {
-        let now = Date()
-        let a = Course(id: "a", name: "A", termID: "english", created: now)
-        let b = Course(id: "b", name: "B", termID: "turkish", created: now)
-        let terms = [Term(id: "english", name: "2026-2027 Fall", start: now.addingTimeInterval(-100), end: now.addingTimeInterval(100), courses: [a]),
-                     Term(id: "turkish", name: "2026/2027 Güz Dönemi", start: now.addingTimeInterval(-200), end: now.addingTimeInterval(200), courses: [b])]
-        let current = Term.current(terms, now: now)
-        XCTAssertEqual(current.count, 1)
-        XCTAssertEqual(current.first?.id, "turkish")
-        XCTAssertEqual(current.first?.name, "2026/2027 Güz Dönemi")
-        XCTAssertEqual(current.first?.courses.map(\.termID), ["turkish", "turkish"])
-        XCTAssertEqual(Term.mergeAliases([terms[0]]).first?.name, "2026-2027 Güz")
+    private func ids(_ terms: [Term]) -> [String] { terms.map(\.id) }
+
+    func testUndatedTermsUseTheirNewestCourse() {
+        let old = term("_1", "Ek Dönem", created: ["2025-09-01T00:00:00Z", "2025-10-01T00:00:00Z"])
+        let new = term("_2", "Ortak Dersler", created: ["2024-01-01T00:00:00Z", "2026-09-01T00:00:00Z"])
+        XCTAssertEqual(ids(Term.chooseCurrent([old, new], now: now)), ["_2"])
     }
 
-    func testNonoverlappingSemesterRecordsAreNeverMerged() {
-        let course = Course(id: "a", name: "A", termID: "1", created: nil)
-        let terms = [Term(id: "1", name: "2026-2027 Fall", start: Date(timeIntervalSince1970: 0), end: Date(timeIntervalSince1970: 10), courses: [course]),
-                     Term(id: "2", name: "2026-2027 Güz", start: Date(timeIntervalSince1970: 20), end: Date(timeIntervalSince1970: 30), courses: [course])]
-        XCTAssertEqual(Term.mergeAliases(terms).count, 2)
+    func testMixedDatedAndUndatedTermsCompareStartWithCourseCreation() {
+        let fallTerm = term("_fall", "2026-2027 Güz", fall, fallEnd, created: ["2026-08-20T00:00:00Z"])
+        let older = term("_old", "Ek Dönem", created: ["2025-09-01T00:00:00Z"])
+        XCTAssertEqual(ids(Term.chooseCurrent([older, fallTerm], now: now)), ["_fall"])
+        let newer = term("_new", "Telafi", created: ["2026-09-25T00:00:00Z"])
+        XCTAssertEqual(ids(Term.chooseCurrent([older, fallTerm, newer], now: now)), ["_new"])
+    }
+
+    func testCoursesWithoutATermComeWithTheCurrentGroup() {
+        let spring = term("_spring", "2025-2026 Bahar", "2026-02-09T00:00:00Z", "2026-06-30T00:00:00Z", created: ["x"])
+        let fallTerm = term("_fall", "2026-2027 Güz", fall, fallEnd, created: ["x"])
+        let termless = term("", Term.noTerm, created: ["2020-01-01T00:00:00Z"])
+        XCTAssertEqual(ids(Term.chooseCurrent([termless, spring, fallTerm], now: now)), ["_fall", ""])
+    }
+
+    func testYearLongAndSemesterTermsStartingTogetherAreOneGroup() {
+        let year = term("_year", "2026-2027", fall, "2027-06-30T00:00:00Z", created: ["x"])
+        let fallTerm = term("_fall", "2026-2027 Güz", fall, fallEnd, created: ["x"])
+        let spring = term("_spring", "2025-2026 Bahar", "2026-02-09T00:00:00Z", "2026-06-30T00:00:00Z", created: ["x"])
+        XCTAssertEqual(ids(Term.current([spring, year, fallTerm], now: now)), ["_year", "_fall"])
+    }
+
+    func testNextTermOpensAMonthEarlyOnlyOnceTheCurrentOneHasEnded() {
+        let fallTerm = term("_fall", "2026-2027 Güz", fall, fallEnd, created: ["x"])
+        let spring = term("_spring", "2026-2027 Bahar", "2027-02-15T00:00:00Z", "2027-06-30T00:00:00Z", created: ["x"])
+        XCTAssertEqual(ids(Term.chooseCurrent([fallTerm, spring], now: now)), ["_fall"])
+        // Exam weeks: the fall term still runs, so it stays even though spring opens within a month.
+        XCTAssertEqual(ids(Term.chooseCurrent([fallTerm, spring], now: SyncLogic.date("2027-01-20T00:00:00Z")!)), ["_fall"])
+        // The day after fall ends, spring (two weeks away) takes over.
+        XCTAssertEqual(ids(Term.chooseCurrent([fallTerm, spring], now: SyncLogic.date("2027-02-01T12:00:00Z")!)), ["_spring"])
+        // In a long gap the ended term stays until the next one is a month away.
+        let summerGap = term("_old", "2025-2026 Bahar", "2026-02-09T00:00:00Z", "2026-06-30T00:00:00Z", created: ["x"])
+        XCTAssertEqual(ids(Term.chooseCurrent([summerGap, fallTerm], now: SyncLogic.date("2026-07-15T00:00:00Z")!)), ["_old"])
+        // Nothing has started yet (a first-year student in summer): the first upcoming term.
+        XCTAssertEqual(ids(Term.chooseCurrent([spring, fallTerm], now: SyncLogic.date("2026-06-01T00:00:00Z")!)), ["_fall"])
+    }
+
+    func testWhenNoTermCanBeDatedEveryCourseIsCurrent() {
+        let a = term("_a", "Dönem A", courses: ["_c1"])
+        let b = term("_b", "Dönem B", courses: ["_c2"])
+        let termless = term("", Term.noTerm, courses: ["_c3"])
+        XCTAssertEqual(ids(Term.chooseCurrent([a, b, termless], now: now)), ["_a", "_b", ""])
+        XCTAssertTrue(Term.chooseCurrent([], now: now).isEmpty)
+    }
+
+    func testTurkishAndEnglishSeasonNamesAreOneSemester() {
+        XCTAssertEqual(Term.academicTerm("2025-2026 Spring"), Term.academicTerm("2025/2026 Bahar Dönemi"))
+        XCTAssertEqual(Term.academicTerm("2025-2026 Spring"), Term.AcademicTerm(first: "2025", second: "2026", season: "spring"))
+        XCTAssertEqual(Term.academicTerm("2026-2027 - Fall"), Term.academicTerm("2026-2027 Güz"))
+        XCTAssertEqual(Term.academicTerm("2026-2027 Güz")?.season, "fall")
+        XCTAssertNil(Term.academicTerm("Yaz Okulu"))
+        XCTAssertNil(Term.academicTerm("2025-2026 Ek Dönem"))
+    }
+
+    func testTurkishAndEnglishRecordOfOneSemesterAreOneTerm() {
+        let turkish = term("_tr", "2026-2027 Güz", fall, fallEnd, courses: ["_c1"])
+        let english = term("_en", "2026-2027 Fall", fall, fallEnd, courses: ["_c2", "_c3"])
+        let merged = Term.mergeAliases([turkish, english])
+        XCTAssertEqual(merged.count, 1)
+        // The school's own name of the record holding most courses; no Turkish-first naming.
+        XCTAssertEqual(merged.first?.id, "_en")
+        XCTAssertEqual(merged.first?.name, "2026-2027 Fall")
+        XCTAssertEqual(merged.first?.courses.map(\.id).sorted(), ["_c1", "_c2", "_c3"])
+        XCTAssertEqual(Set(merged.first?.courses.map(\.termID) ?? []), ["_en"])
+    }
+
+    func testOneSemesterUnderTwoNamesTakesTheFirstNameOnATie() {
+        let turkish = term("_tr", "2026-2027 Güz", fall, fallEnd, courses: ["_c1"])
+        let english = term("_en", "2026-2027 Fall", fall, fallEnd, courses: ["_c2"])
+        XCTAssertEqual(Term.mergeAliases([turkish, english]).map(\.name), ["2026-2027 Güz"])
+        XCTAssertEqual(Term.mergeAliases([english, turkish]).map(\.name), ["2026-2027 Fall"])
+    }
+
+    func testEnglishOnlyTermKeepsItsEnglishName() {
+        let fallTerm = term("_en", "2026-2027 Fall", fall, fallEnd, courses: ["_c1"])
+        let spring = term("_sp", "2025-2026 Spring", "2026-02-09T00:00:00Z", "2026-06-30T00:00:00Z", courses: ["_c2"])
+        XCTAssertEqual(Term.mergeAliases([fallTerm, spring]).map(\.name), ["2026-2027 Fall", "2025-2026 Spring"])
+        XCTAssertEqual(Term.current([fallTerm, spring], now: now).map(\.name), ["2026-2027 Fall"])
+    }
+
+    func testSameSeasonNameInDifferentYearsOrDatesIsNotMerged() {
+        let fallTerm = term("_a", "2026-2027 Güz", fall, fallEnd, courses: ["_c1"])
+        let otherDates = term("_b", "2026-2027 Fall", "2027-09-20T00:00:00Z", "2028-01-31T00:00:00Z", courses: ["_c2"])
+        let otherYear = term("_c", "2025-2026 Fall", fall, fallEnd, courses: ["_c3"])
+        XCTAssertEqual(Term.mergeAliases([fallTerm, otherDates, otherYear]).count, 3)
     }
 
     @MainActor
-    func testCurrentCourseDiscoveryFiltersUnavailableAndUnassignedMemberships() async throws {
+    func testCourseWithoutATermIsFoundWithTheCurrentTerm() async throws {
+        let api = BlackboardAPI(tenant: tenant, cookies: [], pageLoader: { path in
+            if path.contains("/users/") {
+                return ["results": [
+                    ["course": ["id": "_cse", "name": "CSE303 Algorithm Analysis", "courseId": "CSE303-1", "termId": "fallterm"]],
+                    ["course": ["id": "_old", "name": "CSE201 Data Structures", "courseId": "CSE201-1", "termId": "springterm"]],
+                    ["course": ["id": "_lib", "name": "Library Orientation", "courseId": "LIB100-1", "termId": ""]]
+                ]]
+            }
+            if path.hasSuffix("/fallterm") {
+                return ["id": "fallterm", "name": "2026-2027 Fall", "availability": ["duration": ["type": "DateRange", "start": "2026-09-21T00:00:00.000Z", "end": "2027-01-31T23:59:59.000Z"]]]
+            }
+            if path.hasSuffix("/springterm") {
+                return ["id": "springterm", "name": "2025-2026 Bahar", "availability": ["duration": ["type": "DateRange", "start": "2000-02-09T00:00:00.000Z", "end": "2000-06-30T00:00:00.000Z"]]]
+            }
+            throw SyncFailure(message: "Unexpected fixture request")
+        }, log: { _ in })
+        defer { api.cancel() }
+        let terms = try await api.courses(userID: "me")
+        XCTAssertEqual(terms.map(\.name), ["2026-2027 Fall", Term.noTerm])
+        XCTAssertEqual(terms.flatMap(\.courses).map(\.id), ["_cse", "_lib"])
+    }
+
+    @MainActor
+    func testNoCoursesOnBlackboardFindsNoTerm() async throws {
+        let api = BlackboardAPI(tenant: tenant, cookies: [], pageLoader: { path in
+            if path.contains("/users/") { return ["results": [[String: Any]]()] }
+            throw SyncFailure(message: "Unexpected fixture request")
+        }, log: { _ in })
+        defer { api.cancel() }
+        let terms = try await api.courses(userID: "me")
+        XCTAssertTrue(terms.isEmpty)
+        XCTAssertNotNil(L10n.turkish[AppModel.noCoursesFound])
+        XCTAssertTrue(L10n.text(AppModel.noCoursesFound, language: "tr").hasPrefix("Blackboard'da ders bulunamadı"))
+    }
+
+    @MainActor
+    func testCurrentCourseDiscoveryFiltersUnavailableMembershipsAndKeepsUnassignedOnes() async throws {
         let api = BlackboardAPI(tenant: tenant, cookies: [], pageLoader: { path in
             if path.contains("/users/") {
                 return ["results": [
@@ -260,7 +364,10 @@ final class SyncLogicTests: XCTestCase {
         }, log: { _ in })
         defer { api.cancel() }
         let terms = try await api.courses(userID: "me")
-        XCTAssertEqual(terms.flatMap(\.courses).map(\.id), ["active"])
+        // No term can be dated (a Continuous term, an undated course), so every course is current,
+        // and the course without a term is synced under "No term".
+        XCTAssertEqual(terms.flatMap(\.courses).map(\.id), ["active", "no-term"])
+        XCTAssertEqual(terms.map(\.name), ["2026-2027 Fall", Term.noTerm])
         XCTAssertEqual(terms.first?.courses.first?.code, "CSE101-1")
         XCTAssertNil(terms.first?.start)
     }
