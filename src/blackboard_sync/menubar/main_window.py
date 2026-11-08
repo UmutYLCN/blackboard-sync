@@ -330,9 +330,6 @@ class _Target(NSObject):
     def gear_(self, _sender):
         self.owner.select(GENERAL)
 
-    def accountMenu_(self, sender):
-        self.owner.show_account_menu(sender)
-
     def homeAction_(self, _sender):
         self.owner.on_action(self.owner.status.home.action)
 
@@ -808,16 +805,11 @@ class MainWindow:
         """Duraklat / Devam et, Ayarlar and the account: round buttons at the top right of every page."""
         self.topbar = []
         x = WIDTH - PAD - CTRL
-        # The account (initials) opens a small menu: who is signed in, sign out or in, Ayarlar.
+        # The account (initials) only shows who is signed in; Ayarlar has Sign in / Sign out.
         self.avatar = _pill(NSMakeRect(x, CTRL_Y, CTRL, CTRL), NSColor.controlAccentColor().colorWithAlphaComponent_(0.18))
         self.avatar_text = _centered("", NSMakeRect(0, 0, CTRL, CTRL), 13, bold=True)
         self.avatar.contentView().addSubview_(self.avatar_text)
         root.addSubview_(self.avatar)
-        self.avatar_button = NSButton.buttonWithTitle_target_action_("", self.target, "accountMenu:")
-        self.avatar_button.setBordered_(False)
-        self.avatar_button.setTransparent_(True)
-        self.avatar_button.setFrame_(NSMakeRect(x, CTRL_Y, CTRL, CTRL))
-        root.addSubview_(self.avatar_button)
         x -= CTRL + 8
         self.gear_button = self._round_button("gearshape", "gear:", x)
         self.gear_button.setToolTip_(T_NAV_GENERAL)
@@ -826,7 +818,7 @@ class MainWindow:
         x -= CTRL + 8
         self.pause_button = self._round_button("pause.circle", "pause:", x)
         root.addSubview_(self.pause_button)
-        self.topbar = [self.avatar, self.avatar_button, self.gear_button, self.pause_button]
+        self.topbar = [self.avatar, self.gear_button, self.pause_button]
 
     def _round_button(self, symbol: str, action: str, x: float):
         button = NSButton.buttonWithTitle_target_action_("", self.target, action)
@@ -836,19 +828,6 @@ class MainWindow:
         button.setContentTintColor_(NSColor.secondaryLabelColor())
         button.setFrame_(NSMakeRect(x, CTRL_Y, CTRL, CTRL))
         return button
-
-    def show_account_menu(self, sender) -> None:
-        form = self.status.form
-        menu = NSMenu.alloc().initWithTitle_("")
-        header = menu.addItemWithTitle_action_keyEquivalent_(form.account, None, "")
-        header.setEnabled_(False)
-        menu.addItem_(NSMenuItem.separatorItem())
-        action = menu.addItemWithTitle_action_keyEquivalent_(form.account_title, "account:", "")
-        action.setTarget_(self.target)
-        action.setEnabled_(form.account_enabled)
-        settings = menu.addItemWithTitle_action_keyEquivalent_(T_NAV_GENERAL, "gear:", "")
-        settings.setTarget_(self.target)
-        menu.popUpMenuPositioningItem_atLocation_inView_(None, (0, CTRL + 4), sender)
 
     def show_calendar_settings(self):
         self.show(GENERAL)
@@ -1533,7 +1512,8 @@ class MainWindow:
         return 144
 
     def _update_google_calendar(self, form) -> None:
-        state = calendar_presentation(form.calendar, form.calendar_busy, form.calendar_paused)
+        state = calendar_presentation(form.calendar, form.calendar_busy, form.calendar_paused,
+                                      form.calendar_notice)
         row = self.settings_rows["google_calendar"]
         row.title.setStringValue_(state.title)
         row.title.setTextColor_(NSColor.systemOrangeColor() if state.warning else NSColor.labelColor())
@@ -1952,8 +1932,8 @@ class MainWindow:
         self.avatar_text.setStringValue_(card.initials)
         self.avatar.setFillColor_((NSColor.systemOrangeColor() if card.warning else NSColor.controlAccentColor())
                                   .colorWithAlphaComponent_(0.18))
-        self.avatar_button.setToolTip_(card.title)
-        self.avatar_button.setAccessibilityLabel_(card.title)
+        self.avatar.setToolTip_(card.title)
+        self.avatar_text.setAccessibilityLabel_(card.title)
         count = len(status.attention)
         self.nav_items[ANNOUNCEMENTS][3].setStringValue_(str(count) if count else "")
         # Genel

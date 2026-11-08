@@ -73,8 +73,8 @@ The known file-move problems already noted in [TODO.md](TODO.md) get fixed. The 
 
 ## UI cleanup
 
-- On the Mac app, clicking the round profile avatar (initials) at the top right of the window opens a small dropdown card showing `Signed in as <name>`, **Sign out** and **Settings**. That card is removed, because a Settings gear button already sits next to the avatar.
-- **Calendar connect cancel or timeout no longer leaves an error card.** When the user starts Google Calendar connect and then cancels or lets it time out, the Settings card currently keeps showing `Google Calendar error - authorization timed out` permanently (the error is stored as `last_error` and survives restarts). Planned: show a short-lived notice instead, do not store the error, and return the card to **Not connected** with the **Connect** button; real errors while connected (failed calendar sync, access revoked by Google) keep the error card.
+- The round profile avatar (initials) at the top right of the window no longer opens a dropdown card (`Signed in as <name>`, **Sign out**, **Settings**) on the Mac and Windows apps, because a Settings gear button already sits next to it. The avatar is now only a badge; **Sign out** is in **Settings → Account**.
+- **Calendar connect cancel or timeout no longer leaves an error card.** When the user starts Google Calendar connect and then cancels or lets it time out, the Settings card shows a short-lived notice for a few seconds, nothing is stored, and the card returns to **Not connected** with the **Connect** button. A leftover error stored by an older version is ignored. Real errors while connected (failed calendar sync, access revoked by Google, needs reconnect) keep the error card.
 - The visual design of the Settings page is improved.
 
 Nothing else changes in the UI.

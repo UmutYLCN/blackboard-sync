@@ -653,7 +653,7 @@ def test_reduce_motion_shows_the_still_illustration(tmp_path, monkeypatch):
         window.window.close()
 
 
-def test_a_note_shows_in_the_status_card_and_the_account_menu_offers_sign_in(tmp_path):
+def test_a_note_shows_in_the_status_card_and_settings_offers_sign_in(tmp_path):
     from blackboard_sync.menubar.main_window_model import main_status
     from blackboard_sync.menubar.model import RunOutcome
 
@@ -670,8 +670,19 @@ def test_a_note_shows_in_the_status_card_and_the_account_menu_offers_sign_in(tmp
         model.session, model.session_expired = None, True
         window.update_status(main_status(model, NOW))
         assert str(window.home_action.title()) == 'Sign in' and not window.home_action.isHidden()
-        assert window.status.form.account_title == 'Sign in'  # what the account menu offers
+        assert window.status.form.account_title == 'Sign in'  # what Settings > Account offers
         assert str(window.avatar_text.stringValue()) == '!'
+    finally:
+        window.window.close()
+
+
+def test_the_avatar_is_only_a_badge_without_a_dropdown(tmp_path):
+    """Settings (the gear) has the account row with Sign in / Sign out; the avatar opens nothing."""
+    window, model, _ = make_window(tmp_path)
+    try:
+        assert not hasattr(window, 'show_account_menu') and not hasattr(window, 'avatar_button')
+        assert not hasattr(type(window.target), 'accountMenu_')
+        assert window.avatar in window.topbar and window.gear_button in window.topbar
     finally:
         window.window.close()
 

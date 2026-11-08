@@ -188,9 +188,10 @@ button, input, select { font: inherit; color: inherit; }
   font-weight: 700;
   font-size: 13px;
   letter-spacing: 0.02em;
-  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
-.avatar:hover { box-shadow: 0 0 0 4px var(--surface-press); }
 .avatar.warning { background: var(--caution-soft); color: var(--on-caution-soft); }
 
 .content {

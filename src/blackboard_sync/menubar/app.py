@@ -36,6 +36,7 @@ from blackboard_sync.menubar.model import (
     NOTEBOOKLM_CONNECT,
     NOTEBOOKLM_DUPLICATES,
     NOTEBOOKLM_SYNC,
+    CALENDAR_NOTICE_SECONDS,
     SESSION_JOB,
     AppModel,
     Icon,
@@ -397,10 +398,13 @@ def build_app(config: Config, show_window: bool = False):
             threading.Thread(target=worker, daemon=True).start()
 
         def _calendar_done(self, result):
-            self.model.calendar_busy = None
-            self.model.calendar = result
+            self.model.finish_calendar(result)
             self._save()
             self.refresh()
+            if result.notice:  # draw the card again once the notice has run out
+                timer = threading.Timer(CALENDAR_NOTICE_SECONDS + 0.5, lambda: AppHelper.callAfter(self.refresh))
+                timer.daemon = True
+                timer.start()
 
         def disconnect_calendar(self):
             from blackboard_sync.menubar.main_window import ask_calendar_disconnect

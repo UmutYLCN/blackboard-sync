@@ -496,6 +496,7 @@ def test_theme_decides_light_or_dark(theme, windows_light, light):
 
 
 def test_tray_app_calendar_actions_and_theme(tmp_path, monkeypatch):
+    from blackboard_sync.gcal import CalendarStatus
     from blackboard_sync.settings import load_settings, save_settings
     from blackboard_sync.windows.app import jobs
 
@@ -506,7 +507,7 @@ def test_tray_app_calendar_actions_and_theme(tmp_path, monkeypatch):
     app.post = lambda callback, *args: callback(*args)
     ran = []
     monkeypatch.setattr(jobs, "run_calendar_guarded",
-                        lambda config, action, cancel, **options: ran.append((action, options)) or "status")
+                        lambda config, action, cancel, **options: ran.append((action, options)) or CalendarStatus())
     app.dispatch("calendar_connect")
     assert app.model.calendar_busy == "connect"
     app.dispatch("calendar_connect")  # pressed again while waiting for the browser: cancels
