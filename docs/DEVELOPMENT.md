@@ -513,11 +513,15 @@ app shows **no courses found** with one notification, instead of staying silent.
 Courses the instructor has not opened yet (shown as private) are skipped until
 they open. `tests/test_term_scenarios.py` checks the rule against 28 synthetic
 school setups (`tests/fixtures/term_scenarios.json`); at the first school (İSTÜN)
-its result is exactly that of 1.7.0. The iPad app follows the earlier rule and the
+its result is exactly that of 1.7.0. The iPad app follows the same rule and the
 same term merging (`Term.current` in
-`ios/BlackboardSync/BlackboardSync/Core/SyncLogic.swift`) until it is ported, shows
-the same no-courses message in its status line, and keeps every course and term
-folder recorded in its saved library, so an existing `2026-2027 Güz` folder stays in use there too.
+`ios/BlackboardSync/BlackboardSync/Core/SyncLogic.swift`, a function-by-function twin
+of the Python), and `TermScenarioTests` runs the same 28 setups from its own copy of the
+fixture with the same expected results. It shows the same no-courses message in its
+status line and keeps every course and term folder recorded in its saved library, so an
+existing `2026-2027 Güz` folder stays in use there too. Its library records the school
+(`LibraryState.school`); a library saved before that is the school's in use, and its
+folders were always kept per school and account.
 
 **One term, one folder.** Term folders keep the school's own term names as
 written (`2026-2027 Fall` stays `Fall`; nothing is renamed to Turkish).

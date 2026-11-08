@@ -84,6 +84,7 @@
 				"6D890825794BE505638A5398",
 				"5A11E0C0AB5E4F6B9D2C7E32",
 				"7B2D4E1A9C3F4D5E8A6B1C06",
+				"7C3E5F2B0A1D4E6F8B9C0D15",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
@@ -233,6 +234,7 @@
 			"isa" = "PBXNativeTarget";
 			"buildPhases" = (
 				"000000000000000000000013",
+				"7C3E5F2B0A1D4E6F8B9C0D13",
 			);
 			"dependencies" = (
 				"000000000000000000000023",
@@ -300,6 +302,8 @@
 				"04EDDDB9DF0587D8145D444E",
 				"5A11E0C0AB5E4F6B9D2C7E31",
 				"7B2D4E1A9C3F4D5E8A6B1C05",
+				"7C3E5F2B0A1D4E6F8B9C0D14",
+				"7C3E5F2B0A1D4E6F8B9C0D11",
 			);
 			"sourceTree" = "<group>";
 		};
@@ -738,6 +742,34 @@
 			"buildActionMask" = "2147483647";
 			"files" = (
 				"0F765F79708C1E9752EF3781",
+			);
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"7C3E5F2B0A1D4E6F8B9C0D14" = {
+			"isa" = "PBXFileReference";
+			"path" = "TermScenarioTests.swift";
+			"sourceTree" = "<group>";
+			"lastKnownFileType" = "sourcecode.swift";
+		};
+		"7C3E5F2B0A1D4E6F8B9C0D15" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7C3E5F2B0A1D4E6F8B9C0D14";
+		};
+		"7C3E5F2B0A1D4E6F8B9C0D11" = {
+			"isa" = "PBXFileReference";
+			"path" = "Fixtures/term_scenarios.json";
+			"sourceTree" = "<group>";
+			"lastKnownFileType" = "text.json";
+		};
+		"7C3E5F2B0A1D4E6F8B9C0D12" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7C3E5F2B0A1D4E6F8B9C0D11";
+		};
+		"7C3E5F2B0A1D4E6F8B9C0D13" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = (
+				"7C3E5F2B0A1D4E6F8B9C0D12",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};

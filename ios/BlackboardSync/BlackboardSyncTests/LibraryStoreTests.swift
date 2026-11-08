@@ -145,6 +145,29 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(folder5, "No term/LIB100 Library Orientation")
     }
 
+    /// A library saved before the school was recorded is the school in use: nothing in it moves.
+    func testOldLibraryWithoutASchoolIsAdoptedByTheSchoolInUse() async throws {
+        let course = Course(id: "_13004_1", name: "Algorithm Analysis", termID: "_50_1", created: nil, code: "CSE303-1")
+        let term = Term(id: "_50_1", name: "2026-2027 Güz", start: nil, end: nil, courses: [course])
+        let folder = try await store.courseFolder(course, term: term, scope: "me")
+        try await store.setTerms([term], scope: "me")
+        let file = root.appendingPathComponent("Support/library-v1.json")
+        var saved = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        XCTAssertNil(saved["school"])
+        let restored = try LibraryStore(documents: root.appendingPathComponent("Documents"), support: root.appendingPathComponent("Support"))
+        try await restored.useSchool(URL(string: "https://Blackboard.istun.edu.tr/")!)
+        let snapshot = await restored.snapshot()
+        XCTAssertEqual(snapshot.school, "blackboard.istun.edu.tr")
+        XCTAssertEqual(snapshot.folders.count, 2)
+        let again = try await restored.courseFolder(course, term: term, scope: "me")
+        XCTAssertEqual(again, folder)
+        saved = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        XCTAssertEqual(saved["school"] as? String, "blackboard.istun.edu.tr")
+        // Saved terms keep the layout older versions wrote, and load with their own id as their only one.
+        XCTAssertNil((saved["terms"] as? [[String: Any]])?.first?["ids"])
+        XCTAssertEqual(snapshot.terms.map(\.ids), [["_50_1"]])
+    }
+
     func testReadableNamingAndByteLimitsPreserveExtension() {
         XCTAssertEqual(MirrorPaths.name("../Week 1: Intro / notes.pdf"), "-Week 1 - Intro - notes.pdf")
         XCTAssertEqual(MirrorPaths.name(".."), "untitled")

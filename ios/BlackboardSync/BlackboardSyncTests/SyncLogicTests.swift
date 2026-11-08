@@ -201,7 +201,7 @@ final class SyncLogicTests: XCTestCase {
         XCTAssertFalse(transport.takeMessages().joined().contains("FAKE_SECRET"))
     }
 
-    // MARK: The latest term is the current one (a port of the desktop tests/test_latest_term.py, PR #140)
+    // MARK: The latest term is the current one (a port of the desktop tests/test_latest_term.py, PR #145)
 
     private let now = SyncLogic.date("2026-10-03T12:00:00Z")!
     private let fall = "2026-09-21T00:00:00.000Z", fallEnd = "2027-01-31T23:59:59.000Z"
@@ -222,12 +222,13 @@ final class SyncLogicTests: XCTestCase {
         XCTAssertEqual(ids(Term.chooseCurrent([old, new], now: now)), ["_2"])
     }
 
-    func testMixedDatedAndUndatedTermsCompareStartWithCourseCreation() {
+    func testUndatedTermJoinsTheRunningDatedTermInsteadOfPushingItOut() {
         let fallTerm = term("_fall", "2026-2027 Güz", fall, fallEnd, created: ["2026-08-20T00:00:00Z"])
         let older = term("_old", "Ek Dönem", created: ["2025-09-01T00:00:00Z"])
         XCTAssertEqual(ids(Term.chooseCurrent([older, fallTerm], now: now)), ["_fall"])
+        // A course created after the fall term started no longer drops the whole running term.
         let newer = term("_new", "Telafi", created: ["2026-09-25T00:00:00Z"])
-        XCTAssertEqual(ids(Term.chooseCurrent([older, fallTerm, newer], now: now)), ["_new"])
+        XCTAssertEqual(ids(Term.chooseCurrent([older, fallTerm, newer], now: now)), ["_fall", "_new"])
     }
 
     func testCoursesWithoutATermComeWithTheCurrentGroup() {
@@ -257,6 +258,53 @@ final class SyncLogicTests: XCTestCase {
         XCTAssertEqual(ids(Term.chooseCurrent([summerGap, fallTerm], now: SyncLogic.date("2026-07-15T00:00:00Z")!)), ["_old"])
         // Nothing has started yet (a first-year student in summer): the first upcoming term.
         XCTAssertEqual(ids(Term.chooseCurrent([spring, fallTerm], now: SyncLogic.date("2026-06-01T00:00:00Z")!)), ["_fall"])
+    }
+
+    func testTermsRunningBesideTheLatestOneStayCurrent() {
+        let year = term("_year", "2026-2027", "2026-09-14T00:00:00Z", "2027-06-30T00:00:00Z", created: ["x"])
+        let fallTerm = term("_fall", "2026-2027 Güz", fall, fallEnd, created: ["x"])
+        let spring = term("_spring", "2026-2027 Bahar", "2027-02-15T00:00:00Z", "2027-06-30T00:00:00Z", created: ["x"])
+        XCTAssertEqual(ids(Term.chooseCurrent([year, fallTerm, spring], now: now)), ["_year", "_fall"])
+        // In spring the year-long term still runs; the ended fall term does not come back.
+        XCTAssertEqual(ids(Term.chooseCurrent([year, fallTerm, spring], now: SyncLogic.date("2027-03-10T00:00:00Z")!)), ["_year", "_spring"])
+        // After everything ended, only the term that started last stays until the next one is a month away.
+        XCTAssertEqual(ids(Term.chooseCurrent([year, fallTerm, spring], now: SyncLogic.date("2027-08-01T00:00:00Z")!)), ["_spring"])
+    }
+
+    func testUndatedShellOfAnotherSemesterDoesNotJoinTheRunningTerm() {
+        let fallTerm = term("_fall", "2026-2027 Güz", fall, fallEnd, created: ["2026-08-20T00:00:00Z"])
+        let springShell = term("_sp", "2026-2027 Bahar", created: ["2026-11-10T00:00:00Z"])
+        let oldSummer = term("_yaz", "2025-2026 Yaz", created: ["2026-10-05T00:00:00Z"])
+        let common = term("_ortak", "Ortak Dersler", created: ["2026-08-25T00:00:00Z"])
+        let november = SyncLogic.date("2026-11-15T00:00:00Z")!
+        XCTAssertEqual(ids(Term.chooseCurrent([fallTerm, springShell, oldSummer, common], now: november)), ["_fall", "_ortak"])
+    }
+
+    func testTermWhoseDatesEndedBeforeItsCoursesWereMadeCountsByItsCourses() {
+        let spring = term("_sp", "2025-2026 Bahar", "2026-02-09T00:00:00Z", "2026-06-30T00:00:00Z", created: ["2026-02-01T00:00:00Z"])
+        let copied = term("_fall", "2026-2027 Güz", "2025-09-21T00:00:00Z", "2026-01-31T00:00:00Z", created: ["2026-08-20T00:00:00Z"])
+        XCTAssertEqual(ids(Term.chooseCurrent([spring, copied], now: now)), ["_fall"])
+    }
+
+    func testUndatedTermsOfOneSemesterAreCurrentTogether() {
+        let sections = (0..<3).map { term("_\($0)", "2026FA - SEC\($0)", created: ["2026-08-20T09:0\($0):00Z"]) }
+        let older = term("_old", "2026SP - SEC9", created: ["2026-01-15T00:00:00Z"])
+        XCTAssertEqual(ids(Term.chooseCurrent([older] + sections, now: now)), ["_0", "_1", "_2"])
+    }
+
+    func testTermHoldingTheCrossListedParentOfACurrentCourseComesAlong() {
+        let fallTerm = term("_fall", "2026-2027 Güz", fall, fallEnd, courses: ["_child"])
+        var parent = term("_default", "Default Term", "2020-01-01T00:00:00Z", "2020-06-30T00:00:00Z", courses: [])
+        parent.courses = [Course(id: "_parent", name: "Merged", termID: "_default", created: nil, childID: "_child")]
+        XCTAssertEqual(ids(Term.chooseCurrent([parent, fallTerm], now: now)), ["_default", "_fall"])
+    }
+
+    func testAnArchivedTermIsLeftOutBeforeChoosingUnlessItRunsNow() {
+        let spring = term("_sp", "2025-2026 Bahar", "2026-02-09T00:00:00Z", "2026-06-30T00:00:00Z", created: ["2026-10-01T00:00:00Z"])
+        let fallTerm = term("_fall", "2026-2027 Güz", fall, fallEnd, created: ["x"])
+        XCTAssertEqual(ids(Term.current([spring, fallTerm], now: now, pastTerms: ["_sp"])), ["_fall"])
+        // One an older version archived under its English name is the current term itself.
+        XCTAssertEqual(ids(Term.current([fallTerm], now: now, pastTerms: ["_fall"])), ["_fall"])
     }
 
     func testWhenNoTermCanBeDatedEveryCourseIsCurrent() {
@@ -300,6 +348,26 @@ final class SyncLogicTests: XCTestCase {
         let spring = term("_sp", "2025-2026 Spring", "2026-02-09T00:00:00Z", "2026-06-30T00:00:00Z", courses: ["_c2"])
         XCTAssertEqual(Term.mergeAliases([fallTerm, spring]).map(\.name), ["2026-2027 Fall", "2025-2026 Spring"])
         XCTAssertEqual(Term.current([fallTerm, spring], now: now).map(\.name), ["2026-2027 Fall"])
+    }
+
+    func testFullOfficialArabicAndOrdinalTermNamesAreRead() {
+        XCTAssertEqual(Term.academicTerm("2026-2027 Eğitim-Öğretim Yılı Güz Dönemi"), Term.AcademicTerm(first: "2026", second: "2027", season: "fall"))
+        XCTAssertEqual(Term.academicTerm("2026-2027 Academic Year Fall Semester"), Term.AcademicTerm(first: "2026", second: "2027", season: "fall"))
+        XCTAssertEqual(Term.academicTerm("2026-2027 EĞİTİM-ÖĞRETİM YILI GÜZ DÖNEMİ")?.season, "fall")
+        XCTAssertEqual(Term.academicTerm("الفصل الدراسي الأول 1448"), Term.AcademicTerm(first: "1448", second: "", season: "fall"))
+        XCTAssertEqual(Term.academicTerm("1448 First Semester"), Term.AcademicTerm(first: "1448", second: "", season: "fall"))
+        XCTAssertEqual(Term.academicTerm("2026/27 Semester 2"), Term.AcademicTerm(first: "2026", second: "2027", season: "spring"))
+        XCTAssertNil(Term.academicTerm("2026FA - Fall 2026")) // merging takes whole names only
+        // Which term is newer: "Fall 2026" is the 2026-2027 fall term, "Spring 2027" its spring term.
+        XCTAssertEqual(Term.academicOrder("Fall 2026"), Term.AcademicOrder(year: 2026, semester: 0))
+        XCTAssertEqual(Term.academicOrder("2026FA - Fall 2026"), Term.academicOrder("2026-2027 Güz"))
+        XCTAssertEqual(Term.academicOrder("Fall 2026"), Term.academicOrder("2026-2027 Güz"))
+        XCTAssertEqual(Term.academicOrder("Spring 2027"), Term.AcademicOrder(year: 2026, semester: 1))
+        XCTAssertEqual(Term.academicOrder("2026-2027 Bahar"), Term.AcademicOrder(year: 2026, semester: 1))
+        XCTAssertEqual(Term.academicOrder("1448 الفصل الدراسي الثاني"), Term.AcademicOrder(year: 1448, semester: 1))
+        XCTAssertNil(Term.academicOrder("2026 Yazılım"))
+        XCTAssertNil(Term.academicOrder("2026-2027"))
+        XCTAssertNil(Term.academicTerm("2026-01 Fall"))
     }
 
     func testSameSeasonNameInDifferentYearsOrDatesIsNotMerged() {
@@ -370,6 +438,32 @@ final class SyncLogicTests: XCTestCase {
         XCTAssertEqual(terms.map(\.name), ["2026-2027 Fall", Term.noTerm])
         XCTAssertEqual(terms.first?.courses.first?.code, "CSE101-1")
         XCTAssertNil(terms.first?.start)
+    }
+
+    @MainActor
+    func testClosedCoursesTermsAndClubsAreLeftOut() async throws {
+        let api = BlackboardAPI(tenant: tenant, cookies: [], pageLoader: { path in
+            if path.contains("/users/") {
+                return ["results": [
+                    ["course": ["id": "cancelled", "courseId": "CSE303-1", "termId": "t", "availability": ["available": "Disabled"]]],
+                    ["availability": ["available": "Disabled"], "course": ["id": "dropped", "courseId": "MTH201-1", "termId": "t"]],
+                    ["course": ["id": "open", "courseId": "COE305-1", "termId": "t", "availability": ["available": "Yes"]]],
+                    ["course": ["id": "club", "courseId": "ORG-IEEE", "termId": "t", "organization": true]],
+                    ["course": ["id": "withTerm", "courseId": "ENG101-1", "termId": "closed", "availability": ["available": "Term"]]],
+                    ["course": ["id": "anyway", "courseId": "ENG102-1", "termId": "closed", "availability": ["available": "Yes"]]]
+                ]]
+            }
+            if path.contains("/terms/t") {
+                return ["id": "t", "name": "2026-2027 Güz", "availability": ["available": "Yes", "duration": ["type": "DateRange", "start": "2026-09-21T00:00:00Z", "end": "2027-01-31T00:00:00Z"]]]
+            }
+            if path.contains("/terms/closed") {
+                return ["id": "closed", "name": "2026-2027 Ek Dönem", "availability": ["available": "No", "duration": ["type": "DateRange", "start": "2026-09-21T00:00:00Z", "end": "2027-01-31T00:00:00Z"]]]
+            }
+            throw SyncFailure(message: "Unexpected fixture request")
+        }, log: { _ in })
+        defer { api.cancel() }
+        let terms = try await api.courses(userID: "me", now: now)
+        XCTAssertEqual(terms.flatMap(\.courses).map(\.id).sorted(), ["anyway", "open"])
     }
 
     func testTurkishDiagnosticsKeepCodesAndTranslateErrorTemplates() {

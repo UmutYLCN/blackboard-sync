@@ -31,6 +31,8 @@ struct LibraryState: Codable {
     var activities: [Activity] = []
     var lastSync: Date?
     var interrupted = false
+    /// The host of the Blackboard address the library's files come from (`LibraryStore.useSchool`).
+    var school: String?
 }
 
 /// All manifest and local-file operations serialize on this actor, including conflict decisions.
@@ -60,6 +62,16 @@ actor LibraryStore {
     private func save() throws {
         try JSONEncoder().encode(state).write(to: stateURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
+    /// Record that the files from now on come from the school at `tenant`. A library saved before the
+    /// school was recorded is that school's: nothing in it changes. Folders and files are keyed by
+    /// the account scope, which holds the school's address, so another school's course with the
+    /// same id never reuses this school's folders (the desktop `State.use_school`).
+    func useSchool(_ tenant: URL) throws {
+        guard let school = tenant.host?.lowercased(), !school.isEmpty, school != state.school else { return }
+        state.school = school
+        try save()
+    }
+
     func setTerms(_ terms: [Term], scope: String) throws { state.terms = terms; state.cachedScope = scope; try save() }
     func select(_ ids: Set<String>, scope: String) throws { state.selected[scope] = ids; try save() }
 

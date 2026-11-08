@@ -200,43 +200,65 @@ final class BlackboardAPI: MirrorAPI {
         id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
     }
 
-    func courses(userID: String) async throws -> [Term] {
+    /// The current terms and their courses (`Term.current`), as the desktop `Syncer.discover` finds them.
+    /// Closed memberships and courses, Blackboard Organizations (clubs and communities listed among
+    /// the courses) and courses that open with a term that is closed are left out.
+    func courses(userID: String, now: Date = Date(), pastTerms: Set<String> = []) async throws -> [Term] {
         let memberships = try await paged("/learn/api/public/v1/users/\(Self.segment(userID))/courses?expand=course&limit=100", label: "Memberships")
-        var groups: [String: [Course]] = [:]
+        var terms: [String: Term] = [:]
+        var order: [String] = []
+        var lookedUp: [String: (term: Term, closed: Bool)] = [:]
         var seen: Set<String> = []
         for membership in memberships {
-            if (membership["availability"] as? [String: Any])?["available"] as? String == "No" { continue }
+            if Term.closed.contains((membership["availability"] as? [String: Any])?["available"] as? String ?? "") { continue }
             var course = membership["course"] as? [String: Any]
             if course == nil, let id = membership["courseId"] as? String {
-                course = try await json("/learn/api/public/v3/courses/\(Self.segment(id))", label: "Course detail")
-            }
-            guard let course, let id = course["id"] as? String, seen.insert(id).inserted,
-                  (course["availability"] as? [String: Any])?["available"] as? String != "No" else { continue }
-            let term = course["termId"] as? String ?? ""
-            groups[term, default: []].append(Course(id: id, name: course["name"] as? String ?? id,
-                termID: term, created: SyncLogic.date(course["created"] as? String), code: course["courseId"] as? String ?? id))
-        }
-        var terms: [Term] = []
-        for id in groups.keys.sorted() where !id.isEmpty {
-            var raw: [String: Any] = [:]
-            do { raw = try await json("/learn/api/public/v1/terms/\(Self.segment(id))", label: "Term") }
-            catch {
-                if Task.isCancelled || (error as? SyncFailure)?.authRequired == true { throw error }
-                log("Public term lookup failed: " + SyncLogic.safeError(error))
-                do { raw = try await json("/learn/api/v1/terms/\(Self.segment(id))", label: "Term fallback") }
+                do { course = try await json("/learn/api/public/v3/courses/\(Self.segment(id))", label: "Course detail") }
                 catch {
                     if Task.isCancelled || (error as? SyncFailure)?.authRequired == true { throw error }
-                    log("Term dates unavailable; the newest course dates this term. " + SyncLogic.safeError(error)) }
+                    log("Skipped a course: " + SyncLogic.safeError(error))
+                    continue
+                }
             }
-            var duration = (raw["availability"] as? [String: Any])?["duration"] as? [String: Any] ?? [:]
-            if let type = duration["type"] as? String, type != "DateRange" { duration = [:] }
-            terms.append(Term(id: id, name: raw["name"] as? String ?? id,
-                start: SyncLogic.date(duration["start"] as? String),
-                end: SyncLogic.date(duration["end"] as? String), courses: groups[id] ?? []))
+            guard let course, let id = course["id"] as? String else { continue }
+            let available = (course["availability"] as? [String: Any])?["available"] as? String ?? ""
+            if Term.closed.contains(available) || course["organization"] as? Bool == true {
+                continue // private / not yet opened by the instructor, or a club, not a course
+            }
+            if seen.contains(id) { continue } // listed more than once; the first listing is used
+            let termID = course["termId"] as? String ?? ""
+            if lookedUp[termID] == nil { lookedUp[termID] = try await term(termID) }
+            guard let found = lookedUp[termID] else { continue }
+            if found.closed && available == "Term" { continue } // it opens with its term, which is not open
+            seen.insert(id)
+            if terms[termID] == nil { terms[termID] = found.term; order.append(termID) }
+            terms[termID]?.courses.append(Course(id: id, name: course["name"] as? String ?? id, termID: termID,
+                created: SyncLogic.date(course["created"] as? String), code: course["courseId"] as? String ?? id,
+                childID: membership["childCourseId"] as? String))
         }
         // Courses with an empty termId are one "No term" group, always synced with the current term.
-        if let termless = groups[""] { terms.append(Term(id: "", name: Term.noTerm, start: nil, end: nil, courses: termless)) }
-        return Term.current(terms)
+        return Term.current(order.compactMap { terms[$0] }, now: now, pastTerms: pastTerms)
+    }
+
+    /// The term `id` with no courses yet, and whether it is closed; an empty id is the "No term" group.
+    private func term(_ id: String) async throws -> (term: Term, closed: Bool) {
+        guard !id.isEmpty else { return (Term(id: "", name: Term.noTerm, start: nil, end: nil, courses: []), false) }
+        var raw: [String: Any] = [:]
+        do { raw = try await json("/learn/api/public/v1/terms/\(Self.segment(id))", label: "Term") }
+        catch {
+            if Task.isCancelled || (error as? SyncFailure)?.authRequired == true { throw error }
+            log("Public term lookup failed: " + SyncLogic.safeError(error))
+            do { raw = try await json("/learn/api/v1/terms/\(Self.segment(id))", label: "Term fallback") }
+            catch {
+                if Task.isCancelled || (error as? SyncFailure)?.authRequired == true { throw error }
+                log("Term dates unavailable; the newest course dates this term. " + SyncLogic.safeError(error)) }
+        }
+        let availability = raw["availability"] as? [String: Any] ?? [:]
+        var duration = availability["duration"] as? [String: Any] ?? [:]
+        if let type = duration["type"] as? String, type != "DateRange" { duration = [:] }
+        let term = Term(id: id, name: raw["name"] as? String ?? id, start: SyncLogic.date(duration["start"] as? String),
+                        end: SyncLogic.date(duration["end"] as? String), courses: [])
+        return (term, Term.closed.contains(availability["available"] as? String ?? ""))
     }
 
     func contents(courseID: String, parentID: String? = nil) async throws -> [ContentItem] {
