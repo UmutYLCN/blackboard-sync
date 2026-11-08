@@ -111,7 +111,7 @@ def test_moving_to_another_school_does_not_reuse_the_first_schools_folders(tmp_p
     state.save()
     assert json.loads(first.state_file.read_text(encoding="utf-8"))["outputs"] == istun_files["outputs"]
 
-    terms, courses = discover(tmp_path, scenario, OTHER_SCHOOL, json.loads(first.state_file.read_text()))
+    terms, courses = discover(tmp_path, scenario, OTHER_SCHOOL, json.loads(first.state_file.read_text(encoding="utf-8")))
     assert [c.rel_dir for c in courses] == ["1448 الفصل الدراسي الأول/ARAB101 اللغة العربية"]
 
     # Back at the first school, its course is in its folder again.
