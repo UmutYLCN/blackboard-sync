@@ -12,7 +12,8 @@ import logging
 import sys
 from pathlib import Path
 
-from blackboard_sync import __version__, announcements, courses, deadlines, runtime, schools, updater, uninstall
+from blackboard_sync import (__version__, announcements, courses, deadlines, runtime, schools, term_confirm, updater,
+                             uninstall)
 from . import package
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
@@ -1273,6 +1274,61 @@ def ask_notebooklm_duplicates(parent, title, text, remove):
     dialog.grab_set()
     dialog.wait_window()
     return bool(answer)
+
+
+FIRST_COURSES_VISIBLE = 12  # more courses than this scroll
+
+
+def ask_first_courses(parent, card):
+    """The card before the first download at a school (``term_confirm``): the ids left ticked, or None."""
+    import tkinter as tk
+    from tkinter import ttk
+
+    rows = term_confirm.card_rows(card)
+    dialog = tk.Toplevel(parent)
+    dialog.title(term_confirm.T_TITLE)
+    dialog.transient(parent)
+    dialog.resizable(False, False)
+    answer = []
+    frame = ttk.Frame(dialog, padding=20)
+    frame.grid(sticky="nsew")
+    ttk.Label(frame, text=term_confirm.T_TITLE, font=("Segoe UI", 12, "bold")).grid(sticky="w", pady=(0, 8))
+    ttk.Label(frame, text=term_confirm.card_message(card), wraplength=480,
+              justify="left").grid(sticky="w", pady=(0, 12))
+    holder = ttk.Frame(frame)
+    holder.grid(sticky="nsew")
+    canvas = tk.Canvas(holder, width=480, highlightthickness=0)
+    inner = ttk.Frame(canvas)
+    ticked = {}
+    for course_id, label in rows:
+        ticked[course_id] = tk.BooleanVar(dialog, value=True)
+        ttk.Checkbutton(inner, text=label, variable=ticked[course_id]).pack(anchor="w", pady=2)
+    canvas.create_window((0, 0), window=inner, anchor="nw")
+    inner.update_idletasks()
+    canvas.configure(height=min(inner.winfo_reqheight(), 26 * FIRST_COURSES_VISIBLE),
+                     scrollregion=(0, 0, inner.winfo_reqwidth(), inner.winfo_reqheight()))
+    canvas.pack(side="left", fill="both", expand=True)
+    if len(rows) > FIRST_COURSES_VISIBLE:
+        bar = ttk.Scrollbar(holder, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=bar.set)
+        bar.pack(side="right", fill="y")
+
+    def confirm():
+        answer.append({course_id for course_id, var in ticked.items() if var.get()})
+        dialog.destroy()
+
+    buttons = ttk.Frame(frame)
+    buttons.grid(sticky="e", pady=(16, 0))
+    later = ttk.Button(buttons, text=term_confirm.T_NOT_NOW, command=dialog.destroy)
+    later.pack(side="left", padx=4)
+    ok = ttk.Button(buttons, text=term_confirm.T_CONFIRM, command=confirm)
+    ok.pack(side="left", padx=4)
+    dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+    dialog.bind("<Escape>", lambda _e: dialog.destroy())
+    ok.focus_set()
+    dialog.grab_set()
+    dialog.wait_window()
+    return answer[0] if answer else None
 
 
 def ask_uninstall(parent, dest):

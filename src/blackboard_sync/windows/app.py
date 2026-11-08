@@ -16,8 +16,8 @@ import webbrowser
 from dataclasses import replace
 from pathlib import Path
 
-from blackboard_sync import (announcements, courses, deadlines, relocate, runtime, session_refresh, signout, updater,
-                             uninstall)
+from blackboard_sync import (announcements, courses, deadlines, relocate, runtime, session_refresh, signout,
+                             term_confirm, updater, uninstall)
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.i18n import ntr, tr
@@ -443,6 +443,35 @@ class TrayApp:
             self.start_job("login")
         elif job != MOVE_JOB:  # a move that found the folders locked waits for the timer
             self.start_next()
+        self.refresh()
+        if job not in ("login", MOVE_JOB) and result.status == "confirm" and result.confirm:
+            self.post(self.ask_first_courses, result.confirm)
+
+    def ask_first_courses(self, card):
+        """The first sync at this school found no clear term: the student confirms the courses first.
+
+        Confirm saves the choice (``term_confirm.confirm``) and syncs; Not now or closing the
+        window saves nothing, so the next sync asks again.
+        """
+        if (self.uninstalling or self.model.busy is not None
+                or card.get("school") != term_confirm.school_of(self.settings.base_url)):
+            return  # the school changed or another job started meanwhile; the next sync asks again
+        if self.web is not None:
+            self.show_window()  # the question is the page's dialog
+            ticked = self.web.ask_first_courses(card)
+        else:
+            from .main_window import ask_first_courses
+            ticked = ask_first_courses(self.dialog_parent(), card)
+        if ticked is None:
+            log.info("The first courses were not confirmed; the next sync asks again")
+            return
+        try:
+            term_confirm.confirm(self.config, card, ticked)
+        except OSError as exc:
+            log.warning("Could not save the confirmed courses: %s", exc)
+            return
+        self.model.note = ""
+        self.start_job("sync")
         self.refresh()
 
     def post_notifications(self, notes):

@@ -41,6 +41,7 @@ def test_sync_runs_the_cli_json_mode():
     assert cmd == [
         sys.executable, "-m", "blackboard_sync",
         "--base-url", "https://bb.example.edu", "sync", "--json", "--dest", str(SETTINGS.dest),
+        "--confirm-first",
     ]
     assert kwargs["capture_output"] and kwargs["stdin"] == subprocess.DEVNULL
     assert result.status == "ok" and result.finished_at == NOW

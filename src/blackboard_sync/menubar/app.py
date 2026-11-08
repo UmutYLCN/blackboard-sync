@@ -17,7 +17,8 @@ import webbrowser
 from dataclasses import replace
 from pathlib import Path
 
-from blackboard_sync import announcements, courses, deadlines, runtime, session_refresh, signout, update_macos, updater, uninstall
+from blackboard_sync import (announcements, courses, deadlines, runtime, session_refresh, signout, term_confirm,
+                            update_macos, updater, uninstall)
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.i18n import tr
@@ -504,6 +505,31 @@ def build_app(config: Config, show_window: bool = False):
                 self._login_after_job = False
                 self.start_login()
             self.refresh()
+            if outcome.status == "confirm" and outcome.confirm:
+                AppHelper.callAfter(self._ask_first_courses, outcome.confirm)
+
+        def _ask_first_courses(self, card: dict) -> None:
+            """The first sync at this school found no clear term: the student confirms the courses first.
+
+            Confirm saves the choice (``term_confirm.confirm``) and syncs; Not now saves nothing,
+            so the next sync asks again.
+            """
+            if (self._uninstalling or self.model.busy is not None
+                    or card.get("school") != term_confirm.school_of(self.settings.base_url)):
+                return  # the school changed or another job started meanwhile; the next sync asks again
+            from blackboard_sync.menubar.main_window import ask_first_courses
+
+            ticked = ask_first_courses(card)
+            if ticked is None:
+                log.info("The first courses were not confirmed; the next sync asks again")
+                return
+            try:
+                term_confirm.confirm(self.config, card, ticked)
+            except OSError as exc:
+                log.warning("Could not save the confirmed courses: %s", exc)
+                return
+            self.model.note = ""
+            self.start_sync()
 
         def start_move(self) -> None:
             old, new = self.model.move_from, self.model.dest

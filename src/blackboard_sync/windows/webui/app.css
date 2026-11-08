@@ -695,6 +695,16 @@ button, input, select { font: inherit; color: inherit; }
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.dialog-choices {
+  margin: 14px 0 0;
+  padding: 4px 12px;
+  max-height: 280px;
+  overflow: auto;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.dialog-choices .check { margin: 8px 0; gap: 10px; }
+.dialog-choices .check span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dialog-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; flex-wrap: wrap; }
 
 .placeholder { color: var(--muted); padding: 40px 0; text-align: center; }

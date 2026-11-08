@@ -82,6 +82,12 @@ Safeguards:
 - When nothing can be dated, the term whose name gives the latest academic year and season is downloaded instead of every past term.
 - `state.json` records the school; after a change of school, the other school's course folders are not reused. A state file from before this belongs to the school in use, so existing users keep their term and course folders and nothing is downloaded again or moved.
 
+Before the first download at a new school whose term is not clear, the desktop apps ask first:
+
+- When no state exists for the school and the term choice is ambiguous (undated terms, stale dates, terms that started on different days, or a term name with no year and season), a card lists the term(s) found and their courses, all ticked. The student can untick courses and presses Confirm; nothing is downloaded before that, and the choice is saved so it is asked once. Not now leaves nothing downloaded and the card comes back with the next sync.
+- A clear first run downloads at once as before. A school with existing state (the first school, İSTÜN, with its files) never sees the card.
+- Done on the desktop apps (Mac and Windows). The iPad app gets its own card in a later step.
+
 Notes:
 
 - The rule was checked against 28 synthetic school setups (`tests/test_term_scenarios.py`); at the first school it gives exactly the result it gave before.

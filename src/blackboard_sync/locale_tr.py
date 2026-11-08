@@ -51,6 +51,15 @@ CATALOG = {
         "İşaretini kaldırdığınız ders artık senkronize edilmez, Takvim'de ve Duyurular'da görünmez. İndirilmiş "
         "dosyaları silinmez. Yeniden işaretlediğinizde eksik dosyaları hemen gelir.",
     "Your courses are listed here after the first sync.": "Dersleriniz ilk senkrondan sonra burada listelenir.",
+    # The card before the first download at a school whose current term is not clear
+    "Check your courses before the first download": "İlk indirmeden önce derslerinizi kontrol edin",
+    "Blackboard Sync could not be sure which term is current at this school. It found {terms}. "
+    "Untick any course you do not want, then confirm. Nothing is downloaded until you do.":
+        "Blackboard Sync bu okulda hangi dönemin güncel olduğundan emin olamadı. Bulunan dönem(ler): {terms}. "
+        "İstemediğiniz derslerin işaretini kaldırıp onaylayın. Onaylayana kadar hiçbir şey indirilmez.",
+    "Confirm": "Onayla",
+    "Not now": "Şimdi değil",
+    "Waiting for you to confirm the courses to download.": "İndirilecek derslerin onaylanması bekleniyor.",
 
     # Calendar
     "Calendar": "Takvim",

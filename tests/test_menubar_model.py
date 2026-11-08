@@ -314,7 +314,7 @@ def test_saved_state_round_trip():
 def test_a_sync_needs_no_flag_to_bring_back_deleted_files():
     settings = Settings(base_url="https://bb.example.edu", dest=DEST)
     assert sync_arguments("sync", settings) == [
-        "--base-url", "https://bb.example.edu", "sync", "--json", "--dest", str(DEST)]
+        "--base-url", "https://bb.example.edu", "sync", "--json", "--dest", str(DEST), "--confirm-first"]
 
 
 def entries(menu):

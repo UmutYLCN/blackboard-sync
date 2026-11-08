@@ -55,7 +55,7 @@ class CourseReport:
 
 @dataclass
 class SyncReport:
-    status: str = "ok"  # ok | login_required | error | locked
+    status: str = "ok"  # ok | login_required | error | locked | confirm
     message: str = ""
     started_at: str = ""
     finished_at: str = ""
@@ -68,6 +68,8 @@ class SyncReport:
     # the University folder (``relocate.migrate_to_root``), done before syncing.
     moved_into_root: int = 0
     left_outside_root: list[str] = field(default_factory=list)  # relative paths that stayed
+    # Status ``confirm``: the terms and courses the first sync at a school asks about (``term_confirm``).
+    confirm: dict | None = None
 
     def totals(self) -> dict[str, int]:
         keys = (
