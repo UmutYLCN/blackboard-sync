@@ -33,6 +33,10 @@ struct LibraryState: Codable {
     var interrupted = false
     /// The host of the Blackboard address the library's files come from (`LibraryStore.useSchool`).
     var school: String?
+    /// The schools a sync has run at (`begin`); nil in a library from before this was recorded.
+    var syncedSchools: Set<String>?
+    /// The schools whose first courses the student confirmed on the card (`TermConfirm`).
+    var confirmedSchools: Set<String>?
 }
 
 /// All manifest and local-file operations serialize on this actor, including conflict decisions.
@@ -74,6 +78,12 @@ actor LibraryStore {
 
     func setTerms(_ terms: [Term], scope: String) throws { state.terms = terms; state.cachedScope = scope; try save() }
     func select(_ ids: Set<String>, scope: String) throws { state.selected[scope] = ids; try save() }
+    /// The card's choice (`TermConfirm.confirm`): the selection and the school asked, saved together.
+    func confirmFirstCourses(school: String, selected: Set<String>, scope: String) throws {
+        state.selected[scope] = selected
+        state.confirmedSchools = (state.confirmedSchools ?? []).union([school])
+        try save()
+    }
 
     /// A course keeps the folder it already has, so nothing is moved or downloaded again. A term
     /// keeps its folder too, even when it is now named differently (an older version named
@@ -173,6 +183,7 @@ actor LibraryStore {
 
     func begin() throws {
         state.interrupted = true
+        if let school = state.school { state.syncedSchools = (state.syncedSchools ?? []).union([school]) }
         state.activities = []
         try save()
     }
