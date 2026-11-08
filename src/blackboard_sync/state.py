@@ -40,6 +40,12 @@ what was written locally:
 * ``university_folder`` - true once the files of versions that wrote straight
   into the chosen folder were moved into its University folder
   (``relocate.migrate_to_root``), so that happens only once.
+* ``school`` - the host of the Blackboard address the recorded files come from
+  (``use_school``). Blackboard numbers its ids per school, so after a change of
+  school the files recorded until then carry their own school's host
+  (``"school"`` on the output entry) and their course folders are not reused
+  for the other school's courses. A state file from before this was recorded
+  belongs to the school in use.
 """
 
 from __future__ import annotations
@@ -54,7 +60,7 @@ from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from blackboard_sync.i18n import tr
-from blackboard_sync.session import write_private_json
+from blackboard_sync.session import host_of, write_private_json
 
 STATE_VERSION = 1
 log = logging.getLogger(__name__)
@@ -122,6 +128,7 @@ class State:
         self.current_courses: list[str] = data.get("current_courses", [])
         self.courses: dict[str, dict] = data.get("courses", {})
         self.in_university_folder: bool = in_university_folder or data.get("university_folder") is True
+        self.school: str | None = data.get("school")
         self._claimed: dict[str, str] = {o["path"]: key for key, o in self.outputs.items()}
         self.recovery: str | None = None
         self.dirty = False  # True while there are changes not yet written to disk
@@ -186,6 +193,8 @@ class State:
             data["courses"] = self.courses
         if self.in_university_folder:
             data["university_folder"] = True
+        if self.school:
+            data["school"] = self.school
         write_private_json(self.path, data)
         self.dirty = False
 
@@ -212,6 +221,33 @@ class State:
             return False
         self.save_error = None
         return True
+
+    # -- school ---------------------------------------------------------
+    def use_school(self, base_url: str) -> None:
+        """Record that the files from now on come from the school at ``base_url``.
+
+        A state without a school (written before this was recorded) is that
+        school's: nothing about it changes. When the school changes, each file
+        recorded so far keeps the school it came from, so ``from_this_school``
+        tells them apart; switching back makes the first school's files its own again.
+        """
+        school = host_of(base_url).casefold()
+        if not school or school == self.school:
+            return
+        if self.school:
+            for entry in self.outputs.values():
+                owner = entry.get("school", self.school)
+                if owner == school:
+                    entry.pop("school", None)
+                else:
+                    entry["school"] = owner
+        self.school = school
+        self.dirty = True
+
+    @staticmethod
+    def from_this_school(entry: dict) -> bool:
+        """The output ``entry`` was recorded at the school in use (``use_school``)."""
+        return "school" not in entry
 
     # -- items ----------------------------------------------------------
     def record_announcement(self, key: str, entry: dict) -> None:

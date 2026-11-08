@@ -1,8 +1,8 @@
-"""The latest term is the current one, the way the top group appears on Blackboard.
+"""The latest term is the current one: the term that started most recently and every term running now.
 
-The term that started most recently (or, undated, holds the newest course) is current,
-with every term starting at that moment; courses without a term always come along; the
-school's own term names are kept; folders an older version made stay in use.
+Terms without dates count from their newest course and never push out a running dated term;
+courses without a term always come along; the school's own term names are kept; folders an
+older version made stay in use. ``test_term_scenarios`` checks 28 whole school setups.
 """
 
 import copy
@@ -10,7 +10,16 @@ import json
 from datetime import timedelta
 
 from blackboard_sync.state import State
-from blackboard_sync.sync import NO_TERM, Course, Term, choose_current_terms, merge_term_aliases, parse_time
+from blackboard_sync.sync import (
+    NO_TERM,
+    Course,
+    Term,
+    academic_order,
+    academic_term,
+    choose_current_terms,
+    merge_term_aliases,
+    parse_time,
+)
 
 from .test_old_terms import CURRENT, MEMBERS, ROOT, TERMS, add_membership, add_term, archive, top_folders  # noqa: F401
 from .test_sync import NOW, sync
@@ -41,12 +50,13 @@ def test_undated_terms_use_their_newest_course():
     assert choose_current_terms([old, new], NOW) == [new]
 
 
-def test_mixed_dated_and_undated_terms_compare_start_with_course_creation():
+def test_undated_term_joins_the_running_dated_term_instead_of_pushing_it_out():
     fall = term("_fall", "2026-2027 Güz", FALL, FALL_END, created=["2026-08-20T00:00:00Z"])
     older = term("_old", "Ek Dönem", created=["2025-09-01T00:00:00Z"])
     assert choose_current_terms([older, fall], NOW) == [fall]
+    # A course created after the fall term started no longer drops the whole running term.
     newer = term("_new", "Telafi", created=["2026-09-25T00:00:00Z"])
-    assert choose_current_terms([older, fall, newer], NOW) == [newer]
+    assert choose_current_terms([older, fall, newer], NOW) == [fall, newer]
 
 
 def test_courses_without_a_term_come_with_the_current_group():
@@ -76,6 +86,40 @@ def test_next_term_opens_a_month_early_only_once_the_current_one_has_ended():
     assert choose_current_terms([summer_gap, fall], parse_time("2026-07-15T00:00:00Z")) == [summer_gap]
     # Nothing has started yet (a first-year student in summer): the first upcoming term.
     assert choose_current_terms([spring, fall], parse_time("2026-06-01T00:00:00Z")) == [fall]
+
+
+def test_terms_running_beside_the_latest_one_stay_current():
+    year = term("_year", "2026-2027", "2026-09-14T00:00:00Z", "2027-06-30T00:00:00Z", created=["x"])
+    fall = term("_fall", "2026-2027 Güz", FALL, FALL_END, created=["x"])
+    spring = term("_spring", "2026-2027 Bahar", "2027-02-15T00:00:00Z", "2027-06-30T00:00:00Z", created=["x"])
+    assert choose_current_terms([year, fall, spring], NOW) == [year, fall]
+    # In spring the year-long term still runs; the ended fall term does not come back.
+    assert choose_current_terms([year, fall, spring], parse_time("2027-03-10T00:00:00Z")) == [year, spring]
+    # After everything ended, only the term that started last stays until the next one is a month away.
+    assert choose_current_terms([year, fall, spring], parse_time("2027-08-01T00:00:00Z")) == [spring]
+
+
+def test_undated_shell_of_another_semester_does_not_join_the_running_term():
+    fall = term("_fall", "2026-2027 Güz", FALL, FALL_END, created=["2026-08-20T00:00:00Z"])
+    spring_shell = term("_sp", "2026-2027 Bahar", created=["2026-11-10T00:00:00Z"])
+    old_summer = term("_yaz", "2025-2026 Yaz", created=["2026-10-05T00:00:00Z"])
+    common = term("_ortak", "Ortak Dersler", created=["2026-08-25T00:00:00Z"])
+    november = parse_time("2026-11-15T00:00:00Z")
+    assert choose_current_terms([fall, spring_shell, old_summer, common], november) == [fall, common]
+
+
+def test_term_whose_dates_ended_before_its_courses_were_made_counts_by_its_courses():
+    spring = term("_sp", "2025-2026 Bahar", "2026-02-09T00:00:00Z", "2026-06-30T00:00:00Z",
+                  created=["2026-02-01T00:00:00Z"])
+    copied = term("_fall", "2026-2027 Güz", "2025-09-21T00:00:00Z", "2026-01-31T00:00:00Z",
+                  created=["2026-08-20T00:00:00Z"])
+    assert choose_current_terms([spring, copied], NOW) == [copied]
+
+
+def test_undated_terms_of_one_semester_are_current_together():
+    sections = [term(f"_{i}", f"2026FA - SEC{i}", created=[f"2026-08-20T09:0{i}:00Z"]) for i in range(3)]
+    older = term("_old", "2026SP - SEC9", created=["2026-01-15T00:00:00Z"])
+    assert choose_current_terms([older, *sections], NOW) == sections
 
 
 def test_when_no_term_can_be_dated_every_course_is_current():
@@ -110,6 +154,19 @@ def test_english_only_term_keeps_its_english_name():
     fall = term("_en", "2026-2027 Fall", FALL, FALL_END, courses=["_c1"])
     spring = term("_sp", "2025-2026 Spring", "2026-02-09T00:00:00Z", "2026-06-30T00:00:00Z", courses=["_c2"])
     assert names(merge_term_aliases([fall, spring])) == ["2026-2027 Fall", "2025-2026 Spring"]
+
+
+def test_full_official_arabic_and_ordinal_term_names_are_read():
+    assert academic_term("2026-2027 Eğitim-Öğretim Yılı Güz Dönemi") == academic_term(
+        "2026-2027 Academic Year Fall Semester") == ("2026", "2027", "fall")
+    assert academic_term("الفصل الدراسي الأول 1448") == academic_term("1448 First Semester") == ("1448", "", "fall")
+    assert academic_term("2026/27 Semester 2") == ("2026", "2027", "spring")
+    assert academic_term("2026FA - Fall 2026") is None  # merging takes whole names only
+    # Which term is newer: "Fall 2026" is the 2026-2027 fall term, "Spring 2027" its spring term.
+    assert academic_order("Fall 2026") == academic_order("2026FA - Fall 2026") == academic_order("2026-2027 Güz")
+    assert academic_order("Spring 2027") == academic_order("2026-2027 Bahar") == (2026, 1)
+    assert academic_order("1448 الفصل الدراسي الثاني") == (1448, 1)
+    assert academic_order("2026 Yazılım") is None and academic_order("2026-2027") is None
 
 
 def test_same_season_name_in_different_years_or_dates_is_not_merged():
@@ -215,3 +272,35 @@ def test_running_term_stays_current_while_the_next_one_opens(config, client, arc
     member["course"].update(id="_15000_1", termId="_next_1", courseId="CSE600-1", name="Seminar")
     archive.routes[MEMBERS]["results"].append(member)
     assert sync(config, client, dry_run=True).terms == [CURRENT]
+
+
+def test_closed_courses_terms_and_clubs_are_left_out(config, client, archive):
+    members = archive.routes[MEMBERS]["results"]
+    members[0]["course"]["availability"]["available"] = "Disabled"  # CSE303: cancelled section
+    members[1]["availability"]["available"] = "Disabled"  # MTH201: dropped
+    add_term(archive, "_closed_1", "2026-2027 Ek Dönem", like="_50_1")
+    archive.routes[f"{TERMS}/_closed_1"]["availability"]["available"] = "No"
+    add_membership(archive, "_15001_1", "_closed_1", name="Opens With Its Term", code="ENG101-1")
+    members[-1]["course"]["availability"]["available"] = "Term"
+    add_membership(archive, "_15002_1", "_closed_1", name="Open Anyway", code="ENG102-1")
+    add_membership(archive, "_90001_1", "_50_1", name="IEEE Student Branch", code="ORG-IEEE")
+    members[-1]["course"]["organization"] = True
+    report = sync(config, client, dry_run=True)
+    assert sorted(c.code for c in report.courses) == ["COE305", "ENG102"]
+
+
+def test_old_state_file_without_a_school_keeps_its_folders(config, client, archive):
+    """A state.json from before schools were recorded is the school in use: nothing moves or downloads again."""
+    sync(config, client)
+    data = json.loads(config.state_file.read_text(encoding="utf-8"))
+    assert data.pop("school") == "blackboard.example.edu"
+    config.state_file.write_text(json.dumps(data), encoding="utf-8")
+    archive.routes[f"{TERMS}/_50_1"]["name"] = "2026-2027 Fall"
+    archive.calls.clear()
+    report = sync(config, client)
+    assert archive.downloads() == []
+    assert CSE in {c.folder for c in report.courses}
+    assert top_folders(config) == [CURRENT]
+    after = json.loads(config.state_file.read_text(encoding="utf-8"))
+    assert after["school"] == "blackboard.example.edu"
+    assert {k: o["path"] for k, o in after["outputs"].items()} == {k: o["path"] for k, o in data["outputs"].items()}

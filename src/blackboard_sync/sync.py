@@ -8,6 +8,7 @@ import os
 import re
 import tempfile
 import time
+import unicodedata
 from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -59,25 +60,51 @@ LEAF_HANDLERS = {"resource/x-bb-file", "resource/x-bb-document", "resource/x-bb-
 ULTRA_BODY_TITLE = "ultraDocumentBody"
 NO_ATTACHMENTS_MESSAGE = "does not support file attachments"
 NO_TERM = "No term"
+# Availability values that mean closed, on a membership, a course or a term.
+CLOSED = ("No", "Disabled")
 # Courses usually open a little before the term officially starts.
 TERM_LEAD_TIME = timedelta(days=30)
 # One failing file or request must not stop the rest of the sync: it becomes a warning.
 ITEM_ERRORS = (OSError, requests.RequestException)
-# The seasons of one semester in Turkish and English: "2025-2026 Bahar" and "2025-2026 Spring"
-# are the same semester when Blackboard returns them as two term records. Used only to
-# recognise such a pair; a term keeps the name the school gave it.
+# The seasons of one semester in Turkish, English and Arabic: "2025-2026 Bahar" and
+# "2025-2026 Spring" are the same semester when Blackboard returns them as two term records.
+# Used only to recognise such a pair and to tell which of two named terms is newer; a term
+# keeps the name the school gave it. Keys are written as ``_fold`` leaves them.
 SEASONS = {
     "güz": "fall", "fall": "fall", "autumn": "fall",
     "bahar": "spring", "spring": "spring",
     "yaz": "summer", "summer": "summer",
 }
-ACADEMIC_TERM = re.compile(
-    r"(\d{4})\s*[-–/]\s*(\d{4})\s*[-–:]?\s*(\w+)"
-    r"(?:\s+(?:dönemi|yarıyılı|okulu|term|semester|school))?",
-    re.IGNORECASE,
+# Semesters named by their place in the academic year ("1448 First Semester",
+# "الفصل الدراسي الأول 1448", "Semester 1 2026"): the year in such a name is the academic year itself.
+ORDINAL_SEASONS = {
+    "first semester": "fall", "1st semester": "fall", "semester 1": "fall",
+    "second semester": "spring", "2nd semester": "spring", "semester 2": "spring",
+    "summer semester": "summer",
+    "الفصل الدراسي الأول": "fall", "الفصل الأول": "fall", "الفصل الدراسي الاول": "fall", "الفصل الاول": "fall",
+    "الفصل الدراسي الثاني": "spring", "الفصل الثاني": "spring",
+    "الفصل الدراسي الصيفي": "summer", "الفصل الصيفي": "summer",
+}
+SEASON_ORDER = {"fall": 0, "spring": 1, "summer": 2}
+_SEASON = "|".join(
+    re.escape(word).replace(r"\ ", r"\s+") for word in sorted({**SEASONS, **ORDINAL_SEASONS}, key=len, reverse=True)
+)
+# "2026-2027", "2026/27", "1448" or "1448 هـ".
+_YEARS = r"(?P<year>\d{4})(?:\s*[-–/]\s*(?P<next>\d{4}|\d{2}))?(?:\s*هـ)?"
+# Words a full official name puts between the years and the season ("2026-2027 Eğitim-Öğretim Yılı Güz Dönemi").
+_YEAR_WORDS = r"(?:(?:eğitim\s*[-–]?\s*öğretim|akademik|öğretim)\s+yili?|academic\s+year)"
+_SUFFIX = r"(?:\s+(?:dönemi|dönem|yariyili|yariyil|okulu|term|semester|school))?"
+_SEP = r"\s*[-–:,]?\s*"
+# A term's name, as ``_fold`` leaves it: the years first ("2026-2027 Güz", "1448 First Semester")
+# or the season first ("Fall 2026", "الفصل الدراسي الأول 1448").
+ACADEMIC_TERMS = (
+    re.compile(rf"{_YEARS}{_SEP}(?:{_YEAR_WORDS}{_SEP})?(?P<season>{_SEASON}){_SUFFIX}"),
+    re.compile(rf"(?P<season>{_SEASON}){_SUFFIX}{_SEP}(?:{_YEAR_WORDS}{_SEP})?{_YEARS}"),
 )
 # The age of a term nothing dates: older than any real term.
 UNDATED = datetime.min.replace(tzinfo=timezone.utc)
+# Undated terms whose newest courses were created this close together are one semester's.
+UNDATED_COHORT = timedelta(days=45)
 
 
 @dataclass
@@ -92,6 +119,8 @@ class Course:
     created: str | None = None
     # Where versions with ASCII-only course codes put this course, when that differs.
     legacy_rel_dir: str = ""
+    # The course this one is the merged (cross-listed) parent of, for this student.
+    child_id: str | None = None
 
 
 @dataclass
@@ -129,14 +158,68 @@ def term_dates(term: dict | None) -> tuple[datetime | None, datetime | None]:
     return parse_time(duration.get("start")), parse_time(duration.get("end"))
 
 
-def academic_term(name: str) -> tuple[str, str, str] | None:
-    """("2025", "2026", "spring") for "2025-2026 Spring", "2025/2026 Bahar Dönemi", ...; else None.
+_ONE_I = str.maketrans({"İ": "i", "I": "i", "ı": "i"})
 
+
+def _fold(text: str) -> str:
+    """Lower case for matching term names; Turkish and English i's (İ I ı i) are one letter."""
+    text = unicodedata.normalize("NFC", text)
+    return re.sub(r"\s+", " ", text.translate(_ONE_I).casefold()).strip()
+
+
+def _match_term_name(name: str, whole: bool) -> re.Match | None:
+    """The year and season in a term's name: its whole name, or else (``whole`` False) whole words in it."""
+    text = _fold(name)
+    for pattern in ACADEMIC_TERMS:
+        match = pattern.fullmatch(text) if whole else re.search(rf"(?<!\w)(?:{pattern.pattern})(?!\w)", text)
+        if match:
+            nxt = match.group("next")
+            if nxt and len(nxt) == 2 and int(nxt) != (int(match.group("year")) + 1) % 100:
+                continue  # "2026-01" is not an academic year
+            return match
+    return None
+
+
+def _season_of(match: re.Match) -> tuple[str, bool]:
+    """(season, ordinal) of the season words in ``match``; ordinal names count the academic year."""
+    words = re.sub(r"\s+", " ", match.group("season"))
+    if words in ORDINAL_SEASONS:
+        return ORDINAL_SEASONS[words], True
+    return SEASONS[words], False
+
+
+def academic_term(name: str) -> tuple[str, str, str] | None:
+    """The academic year and semester a term's whole name gives; else None.
+
+    ("2025", "2026", "spring") for "2025-2026 Spring", "2025/2026 Bahar Dönemi" and
+    "2025-2026 Eğitim-Öğretim Yılı Bahar Dönemi"; ("1448", "", "fall") for "1448 First Semester"
+    and "الفصل الدراسي الأول 1448"; ("2026", "", "fall") for "Fall 2026".
     Only for telling whether two term records are the same semester; it never names a folder.
     """
-    match = ACADEMIC_TERM.fullmatch(name.strip())
-    season = SEASONS.get(match.group(3).casefold()) if match else None
-    return (match.group(1), match.group(2), season) if season else None
+    match = _match_term_name(name, whole=True)
+    if not match:
+        return None
+    nxt = match.group("next") or ""
+    if len(nxt) == 2:
+        nxt = match.group("year")[:2] + nxt
+    return match.group("year"), nxt, _season_of(match)[0]
+
+
+def academic_order(name: str) -> tuple[int, int] | None:
+    """(academic year, semester) a term's name gives anywhere in it, for telling which is newer.
+
+    "2026-2027 Güz", "Fall 2026" and "2026FA - Fall 2026" give (2026, 0); "Spring 2027" gives
+    (2026, 1), its academic year starting in the fall before; "1448 Second Semester" gives
+    (1448, 1). None when the name holds no year with a season.
+    """
+    match = _match_term_name(name, whole=False)
+    if not match:
+        return None
+    season, ordinal = _season_of(match)
+    year = int(match.group("year"))
+    if not (match.group("next") or ordinal or season == "fall"):
+        year -= 1
+    return year, SEASON_ORDER[season]
 
 
 def _dates_overlap(a: Term, b: Term) -> bool:
@@ -193,40 +276,134 @@ def in_date_range(term: Term, now: datetime) -> bool:
     return bool(term.id and term.start and term.end and term.start - TERM_LEAD_TIME <= now <= term.end)
 
 
+def has_stale_dates(term: Term) -> bool:
+    """The term ended before any of its courses was created: dates left from the year it was copied from."""
+    created = [stamp for stamp in (parse_time(c.created) for c in term.courses) if stamp]
+    return bool(term.end and created and min(created) > term.end)
+
+
+def term_start(term: Term) -> datetime | None:
+    """The start date the term is dated by: None when it has none or its dates are stale."""
+    return None if has_stale_dates(term) else term.start
+
+
 def term_age(term: Term) -> datetime:
     """When the term started, or else when its newest course was created (``UNDATED`` if neither is known)."""
-    return term.start or max((parse_time(c.created) or UNDATED for c in term.courses), default=UNDATED)
+    return term_start(term) or max((parse_time(c.created) or UNDATED for c in term.courses), default=UNDATED)
+
+
+def _dated_current(dated: list[Term], now: datetime) -> tuple[list[Term], list[Term]]:
+    """(the most recent group, the other terms running beside it) among terms with dates.
+
+    The group is the term(s) that started most recently, or the first upcoming one
+    before any has started. Once it has ended, a term starting within a month takes
+    over early. Running beside it: every other term that has started and not ended
+    (a year-long term beside a semester, a full term beside an 8-week block); while
+    the group itself is still to start, also those starting within a month.
+    """
+    if not dated:
+        return [], []
+    started = [t for t in dated if t.start <= now]
+    if started:
+        latest = max(t.start for t in started)
+        group = [t for t in started if t.start == latest]
+        soon = [t for t in dated if now < t.start <= now + TERM_LEAD_TIME]
+        if soon and all(t.end and t.end < now for t in group):
+            group = [t for t in soon if t.start == min(s.start for s in soon)]
+    else:
+        group = [t for t in dated if t.start == min(s.start for s in dated)]
+    lead = TERM_LEAD_TIME if group[0].start > now else timedelta(0)
+    in_group = {id(t) for t in group}
+    running = [t for t in dated if id(t) not in in_group and t.end and t.start - lead <= now <= t.end]
+    return group, running
+
+
+def _undated_cohort(undated: list[Term]) -> list[Term]:
+    """The undated terms of the semester holding the newest course.
+
+    Their newest courses were created within ``UNDATED_COHORT`` of it, and when its
+    name gives a year and season, theirs give the same one (or none).
+    """
+    if not undated:
+        return []
+    newest = max(undated, key=term_age)
+    key = academic_order(newest.name)
+    return [t for t in undated if term_age(t) >= term_age(newest) - UNDATED_COHORT
+            and (key is None or academic_order(t.name) in (None, key))]
+
+
+def _joins(term: Term, current: list[Term]) -> bool:
+    """An undated term belongs with the running dated terms ``current``.
+
+    Its newest course was created once they opened, and its name does not give
+    another academic year or season than theirs (a next-term shell or an old
+    summer term that got a new course stays out).
+    """
+    if term_age(term) < min(t.start for t in current) - TERM_LEAD_TIME:
+        return False
+    key = academic_order(term.name)
+    keys = {academic_order(name) for t in current for name in t.names} - {None}
+    return key is None or not keys or key in keys
+
+
+def _latest_named(terms: list[Term]) -> list[Term]:
+    """With nothing to date the terms by: those whose names give the latest year and season.
+
+    Terms whose names give none come along; when no name gives one, every term.
+    """
+    keys = [academic_order(t.name) for t in terms]
+    if not any(keys):
+        return list(terms)
+    latest = max(k for k in keys if k)
+    return [t for t, k in zip(terms, keys) if k is None or k == latest]
 
 
 def choose_current_terms(terms: list[Term], now: datetime) -> list[Term]:
-    """Pick the term(s) a student means by "this term": the top group on Blackboard.
+    """Pick the term(s) a student means by "this term".
 
-    1. The term that started most recently; a term without a start date counts
-       from its newest course's creation date. Every term starting at that same
-       moment belongs to the group (a year-long and a semester term, or two
-       records of one semester).
-    2. Once that group has ended, a term starting within a month takes over
+    1. Terms with dates: the term that started most recently, with every term
+       starting at the same moment, plus every other term running now (a
+       year-long term beside a semester, sections starting on different days).
+       Once that group has ended, a term starting within a month takes over
        early, since courses open before the first lecture; while it runs (exam
        weeks) it stays. Before any term has started, the first upcoming one.
-    3. Courses without a term (``termId`` empty) are always included.
-    4. When no term can be dated at all, every course is current.
+       A term that ended before any of its courses was created has stale dates
+       (copied from an earlier year) and counts as undated.
+    2. Terms without dates count from their newest course's creation date, on a
+       clock of their own: they never push out a dated term that is running. One
+       joins the running terms when its newest course was created once they
+       opened and its name gives no other academic year or season. When no dated
+       term is running, the newer of the dated group and the undated terms of
+       the newest semester (``_undated_cohort``) is current.
+    3. A term holding the merged (cross-listed) parent of a current course comes along.
+    4. Courses without a term (``termId`` empty) are always included.
+    5. When no term can be dated at all, the terms whose names give the latest
+       academic year and season (``_latest_named``); if no name gives one, every course.
     """
     termless = [t for t in terms if not t.id]
-    known = [t for t in terms if t.id and term_age(t) != UNDATED]
-    if not known:
-        return list(terms)
-
-    def starting_at(age: datetime) -> list[Term]:
-        return [t for t in known if term_age(t) == age]
-
-    started = [term_age(t) for t in known if term_age(t) <= now]
-    upcoming = [term_age(t) for t in known if term_age(t) > now]
-    group = starting_at(max(started)) if started else starting_at(min(upcoming))
-    if started and all(t.end and t.end < now for t in group):
-        soon = [age for age in upcoming if age <= now + TERM_LEAD_TIME]
-        if soon:
-            group = starting_at(min(soon))
-    return group + termless
+    dated = [t for t in terms if t.id and term_start(t)]
+    undated = [t for t in terms if t.id and not term_start(t)]
+    aged = [t for t in undated if term_age(t) != UNDATED]
+    if not dated and not aged:
+        chosen = _latest_named(undated)
+    else:
+        group, running = _dated_current(dated, now)
+        cohort = _undated_cohort(aged)
+        if any(in_date_range(t, now) for t in group + running):
+            chosen = group + running + [t for t in aged if _joins(t, group + running)]
+        else:  # nothing dated runs now (so nothing runs beside the group)
+            group_age = group[0].start if group and group[0].start <= now else None
+            cohort_age = max((term_age(t) for t in cohort), default=None)
+            if cohort_age and (group_age is None or cohort_age > group_age):
+                chosen = cohort
+            elif cohort_age and cohort_age == group_age:
+                chosen = group + cohort
+            else:
+                chosen = group
+    current = {c.id for t in chosen for c in t.courses}
+    picked = {id(t) for t in chosen}
+    picked |= {id(t) for t in terms if t.id and any(c.child_id in current for c in t.courses)}
+    return [t for t in terms if t.id and id(t) in picked] + termless
 
 
 def markdown_key(out_key: str) -> str:
@@ -319,6 +496,7 @@ class Syncer:
         self.windows = is_windows() if windows is None else windows
         self.deadline_content_ids: dict[str, str] = {}
         self._placed = False  # a file was put on disk since the last save (``save_placed``)
+        state.use_school(config.base_url)
 
     def checkpoint(self) -> None:
         """Save progress so far (throttled) so a run that is killed keeps what it finished."""
@@ -371,13 +549,17 @@ class Syncer:
         synced once, and the records of one semester under two names (Turkish
         and English) are one term (``merge_term_aliases``). The selected terms
         are the current group (``choose_current_terms``) unless ``all_terms``.
+        Closed memberships and courses, Blackboard Organizations (clubs and
+        communities listed among the courses) and courses that open with a
+        term that is closed are left out.
         """
         warnings = warnings if warnings is not None else []
         now = now or datetime.now(timezone.utc)
         terms: dict[str | None, Term] = {}
+        looked_up: dict[str | None, tuple[Term, bool]] = {}  # term id -> (term, closed)
         seen: set[str] = set()
         for membership in self.client.memberships(user_id):
-            if (membership.get("availability") or {}).get("available") == "No":
+            if (membership.get("availability") or {}).get("available") in CLOSED:
                 continue
             course = membership.get("course")
             if not course:
@@ -386,21 +568,26 @@ class Syncer:
                 except ApiError as exc:
                     warnings.append(tr("Skipped course {course}: {error}").format(course=membership.get("courseId"), error=exc))
                     continue
-            if (course.get("availability") or {}).get("available") == "No":
-                continue  # private / not yet opened by the instructor
+            available = (course.get("availability") or {}).get("available")
+            if available in CLOSED or course.get("organization") is True:
+                continue  # private / not yet opened by the instructor, or a club, not a course
             if course["id"] in seen:
                 log.info("Course %s is listed more than once; using its first listing", course["id"])
                 continue
-            seen.add(course["id"])
             course_term = course.get("termId")
-            if course_term not in terms:
+            if course_term not in looked_up:
                 raw = self.client.term(course_term) if course_term else None
                 if course_term and raw is None:
                     warnings.append(tr("Could not read term {term}; using its id as folder name.").format(term=course_term))
                 name = (raw or {}).get("name") or (f"Term {course_term}" if course_term else NO_TERM)
                 start, end = term_dates(raw)
-                terms[course_term] = Term(course_term, name, start, end)
-            term = terms[course_term]
+                closed = ((raw or {}).get("availability") or {}).get("available") in CLOSED
+                looked_up[course_term] = (Term(course_term, name, start, end), closed)
+            term, closed = looked_up[course_term]
+            if closed and available == "Term":
+                continue  # it opens with its term, which is not open
+            seen.add(course["id"])
+            terms.setdefault(course_term, term)
             code, _ = course_code_and_title(course.get("courseId", ""), course.get("name", ""))
             term.courses.append(
                 Course(
@@ -412,19 +599,21 @@ class Syncer:
                     rel_dir="",
                     code=code,
                     created=course.get("created"),
+                    child_id=membership.get("childCourseId"),
                 )
             )
 
         all_found = merge_term_aliases(list(terms.values()))
-        # Mirrors run_sync's frozen terms: a term an older version archived stays off the page unless it is today's.
-        self.current_course_ids = [
-            c.id for t in choose_current_terms(all_found, now)
-            if not (set(t.ids) & set(self.state.past_terms) and not in_date_range(t, now)) for c in t.courses
-        ]
-        if all_terms:
-            selected = all_found
-        else:
-            selected = choose_current_terms(all_found, now)
+        # A term an older version downloaded as an archive (``state.past_terms``, no longer
+        # written) stays frozen: it is left out before the current terms are chosen, so it
+        # can never be chosen and then dropped, leaving no course at all. A term whose dates
+        # contain today is never frozen: one an older version archived under its English
+        # name is the current term itself.
+        candidates = [t for t in all_found
+                      if not (set(t.ids) & set(self.state.past_terms) and not in_date_range(t, now))]
+        current = choose_current_terms(candidates, now)
+        self.current_course_ids = [c.id for t in current for c in t.courses]
+        selected = all_found if all_terms else current
 
         recorded = self.recorded_course_dirs()
         self.assign_term_folders(all_found, recorded)
@@ -463,9 +652,15 @@ class Syncer:
         return selected, courses
 
     def recorded_course_dirs(self) -> dict[str, str]:
-        """Course id -> the "<term>/<course>" folder that holds most of its recorded files."""
+        """Course id -> the "<term>/<course>" folder that holds most of its recorded files.
+
+        Only files of this school count: Blackboard ids are numbered per school, so
+        another school's course with the same id is another course (``State.use_school``).
+        """
         counts: dict[str, Counter] = {}
         for key, out in self.state.outputs.items():
+            if not self.state.from_this_school(out):
+                continue
             parts = key.split(":")
             path = PurePosixPath(out["path"]).parts
             if len(parts) >= 3 and len(path) >= 3:
@@ -1313,15 +1508,7 @@ def run_sync(
         now=now,
         warnings=report.warnings,
     )
-    if not all_terms:
-        # A term an older version downloaded as an archive (``state.past_terms``, no longer
-        # written) stays frozen even if older memberships later become
-        # the fallback of choose_current_terms (e.g. current courses disappear).
-        # A term whose dates contain today is never frozen: one an older version
-        # archived under its English name is the current term itself.
-        frozen = {t.id for t in terms if set(t.ids) & set(state.past_terms) and not in_date_range(t, now)}
-        courses = [c for c in courses if c.term_id not in frozen]
-        terms = [t for t in terms if t.id not in frozen]
+    # Terms an older version archived (``state.past_terms``) are left out by ``discover``.
     report.terms = [t.name for t in terms]
     everything = not all_terms and not course_filters
     if everything and not dry_run:
