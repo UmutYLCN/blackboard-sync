@@ -18,9 +18,10 @@ enum SessionAction: Equatable { case nothing, keepAlive, refresh }
 /// Mac's `SessionCare` in src/blackboard_sync/session_refresh.py. Saved, so that a relaunch or a
 /// background launch keeps the wait after a failure and the note on Home.
 struct SessionCare: Codable, Equatable {
-    static let silentTimeout: TimeInterval = 45
+    static let silentTimeout: TimeInterval = 20
+    static let stillnessTimeout: TimeInterval = 6
     /// iPadOS gives a background refresh about 30 seconds.
-    static let backgroundTimeout: TimeInterval = 25
+    static let backgroundTimeout: TimeInterval = 20
     static let keepAliveEvery: TimeInterval = 25 * 60
     /// Over `keepAliveEvery`: the look before last must not be the last chance to act in time.
     static let expiryMargin: TimeInterval = 30 * 60
@@ -82,8 +83,9 @@ struct SessionCare: Codable, Equatable {
         return start <= now && now < start.addingTimeInterval(span)
     }
 
-    /// When Blackboard will end this session, if it says. The session cookies carry no expiry of their
-    /// own; Blackboard writes one into the value of `BbRouter`, as `expires:<seconds>` in a comma-separated list.
+    /// When Blackboard will end this session, if it says. Blackboard writes an expiry into the value
+    /// of `BbRouter`, as `expires:<seconds>` in a comma-separated list. If `BbRouter` has no usable
+    /// expiry, the expiry of another session cookie (`JSESSIONID` or `s_session_id`) is used as a fallback.
     static func sessionExpiry(_ cookies: [HTTPCookie]) -> Date? {
         for cookie in cookies where cookie.name == "BbRouter" {
             for part in cookie.value.split(separator: ",") {
@@ -91,6 +93,11 @@ struct SessionCare: Codable, Equatable {
                 if pair.count == 2, pair[0] == "expires", let seconds = TimeInterval(pair[1]) {
                     return Date(timeIntervalSince1970: seconds)
                 }
+            }
+        }
+        for cookie in cookies where ["JSESSIONID", "s_session_id"].contains(cookie.name) {
+            if let date = cookie.expiresDate, date.timeIntervalSince1970 > 0 {
+                return date
             }
         }
         return nil

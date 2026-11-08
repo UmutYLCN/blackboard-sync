@@ -108,8 +108,10 @@ def load_session(path: Path, base_url: str) -> dict:
 def session_expires_at(session_data: dict) -> float | None:
     """When Blackboard will end this session (epoch seconds); None if it does not say.
 
-    The session cookies carry no expiry of their own. Blackboard writes one into the
-    value of its ``BbRouter`` cookie, as ``expires:<seconds>`` in a comma-separated list.
+    Blackboard writes an expiry into the value of its ``BbRouter`` cookie, as
+    ``expires:<seconds>`` in a comma-separated list. If ``BbRouter`` has no usable
+    expiry, the expiry of another session cookie (``JSESSIONID`` or ``s_session_id``)
+    is used as a fallback so early refresh still works.
     """
     for cookie in session_data.get("cookies", []):
         if cookie.get("name") != "BbRouter":
@@ -118,6 +120,11 @@ def session_expires_at(session_data: dict) -> float | None:
             key, _, value = part.partition(":")
             if key == "expires" and value.isdigit():
                 return float(value)
+    for cookie in session_data.get("cookies", []):
+        if cookie.get("name") in ("JSESSIONID", "s_session_id"):
+            exp = cookie.get("expires")
+            if exp is not None and isinstance(exp, (int, float)) and exp > 0:
+                return float(exp)
     return None
 
 

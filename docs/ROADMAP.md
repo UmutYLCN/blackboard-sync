@@ -36,6 +36,7 @@ In 1.7.1:
 
 - Everything merged since 1.7.0: the [file-move fixes](#file-move-fixes), [no folders for courses without files](#no-folders-for-courses-without-files) and the [removal of the past-terms feature](#removal-of-the-past-terms-feature).
 - The [simple latest-term rule](#simple-latest-term-rule), on the desktop and iPad apps.
+- Provider-independent silent sign-in with page stillness, fast-path checks (username/email, account picker, OTP) and session cookie fallback.
 - The [UI cleanup](#ui-cleanup): the profile card and the calendar error card.
 - The English and Turkish [Store listings](#microsoft-store-listings) with NotebookLM.
 - School list growth: the known-schools list grew from 16 to about 143 schools, including 5 more Turkish schools, all checked on 2026-11-08.
