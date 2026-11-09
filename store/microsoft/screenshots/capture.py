@@ -1,11 +1,13 @@
 """Capture the Windows app for the Store screenshots: src/windows/<id>.png.
 
 PYTHONPATH=src python store/microsoft/screenshots/capture.py --font inter-latin.woff2 --font inter-latin-ext.woff2
+PYTHONPATH=src python store/microsoft/screenshots/capture.py --lang en --font inter-latin.woff2 --font inter-latin-ext.woff2
 
 Each window capture is the app's own WebView2 page (windows/webui) with a state from
 scripts/webui-preview.py, in a Windows 11 frame, at 2x. The tray capture draws the
-notification-area menu with the app's Turkish menu texts and the tray icon (the logo).
-Linux has no Segoe UI: --font embeds another font. Then run render.sh for the final images.
+notification-area menu with the app's menu texts and the tray icon (the logo). The captures
+are Turkish into src/windows/ and, with --lang en, English into src/windows/en/.
+Linux has no Segoe UI: --font embeds another font. Then run render.sh (--lang en) for the final images.
 """
 
 from __future__ import annotations
@@ -24,15 +26,17 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 OUT = HERE / "src" / "windows"
 
-# id -> (preview state, theme, content width, content height, element to scroll into view)
+# id -> (preview state, theme, content width, content height, element to scroll into view; the app's
+# English text, translated by capture.py for --lang tr)
 WINDOWS = {
     "02-genel-bakis": ("up-to-date", "light", 1180, 760, None),
     "03-teslim-tarihleri": ("calendar", "light", 1180, 760, None),
-    "04-google-takvim": ("settings", "light", 1180, 760, "Görünüm"),
+    "04-google-takvim": ("settings", "light", 1180, 760, "Appearance"),
     "05-duyurular": ("announcements-page", "light", 1180, 760, None),
     "06-dersler": ("courses", "light", 1180, 760, None),
     "07-koyu-tema": ("up-to-date", "dark", 1180, 760, None),
     "08-baslangic": ("start", "light", 1180, 760, None),
+    "10-notebooklm": ("notebooklm-idle", "light", 1180, 760, None),
 }
 TRAY = "09-tepsi-menusu"
 
@@ -57,7 +61,8 @@ iframe {{ display: block; border: 0; }}
 <iframe id="app" width="{width}" height="{height}"></iframe></div>
 </body></html>"""
 
-# The menu the tray icon opens after a sync (menubar/model.py Model.menu, Turkish catalog).
+# The menu the tray icon opens after a sync (menubar/model.py Model.menu); the texts are filled in
+# from the app's catalog for the language (TRAY_TEXTS).
 TRAY_PAGE = """<!doctype html><html><head><meta charset="utf-8"><style>
 {font}
 * {{ box-sizing: border-box; margin: 0; }}
@@ -78,17 +83,17 @@ html, body {{ background: transparent; font-family: 'Capture', 'Segoe UI', sans-
 .clock {{ text-align: right; line-height: 1.35; margin-left: 8px; padding: 0 4px; }}
 </style></head><body><div class="wrap">
 <div class="menu">
-  <div class="off">✓ UMUT YALÇIN · 18:14 senkronize edildi</div>
-  <div class="off">5 yeni dosya, 3 yeni duyuru · sonraki: 19:14</div>
+  <div class="off">✓ UMUT YALÇIN · {synced}</div>
+  <div class="off">{summary} · {next}</div>
   <hr>
-  <div class="hot">Şimdi senkronize et</div>
-  <div>Senkronu duraklat</div>
-  <div>Dersler<b>›</b></div>
-  <div>Son indirilenler<b>›</b></div>
-  <div>University klasörünü aç</div>
+  <div class="hot">{sync_now}</div>
+  <div>{pause}</div>
+  <div>{courses}<b>›</b></div>
+  <div>{recent}<b>›</b></div>
+  <div>{open_folder}</div>
   <hr>
-  <div>Ayarlar…</div>
-  <div>Çık</div>
+  <div>{settings}</div>
+  <div>{quit}</div>
 </div>
 <div class="bar">
   <div class="slot"><svg viewBox="0 -960 960 960"><path d="{up}"/></svg></div>
@@ -96,9 +101,28 @@ html, body {{ background: transparent; font-family: 'Capture', 'Segoe UI', sans-
   <div class="slot"><svg viewBox="0 -960 960 960"><path d="{wifi}"/></svg></div>
   <div class="slot"><svg viewBox="0 -960 960 960"><path d="{volume}"/></svg></div>
   <div class="slot"><svg viewBox="0 -960 960 960"><path d="{battery}"/></svg></div>
-  <div class="clock">18:14<br>18.10.2026</div>
+  <div class="clock">18:14<br>{date}</div>
 </div>
 </div></body></html>"""
+
+
+def tray_texts() -> dict[str, str]:
+    """The tray menu's texts in the app's language, from the same catalog the menu uses."""
+    from blackboard_sync.i18n import tr
+
+    summary = ", ".join((f"5 {tr('new files')}", f"3 {tr('new announcements')}"))
+    return {
+        "synced": tr("synced at {time}").format(time="18:14"),
+        "summary": summary,
+        "next": tr("next: {time}").format(time="19:14"),
+        "sync_now": tr("Sync now"),
+        "pause": tr("Pause syncing"),
+        "courses": tr("Courses"),
+        "recent": tr("Recent downloads"),
+        "open_folder": tr("Open {folder} folder").format(folder="University"),
+        "settings": tr("Settings…"),
+        "quit": tr("Quit"),
+    }
 
 
 def parse_args(argv=None):
@@ -106,6 +130,8 @@ def parse_args(argv=None):
     parser.add_argument("--font", type=Path, action="append", default=[],
                         help="a .woff2 used in place of Segoe UI (repeat for more files of one family)")
     parser.add_argument("--only", action="append", help="only these ids")
+    parser.add_argument("--lang", choices=("tr", "en"), default="tr",
+                        help="the app's language: tr into src/windows/, en into src/windows/en/ (default tr)")
     return parser.parse_args(argv)
 
 
@@ -133,14 +159,14 @@ def icon_path(name: str) -> str:
     return re.search(r'<path d="([^"]+)"', text).group(1)
 
 
-def states() -> dict:
-    """scripts/webui-preview.py's states, in Turkish on Istanbul's clock."""
+def states(lang: str) -> dict:
+    """scripts/webui-preview.py's states, in ``lang`` on Istanbul's clock."""
     os.environ["TZ"] = "Europe/Istanbul"
     time.tzset()
     sys.path.insert(0, str(ROOT / "src"))
     from blackboard_sync import i18n
 
-    i18n.set_language("tr")  # before the modules with tr() constants are imported
+    i18n.set_language(lang)  # before the modules with tr() constants are imported
     from dataclasses import replace
 
     from blackboard_sync.windows import webui_state
@@ -157,7 +183,22 @@ def states() -> dict:
     namespace = {"__name__": "webui_preview"}
     exec(compile(script.read_text(encoding="utf-8"), str(script), "exec"), namespace)
     now = datetime.now(timezone.utc).replace(hour=15, minute=14, second=0, microsecond=0)  # 18:14 in Istanbul
-    return namespace["fixtures"](now)
+    result = namespace["fixtures"](now)
+    # The preview's "held back" warning is a hard-coded English line; a Store shot shows the clean card.
+    clear_notice(result["notebooklm-idle"])
+    return result
+
+
+def clear_notice(node) -> None:
+    """Empty every NotebookLM card ``notice`` in a window state (dicts and lists, any depth)."""
+    if isinstance(node, dict):
+        if "notice" in node and "kind" in node and "counts" in node:
+            node["notice"] = ""
+        for value in node.values():
+            clear_notice(value)
+    elif isinstance(node, (list, tuple)):
+        for value in node:
+            clear_notice(value)
 
 
 def chromium() -> str | None:
@@ -169,7 +210,10 @@ def chromium() -> str | None:
 
 def main(argv=None) -> int:
     args = parse_args(argv)
-    fixtures = states()
+    lang = args.lang
+    fixtures = states(lang)
+    out_dir = OUT if lang == "tr" else OUT / lang
+    from blackboard_sync.i18n import tr
     from blackboard_sync.windows import webui_page
     from playwright.sync_api import sync_playwright
 
@@ -178,28 +222,32 @@ def main(argv=None) -> int:
     app_style = font_css(args.font, "Preview") + (
         ":root{--font:'Preview',system-ui,sans-serif;--font-display:'Preview',system-ui,sans-serif}" if args.font else "")
     errors = []
-    OUT.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(executable_path=chromium())
         for shot_id in wanted:
-            out = OUT / f"{shot_id}.png"
+            out = out_dir / f"{shot_id}.png"
             if shot_id == TRAY:
                 page = browser.new_page(viewport={"width": 600, "height": 600}, device_scale_factor=2)
                 page.set_content(TRAY_PAGE.format(font=frame_font, logo=logo(64), up=icon_path("keyboard_arrow_up"),
                                                   wifi=icon_path("wifi"), volume=icon_path("volume_up"),
-                                                  battery=icon_path("battery_full")))
+                                                  battery=icon_path("battery_full"),
+                                                  date="18.10.2026" if lang == "tr" else "10/18/2026",
+                                                  **tray_texts()))
                 page.evaluate("document.fonts.ready")
                 page.locator(".wrap").screenshot(path=str(out), omit_background=True)
                 page.close()
                 print(out)
                 continue
             name, theme, width, height, scroll = WINDOWS[shot_id]
+            if scroll:
+                scroll = tr(scroll)
             page = browser.new_page(viewport={"width": width + 40, "height": height + 80}, device_scale_factor=2,
                                     color_scheme=theme)
             page.on("pageerror", lambda exc, shot_id=shot_id: errors.append(f"{shot_id}: {exc}"))
             page.set_content(FRAME.format(font=frame_font, theme=theme, logo=logo(32), width=width, height=height))
             script = "window.__PREVIEW_STATE__ = " + json.dumps(fixtures[name], ensure_ascii=True) + ";"
-            html = webui_page.document(extra_style=app_style, extra_script=script, lang="tr")
+            html = webui_page.document(extra_style=app_style, extra_script=script, lang=lang)
             page.locator("#app").evaluate("(el, html) => { el.srcdoc = html; }", html)
             app = page.frame_locator("#app")
             app.locator("body").wait_for()

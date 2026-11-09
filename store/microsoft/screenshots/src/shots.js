@@ -1,7 +1,8 @@
-// Store upload order: a text-only promo card, then eight Windows captures (capture.py).
+// Store upload order: a text-only promo card, then nine Windows captures (capture.py).
 // `id` names the output PNG and, for captures, the PNG in windows/. `kind: "card"`
 // needs no image input. Title parts are [plain, highlighted, optional suffix].
-// Captions are at most 200 characters. Ship Turkish titles for both listings.
+// Captions are at most 200 characters. The Turkish images (screenshots/) and the English ones
+// (screenshots/en/) come from the same manifest; each has its own captures (windows/, windows/en/).
 window.SHOTS = [
   {
     id: "01-tek-tek",
@@ -88,5 +89,14 @@ window.SHOTS = [
     },
     capture: "Notification-area menu above the taskbar, with the tray icon",
     compact: true,
+  },
+  {
+    id: "10-notebooklm",
+    title: { tr: ["Ders dosyaların ", "NotebookLM’de hazır."], en: ["Your course files ", "ready in NotebookLM."] },
+    caption: {
+      tr: "NotebookLM: İndirilen ders dosyaları her ders için ayrı bir notebook'a otomatik aktarılır. Kaynaklarınla doğrudan çalış, özet çıkar veya soru sor.",
+      en: "NotebookLM: Downloaded course files sync automatically to one notebook per course. Chat with your sources, create study guides, and study faster.",
+    },
+    capture: "Ana sayfa with the NotebookLM card after a sync: last synced, files added, Sync and Open NotebookLM",
   },
 ];

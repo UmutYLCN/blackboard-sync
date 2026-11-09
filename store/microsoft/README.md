@@ -16,10 +16,11 @@ still shows **Blackboard Sync**.
 | --- | --- |
 | `listing-tr.md` | Turkish Store listing (primary market), ready to paste |
 | `listing-en.md` | English Store listing (additional language), ready to paste |
-| `screenshots/01-tek-tek.png` … `09-tepsi-menusu.png` | Final 1920x1080 images: problem card, then eight Windows screenshots, in upload order (see [Screenshots](#screenshots)) |
-| `screenshots/capture.py` | Captures the Windows app's own page (light and dark) and the tray menu into `screenshots/src/windows/` |
-| `screenshots/render.sh` | Renders the screenshots from `screenshots/src/` |
-| `screenshots/src/` | `template.html`, `shots.js` (titles, captions, what to capture), `windows/` (the eight Windows captures as PNG, from `capture.py`) |
+| `screenshots/01-tek-tek.png` … `10-notebooklm.png` | Final 1920x1080 Turkish images: problem card, then nine Windows screenshots, in upload order (see [Screenshots](#screenshots)) |
+| `screenshots/en/01-tek-tek.png` … `10-notebooklm.png` | The same ten images in English (English titles and an English app), for the English listing |
+| `screenshots/capture.py` | Captures the Windows app's own page (light and dark) and the tray menu into `screenshots/src/windows/` (Turkish) or, with `--lang en`, `screenshots/src/windows/en/` |
+| `screenshots/render.sh` | Renders the screenshots from `screenshots/src/` (`--lang en` renders the English set into `screenshots/en/`) |
+| `screenshots/src/` | `template.html`, `shots.js` (titles, captions, what to capture), `windows/` and `windows/en/` (the nine Windows captures per language as PNG, from `capture.py`) |
 | `trailer/make-trailer.sh` | Builds the 1920x1080 trailer and its thumbnail into `out/` |
 | `trailer/draft-trailer-thumbnail.png` | The thumbnail it makes, for review |
 | `images/hero-art.png` | 16:9 Super hero art, 1920x1080 (no text, no UI) |
@@ -38,7 +39,7 @@ Chrome), Node.js for the screenshot manifest, and `ffmpeg` for the trailer.
 1. Build the submission package with the manual Store workflow (see [4. Packages](#4-packages)).
 2. Do the manual test in `docs/MSIX.md` ("Manual Windows verification still required")
    with that exact `.msix`, signed with the test certificate as described there.
-3. Use the nine final Store images in [Screenshots](#screenshots). Capture additional
+3. Use the ten final Store images per language in [Screenshots](#screenshots). Capture additional
    screens during future manual tests to improve the listing.
 
 ## Partner Center checklist
@@ -145,12 +146,12 @@ OAuth metadata and are for testing only.
   needed (`listing-en.md` and `listing-tr.md`).
 - [ ] **Text:** paste from `listing-tr.md` (and `listing-en.md`): description, short
   description, product features, keywords, copyright and trademark info, developed by.
-  Use the 1.6.2 text in "What's new in this version" for this update. The non-affiliation
+  Use the 1.7.1 text in "What's new in this version" for this update. The non-affiliation
   sentence is the second paragraph of the description and part of the copyright line.
-- [ ] **Screenshots:** upload `01-tek-tek.png` to `09-tepsi-menusu.png` in order, with the
-  captions from the listing file. The problem card comes first, followed by the eight Windows
-  captures. Use the Turkish-titled images for both listings (`render.sh --lang en` makes
-  English ones in `screenshots/en/` if wanted).
+- [ ] **Screenshots:** upload `01-tek-tek.png` to `10-notebooklm.png` in order, with the
+  captions from the listing file. The problem card comes first, followed by the nine Windows
+  captures. Upload the Turkish images (`screenshots/`) to the Turkish listing and the English
+  images (`screenshots/en/`) to the English (en-US) listing.
 - [ ] **Store logos:** poster art (1440x2160): `images/poster-art.png`; 1:1 box art
   (2160x2160): `images/box-art.png`; 1:1 app tile icons: `images/store-logo-300.png`
   (300x300), `images/store-logo-150.png` (150x150), `images/store-logo-71.png` (71x71).
@@ -194,15 +195,17 @@ OAuth metadata and are for testing only.
 Microsoft: desktop screenshots are PNG, 1366x768 or larger (up to 3840x2160), at most 50 MB,
 up to 10 per language, with an optional caption of 200 characters each
 ([Screenshots, images and trailers](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/screenshots-and-images)).
-All nine images are 1920x1080 with Turkish titles; the opening card introduces the problem,
-followed by eight titled screenshots of the Windows app (1.6.2).
+Each language has ten images at 1920x1080: Turkish titles and a Turkish app in `screenshots/`,
+English titles and an English app in `screenshots/en/` (the app supports both in Settings and the
+listing declares `en-US` and `tr-TR`). The opening card introduces the problem, followed by nine
+titled screenshots of the Windows app (`10-notebooklm.png` shows the NotebookLM card).
 
 The app captures come from `screenshots/capture.py`: the app's own WebView2 page
 (`src/blackboard_sync/windows/webui`) with the states of `scripts/webui-preview.py` (the same
 invented student, courses and files as the promo films), in a Windows 11 window frame, at 2x.
 They are rendered as the Store package shows them, without update rows or offers (the Store
-updates the app). The tray image draws the notification-area menu with the app's Turkish menu
-texts (`menubar/model.py`, `Model.menu`) above a taskbar corner with the tray icon (the logo).
+updates the app). The tray image draws the notification-area menu with the app's menu texts in the
+language (`menubar/model.py`, `Model.menu`; Turkish or, with `--lang en`, English) above a taskbar corner with the tray icon (the logo).
 
 | Final image / upload order | Content |
 | --- | --- |
@@ -215,6 +218,11 @@ texts (`menubar/model.py`, `Model.menu`) above a taskbar corner with the tray ic
 | [07-koyu-tema.png](screenshots/07-koyu-tema.png) | Ana sayfa in the dark theme |
 | [08-baslangic.png](screenshots/08-baslangic.png) | Başlangıç first-run page: school address, save folder, start with computer and Giriş yap |
 | [09-tepsi-menusu.png](screenshots/09-tepsi-menusu.png) | Notification-area menu above the taskbar, with the tray icon |
+| [10-notebooklm.png](screenshots/10-notebooklm.png) | Ana sayfa with the NotebookLM card after a sync: last synced, files added, Sync NotebookLM and Open NotebookLM |
+
+The English set (`screenshots/en/`) shows the same ten screens; the English titles come from
+`shots.js` and the app's texts from its English interface. The NotebookLM card capture has no “files were held back” warning, so a Store image shows the
+plain success state.
 
 ![Home](screenshots/02-genel-bakis.png)
 
@@ -246,8 +254,10 @@ rendering the Store set needs only repository files.
 Capture the app, then render the final images, from the repository root:
 
 ```sh
-PYTHONPATH=src python store/microsoft/screenshots/capture.py   # src/windows/*.png
-./store/microsoft/screenshots/render.sh                        # screenshots/*.png
+PYTHONPATH=src python store/microsoft/screenshots/capture.py            # Turkish: src/windows/*.png
+./store/microsoft/screenshots/render.sh                                  # Turkish: screenshots/*.png
+PYTHONPATH=src python store/microsoft/screenshots/capture.py --lang en  # English: src/windows/en/*.png
+./store/microsoft/screenshots/render.sh --lang en                       # English: screenshots/en/*.png
 ```
 
 `capture.py` needs Playwright's Chromium. Linux has no Segoe UI, so pass a font there
@@ -256,14 +266,14 @@ promo films); `--only ID` recaptures one image. `render.sh` uses headless Google
 on Linux its `--window-size` screenshot can come out short, so check the bottom edge of the images. The template fits each capture within its
 image area; the tray image is centred below the title (`compact` in `shots.js`).
 
-The nine final 1920x1080 PNGs are written directly to `screenshots/`. Upload them in the
-table's order, with the captions in `listing-tr.md` or `listing-en.md` (also stored in
+The ten final 1920x1080 PNGs per language are written to `screenshots/` (Turkish) and
+`screenshots/en/` (English). Upload them in the table's order, with the captions in `listing-tr.md` or `listing-en.md` (also stored in
 `screenshots/src/shots.js`). `kind: "card"` in `shots.js` renders the opening card without a
-capture; other entries take `src/windows/<id>.png`.
+capture; other entries take `src/windows/<id>.png` (`src/windows/en/<id>.png` for `--lang en`).
 
 ### To add later
 
-- **Deleted files** and **past terms** views.
+- A **Deleted files** view.
 - **Folders**: File Explorer showing the University term/course folder structure.
 - A capture from a real Windows PC to compare with the rendered window before the submission.
 
@@ -319,8 +329,9 @@ risks failing certification. A trailer can be added later, rebuilt from Windows 
 1. **Notes for certification / test account:** how certification testers can sign in
    (school test account or explanation only). The biggest certification risk.
 2. **Markets:** all markets or Turkey only.
-3. **Screenshots:** take new English captures for the English listing (`render.sh --lang en`) and
-   Turkish ones for the Turkish listing; the current ones show the earlier Turkish-only interface.
+3. **Screenshots:** the English set is now captured and rendered (`capture.py --lang en`,
+   `render.sh --lang en`). The committed Turkish captures of screens 02–09 were made before the NotebookLM
+   card; recapture them (`capture.py`) before submission if you want them to match the English set.
 4. **Category:** Education > Study aids is proposed; secondary category Productivity or none.
 5. **Support contact:** GitHub Issues URL or an email address.
 6. **OneDrive backup declaration:** keep the default (checked) or uncheck.
@@ -328,9 +339,10 @@ risks failing certification. A trailer can be added later, rebuilt from Windows 
 
 ## Settled decisions
 
-- **Screenshots:** open with the promo problem/reveal card, then show eight captures of the
-  Windows app (1.6.2, WebView2 window): seven in light mode, one in dark mode, plus the tray
-  menu. Keep Turkish titles for both listings.
+- **Screenshots:** open with the promo problem/reveal card, then show nine captures of the
+  Windows app (WebView2 window): seven in light mode (one of them the NotebookLM card), one in dark mode, plus the
+  tray menu. Turkish images for the Turkish listing, English images (`screenshots/en/`) for
+  the English listing.
 
 - **Privacy policy page:** the page is now English, lives at `/privacy` (the old `/gizlilik`
   redirects there) and covers the Store package (data folder, startup task, no GitHub
