@@ -20,10 +20,7 @@ struct RootView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Image("Logo").resizable().scaledToFit().frame(width: 36, height: 44)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Blackboard Sync").font(.headline)
-                        Text("iPad · 0.1").font(.caption).foregroundStyle(.secondary)
-                    }
+                    Text("Blackboard Sync").font(.headline)
                     Spacer(minLength: 0)
                 }.padding(20)
                 List(selection: $page) {
