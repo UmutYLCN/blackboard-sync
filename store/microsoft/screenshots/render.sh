@@ -6,8 +6,9 @@
 #   ./store/microsoft/screenshots/render.sh           # Turkish, into screenshots/
 #   ./store/microsoft/screenshots/render.sh --lang en # English, into screenshots/en/
 #
-# For each capture in src/shots.js the app image is src/windows/<id>.png when it
-# exists (final image: <id>.png). Otherwise it is src/draft-input/<id>.png, or a
+# For each capture in src/shots.js the app image is src/windows/<id>.png (Turkish) or
+# src/windows/en/<id>.png (--lang en), both made by capture.py, when it exists
+# (final image: <id>.png). Otherwise it is src/draft-input/<id>.png, or a
 # placeholder when there is none, and the image is a draft: draft-<id>.png,
 # marked DRAFT on the image.
 set -euo pipefail
@@ -16,8 +17,8 @@ here="$(cd "$(dirname "$0")" && pwd)"
 lang="tr"
 if [[ "${1:-}" == "--lang" ]]; then lang="${2:?--lang needs tr or en}"; fi
 case "$lang" in
-  tr) out="$here" ;;
-  en) out="$here/en" ;;
+  tr) out="$here"; windows="windows" ;;
+  en) out="$here/en"; windows="windows/en" ;;
   *) echo "unknown language: $lang" >&2; exit 2 ;;
 esac
 mkdir -p "$out"
@@ -32,8 +33,8 @@ while IFS=$'\t' read -r id kind; do
   if [[ "$kind" == "card" ]]; then
     file="$out/$id.png"
     rm -f "$out/draft-$id.png"
-  elif [[ -f "$here/src/windows/$id.png" ]]; then
-    query+="&img=windows/$id.png"
+  elif [[ -f "$here/src/$windows/$id.png" ]]; then
+    query+="&img=$windows/$id.png"
     file="$out/$id.png"
     rm -f "$out/draft-$id.png"
   else
