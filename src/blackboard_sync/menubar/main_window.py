@@ -76,7 +76,7 @@ from AppKit import (
 )
 from Foundation import NSURL, NSMakeRect, NSObject, NSTimer, NSRunLoop, NSRunLoopCommonModes
 
-from blackboard_sync import __version__, courses, deadlines, schools, term_confirm
+from blackboard_sync import courses, deadlines, schools, term_confirm
 from blackboard_sync.menubar.main_window_model import (
     ACTIVITY,
     COURSES,
@@ -741,11 +741,8 @@ class MainWindow:
         logo.setImageScaling_(NSImageScaleProportionallyUpOrDown)
         view.addSubview_(logo)
         name = _label(T_WINDOW_TITLE, 13, bold=True)
-        name.setFrame_(NSMakeRect(60, 18, SIDEBAR - 72, 17))
+        name.setFrame_(NSMakeRect(60, 27, SIDEBAR - 72, 18))
         view.addSubview_(name)
-        version = _label(__version__, _small(), secondary=True)
-        version.setFrame_(NSMakeRect(60, 37, SIDEBAR - 72, 15))
-        view.addSubview_(version)
 
         # Drive's "Open Drive folder": the one big button above the sections.
         # A rounded, filled pill with a folder symbol, like Drive's.

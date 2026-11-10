@@ -1,3 +1,3 @@
 """Mirror Blackboard Learn Ultra course content into local folders."""
 
-__version__ = "1.7.0"
+__version__ = "1.7.1"
