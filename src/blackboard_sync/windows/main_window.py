@@ -12,7 +12,7 @@ import logging
 import sys
 from pathlib import Path
 
-from blackboard_sync import (__version__, announcements, courses, deadlines, runtime, schools, term_confirm, updater,
+from blackboard_sync import (announcements, courses, deadlines, runtime, schools, term_confirm, updater,
                              uninstall)
 from . import package
 from blackboard_sync.menubar import main_window_model as main
@@ -200,8 +200,7 @@ class MainWindow:
         bar = ttk.Frame(window, padding=(14, 18, 14, 16), width=SIDEBAR)
         bar.grid(row=0, column=0, sticky="ns")
         bar.rowconfigure(3 + len(main.NAV_SECTIONS), weight=1)
-        ttk.Label(bar, text=main.T_WINDOW_TITLE, font=HEADING_FONT).grid(row=0, column=0, sticky="w")
-        ttk.Label(bar, text=__version__, foreground=MUTED).grid(row=1, column=0, sticky="w", pady=(0, 14))
+        ttk.Label(bar, text=main.T_WINDOW_TITLE, font=HEADING_FONT).grid(row=0, column=0, sticky="w", pady=(0, 14))
         # Drive's "Open Drive folder": the one big button above the sections.
         ttk.Button(bar, text=main.T_OPEN_FOLDER, command=lambda: self.on_action("folder")).grid(
             row=2, column=0, sticky="ew", ipady=6, pady=(0, 14))
