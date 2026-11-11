@@ -44,6 +44,11 @@ public final class DeadlinesViewModel {
         DeadlineCalendar.subtitle(page, now: now(), timeZone: timeZone, strings: strings)
     }
 
+    /// The page as a week (strip and groups), against the current time.
+    public func week() -> DeadlineWeek {
+        DeadlineCalendar.week(page, now: now(), timeZone: timeZone, strings: strings)
+    }
+
     /// "Today · October 13, 2026 15:00": when a selected row is due.
     public func dueText(for row: DeadlineRow) -> String {
         let today = LocalTime(now(), timeZone).day

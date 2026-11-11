@@ -70,6 +70,14 @@ public enum AppColor {
     public static let splashGlow = Color.fixed(Palette.splash.glow)
     public static let splashEdge = Color.fixed(Palette.splash.edge)
     public static let splashHalo = Color.fixed(Palette.splash.halo)
+    /// Course marks (the Calendar's dots), told apart by colour; system colours, so each follows
+    /// light and dark mode. Orange comes late because it also marks what is due today.
+    public static let courses: [Color] = [accentText, .green, .purple, .pink, .teal, .orange, .brown]
+
+    /// The colour of the course at `index` in `DeadlineWeek.courseColors`; repeats after the last.
+    public static func course(_ index: Int) -> Color {
+        courses[((index % courses.count) + courses.count) % courses.count]
+    }
 }
 
 extension Color {
