@@ -274,10 +274,47 @@ h1 span {
   font-weight: 400;
 }
 
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  min-height: 22px;
+  margin: 24px 0 0;
+}
+
 .hero-note {
   font-size: 12px;
   color: var(--muted);
-  margin: 24px 0 0;
+  margin: 0;
+}
+
+.download-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 2px 10px;
+  border: 1px solid #50ddf438;
+  border-radius: 999px;
+  background: #10243aa6;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.download-stats[hidden] {
+  display: none;
+}
+
+.download-stats .status-dot {
+  margin: 0;
+}
+
+.download-stats strong {
+  color: var(--text);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
 
 .demo {
@@ -675,9 +712,13 @@ p {
   .download-arrow {
     display: none;
   }
-  .hero-note {
-    font-size: 11px;
+  .hero-meta {
+    gap: 8px 12px;
+    min-height: 20px;
     margin-top: 20px;
+  }
+  .hero-note,.download-stats {
+    font-size: 11px;
   }
   .demo {
     width: min(100%,410px);

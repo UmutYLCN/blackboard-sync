@@ -15,6 +15,7 @@ RELEASE = {'tag_name': 'v9.8.7', 'assets': [
     {'name': 'Blackboard-Sync-9.8.7.dmg', 'browser_download_url': DOWNLOAD + 'Blackboard-Sync-9.8.7.dmg'},
     {'name': 'Blackboard-Sync-9.8.7-Setup.exe', 'browser_download_url': DOWNLOAD + 'Blackboard-Sync-9.8.7-Setup.exe'},
 ]}
+STATS = {'total': 746, 'mac': 100, 'windows': 646, 'updated': '2026-11-11T00:00:00Z'}
 
 
 @pytest.fixture(scope='session')
@@ -25,11 +26,15 @@ def browser():
         browser.close()
 
 
-def context_for(browser, *, width=1440, javascript=True, release_ok=True):
+def context_for(browser, *, width=1440, javascript=True, release_ok=True, stats_ok=True, stats=STATS):
     context = browser.new_context(viewport={'width': width, 'height': 900},
                                   reduced_motion='reduce', java_script_enabled=javascript)
     context.route(API, lambda route: route.fulfill(status=200 if release_ok else 503,
                                                    json=RELEASE if release_ok else {}))
+    context.route('**/stats.json', lambda route: route.fulfill(
+        status=200 if stats_ok else 503,
+        json=stats if stats_ok else {'error': 'unavailable'},
+    ))
     # Layout tests do not need the MP4.
     context.route('**/*.mp4', lambda route: route.abort())
     return context
@@ -65,6 +70,9 @@ def test_home_layout_downloads_and_scrolling(browser, locale, path, heading, wid
         expect(page.locator('[data-version="macos"]')).to_contain_text('v9.8.7')
         # The Windows button is the Microsoft Store listing; script.js must leave it alone.
         expect(page.locator('#download-windows')).to_have_attribute('href', STORE_URL)
+        expected_stats = '700+ downloads' if locale == 'en' else '700+ indirme'
+        expect(page.locator('#download-stats')).to_be_visible()
+        expect(page.locator('#download-stats')).to_have_text(expected_stats)
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), f'overflow at {width}px'
         capture(page, f'{locale}-home-{width}')
         page.evaluate('window.scrollTo({top: 1000, behavior: "instant"})')
@@ -99,6 +107,50 @@ def test_release_api_failure_preserves_localized_download_fallback(browser, loca
         expect(page.locator('#download-macos')).to_have_attribute('href', RELEASE_PAGE)
         expect(page.locator('[data-version="macos"]')).to_contain_text(label)
         expect(page.locator('#download-windows')).to_have_attribute('href', STORE_URL)
+
+
+@pytest.mark.parametrize('locale,path,expected', [
+    ('en', '/', '1,500+ downloads'),
+    ('tr', '/tr/', '1.500+ indirme'),
+])
+def test_download_counter_rounds_down_and_formats_for_language(browser, locale, path, expected):
+    stats = {'total': 1589, 'mac': 621, 'windows': 968, 'updated': '2026-11-11T00:00:00Z'}
+    with context_for(browser, stats=stats) as context:
+        page = context.new_page()
+        page.goto(BASE + path)
+        counter = page.locator('#download-stats')
+        expect(counter).to_be_visible()
+        expect(counter).to_have_text(expected)
+        expect(counter).to_have_attribute('data-total', '1589')
+        expect(counter).to_have_attribute('data-mac', '621')
+        expect(counter).to_have_attribute('data-windows', '968')
+
+
+@pytest.mark.parametrize('locale,path', [('en', '/'), ('tr', '/tr/')])
+@pytest.mark.parametrize('kwargs', [
+    {'stats_ok': False},
+    {'stats': {'total': 99, 'mac': 40, 'windows': 59, 'updated': '2026-11-11T00:00:00Z'}},
+    {'javascript': False},
+])
+def test_download_counter_stays_hidden_when_unavailable_below_minimum_or_no_js(browser, locale, path, kwargs):
+    with context_for(browser, **kwargs) as context:
+        page = context.new_page()
+        page.goto(BASE + path)
+        expect(page.locator('#download-stats')).to_be_hidden()
+        expect(page.locator('.hero-note')).to_be_visible()
+
+
+def test_stats_json_route_returns_cached_release_totals(browser):
+    with browser.new_context() as context:
+        response = context.request.get(BASE + '/stats.json')
+        assert response.status == 200
+        assert 'application/json' in response.headers.get('content-type', '')
+        assert 'max-age=3600' in response.headers.get('cache-control', '')
+        payload = response.json()
+        assert payload['mac'] >= 0
+        assert payload['windows'] >= 568
+        assert payload['total'] == payload['mac'] + payload['windows']
+        assert isinstance(payload['updated'], str) and payload['updated']
 
 
 @pytest.mark.parametrize('locale,path', [('en', '/privacy'), ('tr', '/tr/privacy')])
