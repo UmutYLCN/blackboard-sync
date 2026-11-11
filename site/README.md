@@ -8,7 +8,9 @@ Preview from the repository root:
 python3 -m http.server 8000 --directory site
 ```
 
-Open http://localhost:8000. The two download links start at GitHub's latest release page, then resolve to the latest `.dmg` and `-Setup.exe` assets when the public GitHub API responds. API errors, missing assets, and disabled JavaScript preserve the release-page fallback. No analytics or trackers are included.
+Open http://localhost:8000. The macOS download link starts at GitHub's latest release page, then resolves to the latest `.dmg` asset when the public GitHub API responds. API errors, missing assets, and disabled JavaScript preserve the release-page fallback. No analytics or trackers are included.
+
+The Windows download button (`#download-windows`) is the Microsoft Store listing, not a GitHub asset, and `script.js` never rewrites it; the Windows install card keeps a small text link to the GitHub release for people who want the direct `.exe` installer. The Store URL lives in `tests/store_link.py`, and `tests/test_store_link.py` (standard library only, no server needed) fails if either home page stops linking the button to it or if `script.js` or the Worker could rewrite it.
 
 Short download links `/mac` and `/windows` are handled by a small Worker (`worker/index.js`). It reads the latest release from the GitHub API, caches it for five minutes, and answers with a 302 to the `.dmg` or `-Setup.exe` asset (falling back to `.exe`, then `.msi`). API errors or a missing asset redirect to the latest release page. The Worker also answers byte ranges for the promo MP4. Every other path is served as a static asset without running the Worker. To try the links locally:
 

@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+from store_link import STORE_URL
+
 BASE = os.environ.get('SITE_BASE_URL', 'http://127.0.0.1:8792').rstrip('/')
 RELEASE_PAGE = 'https://github.com/UmutYLCN/blackboard-sync/releases/latest'
 DOWNLOAD = 'https://github.com/UmutYLCN/blackboard-sync/releases/download/v9.8.7/'
@@ -59,10 +61,10 @@ def test_home_layout_downloads_and_scrolling(browser, locale, path, heading, wid
         expect(page.locator('.language-switch a[aria-current="page"]')).to_have_text(locale.upper())
         expect(page.locator('.nav-github')).to_be_visible()
         expect(page.locator('.hero a[href="https://github.com/UmutYLCN/blackboard-sync"]')).to_have_count(0)
-        for platform, filename in [('macos', 'Blackboard-Sync-9.8.7.dmg'),
-                                   ('windows', 'Blackboard-Sync-9.8.7-Setup.exe')]:
-            expect(page.locator(f'#download-{platform}')).to_have_attribute('href', DOWNLOAD + filename)
-            expect(page.locator(f'[data-version="{platform}"]')).to_contain_text('v9.8.7')
+        expect(page.locator('#download-macos')).to_have_attribute('href', DOWNLOAD + 'Blackboard-Sync-9.8.7.dmg')
+        expect(page.locator('[data-version="macos"]')).to_contain_text('v9.8.7')
+        # The Windows button is the Microsoft Store listing; script.js must leave it alone.
+        expect(page.locator('#download-windows')).to_have_attribute('href', STORE_URL)
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), f'overflow at {width}px'
         capture(page, f'{locale}-home-{width}')
         page.evaluate('window.scrollTo({top: 1000, behavior: "instant"})')
@@ -94,9 +96,9 @@ def test_release_api_failure_preserves_localized_download_fallback(browser, loca
     with context_for(browser, release_ok=False) as context:
         page = context.new_page()
         page.goto(BASE + path)
-        for platform in ('macos', 'windows'):
-            expect(page.locator(f'#download-{platform}')).to_have_attribute('href', RELEASE_PAGE)
-            expect(page.locator(f'[data-version="{platform}"]')).to_contain_text(label)
+        expect(page.locator('#download-macos')).to_have_attribute('href', RELEASE_PAGE)
+        expect(page.locator('[data-version="macos"]')).to_contain_text(label)
+        expect(page.locator('#download-windows')).to_have_attribute('href', STORE_URL)
 
 
 @pytest.mark.parametrize('locale,path', [('en', '/privacy'), ('tr', '/tr/privacy')])

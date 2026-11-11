@@ -1,4 +1,5 @@
-// Keep the release-page links usable when JavaScript or the GitHub API is unavailable.
+// Keep the macOS release-page link usable when JavaScript or the GitHub API is unavailable.
+// The Windows button is the Microsoft Store listing and is never rewritten here (see tests/test_store_link.py).
 (async () => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
@@ -14,7 +15,6 @@
     if (!Array.isArray(release.assets) || typeof release.tag_name !== 'string') return;
     const platforms = [
       { id: 'macos', suffix: '.dmg', extension: '.dmg' },
-      { id: 'windows', suffix: '-Setup.exe', extension: '.exe' },
     ];
     for (const platform of platforms) {
       const asset = release.assets.find(item => typeof item.name === 'string' && item.name.endsWith(platform.suffix));
