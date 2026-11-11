@@ -48,7 +48,7 @@ struct SettingsView: View {
                     ComingSoon(title: "Notes PDFs", symbol: "doc.text")
                 }
                 Section(model.text("About & privacy")) {
-                    Text("Blackboard Sync · iPad 0.1").font(.headline)
+                    Text(verbatim: "Blackboard Sync · iPad \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")").font(.headline)
                     Text(model.text("Your sign-in stays on this device in the app's private web store and Keychain. Course files are downloaded directly from your school. No analytics or relay server."))
                     Text(model.text("Files appear in the Files app and can be opened or edited by other apps. Deleting Blackboard Sync removes its local files. Export anything you want to keep first."))
                     Text(model.text("Foreground sync only. Audio, video and files over 500 MB are skipped. HTML responses are rejected. No files are deleted from your mirror."))
