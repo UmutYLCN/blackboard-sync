@@ -95,7 +95,7 @@ extension DeadlineCalendar {
                 when = "\(DisplayFormat.weekdayShort(row.day, language: strings.language)) \(row.time)"
             }
             return WeekRow(row: row, dayNumber: String(row.day.day),
-                           month: strings.upper(DisplayFormat.monthShort(row.day, language: strings.language)),
+                           month: DisplayFormat.shortMonth(row.day.month, language: strings.language),
                            when: when, hot: row.day == today && !past, past: past, isToday: row.day == today)
         }
 

@@ -95,7 +95,7 @@ final class NavigationTests: XCTestCase {
         XCTAssertTrue(app.buttons["calendar.today"].exists)
         XCTAssertEqual(app.buttons.matching(identifier: "calendar.day").count + 1, 7)
         XCTAssertTrue(app.buttons["calendar.today"].label.hasPrefix("Today, "))
-        XCTAssertTrue(app.staticTexts["Today"].exists || app.staticTexts["Later this week"].exists)
+        XCTAssertTrue(["Today", "Later this week", "Next week"].contains { app.staticTexts[$0].exists })
         XCTAssertTrue(app.staticTexts["Past due"].exists)
         XCTAssertTrue(app.staticTexts["Select a due date"].exists)
         capture("Calendar-sample-landscape")

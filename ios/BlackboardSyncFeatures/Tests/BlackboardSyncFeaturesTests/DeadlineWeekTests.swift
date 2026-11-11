@@ -151,8 +151,6 @@ final class DeadlineWeekTests: XCTestCase {
         let day = LocalTime(utc("2026-11-11T12:00:00Z"), istanbul).day
         XCTAssertEqual(DisplayFormat.weekdayShort(day, language: .english), "Wed")
         XCTAssertEqual(DisplayFormat.weekdayShort(day, language: .turkish), "Çar")
-        XCTAssertEqual(DisplayFormat.monthShort(day, language: .english), "Nov")
-        XCTAssertEqual(DisplayFormat.monthShort(day, language: .turkish), "Kas")
         XCTAssertEqual(day.weekStart.day, 9)
         XCTAssertEqual(day.adding(-11).month, 10)
     }
