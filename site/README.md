@@ -19,6 +19,50 @@ npx wrangler@4.149.0 dev --persist-to ../.wrangler/state
 
 Keeping local state outside `site/` stops the dev server from reloading on its own writes.
 
+## Download statistics
+
+The Worker writes an event to the `downloads` Analytics Engine dataset (`DOWNLOADS` binding) for each `/mac` or `/windows` request using `ctx.waitUntil`. Data points record:
+
+- `blob1`: target platform (`mac` or `windows`)
+- `blob2`: visitor country code from `request.cf.country` (e.g. `TR`, `US`)
+- `blob3`: referrer hostname only (e.g. `blackboardsyncapp.com`)
+- `double1`: `1` (download counter)
+
+No cookies, user IP addresses, or full referrer URLs are stored.
+
+### SQL query
+
+Read downloads per day and platform using the Cloudflare Analytics Engine SQL API:
+
+```sql
+SELECT
+  toStartOfDay(timestamp) AS day,
+  blob1 AS platform,
+  sum(_sample_interval) AS downloads
+FROM downloads
+WHERE timestamp >= NOW() - INTERVAL '30' DAY
+GROUP BY day, platform
+ORDER BY day DESC, platform ASC
+```
+
+Query the API directly with `curl`:
+
+```sh
+curl -X POST "https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/analytics_engine/sql" \
+  -H "Authorization: Bearer <API_TOKEN>" \
+  -H "Content-Type: text/plain" \
+  -d "SELECT toStartOfDay(timestamp) AS day, blob1 AS platform, sum(_sample_interval) AS downloads FROM downloads WHERE timestamp >= NOW() - INTERVAL '30' DAY GROUP BY day, platform ORDER BY day DESC, platform ASC"
+```
+
+### Creating the read-only API token
+
+1. Go to **My Profile** > **API Tokens** in the Cloudflare dashboard (<https://dash.cloudflare.com/profile/api-tokens>).
+2. Click **Create Token**, then choose **Create Custom Token** at the bottom.
+3. Give the token a name (e.g. `Downloads Analytics Reader`).
+4. Under **Permissions**, select **Account** > **Account Analytics** > **Read**.
+5. Under **Account Resources**, choose **Include** > **All accounts** (or your specific account).
+6. Click **Continue to summary**, then **Create Token**, and save the generated token.
+
 Browser checks run in the Website GitHub Actions workflow against Wrangler's
 real asset server, including EN/TR navigation without JavaScript, narrow screens,
 download API failures and the legacy privacy redirects. With the server above

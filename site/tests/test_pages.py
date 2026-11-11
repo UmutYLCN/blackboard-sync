@@ -121,6 +121,22 @@ def test_old_turkish_privacy_links_redirect_to_turkish(browser, path):
         assert response.headers['location'].endswith('/tr/privacy')
 
 
+@pytest.mark.parametrize('path,suffix', [
+    ('/mac', '.dmg'),
+    ('/mac/', '.dmg'),
+    ('/windows', '-Setup.exe'),
+    ('/windows/', '-Setup.exe'),
+])
+def test_short_download_links_redirect_to_release_asset(browser, path, suffix):
+    with browser.new_context() as context:
+        response = context.request.get(BASE + path, max_redirects=0)
+        assert response.status == 302
+        location = response.headers['location']
+        assert location.startswith('https://github.com/UmutYLCN/blackboard-sync/releases/download/')
+        assert location.endswith(suffix)
+        assert 'public' in response.headers.get('cache-control', '')
+
+
 def test_promo_video_answers_byte_ranges(browser):
     """Safari plays the video only from 206 responses."""
     with browser.new_context() as context:

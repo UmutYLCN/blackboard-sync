@@ -8,6 +8,12 @@
     // Only the short download links and the video (byte ranges) run the Worker; every other path is static.
     "run_worker_first": ["/mac", "/mac/", "/windows", "/windows/", "/assets/*.mp4"]
   },
+  "analytics_engine_datasets": [
+    {
+      "binding": "DOWNLOADS",
+      "dataset": "downloads"
+    }
+  ],
   "vars": {
     "RELEASE_API": "https://api.github.com/repos/UmutYLCN/blackboard-sync/releases/latest",
     "RELEASES_PAGE": "https://github.com/UmutYLCN/blackboard-sync/releases/latest"
