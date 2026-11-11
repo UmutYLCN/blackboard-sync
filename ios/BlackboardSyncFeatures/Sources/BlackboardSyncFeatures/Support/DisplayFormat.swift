@@ -30,6 +30,22 @@ public enum DisplayFormat {
         LocalTime(now, timeZone).day == day
     }
 
+    /// "Mon" / "Pzt": the day's abbreviated weekday in `language`.
+    public static func weekdayShort(_ day: LocalDay, language: FeatureLanguage) -> String {
+        dayPart(day, language: language, style: .dateTime.weekday(.abbreviated))
+    }
+
+    private static func dayPart(_ day: LocalDay, language: FeatureLanguage, style: Date.FormatStyle) -> String {
+        let locale = Locale(identifier: language.rawValue)
+        var calendar = LocalDay.utcCalendar
+        calendar.locale = locale
+        var style = style
+        style.locale = locale
+        style.calendar = calendar
+        style.timeZone = calendar.timeZone
+        return day.noonUTC.formatted(style)
+    }
+
     /// `language` with `region`'s conventions; a region without data falls back to the language's own.
     static func locale(_ language: FeatureLanguage, region: Locale.Region?) -> Locale {
         var components = Locale.Components(languageCode: Locale.LanguageCode(language.rawValue))

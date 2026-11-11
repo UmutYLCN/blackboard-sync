@@ -13,12 +13,27 @@ public struct LocalDay: Hashable, Comparable, Sendable {
     }
 
     /// The day after this one.
-    var next: LocalDay {
+    var next: LocalDay { adding(1) }
+
+    /// The day `days` after (or, when negative, before) this one.
+    func adding(_ days: Int) -> LocalDay {
+        LocalTime(Self.utcCalendar.date(from: DateComponents(year: year, month: month, day: day + days, hour: 12))!,
+                  Self.utcCalendar.timeZone).day
+    }
+
+    /// Monday of this day's week (weeks start on Monday, as the desktop's `date.weekday()`).
+    var weekStart: LocalDay { adding(-weekday) }
+
+    /// Noon of this day in UTC, for formatting the day's names without a time-zone shift.
+    var noonUTC: Date {
+        Self.utcCalendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
+    }
+
+    static let utcCalendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
-        let date = calendar.date(from: DateComponents(year: year, month: month, day: day + 1))!
-        return LocalTime(date, calendar.timeZone).day
-    }
+        return calendar
+    }()
 }
 
 /// An instant as a wall clock in one zone: each instant converted on its own, so daylight
