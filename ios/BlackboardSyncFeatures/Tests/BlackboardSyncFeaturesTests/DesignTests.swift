@@ -72,6 +72,23 @@ final class DisplayFormatTests: XCTestCase {
         XCTAssertEqual(DisplayFormat.count(2, one: "{n} error", other: "{n} errors"), "2 errors")
     }
 
+    func testShortMonthFollowsTheLanguage() {
+        XCTAssertEqual(DisplayFormat.shortMonth(11, language: .english), "NOV")
+        XCTAssertEqual(DisplayFormat.shortMonth(11, language: .turkish), "KAS")
+        XCTAssertEqual(DisplayFormat.shortMonth(8, language: .turkish), "AĞU")
+        XCTAssertEqual(DisplayFormat.shortMonth(1, language: .english), "JAN")
+        XCTAssertEqual(DisplayFormat.shortMonth(0, language: .english), "")
+        XCTAssertEqual(DisplayFormat.shortMonth(13, language: .turkish), "")
+    }
+
+    func testIsTodayUsesTheGivenTimeZone() {
+        // 2026-11-11 10:43 UTC is still the 11th in UTC but already the 12th at UTC+14.
+        let eleventh = LocalDay(year: 2026, month: 11, day: 11, weekday: 2)
+        XCTAssertTrue(DisplayFormat.isToday(eleventh, now: date, timeZone: utc))
+        XCTAssertFalse(DisplayFormat.isToday(eleventh, now: date, timeZone: TimeZone(secondsFromGMT: 14 * 3600)!))
+        XCTAssertFalse(DisplayFormat.isToday(LocalDay(year: 2026, month: 11, day: 12, weekday: 3), now: date, timeZone: utc))
+    }
+
     func testTurkishCountsUseTheTranslation() {
         let turkish = ["{n} error": "{n} hata", "{n} errors": "{n} hata"]
         XCTAssertEqual(DisplayFormat.count(1, one: "{n} error", other: "{n} errors") { turkish[$0] ?? $0 }, "1 hata")
