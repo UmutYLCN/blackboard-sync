@@ -5,6 +5,26 @@
 	"objectVersion" = "56";
 	"archiveVersion" = "1";
 	"objects" = {
+		"7E5B8C4D2A3F4E6091B2C3D1" = {
+			"isa" = "PBXFileReference";
+			"path" = "Views/HomeView.swift";
+			"sourceTree" = "<group>";
+			"lastKnownFileType" = "sourcecode.swift";
+		};
+		"7E5B8C4D2A3F4E6091B2C3D2" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7E5B8C4D2A3F4E6091B2C3D1";
+		};
+		"7E5B8C4D2A3F4E6091B2C3D3" = {
+			"isa" = "PBXFileReference";
+			"path" = "HomeTests.swift";
+			"sourceTree" = "<group>";
+			"lastKnownFileType" = "sourcecode.swift";
+		};
+		"7E5B8C4D2A3F4E6091B2C3D4" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7E5B8C4D2A3F4E6091B2C3D3";
+		};
 		"7D4F6A3C1B2E4F7091A2B3C1" = {
 			"isa" = "PBXFileReference";
 			"path" = "Core/TermConfirm.swift";
@@ -106,6 +126,7 @@
 				"7B2D4E1A9C3F4D5E8A6B1C06",
 				"7C3E5F2B0A1D4E6F8B9C0D15",
 				"7D4F6A3C1B2E4F7091A2B3C4",
+				"7E5B8C4D2A3F4E6091B2C3D4",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
@@ -164,6 +185,7 @@
 				"292006EE11E80A9B766A4633",
 				"5B22F1D1BC6F405CAE3D8F52",
 				"7D4F6A3C1B2E4F7091A2B3C2",
+				"7E5B8C4D2A3F4E6091B2C3D2",
 				"889BA4667DF5F95AEB51A2B4",
 				"E291DC88181AA25599AC88BE",
 				"D499B1A50CBD93A6996678F6",
@@ -326,6 +348,7 @@
 				"7B2D4E1A9C3F4D5E8A6B1C05",
 				"7C3E5F2B0A1D4E6F8B9C0D14",
 				"7D4F6A3C1B2E4F7091A2B3C3",
+				"7E5B8C4D2A3F4E6091B2C3D3",
 				"7C3E5F2B0A1D4E6F8B9C0D11",
 			);
 			"sourceTree" = "<group>";
@@ -361,6 +384,7 @@
 				"03E88897E6ABE2E391FE3BA1",
 				"5B22F1D1BC6F405CAE3D8F51",
 				"7D4F6A3C1B2E4F7091A2B3C1",
+				"7E5B8C4D2A3F4E6091B2C3D1",
 				"C75F3F4F0F5045C338B8B6A7",
 				"978D5D7F2D053910435025EF",
 				"24D7E70E612FFE549C725B7A",

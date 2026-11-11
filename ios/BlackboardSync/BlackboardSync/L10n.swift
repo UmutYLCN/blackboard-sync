@@ -35,6 +35,8 @@ enum L10n {
         "1. Sign in to Blackboard\n2. Choose your courses\n3. Sync now and open your files offline": "1. Blackboard’a giriş yapın\n2. Derslerinizi seçin\n3. Senkronize edip dosyalarınızı çevrimdışı açın",
         "{n} error": "{n} hata",
         "{n} errors": "{n} hata",
+        "{n} new file": "{n} yeni dosya",
+        "{n} new files": "{n} yeni dosya",
         "About & privacy": "Hakkında ve gizlilik",
         "Account": "Hesap",
         "Account response has no user identifier.": "Hesap yanıtında kullanıcı kimliği yok.",

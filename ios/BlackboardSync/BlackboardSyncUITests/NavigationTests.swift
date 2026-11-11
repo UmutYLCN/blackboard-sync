@@ -115,6 +115,119 @@ final class NavigationTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
+    /// Home (board pick H1) over the sample Blackboard: the status strip first with its one button, the
+    /// due dates and announcements, then the last files as rows; each state from `--ui-testing-home`.
+    @MainActor
+    func testHomeStatusFirstInEveryState() throws {
+        let app = launchHome("up-to-date")
+        let status = app.descendants(matching: .any)["home.status"].firstMatch
+        XCTAssertTrue(status.waitForExistence(timeout: 20))
+        XCTAssertTrue(status.label.hasPrefix("Up to date"), status.label)
+        XCTAssertTrue(status.label.contains("3 new files"), status.label)
+        let action = app.buttons["home.action"]
+        XCTAssertEqual(action.label, "Sync now")
+        XCTAssertTrue(action.isEnabled)
+        XCTAssertTrue(app.staticTexts["Homework 3"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Exam rooms & times"].exists)
+        XCTAssertTrue(app.buttons["Open calendar"].exists)
+        // The status strip sits above the due dates, which sit above the files.
+        let recent = app.buttons.matching(identifier: "home.recent")
+        XCTAssertEqual(recent.count, 4)
+        XCTAssertTrue(recent.firstMatch.label.contains("SPM Slides-3.pdf"), recent.firstMatch.label)
+        XCTAssertTrue(recent.firstMatch.isHittable, "the whole row is the button")
+        XCTAssertLessThan(status.frame.maxY, app.staticTexts["Homework 3"].frame.minY)
+        XCTAssertLessThan(app.staticTexts["Homework 3"].frame.maxY, app.staticTexts["Recent downloads"].frame.minY)
+        // Due dates and announcements share one row in landscape and in portrait.
+        XCTAssertEqual(app.staticTexts["Upcoming deadlines"].frame.midY, app.staticTexts["Announcements"].firstMatch.frame.midY, accuracy: 2)
+        capture("Home-H1-landscape")
+        XCUIDevice.shared.orientation = .portrait
+        XCTAssertTrue(app.buttons["home.action"].waitForExistence(timeout: 5))
+        // With the sidebar open the page is too narrow for two cards, so they stack.
+        XCTAssertLessThan(app.staticTexts["Upcoming deadlines"].frame.maxY, app.staticTexts["Announcements"].firstMatch.frame.minY + 1)
+        capture("Home-H1-portrait-sidebar")
+        // As drawn on the board: the sidebar hidden behind its button, the two cards side by side.
+        app.buttons["toolbar.sidebar"].tap()
+        let sidebarRow = app.descendants(matching: .any)["sidebar.folder"].firstMatch
+        XCTAssertTrue(sidebarRow.waitForNonExistence(timeout: 5) || !sidebarRow.isHittable, "sidebar hidden")
+        let announcementsHeading = app.staticTexts.matching(NSPredicate(format: "label == 'Announcements'"))
+            .allElementsBoundByIndex.first { abs($0.frame.midY - app.staticTexts["Upcoming deadlines"].frame.midY) < 2 }
+        XCTAssertNotNil(announcementsHeading, "side by side in portrait")
+        capture("Home-H1-portrait")
+        app.buttons["toolbar.sidebar"].tap()
+        app.terminate()
+
+        for (state, title, button) in [("syncing", "Syncing…", "Cancel"), ("failed", "Sync did not finish", "Retry sync"),
+                                       ("signin", "Sign-in needed", "Reconnect"), ("empty", "Ready to sync", "Sync now")] {
+            let app = launchHome(state)
+            let status = app.descendants(matching: .any)["home.status"].firstMatch
+            XCTAssertTrue(status.waitForExistence(timeout: 20), state)
+            XCTAssertTrue(status.label.hasPrefix(title), "\(state): \(status.label)")
+            XCTAssertEqual(app.buttons["home.action"].label, button, state)
+            if state == "empty" {
+                XCTAssertTrue(app.staticTexts["Nothing downloaded yet."].exists)
+                XCTAssertEqual(app.buttons.matching(identifier: "home.recent").count, 0)
+            }
+            capture("Home-H1-\(state)")
+            app.terminate()
+        }
+
+        let loading = launchHome("loading")
+        let loadingStatus = loading.descendants(matching: .any)["home.status"].firstMatch
+        XCTAssertTrue(loadingStatus.waitForExistence(timeout: 20))
+        XCTAssertTrue(loadingStatus.label.hasPrefix("Finding your courses…"), loadingStatus.label)
+        XCTAssertFalse(loading.buttons["home.action"].exists, "nothing to tap while loading")
+        capture("Home-H1-loading")
+        loading.terminate()
+
+        // Paused: the strip itself offers Resume; tapping it lifts the pause, as the top bar's play button does.
+        let paused = launchHome("up-to-date", extra: ["-paused", "1"])
+        let pausedStatus = paused.descendants(matching: .any)["home.status"].firstMatch
+        XCTAssertTrue(pausedStatus.waitForExistence(timeout: 20))
+        XCTAssertTrue(pausedStatus.label.hasPrefix("Paused"), pausedStatus.label)
+        XCTAssertEqual(paused.buttons["home.action"].label, "Resume syncing")
+        capture("Home-H1-paused")
+        paused.buttons["home.action"].tap()
+        XCTAssertTrue(paused.buttons["home.action"].waitForExistence(timeout: 5))
+        XCTAssertEqual(paused.buttons["home.action"].label, "Sync now")
+        XCTAssertEqual(paused.buttons["toolbar.pause"].label, "Pause syncing")
+        paused.terminate()
+    }
+
+    @MainActor
+    func testHomeInTurkish() throws {
+        let app = launchHome("up-to-date", language: "tr")
+        let status = app.descendants(matching: .any)["home.status"].firstMatch
+        XCTAssertTrue(status.waitForExistence(timeout: 20))
+        XCTAssertTrue(status.label.hasPrefix("Güncel"), status.label)
+        XCTAssertTrue(status.label.contains("3 yeni dosya"), status.label)
+        XCTAssertTrue(status.label.contains("Son senkronizasyon"), status.label)
+        XCTAssertEqual(app.buttons["home.action"].label, "Şimdi senkronize et")
+        XCTAssertTrue(app.staticTexts["Son indirilenler"].exists)
+        XCTAssertTrue(app.staticTexts["Yaklaşan teslim tarihleri"].exists)
+        XCTAssertTrue(app.buttons["Takvimi aç"].exists)
+        capture("Home-H1-Turkish-landscape")
+        XCUIDevice.shared.orientation = .portrait
+        XCTAssertTrue(app.buttons["home.action"].waitForExistence(timeout: 5))
+        app.buttons["toolbar.sidebar"].tap()
+        capture("Home-H1-Turkish-portrait")
+        app.buttons["toolbar.sidebar"].tap()
+        app.terminate()
+        let paused = launchHome("syncing", language: "tr")
+        XCTAssertTrue(paused.descendants(matching: .any)["home.status"].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertEqual(paused.buttons["home.action"].label, "Vazgeç")
+        capture("Home-H1-Turkish-syncing")
+        paused.terminate()
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    @MainActor private func launchHome(_ state: String, language: String = "en", extra: [String] = []) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-testing-features", "--ui-testing-home", state, "-language", language] + extra
+        XCUIDevice.shared.orientation = .landscapeLeft
+        app.launch()
+        return app
+    }
+
     /// The top bar (board pick T1) on every page, pushed folder pages included: the title and three
     /// equal 44 pt targets on one centre line, the targets touching, the last circle 24 pt from the edge.
     @MainActor
