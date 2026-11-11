@@ -43,6 +43,8 @@ final class AppModel: ObservableObject {
     @Published var library = LibraryState()
     @Published var libraryRevision = 0
     @Published var showingSettings = false
+    /// The five-page introduction: shown once on first launch and again from Settings (`OnboardingRecord`).
+    @Published var showingOnboarding = OnboardingRecord().showsOnLaunch(arguments: AppModel.launchArguments)
     /// The "Sign out?" question from the account menu; `signOut()` runs only once it is confirmed.
     @Published var confirmingSignOut = false
     /// The card before the first download at a school whose current term is not clear (`TermConfirm`).
@@ -99,6 +101,21 @@ final class AppModel: ObservableObject {
         }
     }
     func text(_ key: String) -> String { L10n.text(key, language: language) }
+    /// The introduction's copy in the app's language.
+    var onboardingStrings: OnboardingStrings { OnboardingStrings(FeatureLanguage(code: language)) }
+    /// Skip or Get started: closes the introduction and remembers it was seen.
+    func finishOnboarding() {
+        OnboardingRecord().markSeen()
+        showingOnboarding = false
+    }
+    /// Debug UI tests' launch arguments (see `OnboardingRecord.showsOnLaunch`); Release builds ignore them.
+    static var launchArguments: [String] {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments
+        #else
+        []
+        #endif
+    }
     /// A date and time in the app's language, not the device's ("11 Kas 2026 10:43").
     func dateTime(_ date: Date) -> String { DisplayFormat.dateTime(date, language: FeatureLanguage(code: language)) }
     /// "1 error" / "2 errors" / "2 hata": the template for `count`, translated, with `{n}` filled in.

@@ -15,6 +15,12 @@ The app uses the desktop icon, blue accent, system typography, sidebar order (th
 
 This target has a different bundle ID and dedicated WebKit store from the proof. Sign in once in this app; it does not import the proof's cookies or downloads.
 
+## Launch and introduction
+
+- The launch screen (`UILaunchScreen` in `Info.plist`) is the app icon's navy (`LaunchBackground`) with the logo centred (`LaunchLogo`, 168 pt), the same in light and dark mode. The in-app splash (`SplashView` in the package) starts from that exact frame, so there is no white flash or jump: the logo grows to 196 pt, a halo and the name come in, and after about 1.3 s it fades to the app. With Reduce Motion nothing moves; the launch frame only fades.
+- On first launch the five-page introduction follows (`OnboardingView`; pictures are the `Onboarding*` vector assets, copy in English and Turkish in `Onboarding/Onboarding.swift`): swipe or Continue, Get started on the last page, Skip at the top right on every page. VoiceOver reads the page indicator as "Page 2 of 5" and can change the page from it. Whether it was seen is kept in one place, `OnboardingRecord` (`onboardingSeenVersion` in the app's defaults). **Settings › About & privacy › Show the introduction** opens it again.
+- Debug UI tests that pass `--ui-testing` skip the introduction; `--ui-testing-onboarding` shows it whatever was saved and `--ui-testing-hold-splash` keeps the splash on screen for screenshots. Release builds ignore these flags.
+
 ## Sync and storage behavior
 
 - **Pause syncing / Resume syncing** at the top right works like the Mac's: pausing ends a running sync (its completed files are kept) and nothing syncs, by hand or on app open, until resumed; Home shows **Paused** and the button turns into an accent-colored play button. The pause survives relaunch. Resuming syncs right away when Sync on app open is on. It is available once signed in, and a pause already set can always be lifted.

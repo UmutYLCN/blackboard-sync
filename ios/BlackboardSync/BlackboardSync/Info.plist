@@ -20,7 +20,10 @@
     <key>UIApplicationSceneManifest</key><dict>
         <key>UIApplicationSupportsMultipleScenes</key><false/>
     </dict>
-    <key>UILaunchScreen</key><dict/>
+    <key>UILaunchScreen</key><dict>
+        <key>UIColorName</key><string>LaunchBackground</string>
+        <key>UIImageName</key><string>LaunchLogo</string>
+    </dict>
     <key>UISupportedInterfaceOrientations~ipad</key><array>
         <string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationPortraitUpsideDown</string>
         <string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string>

@@ -1,4 +1,5 @@
 import SwiftUI
+import BlackboardSyncFeatures
 
 struct SettingsView: View {
     @EnvironmentObject var model: AppModel
@@ -48,6 +49,9 @@ struct SettingsView: View {
                     Text(model.text("Your sign-in stays on this device in the app's private web store and Keychain. Course files are downloaded directly from your school. No analytics or relay server."))
                     Text(model.text("Files appear in the Files app and can be opened or edited by other apps. Deleting Blackboard Sync removes its local files. Export anything you want to keep first."))
                     Text(model.text("Foreground sync only. Audio, video and files over 500 MB are skipped. HTML responses are rejected. No files are deleted from your mirror."))
+                    // The introduction from first launch; it opens over the app as this sheet closes.
+                    Button(model.onboardingStrings.showAgain) { model.showingOnboarding = true; dismiss() }
+                        .accessibilityIdentifier("settings.showOnboarding")
                 }.font(.callout)
             }.navigationTitle(model.text("Settings"))
                 .signOutConfirmation(isPresented: $confirmingSignOut)

@@ -48,6 +48,10 @@ public enum Palette {
     public static let page = (light: RGB(0xF2F2F7), dark: RGB(0x000000))
     public static let card = (light: RGB(0xFFFFFF), dark: RGB(0x1C1C1E))
     public static let white = RGB(0xFFFFFF)
+    /// The launch screen and splash: the app icon's navy, the same in light and dark mode. `base` is
+    /// also the `LaunchBackground` colour asset; the splash brightens it to `glow` behind the logo,
+    /// darkens it to `edge` at the corners and lights the logo with a `halo`.
+    public static let splash = (base: RGB(0x141D31), glow: RGB(0x1D2E52), edge: RGB(0x0F1626), halo: RGB(0x3DB4FF))
 }
 
 /// The app's colours; each follows light and dark mode.
@@ -61,6 +65,11 @@ public enum AppColor {
     public static let neutralFill = Color.adaptive(light: RGB(0x767680), lightAlpha: 0.12,
                                                    dark: RGB(0x767680), darkAlpha: 0.24)
     public static let warning = Color.orange
+    /// The splash's navy (`Palette.splash`), which does not change with the appearance.
+    public static let splashBase = Color.fixed(Palette.splash.base)
+    public static let splashGlow = Color.fixed(Palette.splash.glow)
+    public static let splashEdge = Color.fixed(Palette.splash.edge)
+    public static let splashHalo = Color.fixed(Palette.splash.halo)
 }
 
 extension Color {
@@ -75,6 +84,11 @@ extension Color {
             appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark.nsColor(darkAlpha) : light.nsColor(lightAlpha)
         })
         #endif
+    }
+
+    /// A colour that stays the same in light and dark mode.
+    static func fixed(_ rgb: RGB) -> Color {
+        Color(.sRGB, red: Double(rgb.red) / 255, green: Double(rgb.green) / 255, blue: Double(rgb.blue) / 255)
     }
 }
 
