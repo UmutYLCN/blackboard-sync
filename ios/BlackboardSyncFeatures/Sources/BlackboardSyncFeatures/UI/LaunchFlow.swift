@@ -28,7 +28,9 @@ public struct LaunchFlow<Content: View>: View {
     public var body: some View {
         let timeline = SplashTimeline.standard(reduceMotion: reduceMotion)
         ZStack {
+            // Unseen under the introduction, and faded back in as it closes.
             content
+                .opacity(showingOnboarding ? 0 : 1)
                 .accessibilityHidden(showingOnboarding)
             if showingOnboarding {
                 OnboardingView(strings: strings) {
