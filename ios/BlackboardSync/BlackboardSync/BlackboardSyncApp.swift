@@ -1,4 +1,5 @@
 import SwiftUI
+import BlackboardSyncFeatures
 
 @main
 struct BlackboardSyncApp: App {
@@ -7,7 +8,12 @@ struct BlackboardSyncApp: App {
     @State private var wasActive = false
     var body: some Scene {
         WindowGroup {
-            RootView().environmentObject(model)
+            // The splash, the introduction on first launch, then the app (`LaunchFlow`).
+            LaunchFlow(logo: Image("Logo"), strings: model.onboardingStrings, showingOnboarding: $model.showingOnboarding,
+                       holdSplash: AppModel.launchArguments.contains("--ui-testing-hold-splash"),
+                       finishOnboarding: model.finishOnboarding) {
+                RootView().environmentObject(model)
+            }
                 .environment(\.locale, Locale(identifier: model.language))
                 .task {
                     guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
