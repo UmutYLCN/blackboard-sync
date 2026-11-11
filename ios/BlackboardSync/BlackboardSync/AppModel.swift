@@ -497,4 +497,17 @@ final class AppModel: ObservableObject {
         let name = String(first).capitalized(with: Locale(identifier: language))
         return salutation + ", " + name
     }
+
+    /// Redirects a downloaded file or folder to iPadOS Files / Preview via `shareddocuments://`,
+    /// falling back to the provided closure only if the external handoff is unavailable.
+    func openExternally(_ url: URL, fallback: @escaping (URL) -> Void = { _ in }) {
+        let sharedString = url.absoluteString.replacingOccurrences(of: "file://", with: "shareddocuments://")
+        guard let sharedURL = URL(string: sharedString) else {
+            fallback(url)
+            return
+        }
+        UIApplication.shared.open(sharedURL, options: [:]) { opened in
+            if !opened { fallback(url) }
+        }
+    }
 }

@@ -264,8 +264,11 @@ struct StatusCard: View {
         ForEach(Array(records), id: \.relativePath) { record in
             Button {
                 Task {
-                    do { preview = try await model.store?.url(record.relativePath) }
-                    catch { previewError = SyncLogic.safeError(error) }
+                    do {
+                        if let url = try await model.store?.url(record.relativePath) {
+                            model.openExternally(url) { preview = $0 }
+                        }
+                    } catch { previewError = SyncLogic.safeError(error) }
                 }
             } label: {
                 HStack(spacing: 12) {

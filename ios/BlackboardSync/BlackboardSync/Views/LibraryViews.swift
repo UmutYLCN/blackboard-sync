@@ -112,8 +112,11 @@ struct ActivityView: View {
                             if let relative = activity.relativePath {
                                 Button(model.text("Open")) {
                                     Task {
-                                        do { preview = try await model.store?.url(relative) }
-                                        catch { errorMessage = SyncLogic.safeError(error) }
+                                        do {
+                                            if let url = try await model.store?.url(relative) {
+                                                model.openExternally(url) { preview = $0 }
+                                            }
+                                        } catch { errorMessage = SyncLogic.safeError(error) }
                                     }
                                 }.buttonStyle(.bordered)
                             }
@@ -154,9 +157,15 @@ struct FileBrowser: View {
                         } label: { Label(entry.url.lastPathComponent, systemImage: "folder.fill").padding(.vertical, 5) }
                     } else {
                         HStack(spacing: 14) {
-                            Image(systemName: "doc.richtext").foregroundStyle(.blue).font(.title2)
-                            Text(entry.url.lastPathComponent).font(.callout).frame(maxWidth: .infinity, alignment: .leading)
-                            Button(model.text("Open")) { preview = entry.url }.buttonStyle(.bordered)
+                            Button {
+                                model.openExternally(entry.url) { preview = $0 }
+                            } label: {
+                                HStack(spacing: 14) {
+                                    Image(systemName: "doc.richtext").foregroundStyle(.blue).font(.title2)
+                                    Text(entry.url.lastPathComponent).font(.callout).frame(maxWidth: .infinity, alignment: .leading)
+                                }.contentShape(Rectangle())
+                            }.buttonStyle(.plain)
+                            Button(model.text("Open")) { model.openExternally(entry.url) { preview = $0 } }.buttonStyle(.bordered)
                             ShareLink(item: entry.url) { Label(model.text("Share"), systemImage: "square.and.arrow.up") }.buttonStyle(.bordered)
                         }.padding(.vertical, 5)
                     }
