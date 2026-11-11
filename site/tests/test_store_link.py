@@ -54,3 +54,12 @@ def test_worker_does_not_rewrite_the_pages():
     config = (SITE / 'wrangler.jsonc').read_text(encoding='utf-8')
     routes = json.loads(re.search(r'"run_worker_first"\s*:\s*(\[[^\]]*\])', config).group(1))
     assert set(routes) <= {'/mac', '/mac/', '/windows', '/windows/', '/stats.json', '/assets/*.mp4'}, routes
+
+
+@pytest.mark.parametrize('page,badge', [('index.html', 'microsoft-store-badge-en.svg'),
+                                        ('tr/index.html', 'microsoft-store-badge-tr.svg')])
+def test_windows_button_shows_the_official_store_badge(page, badge):
+    html = (SITE / page).read_text(encoding='utf-8')
+    button = re.search(r'<a [^>]*id="download-windows"[^>]*>(.*?)</a>', html, re.S).group(1)
+    assert f'src="/assets/{badge}"' in button, f'{page}: Windows button must show {badge}'
+    assert (SITE / 'assets' / badge).is_file(), f'missing site/assets/{badge}'
