@@ -43,6 +43,8 @@ final class AppModel: ObservableObject {
     @Published var library = LibraryState()
     @Published var libraryRevision = 0
     @Published var showingSettings = false
+    /// The "Sign out?" question from the account menu; `signOut()` runs only once it is confirmed.
+    @Published var confirmingSignOut = false
     /// The card before the first download at a school whose current term is not clear (`TermConfirm`).
     @Published var termConfirm: TermConfirm.Card?
     /// Announcements and due dates for the signed-in account; nil while signed out.
