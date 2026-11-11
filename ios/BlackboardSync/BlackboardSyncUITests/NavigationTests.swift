@@ -23,7 +23,8 @@ final class NavigationTests: XCTestCase {
         capture("Account-menu")
         // Settings has its own circle beside the account, so the menu no longer repeats it.
         XCTAssertFalse(app.collectionViews.buttons["Settings"].exists)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.85)).tap()
+        // Closes the menu with a tap on plain text on the page.
+        app.staticTexts["Your course files start here."].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(app.buttons["Sign in to Blackboard"].waitForNonExistence(timeout: 5) || !app.collectionViews.buttons["Sign in to Blackboard"].exists)
         app.buttons["toolbar.settings"].tap()
         XCTAssertTrue(app.staticTexts["About & privacy"].waitForExistence(timeout: 5) || app.staticTexts["Account"].exists)
@@ -138,20 +139,18 @@ final class NavigationTests: XCTestCase {
         XCTAssertLessThan(status.frame.maxY, app.staticTexts["Homework 3"].frame.minY)
         XCTAssertLessThan(app.staticTexts["Homework 3"].frame.maxY, app.staticTexts["Recent downloads"].frame.minY)
         // Due dates and announcements share one row in landscape and in portrait.
-        XCTAssertEqual(app.staticTexts["Upcoming deadlines"].frame.midY, app.staticTexts["Announcements"].firstMatch.frame.midY, accuracy: 2)
+        XCTAssertTrue(sideBySide(app), "side by side in landscape")
         capture("Home-H1-landscape")
         XCUIDevice.shared.orientation = .portrait
         XCTAssertTrue(app.buttons["home.action"].waitForExistence(timeout: 5))
         // With the sidebar open the page is too narrow for two cards, so they stack.
-        XCTAssertLessThan(app.staticTexts["Upcoming deadlines"].frame.maxY, app.staticTexts["Announcements"].firstMatch.frame.minY + 1)
+        XCTAssertFalse(sideBySide(app), "stacked in portrait with the sidebar open")
         capture("Home-H1-portrait-sidebar")
         // As drawn on the board: the sidebar hidden behind its button, the two cards side by side.
         app.buttons["toolbar.sidebar"].tap()
         let sidebarRow = app.descendants(matching: .any)["sidebar.folder"].firstMatch
         XCTAssertTrue(sidebarRow.waitForNonExistence(timeout: 5) || !sidebarRow.isHittable, "sidebar hidden")
-        let announcementsHeading = app.staticTexts.matching(NSPredicate(format: "label == 'Announcements'"))
-            .allElementsBoundByIndex.first { abs($0.frame.midY - app.staticTexts["Upcoming deadlines"].frame.midY) < 2 }
-        XCTAssertNotNil(announcementsHeading, "side by side in portrait")
+        XCTAssertTrue(sideBySide(app), "side by side in portrait")
         capture("Home-H1-portrait")
         app.buttons["toolbar.sidebar"].tap()
         app.terminate()
@@ -218,6 +217,14 @@ final class NavigationTests: XCTestCase {
         capture("Home-H1-Turkish-syncing")
         paused.terminate()
         XCUIDevice.shared.orientation = .portrait
+    }
+
+    /// The Announcements card's heading sits to the right of the due dates' heading, not under it.
+    @MainActor private func sideBySide(_ app: XCUIApplication) -> Bool {
+        let deadlines = app.staticTexts["Upcoming deadlines"].frame
+        let headings = app.staticTexts.matching(NSPredicate(format: "label == 'Announcements'")).allElementsBoundByIndex
+        // The sidebar row has the same label; the card's heading is the one right of the due dates' heading.
+        return headings.contains { $0.frame.minX > deadlines.maxX && $0.frame.minY < deadlines.maxY + 30 }
     }
 
     @MainActor private func launchHome(_ state: String, language: String = "en", extra: [String] = []) -> XCUIApplication {

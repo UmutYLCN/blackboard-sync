@@ -62,17 +62,24 @@ private struct ReconnectBar: View {
 }
 
 /// Home's middle row (board pick H1): the next four due dates and the newest announcements side by
-/// side, one above the other when the page is too narrow for both.
+/// side, one above the other when the page is too narrow for both (portrait with the sidebar open) or
+/// the text is set to an accessibility size.
 struct HomeFeatureCards: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @State private var width: CGFloat = 0
+    /// Two cards of at least 312 pt each and the gap between them.
+    static let sideBySideWidth: CGFloat = 640
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: Spacing.m) {
-                deadlines.frame(minWidth: 300)
-                announcements.frame(minWidth: 300)
+        Group {
+            if width >= Self.sideBySideWidth && !typeSize.isAccessibilitySize {
+                HStack(alignment: .top, spacing: Spacing.m) { deadlines; announcements }
+            } else {
+                VStack(spacing: Spacing.m) { deadlines; announcements }
             }
-            VStack(spacing: Spacing.m) { deadlines; announcements }
         }
+        .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .task(id: model.features.map(ObjectIdentifier.init)) {
             await model.features?.announcements.loadIfNeeded()
             await model.features?.deadlines.loadIfNeeded()
@@ -104,9 +111,10 @@ private struct HomeCardHeader<Trailing: View>: View {
     var body: some View {
         HStack(spacing: Spacing.xs) {
             Image(systemName: symbol).foregroundStyle(AppColor.accentText).accessibilityHidden(true)
-            Text(title).font(.headline).accessibilityAddTraits(.isHeader)
+            Text(title).font(.headline).lineLimit(2).accessibilityAddTraits(.isHeader)
             Spacer(minLength: Spacing.xs)
-            trailing
+            // The pill keeps its full label; a long title wraps instead.
+            trailing.fixedSize()
         }
     }
 }
