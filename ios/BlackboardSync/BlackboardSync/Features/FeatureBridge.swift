@@ -57,13 +57,18 @@ final class FeatureModels {
 }
 
 extension Color {
-    static let appAccent = Color(red: 0.15, green: 0.36, blue: 0.95)
+    /// The solid accent (fills, selection, tint); `BlackboardSyncFeatures.AppColor` holds the palette.
+    static let appAccent = AppColor.accent
+    /// The accent as text or a glyph on a page or card; lighter in dark mode so it stays readable.
+    static let appAccentText = AppColor.accentText
 }
 
 extension FeatureTheme {
-    /// The app's cards: grouped backgrounds, 18 pt corners and a faint outline.
+    /// The app's cards: grouped backgrounds, 18 pt corners and a faint outline. The top bar carries
+    /// each page's title, so the pages' own headers show only their hint.
     static let app = FeatureTheme(accent: .appAccent, pageBackground: Color(uiColor: .systemGroupedBackground),
                                   cardFill: Color(uiColor: .secondarySystemGroupedBackground),
                                   cardBorder: .primary.opacity(0.055), warning: .orange, secondaryText: .secondary,
-                                  cornerRadius: 18, spacing: 14)
+                                  cornerRadius: Radius.card, spacing: Spacing.s,
+                                  accentText: .appAccentText, showsPageTitle: false)
 }

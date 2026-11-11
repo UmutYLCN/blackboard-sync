@@ -1,5 +1,6 @@
 import SwiftUI
 import QuickLook
+import BlackboardSyncFeatures
 
 struct CoursesView: View {
     @EnvironmentObject var model: AppModel
@@ -20,20 +21,21 @@ struct CoursesView: View {
                                 .toggleStyle(.checkboxStyle).disabled(model.busy)
                             if let folder = model.folder(for: course) {
                                 NavigationLink { FileBrowser(folder: folder, title: course.name) } label: {
-                                    Label(model.text("Open folder"), systemImage: "folder").font(.callout)
+                                    Label(model.text("Open folder"), systemImage: AppIcon.folder).font(.callout)
                                 }.fixedSize(horizontal: false, vertical: true)
                             }
                         }.padding(.vertical, 6)
                     }
                 }
             }
-        }.navigationTitle(model.text("Courses"))
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { model.refreshCourses() } label: { Label(model.text("Refresh courses"), systemImage: "arrow.clockwise") }
-                        .disabled(model.busy || !model.hasSession)
-                }
+        }.appTopBar(model.text("Courses")) {
+            Button { model.refreshCourses() } label: {
+                Label(model.text("Refresh courses"), systemImage: "arrow.clockwise")
+                    .font(.system(size: TopBarMetrics.glyph, weight: .semibold))
             }
+            .buttonStyle(TopBarCircleStyle())
+            .disabled(model.busy || !model.hasSession)
+        }
     }
 }
 
@@ -81,7 +83,7 @@ private struct CourseCheckbox: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button { configuration.isOn.toggle() } label: {
             HStack(spacing: 12) {
-                Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square").font(.title2).foregroundStyle(.blue)
+                Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square").font(.title2).foregroundStyle(Color.appAccentText)
                 configuration.label.foregroundStyle(.primary).frame(maxWidth: .infinity, alignment: .leading)
             }.contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityValue(configuration.isOn ? Text("✓") : Text("—"))
@@ -123,12 +125,12 @@ struct ActivityView: View {
                 }
                 if let errorMessage { Text(model.text(errorMessage)).foregroundStyle(.orange) }
             }
-        }.navigationTitle(model.text("Sync activity")).quickLookPreview($preview)
+        }.appTopBar(model.text("Sync activity")).quickLookPreview($preview)
     }
     private func summary(_ activity: Activity) -> some View {
         HStack(spacing: 12) {
             Image(systemName: activity.status == .failed ? "exclamationmark.circle" : activity.status == .skipped ? "minus.circle" : "doc.richtext")
-                .font(.title2).foregroundStyle(activity.status == .failed ? .orange : .blue)
+                .font(.title2).foregroundStyle(activity.status == .failed ? Color.orange : .appAccentText)
             VStack(alignment: .leading, spacing: 4) {
                 Text(activity.name).font(.subheadline.weight(.medium))
                 Text(model.text(activity.status.rawValue)).font(.caption).foregroundStyle(.secondary)
@@ -160,7 +162,7 @@ struct FileBrowser: View {
                 Text(model.text("Also in Files → On My iPad → Blackboard Sync → University"))
                     .font(.caption).foregroundStyle(.secondary)
                 if entries.isEmpty && errorMessage == nil {
-                    ContentUnavailableView(model.text("No downloaded files yet."), systemImage: "folder",
+                    ContentUnavailableView(model.text("No downloaded files yet."), systemImage: AppIcon.folder,
                                            description: Text(model.text("Select your courses and tap Sync now.")))
                 }
                 ForEach(entries) { entry in
@@ -168,14 +170,14 @@ struct FileBrowser: View {
                         NavigationLink {
                             FileBrowser(folder: folder.isEmpty ? entry.url.lastPathComponent : folder + "/" + entry.url.lastPathComponent,
                                         title: entry.url.lastPathComponent)
-                        } label: { Label(entry.url.lastPathComponent, systemImage: "folder.fill").padding(.vertical, 5) }
+                        } label: { Label(entry.url.lastPathComponent, systemImage: AppIcon.folder).padding(.vertical, 5) }
                     } else {
                         HStack(spacing: 14) {
                             Button {
                                 model.openExternally(entry.url) { preview = $0 }
                             } label: {
                                 HStack(spacing: 14) {
-                                    Image(systemName: "doc.richtext").foregroundStyle(.blue).font(.title2)
+                                    Image(systemName: "doc.richtext").foregroundStyle(Color.appAccentText).font(.title2)
                                     Text(entry.url.lastPathComponent).font(.callout).frame(maxWidth: .infinity, alignment: .leading)
                                 }.contentShape(Rectangle())
                             }.buttonStyle(.plain)
@@ -185,7 +187,7 @@ struct FileBrowser: View {
                 }
                 if let errorMessage { Text(model.text(errorMessage)).foregroundStyle(.orange) }
             }
-        }.navigationTitle(title)
+        }.appTopBar(title)
             .task(id: model.libraryRevision) { await refresh() }
             .refreshable { await refresh() }
             .quickLookPreview($preview)

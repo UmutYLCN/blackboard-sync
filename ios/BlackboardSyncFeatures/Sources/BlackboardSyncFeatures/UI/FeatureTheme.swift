@@ -18,9 +18,14 @@ public struct FeatureTheme: Sendable {
     public var cornerRadius: CGFloat
     /// Space around and between cards.
     public var spacing: CGFloat
+    /// Accent as text on a card or page (dates, links); `accent` when not given.
+    public var accentText: Color
+    /// False when the shell's top bar already shows the page title, so the page header keeps only its hint.
+    public var showsPageTitle: Bool
 
     public init(accent: Color, pageBackground: Color, cardFill: Color, cardBorder: Color, warning: Color,
-                secondaryText: Color, cornerRadius: CGFloat = 10, spacing: CGFloat = 12) {
+                secondaryText: Color, cornerRadius: CGFloat = 10, spacing: CGFloat = 12,
+                accentText: Color? = nil, showsPageTitle: Bool = true) {
         self.accent = accent
         self.pageBackground = pageBackground
         self.cardFill = cardFill
@@ -29,6 +34,8 @@ public struct FeatureTheme: Sendable {
         self.secondaryText = secondaryText
         self.cornerRadius = cornerRadius
         self.spacing = spacing
+        self.accentText = accentText ?? accent
+        self.showsPageTitle = showsPageTitle
     }
 
     public static let standard: FeatureTheme = {
@@ -89,7 +96,7 @@ struct PageHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.title2.bold())
+            if theme.showsPageTitle { Text(title).font(.title2.bold()) }
             Text(hint).font(.subheadline).foregroundStyle(theme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }

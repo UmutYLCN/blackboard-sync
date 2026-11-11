@@ -33,6 +33,8 @@ enum L10n {
 
     static let turkish: [String: String] = [
         "1. Sign in to Blackboard\n2. Choose your courses\n3. Sync now and open your files offline": "1. Blackboard’a giriş yapın\n2. Derslerinizi seçin\n3. Senkronize edip dosyalarınızı çevrimdışı açın",
+        "{n} error": "{n} hata",
+        "{n} errors": "{n} hata",
         "About & privacy": "Hakkında ve gizlilik",
         "Account": "Hesap",
         "Account response has no user identifier.": "Hesap yanıtında kullanıcı kimliği yok.",
@@ -40,6 +42,7 @@ enum L10n {
         "Announcements": "Duyurular",
         "Audio and video are skipped.": "Ses ve video dosyaları atlanır.",
         "Automatic re-sign-in": "Otomatik yeniden giriş",
+        "Back": "Geri",
         "Blackboard Sync could not be sure which term is current at this school. It found {terms}. Untick any course you do not want, then confirm. Nothing is downloaded until you do.": "Blackboard Sync bu okulda hangi dönemin güncel olduğundan emin olamadı. Bulunan dönem(ler): {terms}. İstemediğiniz derslerin işaretini kaldırıp onaylayın. Onaylayana kadar hiçbir şey indirilmez.",
         "Calendar": "Takvim",
         "Cancel": "Vazgeç",
@@ -105,6 +108,7 @@ enum L10n {
         "Session refreshed automatically": "Oturum otomatik yenilendi",
         "Settings": "Ayarlar",
         "Share": "Paylaş",
+        "Sidebar": "Kenar çubuğu",
         "Sign in to Blackboard": "Blackboard'a giriş yapın",
         "Sign in to refresh your current-term courses.": "Güncel dönem derslerini yenilemek için giriş yapın.",
         "Sign in to see announcements and due dates from your selected courses.": "Seçili derslerinizin duyurularını ve teslim tarihlerini görmek için giriş yapın.",
@@ -136,7 +140,6 @@ enum L10n {
         "cancelled": "iptal edildi",
         "conflict": "yerel düzenleme korundu; yeni sürüm yanına kaydedildi",
         "downloaded": "indirildi",
-        "errors": "hata",
         "failed": "başarısız",
         "pending": "bekliyor",
         "skipped": "atlandı",

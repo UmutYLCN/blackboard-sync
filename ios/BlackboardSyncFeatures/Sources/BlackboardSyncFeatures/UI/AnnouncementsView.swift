@@ -20,7 +20,7 @@ public struct AnnouncementsView: View {
                 AnnouncementDetail(announcement: announcement, detail: model.detail(for: announcement),
                                    strings: model.strings)
             } else {
-                ContentUnavailableView(model.strings.selectAnnouncement, systemImage: "megaphone")
+                ContentUnavailableView(model.strings.selectAnnouncement, systemImage: AppIcon.announcements)
             }
         }, closeTitle: model.strings.close)
         .task { await model.loadIfNeeded() }

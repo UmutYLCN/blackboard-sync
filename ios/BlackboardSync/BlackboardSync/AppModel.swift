@@ -99,6 +99,12 @@ final class AppModel: ObservableObject {
         }
     }
     func text(_ key: String) -> String { L10n.text(key, language: language) }
+    /// A date and time in the app's language, not the device's ("11 Kas 2026 10:43").
+    func dateTime(_ date: Date) -> String { DisplayFormat.dateTime(date, language: FeatureLanguage(code: language)) }
+    /// "1 error" / "2 errors" / "2 hata": the template for `count`, translated, with `{n}` filled in.
+    func count(_ count: Int, one: String, other: String) -> String {
+        DisplayFormat.count(count, one: one, other: other) { text($0) }
+    }
 
     func start(restoreSession: Bool = true) async {
         guard !started else { return }
