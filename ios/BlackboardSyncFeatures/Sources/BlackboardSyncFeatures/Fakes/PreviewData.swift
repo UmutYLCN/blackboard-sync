@@ -38,7 +38,8 @@ public enum PreviewData {
         ]}
         """)
         fake.set("/learn/api/public/v2/courses/_13010_1/gradebook/columns?limit=200", json: """
-        {"results": [{"id": "_g9_1", "displayName": "Quiz 1", "grading": {"due": "\(iso(day + 3600))"}}]}
+        {"results": [{"id": "_g9_1", "displayName": "Quiz 1", "grading": {"due": "\(iso(day + 3600))"}},
+                     {"id": "_g8_1", "displayName": "Problem set 4", "grading": {"due": "\(iso(9 * day))"}}]}
         """)
         return fake
     }

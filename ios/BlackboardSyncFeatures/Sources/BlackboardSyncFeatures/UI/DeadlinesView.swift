@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The Calendar page as on the Mac: "Upcoming" then "Past due", a card per local day with
-/// each due time, title and course; the selected due date's details beside the list.
+/// The Calendar page as a week (board pick H2 "This week"): a strip of the current week with
+/// today marked and a course-coloured dot per course due, then every due date grouped as Today,
+/// Later this week, Next week, Later and Past due; the selected due date's details beside the list.
 public struct DeadlinesView: View {
     @Bindable var model: DeadlinesViewModel
     let showsHeader: Bool
@@ -17,9 +18,10 @@ public struct DeadlinesView: View {
             DeadlineList(model: model, showsHeader: showsHeader)
         }, detail: { row in
             if let row {
-                DeadlineDetail(row: row, due: model.dueText(for: row), strings: model.strings)
+                DeadlineDetail(row: row, due: model.dueText(for: row), strings: model.strings,
+                               color: AppColor.course(model.week().colorIndex(row.deadline.courseID)))
             } else {
-                ContentUnavailableView(model.strings.selectDeadline, systemImage: "calendar")
+                ContentUnavailableView(model.strings.selectDeadline, systemImage: AppIcon.calendar)
             }
         }, closeTitle: model.strings.close)
         .task { await model.loadIfNeeded() }
@@ -32,88 +34,229 @@ struct DeadlineList: View {
     @Environment(\.featureTheme) private var theme
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: theme.spacing) {
-                if showsHeader {
-                    PageHeader(title: model.strings.calendarTab, hint: model.strings.calendarHint)
-                        .padding(.bottom, 4)
+        ScrollViewReader { proxy in
+            ScrollView {
+                // Redrawn every minute so "in 5 hours" and Past due stay true while the page is open.
+                TimelineView(.everyMinute) { _ in
+                    content(week: model.week(), proxy: proxy)
                 }
-                if let error = model.error {
-                    Notice(text: error, warning: true)
-                }
-                if model.phase == .loading && model.page.days.isEmpty {
-                    ProgressView(model.strings.loading).frame(maxWidth: .infinity).padding(.top, 24)
-                } else {
-                    if !model.page.message.isEmpty {
-                        Notice(text: model.page.message, warning: model.page.message == model.strings.calendarIncomplete)
-                    }
-                    if model.page.days.isEmpty, model.phase == .loaded, model.error == nil {
-                        Text(model.strings.calendarEmpty).foregroundStyle(theme.secondaryText).padding(.horizontal, 8)
-                    }
-                }
-                ForEach(Array(model.page.days.enumerated()), id: \.element.id) { index, day in
-                    if index == 0 || model.page.days[index - 1].past != day.past {
-                        SectionHeading(past: day.past, strings: model.strings)
-                    }
-                    DayCard(day: day, selection: $model.selection)
-                }
+                .padding(Spacing.l)
             }
-            .padding(20)
+            .refreshable { await model.refresh() }
         }
-        .refreshable { await model.refresh() }
     }
-}
 
-struct SectionHeading: View {
-    let past: Bool
-    let strings: FeatureStrings
-    @Environment(\.featureTheme) private var theme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(past ? strings.pastDue : strings.upcoming).font(.headline)
-            if past {
-                Text(strings.pastDueHint).font(.subheadline).foregroundStyle(theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+    @ViewBuilder
+    private func content(week: DeadlineWeek, proxy: ScrollViewProxy) -> some View {
+        let strings = model.strings
+        LazyVStack(alignment: .leading, spacing: Spacing.m) {
+            if showsHeader && theme.showsPageTitle {
+                Text(strings.calendarTab).font(.title2.bold())
             }
-        }
-        .padding(.horizontal, 8).padding(.top, 8)
-        .accessibilityAddTraits(.isHeader)
-    }
-}
-
-struct DayCard: View {
-    let day: DeadlineDay
-    @Binding var selection: DeadlineRow.ID?
-    @Environment(\.featureTheme) private var theme
-
-    var body: some View {
-        Card(warning: day.past) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(day.title).font(.subheadline.bold())
-                    .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 6)
-                ForEach(day.rows) { row in
-                    Button {
-                        selection = row.id
-                    } label: {
-                        HStack(alignment: .firstTextBaseline, spacing: 12) {
-                            Text(row.time).font(.body.bold().monospacedDigit()).frame(width: 58, alignment: .leading)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(row.title).font(.body).lineLimit(2).multilineTextAlignment(.leading)
-                                Text(row.course).font(.caption).foregroundStyle(theme.secondaryText).lineLimit(1)
-                            }
-                            Spacer(minLength: 0)
+            if let error = model.error {
+                Notice(text: error, warning: true)
+            }
+            if !model.page.message.isEmpty {
+                Notice(text: model.page.message, warning: model.page.message == strings.calendarIncomplete)
+            }
+            WeekCard(model: model, week: week) { id in
+                withAnimation { proxy.scrollTo(id, anchor: .center) }
+            }
+            ForEach(week.sections.filter { ![.today, .laterThisWeek].contains($0.kind) }) { section in
+                Card(warning: section.kind == .pastDue) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionRows(section: section, week: week, model: model)
+                        if section.kind == .pastDue {
+                            Text(strings.pastDueHint).font(.footnote).foregroundStyle(theme.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, Spacing.xs)
                         }
-                        .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background(selection == row.id ? theme.accent.opacity(0.12) : .clear)
-                        .contentShape(Rectangle())
+                    }
+                    .padding(.horizontal, Spacing.l).padding(.vertical, Spacing.m)
+                }
+            }
+            Text(strings.calendarHint).font(.footnote).foregroundStyle(theme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Spacing.xxs)
+        }
+    }
+}
+
+/// "This week": the range, the seven days, and what is due today and later this week.
+struct WeekCard: View {
+    @Bindable var model: DeadlinesViewModel
+    let week: DeadlineWeek
+    let scrollTo: (DeadlineRow.ID) -> Void
+    @Environment(\.featureTheme) private var theme
+
+    var body: some View {
+        let strings = model.strings
+        let thisWeek = week.sections.filter { [.today, .laterThisWeek].contains($0.kind) }
+        Card {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: Spacing.xs) {
+                    Image(systemName: AppIcon.calendar).foregroundStyle(AppColor.accentText)
+                    Text(strings.thisWeek).font(.headline).accessibilityAddTraits(.isHeader)
+                    Spacer(minLength: Spacing.xs)
+                    Text(week.range).font(.subheadline).foregroundStyle(theme.secondaryText).lineLimit(1)
+                }
+                HStack(spacing: Spacing.xs - 2) {
+                    ForEach(week.days) { day in
+                        DayCell(day: day, week: week) { if let id = day.firstRowID { scrollTo(id) } }
+                    }
+                }
+                .padding(.top, Spacing.s)
+                ForEach(thisWeek) { section in
+                    SectionRows(section: section, week: week, model: model)
+                }
+                if thisWeek.isEmpty {
+                    emptyState(strings)
+                }
+            }
+            .padding(.horizontal, Spacing.l).padding(.vertical, Spacing.m)
+        }
+    }
+
+    @ViewBuilder
+    private func emptyState(_ strings: FeatureStrings) -> some View {
+        if model.phase == .idle || (model.phase == .loading && week.isEmpty) {
+            ProgressView(strings.loading).frame(maxWidth: .infinity).padding(.top, Spacing.m)
+        } else if model.page.message != strings.calendarNotLoaded {
+            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                if week.weekCount == 0 {
+                    Text(strings.noDeadlinesThisWeek).font(.subheadline.weight(.semibold))
+                        .accessibilityIdentifier("calendar.emptyWeek")
+                }
+                if let next = week.nextAfterWeek {
+                    Button {
+                        model.selection = next.id
+                        scrollTo(next.id)
+                    } label: {
+                        Text(strings.nextDueDate("\(next.row.title), \(next.when)"))
+                            .font(.subheadline).foregroundStyle(AppColor.accentText)
+                            .multilineTextAlignment(.leading)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(row.title), \(row.course), \(row.time)")
+                } else if week.isEmpty, model.error == nil {
+                    Text(strings.calendarEmpty).font(.subheadline).foregroundStyle(theme.secondaryText)
                 }
             }
-            .padding(.bottom, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, Spacing.m)
         }
+    }
+}
+
+/// One day of the strip: weekday, date and a dot per course due; today is the solid accent.
+struct DayCell: View {
+    let day: WeekDay
+    let week: DeadlineWeek
+    let action: () -> Void
+    @Environment(\.featureTheme) private var theme
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Text(day.label).font(.caption2.weight(.bold))
+                    .foregroundStyle(day.isToday ? Color.white.opacity(0.85) : theme.secondaryText)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                Text(String(day.day.day)).font(.title3.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(day.isToday ? Color.white : day.isPast ? theme.secondaryText : Color.primary)
+                HStack(spacing: 3) {
+                    ForEach(day.courseIDs, id: \.self) { id in
+                        Circle()
+                            .fill(day.isToday ? Color.white : AppColor.course(week.colorIndex(id)))
+                            .frame(width: 6, height: 6)
+                            .opacity(day.isPast ? 0.5 : 1)
+                    }
+                }
+                .frame(height: 6)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Spacing.xs)
+            .background(day.isToday ? AppColor.accent : AppColor.neutralFill,
+                        in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(day.firstRowID == nil)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(day.accessibilityLabel)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(day.isToday ? .isSelected : [])
+        .accessibilityIdentifier(day.isToday ? "calendar.today" : "calendar.day")
+    }
+}
+
+/// A group's small upper-case title and its rows.
+struct SectionRows: View {
+    let section: DeadlineSection
+    let week: DeadlineWeek
+    @Bindable var model: DeadlinesViewModel
+    @Environment(\.featureTheme) private var theme
+
+    var body: some View {
+        Text(model.strings.upper(section.title))
+            .font(.caption.weight(.bold)).tracking(0.5)
+            .foregroundStyle(theme.secondaryText)
+            .padding(.top, Spacing.m).padding(.bottom, Spacing.xxs)
+            .accessibilityLabel(section.title)
+            .accessibilityAddTraits(.isHeader)
+        ForEach(Array(section.rows.enumerated()), id: \.element.id) { index, row in
+            if index > 0 { Divider() }
+            WeekRowView(row: row, color: AppColor.course(week.colorIndex(row.row.deadline.courseID)),
+                        selected: model.selection == row.id,
+                        accessibility: "\(row.row.title), \(row.row.course), \(model.dueText(for: row.row))") {
+                model.selection = row.id
+            }
+            .id(row.id)
+        }
+    }
+}
+
+struct WeekRowView: View {
+    let row: WeekRow
+    let color: Color
+    let selected: Bool
+    let accessibility: String
+    let action: () -> Void
+    @Environment(\.featureTheme) private var theme
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Spacing.s) {
+                VStack(spacing: 2) {
+                    Text(row.dayNumber).font(.headline.monospacedDigit())
+                    Text(row.month).font(.system(size: 10, weight: .bold)).tracking(0.5)
+                        .foregroundStyle(row.isToday ? AppColor.warning : theme.secondaryText)
+                }
+                .frame(width: 44, height: 44)
+                .background(row.isToday ? AppColor.warning.opacity(0.17) : AppColor.neutralFill,
+                            in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.row.title).font(.subheadline.weight(.medium)).lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    HStack(spacing: 6) {
+                        Circle().fill(color).frame(width: 7, height: 7)
+                        Text(row.row.course).font(.footnote).foregroundStyle(theme.secondaryText).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: Spacing.xs)
+                Text(row.when).font(.footnote.weight(.semibold))
+                    .foregroundStyle(row.hot ? AppColor.warning : row.past ? theme.secondaryText : AppColor.accentText)
+                    .lineLimit(1)
+            }
+            .padding(.vertical, Spacing.xs + 2).padding(.horizontal, Spacing.xs)
+            .background(selected ? AppColor.accentSoft : .clear,
+                        in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
+            .padding(.horizontal, -Spacing.xs)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibility)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -121,10 +264,11 @@ struct DeadlineDetail: View {
     let row: DeadlineRow
     let due: String
     let strings: FeatureStrings
+    var color: Color = AppColor.accentText
 
     var body: some View {
         ScrollView {
-            DeadlineDetailContent(row: row, due: due, strings: strings)
+            DeadlineDetailContent(row: row, due: due, strings: strings, color: color)
         }
     }
 }
@@ -133,12 +277,16 @@ struct DeadlineDetailContent: View {
     let row: DeadlineRow
     let due: String
     let strings: FeatureStrings
+    var color: Color = AppColor.accentText
     @Environment(\.featureTheme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(row.course).font(.subheadline).foregroundStyle(theme.secondaryText)
+                HStack(spacing: 6) {
+                    Circle().fill(color).frame(width: 8, height: 8)
+                    Text(row.course).font(.subheadline).foregroundStyle(theme.secondaryText)
+                }
                 Text(row.title).font(.title2.bold())
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -156,8 +304,7 @@ struct DeadlineDetailContent: View {
                 Link(destination: url) {
                     Label(strings.openInBlackboard, systemImage: "arrow.up.forward.square")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(theme.accent)
+                .buttonStyle(.appPrimaryLarge)
             }
         }
         .padding(24)

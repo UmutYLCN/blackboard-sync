@@ -64,6 +64,42 @@ public struct FeatureStrings: Sendable {
     public var upcomingDeadlines: String { tr("Upcoming deadlines") }
     public var noUpcomingDeadlines: String { tr("No upcoming deadlines.") }
 
+    // Week view (board pick H2); iPad wording.
+    public var thisWeek: String { tr("This week") }
+    public var noDeadlinesThisWeek: String { tr("No deadlines this week") }
+    public func nextDueDate(_ when: String) -> String { format("Next due date: {when}", ["when": when]) }
+
+    func sectionTitle(_ kind: DeadlineSection.Kind) -> String {
+        switch kind {
+        case .today: tr("Today")
+        case .laterThisWeek: tr("Later this week")
+        case .nextWeek: tr("Next week")
+        case .later: tr("Later")
+        case .pastDue: pastDue
+        }
+    }
+
+    /// "in 5 hours", "in 1 minute" (Turkish "5 saat sonra"); never "in 0".
+    func inTime(_ interval: TimeInterval) -> String {
+        let minutes = max(1, Int((interval / 60).rounded(.up)))
+        if minutes < 60 {
+            return DisplayFormat.count(minutes, one: "in {n} minute", other: "in {n} minutes", translate: tr)
+        }
+        return DisplayFormat.count(minutes / 60, one: "in {n} hour", other: "in {n} hours", translate: tr)
+    }
+
+    /// "November 9 – 15", "October 30 – November 5" (Turkish "9 – 15 Kasım", "30 Ekim – 5 Kasım").
+    func dayRange(_ start: LocalDay, _ end: LocalDay) -> String {
+        if start.month == end.month {
+            return format("{month} {start} – {end}", ["month": month(start.month), "start": String(start.day),
+                                                      "end": String(end.day)])
+        }
+        return "\(monthDay(month: start.month, day: start.day)) – \(monthDay(month: end.month, day: end.day))"
+    }
+
+    /// Upper case by the language's rules ("ÇAR", and Turkish dotted İ).
+    func upper(_ text: String) -> String { text.uppercased(with: Locale(identifier: language.rawValue)) }
+
     public func due(_ time: String) -> String { format("Due: {time}", ["time": time]) }
     public func points(_ points: String) -> String { format("Points: {points}", ["points": points]) }
 
@@ -164,5 +200,19 @@ public struct FeatureStrings: Sendable {
         "{n} deadline today": "Bugün {n} teslim tarihi",
         "{n} deadlines today": "Bugün {n} teslim tarihi",
         "{n} this week": "bu hafta {n}",
+        // Week view (new)
+        "This week": "Bu hafta",
+        "Later this week": "Haftanın geri kalanı",
+        "Next week": "Gelecek hafta",
+        "Later": "Daha sonra",
+        "Next due date: {when}": "Sonraki teslim: {when}",
+        "No deadlines": "Teslim tarihi yok",
+        "{n} deadline": "{n} teslim tarihi",
+        "{n} deadlines": "{n} teslim tarihi",
+        "in {n} minute": "{n} dakika sonra",
+        "in {n} minutes": "{n} dakika sonra",
+        "in {n} hour": "{n} saat sonra",
+        "in {n} hours": "{n} saat sonra",
+        "{month} {start} – {end}": "{start} – {end} {month}",
     ]
 }

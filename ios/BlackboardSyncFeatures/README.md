@@ -13,6 +13,7 @@ Behaviour follows the desktop app:
 | Body as readable text (headings, lists, bold, links), files from `data-bbfile` / `bbcswebdav` links, videos and audio listed apart | `htmltext.py`, `notes.py` `render_announcement_note` |
 | Due dates from `grading.due` only, with an explicit offset; hidden columns skipped; link to the content or the grades page | `deadlines.py` `parse_due`, `column_deadline` |
 | Grouped by local day, upcoming ascending, past due newest first, same-day split at "now"; DST-safe | `deadlines.py` `calendar_page` |
+| Calendar page as a week (iPad design, board pick H2): a Monday-to-Sunday strip with today marked and a dot per course due, then Today, Later this week, Next week, Later and Past due; a course keeps one colour (`AppColor.courses`, by course name); an empty week points at the next due date | iPad only (`DeadlineWeek.swift`), built on `calendar_page` |
 | A failed course keeps what it showed before and the page says so; an expired session is never swallowed | `sync.py` `sync_deadlines`, `test_deadlines.py` |
 | Home helpers: next due dates, "1 deadline today · 3 this week", "tomorrow 09:00" | `deadlines.py` `upcoming_rows`, `count_due`, `when_text`; `main_window_model.py` `deadline_subtitle` |
 | English and Turkish texts | `i18n.py`, `locale_tr.py` |

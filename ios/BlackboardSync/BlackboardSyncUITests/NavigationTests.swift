@@ -90,10 +90,24 @@ final class NavigationTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Files in this announcement"].waitForExistence(timeout: 5))
         capture("Announcements-sample-landscape")
         app.descendants(matching: .any)["sidebar.calendar"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Upcoming"].waitForExistence(timeout: 5))
+        // Board pick H2: the week strip with today marked, then the due dates grouped by when they are due.
+        XCTAssertTrue(app.staticTexts["This week"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["calendar.today"].exists)
+        XCTAssertEqual(app.buttons.matching(identifier: "calendar.day").count + 1, 7)
+        XCTAssertTrue(app.buttons["calendar.today"].label.hasPrefix("Today, "))
+        XCTAssertTrue(app.staticTexts["Today"].exists || app.staticTexts["Later this week"].exists)
         XCTAssertTrue(app.staticTexts["Past due"].exists)
+        XCTAssertTrue(app.staticTexts["Select a due date"].exists)
         capture("Calendar-sample-landscape")
+        // A due date opens its details beside the list, as before.
+        let homework = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Homework 3,'")).firstMatch
+        XCTAssertTrue(homework.waitForExistence(timeout: 5))
+        homework.tap()
+        XCTAssertTrue(app.links["Open in Blackboard"].waitForExistence(timeout: 5) || app.buttons["Open in Blackboard"].exists)
+        XCTAssertTrue(app.staticTexts["Points: 100"].exists)
+        capture("Calendar-sample-selected-landscape")
         XCUIDevice.shared.orientation = .portrait
+        XCTAssertTrue(app.staticTexts["This week"].waitForExistence(timeout: 5))
         capture("Calendar-sample-portrait")
         app.terminate()
     }
@@ -106,8 +120,10 @@ final class NavigationTests: XCTestCase {
         app.launch()
         app.descendants(matching: .any)["sidebar.calendar"].firstMatch.waitForExistence(timeout: 20)
         app.descendants(matching: .any)["sidebar.calendar"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Yaklaşan teslimler"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Bu hafta"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["calendar.today"].label.hasPrefix("Bugün, "))
         XCTAssertTrue(app.staticTexts["Tarihi geçenler"].exists)
+        XCTAssertTrue(app.staticTexts["Bir teslim tarihi seçin"].exists)
         capture("Calendar-sample-Turkish")
         app.descendants(matching: .any)["sidebar.announcements"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["Seçili derslerinizdeki tüm duyurular."].waitForExistence(timeout: 5))
