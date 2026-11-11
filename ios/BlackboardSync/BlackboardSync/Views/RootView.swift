@@ -39,7 +39,7 @@ struct RootView: View {
                             HStack {
                                 Label(model.text("Courses"), systemImage: "books.vertical")
                                 Spacer(minLength: 8)
-                                if let courseCount { Text(courseCount).font(.caption).foregroundStyle(.secondary) }
+                                if let courseCount { CourseCountBadge(text: courseCount) }
                             }
                         }
                         NavigationLink(value: AppPage.calendar) { Label(model.text("Calendar"), systemImage: "calendar") }
@@ -79,6 +79,7 @@ struct RootView: View {
         }) { SettingsView().environmentObject(model) }
         .sheet(isPresented: $model.showingLogin) { SignInView().environmentObject(model) }
         .sheet(item: $model.termConfirm) { card in FirstCoursesCard(card: card, selected: model.selected).environmentObject(model) }
+        .signOutConfirmation(isPresented: $model.confirmingSignOut)
     }
     /// "4/5" beside Courses while some course is unticked, as on the Mac; nothing otherwise.
     private var courseCount: String? {
@@ -116,7 +117,7 @@ struct AccountMenu: View {
                     if model.needsSignIn {
                         Button(model.text("Reconnect")) { model.signIn() }.disabled(model.busy)
                     }
-                    Button(model.text("Sign out"), role: .destructive) { model.signOut() }.disabled(model.busy && !model.syncing)
+                    Button(model.text("Sign out"), role: .destructive) { model.confirmingSignOut = true }.disabled(model.busy && !model.syncing)
                 } else {
                     Button(model.text(model.needsSignIn ? "Reconnect" : "Sign in to Blackboard")) { model.signIn() }.disabled(model.busy)
                 }
@@ -136,6 +137,35 @@ struct AccountMenu: View {
     private var header: String {
         if signedIn { return model.text("Signed in as {name}").replacingOccurrences(of: "{name}", with: model.accountName) }
         return model.text(model.needsSignIn ? "Your session expired; sign in again." : "Not signed in yet.")
+    }
+}
+
+/// The "4/5" beside Courses as a solid accent badge. It stays solid when Courses is selected, because
+/// the iPadOS sidebar marks the selected row with a light highlight, not an accent fill.
+struct CourseCountBadge: View {
+    let text: String
+    var body: some View {
+        Text(text).font(.caption.weight(.bold)).monospacedDigit().foregroundStyle(.white)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(Color.appAccent, in: Capsule())
+    }
+}
+
+extension View {
+    /// Asks before signing out; signing out only goes ahead on the destructive button.
+    func signOutConfirmation(isPresented: Binding<Bool>) -> some View { modifier(SignOutConfirmation(isPresented: isPresented)) }
+}
+
+private struct SignOutConfirmation: ViewModifier {
+    @EnvironmentObject var model: AppModel
+    @Binding var isPresented: Bool
+    func body(content: Content) -> some View {
+        content.alert(model.text("Sign out?"), isPresented: $isPresented) {
+            Button(model.text("Cancel"), role: .cancel) {}
+            Button(model.text("Sign out"), role: .destructive) { model.signOut() }
+        } message: {
+            Text(model.text("Downloaded files stay on this iPad."))
+        }
     }
 }
 

@@ -102,23 +102,17 @@ struct ActivityView: View {
                 ForEach(model.library.activities) { activity in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 12) {
-                            Image(systemName: activity.status == .failed ? "exclamationmark.circle" : activity.status == .skipped ? "minus.circle" : "doc.richtext")
-                                .font(.title2).foregroundStyle(activity.status == .failed ? .orange : .blue)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(activity.name).font(.subheadline.weight(.medium))
-                                Text(model.text(activity.status.rawValue)).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
+                            // A row with a file opens it in Files / Preview when tapped anywhere; a quiet
+                            // chevron says so. Rows without a file (skipped, failed) do not react to a tap.
                             if let relative = activity.relativePath {
-                                Button(model.text("Open")) {
-                                    Task {
-                                        do {
-                                            if let url = try await model.store?.url(relative) {
-                                                model.openExternally(url) { preview = $0 }
-                                            }
-                                        } catch { errorMessage = SyncLogic.safeError(error) }
-                                    }
-                                }.buttonStyle(.bordered)
+                                Button { open(relative) } label: {
+                                    HStack(spacing: 12) {
+                                        summary(activity)
+                                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                                    }.contentShape(Rectangle())
+                                }.buttonStyle(.plain)
+                            } else {
+                                summary(activity)
                             }
                             if activity.status == .failed {
                                 Button(model.text("Retry sync")) { model.syncNow() }.buttonStyle(.bordered).disabled(!model.canSync)
@@ -130,6 +124,26 @@ struct ActivityView: View {
                 if let errorMessage { Text(model.text(errorMessage)).foregroundStyle(.orange) }
             }
         }.navigationTitle(model.text("Sync activity")).quickLookPreview($preview)
+    }
+    private func summary(_ activity: Activity) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: activity.status == .failed ? "exclamationmark.circle" : activity.status == .skipped ? "minus.circle" : "doc.richtext")
+                .font(.title2).foregroundStyle(activity.status == .failed ? .orange : .blue)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(activity.name).font(.subheadline.weight(.medium))
+                Text(model.text(activity.status.rawValue)).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+    }
+    private func open(_ relative: String) {
+        Task {
+            do {
+                if let url = try await model.store?.url(relative) {
+                    model.openExternally(url) { preview = $0 }
+                }
+            } catch { errorMessage = SyncLogic.safeError(error) }
+        }
     }
 }
 
@@ -165,7 +179,6 @@ struct FileBrowser: View {
                                     Text(entry.url.lastPathComponent).font(.callout).frame(maxWidth: .infinity, alignment: .leading)
                                 }.contentShape(Rectangle())
                             }.buttonStyle(.plain)
-                            Button(model.text("Open")) { model.openExternally(entry.url) { preview = $0 } }.buttonStyle(.bordered)
                             ShareLink(item: entry.url) { Label(model.text("Share"), systemImage: "square.and.arrow.up") }.buttonStyle(.bordered)
                         }.padding(.vertical, 5)
                     }

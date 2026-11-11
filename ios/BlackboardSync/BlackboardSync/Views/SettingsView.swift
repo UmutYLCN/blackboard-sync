@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @State private var confirmingSignOut = false
     var body: some View {
         NavigationStack {
             Form {
@@ -14,7 +15,7 @@ struct SettingsView: View {
                     SchoolMenu()
                         .disabled(model.hasSession || model.needsSignIn || model.hasStoredSession || model.busy)
                     if model.hasSession || model.needsSignIn || model.hasStoredSession {
-                        Button(model.text("Sign out"), role: .destructive) { model.signOut() }.disabled(model.busy && !model.syncing)
+                        Button(model.text("Sign out"), role: .destructive) { confirmingSignOut = true }.disabled(model.busy && !model.syncing)
                     } else {
                         Button(model.text("Sign in to Blackboard")) { model.loginAfterSettings = true; dismiss() }.disabled(model.busy)
                     }
@@ -34,7 +35,6 @@ struct SettingsView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     NavigationLink(model.text("Selected courses")) { CoursesView() }
-                    ComingSoon(title: "Automatic background sync", symbol: "clock.arrow.circlepath")
                 }
                 Section(model.text("Google Calendar")) {
                     ComingSoon(title: "Connect Google Calendar", symbol: "calendar.badge.plus")
@@ -42,10 +42,6 @@ struct SettingsView: View {
                 Section(model.text("Folder")) {
                     NavigationLink(model.text("Open folder")) { FileBrowser(folder: "", title: model.text("University")) }
                     Text("Documents/University/<term>/<course>/…").font(.caption).foregroundStyle(.secondary)
-                    ComingSoon(title: "Choose another folder", symbol: "folder.badge.gearshape")
-                }
-                Section(model.text("More")) {
-                    ComingSoon(title: "Notes PDFs", symbol: "doc.text")
                 }
                 Section(model.text("About & privacy")) {
                     Text(verbatim: "Blackboard Sync · iPad \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")").font(.headline)
@@ -54,6 +50,7 @@ struct SettingsView: View {
                     Text(model.text("Foreground sync only. Audio, video and files over 500 MB are skipped. HTML responses are rejected. No files are deleted from your mirror."))
                 }.font(.callout)
             }.navigationTitle(model.text("Settings"))
+                .signOutConfirmation(isPresented: $confirmingSignOut)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button(model.text("Done")) { dismiss() } } }
         }.presentationDetents([.large])
     }
