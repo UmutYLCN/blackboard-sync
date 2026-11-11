@@ -274,6 +274,29 @@ h1 span {
   font-weight: 400;
 }
 
+/* Official Microsoft Store badge: shown unmodified, scaled only in proportion. */
+.store-badge {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  border-radius: 10px;
+  transition: transform .18s;
+}
+
+.store-badge:hover {
+  transform: translateY(-3px);
+}
+
+.store-badge img {
+  display: block;
+  width: auto;
+  height: 69px;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: left center;
+}
+
 .hero-meta {
   display: flex;
   flex-wrap: wrap;
@@ -635,6 +658,9 @@ p {
   .download {
     max-width: 300px;
   }
+  .store-badge {
+    align-self: flex-start;
+  }
   .feature-grid {
     gap: 32px 24px;
   }
@@ -711,6 +737,15 @@ p {
   }
   .download-arrow {
     display: none;
+  }
+  .downloads {
+    flex-wrap: wrap;
+  }
+  .store-badge {
+    flex-basis: 100%;
+  }
+  .store-badge img {
+    height: 56px;
   }
   .hero-meta {
     gap: 8px 12px;
