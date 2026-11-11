@@ -35,7 +35,7 @@ Version 1.7.1 gathers the Mac work that is ready, is tested by hand at the end a
 In 1.7.1:
 
 - Everything merged since 1.7.0: the [file-move fixes](#file-move-fixes), [no folders for courses without files](#no-folders-for-courses-without-files) and the [removal of the past-terms feature](#removal-of-the-past-terms-feature).
-- The [simple latest-term rule](#simple-latest-term-rule), on the desktop and iPad apps.
+- The [simple latest-term rule](#simple-latest-term-rule), on the desktop apps. The iPad app has it too, in its first App Store release, version 1.0.
 - Provider-independent silent sign-in with page stillness, fast-path checks (username/email, account picker, OTP) and session cookie fallback.
 - The [UI cleanup](#ui-cleanup): the profile card and the calendar error card.
 - The English and Turkish [Store listings](#microsoft-store-listings) with NotebookLM.
@@ -86,7 +86,7 @@ Before the first download at a new school whose term is not clear, the apps ask 
 
 - When no state exists for the school and the term choice is ambiguous (undated terms, stale dates, terms that started on different days, or a term name with no year and season), a card lists the term(s) found and their courses, all ticked. The student can untick courses and presses Confirm; nothing is downloaded before that, and the choice is saved so it is asked once. Not now leaves nothing downloaded and the card comes back with the next sync.
 - A clear first run downloads at once as before. A school with existing state (the first school, İSTÜN, with its files) never sees the card.
-- Done on the desktop apps (Mac and Windows) and the iPad app (version 1.7.1). On the iPad the card asks when Sync now (or Sync on app open) would start the first download, and its ticks are the course selection of Courses.
+- Done on the desktop apps (Mac and Windows) and the iPad app (version 1.0). On the iPad the card asks when Sync now (or Sync on app open) would start the first download, and its ticks are the course selection of Courses.
 
 Notes:
 

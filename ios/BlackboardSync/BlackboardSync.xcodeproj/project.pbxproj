@@ -225,7 +225,7 @@
 			"isa" = "XCBuildConfiguration";
 			"buildSettings" = {
 				"GENERATE_INFOPLIST_FILE" = "NO";
-				"MARKETING_VERSION" = "0.1";
+				"MARKETING_VERSION" = "1.0";
 				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
 				"SWIFT_COMPILATION_MODE" = "wholemodule";
 				"INFOPLIST_FILE" = "BlackboardSync/Info.plist";
@@ -276,7 +276,7 @@
 			"buildSettings" = {
 				"GENERATE_INFOPLIST_FILE" = "NO";
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
-				"MARKETING_VERSION" = "0.1";
+				"MARKETING_VERSION" = "1.0";
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
 				"INFOPLIST_FILE" = "BlackboardSync/Info.plist";
 				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
@@ -373,6 +373,7 @@
 				"45F985C366034059628BC553",
 				"18F1CA8BD24118184E86EC02",
 				"66435EBE37C773298DE42699",
+				"A1B2C3D4E5F6A7B8C9D0E1F2",
 				"F11F93AAD86633826F9F71D8",
 				"F99BE33389CA63AB458F0CA2",
 				"44494B2659F553EB63B85C15",
@@ -589,6 +590,16 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "66435EBE37C773298DE42699";
 		};
+		"A1B2C3D4E5F6A7B8C9D0E1F2" = {
+			"isa" = "PBXFileReference";
+			"path" = "Resources/PrivacyInfo.xcprivacy";
+			"sourceTree" = "<group>";
+			"lastKnownFileType" = "text.xml";
+		};
+		"A1B2C3D4E5F6A7B8C9D0E1F3" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A1B2C3D4E5F6A7B8C9D0E1F2";
+		};
 		"F11F93AAD86633826F9F71D8" = {
 			"isa" = "PBXFileReference";
 			"path" = "Info.plist";
@@ -604,6 +615,7 @@
 			"buildActionMask" = "2147483647";
 			"files" = (
 				"D1E5A4598791F3BFBE6E56BE",
+				"A1B2C3D4E5F6A7B8C9D0E1F3",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
