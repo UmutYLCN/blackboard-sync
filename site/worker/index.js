@@ -13,6 +13,10 @@ const PLATFORMS = {
 // Resolved release, kept per isolate so most requests skip the GitHub API.
 let cached = { assets: null, expires: 0 };
 
+export function resetCache() {
+  cached = { assets: null, expires: 0 };
+}
+
 // Find the first release asset matching the platform's patterns.
 function pickAsset(assets, patterns) {
   for (const pattern of patterns) {
@@ -72,8 +76,45 @@ function redirect(location, cacheControl) {
   });
 }
 
+function recordDownload(request, env, ctx, platform) {
+  const dataset = env.DOWNLOADS || env.downloads;
+  if (!dataset || typeof dataset.writeDataPoint !== "function") return;
+
+  const country = (request.cf && request.cf.country) || "";
+  let host = "";
+  const referer = request.headers.get("referer");
+  if (referer) {
+    try {
+      host = new URL(referer).hostname;
+    } catch {
+      // Invalid referer URL: leave host empty.
+    }
+  }
+
+  const write = () => {
+    try {
+      dataset.writeDataPoint({
+        blobs: [platform, country, host],
+        doubles: [1],
+      });
+    } catch (err) {
+      console.error("Failed to write download data point:", err);
+    }
+  };
+
+  if (ctx && typeof ctx.waitUntil === "function") {
+    try {
+      ctx.waitUntil(Promise.resolve().then(write));
+    } catch (err) {
+      console.error("Failed to schedule download data point:", err);
+    }
+  } else {
+    write();
+  }
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     if (pathname.endsWith(".mp4")) return videoRange(request, env);
     const platform = pathname.replace(/^\/|\/$/g, "");
@@ -81,6 +122,8 @@ export default {
 
     // Only /mac, /windows and the video are routed here; anything else is a static asset.
     if (!patterns) return env.ASSETS.fetch(request);
+
+    recordDownload(request, env, ctx, platform);
 
     try {
       const asset = pickAsset(await latestAssets(env), patterns);
