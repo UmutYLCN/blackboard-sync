@@ -49,7 +49,8 @@ def test_worker_does_not_rewrite_the_pages():
     worker = (SITE / 'worker' / 'index.js').read_text(encoding='utf-8')
     assert 'HTMLRewriter' not in worker
     assert 'download-windows' not in worker
-    # The Worker sees only the short links and the video; pages are served as static assets.
+    # The Worker sees only the short links, the /stats.json counter and the video;
+    # pages are served as static assets.
     config = (SITE / 'wrangler.jsonc').read_text(encoding='utf-8')
     routes = json.loads(re.search(r'"run_worker_first"\s*:\s*(\[[^\]]*\])', config).group(1))
-    assert set(routes) <= {'/mac', '/mac/', '/windows', '/windows/', '/assets/*.mp4'}, routes
+    assert set(routes) <= {'/mac', '/mac/', '/windows', '/windows/', '/stats.json', '/assets/*.mp4'}, routes
