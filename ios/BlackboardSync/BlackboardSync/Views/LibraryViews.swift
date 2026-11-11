@@ -4,7 +4,28 @@ import BlackboardSyncFeatures
 
 struct CoursesView: View {
     @EnvironmentObject var model: AppModel
+    /// False in the Settings sheet, which keeps the plain list.
+    @Environment(\.showsTopBar) private var inMainWindow
     var body: some View {
+        Group {
+            if inMainWindow && model.firstRunScreen == .welcomeCard {
+                // Signed out with nothing downloaded: the welcome card (F2) instead of an empty list.
+                ScrollView { WelcomeCard().padding(Spacing.page) }
+                    .background(Color(uiColor: .systemGroupedBackground))
+            } else {
+                courseList
+            }
+        }.appTopBar(model.text("Courses")) {
+            Button { model.refreshCourses() } label: {
+                Label(model.text("Refresh courses"), systemImage: "arrow.clockwise")
+                    .font(.system(size: TopBarMetrics.glyph, weight: .semibold))
+            }
+            .buttonStyle(TopBarCircleStyle())
+            .disabled(model.busy || !model.hasSession)
+        }
+    }
+
+    private var courseList: some View {
         List {
             Section {
                 Text(model.text("Choose the courses to sync. Your downloaded files remain when a course is turned off."))
@@ -28,13 +49,6 @@ struct CoursesView: View {
                     }
                 }
             }
-        }.appTopBar(model.text("Courses")) {
-            Button { model.refreshCourses() } label: {
-                Label(model.text("Refresh courses"), systemImage: "arrow.clockwise")
-                    .font(.system(size: TopBarMetrics.glyph, weight: .semibold))
-            }
-            .buttonStyle(TopBarCircleStyle())
-            .disabled(model.busy || !model.hasSession)
         }
     }
 }

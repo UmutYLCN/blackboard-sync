@@ -31,8 +31,8 @@ final class AppModel: ObservableObject {
     @Published var selected: Set<String> = []
     @Published var busy = false
     @Published var syncing = false
-    @Published var hasSession = false
-    @Published var hasStoredSession = false
+    @Published var hasSession = false { didSet { if hasSession { leaveFirstRun() } } }
+    @Published var hasStoredSession = false { didSet { if hasStoredSession { leaveFirstRun() } } }
     @Published var needsSignIn = false
     @Published var showingLogin = false
     @Published var webView: WKWebView?
@@ -51,6 +51,9 @@ final class AppModel: ObservableObject {
     @Published var termConfirm: TermConfirm.Card?
     /// Announcements and due dates for the signed-in account; nil while signed out.
     @Published private(set) var features: FeatureModels?
+    /// True from `appAccountDidSignIn()` until Blackboard is first signed in: the full-screen first run.
+    @Published private(set) var firstRunPending: Bool
+    private let firstRun: FirstRun
     var loginAfterSettings = false
     private(set) var store: LibraryStore?
     private(set) var scope = UserDefaults.standard.string(forKey: "libraryScope") ?? ""
@@ -100,6 +103,38 @@ final class AppModel: ObservableObject {
             scheduleBackgroundRefresh()
         }
     }
+    init(firstRun: FirstRun = FirstRun()) {
+        self.firstRun = firstRun
+        firstRunPending = firstRun.isPending
+        // Stand-in for the app account's sign-in, which does not exist yet: the first launch of a fresh
+        // install calls the hook. Once that sign-in exists, this line goes and the sign-in calls it.
+        if firstRun.firstLaunchOfFreshInstall(signedInBefore: !scope.isEmpty) { appAccountDidSignIn() }
+    }
+
+    /// The hook for the app account (Supabase) sign-in: after it, the full-screen first-run page (F1)
+    /// shows instead of Home until Blackboard is signed in.
+    func appAccountDidSignIn() {
+        guard !(hasSession || hasStoredSession || needsSignIn) else { return }
+        firstRun.begin()
+        firstRunPending = true
+    }
+
+    /// Blackboard is signed in (or a session is kept): the full-screen first run is over for good.
+    private func leaveFirstRun() {
+        guard firstRunPending else { return }
+        firstRun.finish()
+        firstRunPending = false
+    }
+
+    /// F1 until Blackboard is first signed in; F2 on Home and Courses once signed out, unless files are
+    /// downloaded, which keeps the normal app so they stay reachable offline.
+    var firstRunScreen: FirstRunScreen {
+        // `features` is set only while signed in, or over the sample Blackboard in UI tests.
+        FirstRun.screen(pending: firstRunPending,
+                        blackboardAccount: hasSession || hasStoredSession || needsSignIn || features != nil,
+                        downloadedFiles: !library.records.isEmpty)
+    }
+
     func text(_ key: String) -> String { L10n.text(key, language: language) }
     /// The introduction's copy in the app's language.
     var onboardingStrings: OnboardingStrings { OnboardingStrings(FeatureLanguage(code: language)) }

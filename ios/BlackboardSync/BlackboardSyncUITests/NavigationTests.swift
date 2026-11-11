@@ -6,33 +6,25 @@ final class NavigationTests: XCTestCase {
     @MainActor
     func testLandscapeNavigationAndPortraitLayout() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "-language", "en"]
+        app.launchArguments = ["--ui-testing", "-firstRunPending", "NO", "-language", "en"]
         XCUIDevice.shared.orientation = .landscapeLeft
         app.launch()
-        XCTAssertTrue(app.staticTexts["Your course files start here."].waitForExistence(timeout: 20))
+        // Signed out with nothing downloaded: Home is the welcome card (F2) and the top bar shows only Settings.
+        XCTAssertTrue(app.descendants(matching: .any)["firstRun.card"].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Your course files, on your iPad."].exists)
+        XCTAssertTrue(app.buttons["firstRun.signIn"].exists)
+        XCTAssertFalse(app.staticTexts["Recent downloads"].exists)
+        XCTAssertTrue(app.buttons["toolbar.settings"].exists)
+        XCTAssertFalse(app.buttons["toolbar.pause"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["toolbar.account"].firstMatch.exists)
         capture("Home-landscape")
-        // The Mac's top bar: Pause waits for the first sign-in; the account sits at the right, not in the sidebar.
-        let pause = app.buttons["toolbar.pause"]
-        XCTAssertTrue(pause.waitForExistence(timeout: 5))
-        XCTAssertEqual(pause.label, "Pause syncing")
-        XCTAssertFalse(pause.isEnabled)
-        app.buttons["toolbar.account"].tap()
-        XCTAssertTrue(app.buttons["Not signed in yet."].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["Not signed in yet."].isEnabled)
-        XCTAssertTrue(app.buttons["Sign in to Blackboard"].exists)
-        capture("Account-menu")
-        // Settings has its own circle beside the account, so the menu no longer repeats it.
-        XCTAssertFalse(app.collectionViews.buttons["Settings"].exists)
-        // Closes the menu with a tap on plain text on the page.
-        app.staticTexts["Your course files start here."].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        XCTAssertTrue(app.buttons["Sign in to Blackboard"].waitForNonExistence(timeout: 5) || !app.collectionViews.buttons["Sign in to Blackboard"].exists)
         app.buttons["toolbar.settings"].tap()
         XCTAssertTrue(app.staticTexts["About & privacy"].waitForExistence(timeout: 5) || app.staticTexts["Account"].exists)
         app.buttons["Done"].tap()
         XCTAssertTrue(app.buttons["Done"].waitForNonExistence(timeout: 5))
         app.descendants(matching: .any)["sidebar.announcements"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts[signInHint].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["Your course files start here."].exists)
+        XCTAssertFalse(app.staticTexts["Your course files, on your iPad."].exists)
         capture("Announcements-signed-out")
         app.descendants(matching: .any)["sidebar.calendar"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts[signInHint].waitForExistence(timeout: 5))
@@ -44,7 +36,8 @@ final class NavigationTests: XCTestCase {
         }
         app.buttons["Done"].tap()
         app.staticTexts["Courses"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["No current-term courses found."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["firstRun.card"].firstMatch.waitForExistence(timeout: 5))
+        capture("Courses-welcome-card")
         app.staticTexts["Open folder"].firstMatch.tap()
         // Empty on a fresh simulator; a simulator with files from a run by hand lists them instead.
         XCTAssertTrue(app.staticTexts["No downloaded files yet."].waitForExistence(timeout: 5)
@@ -58,11 +51,12 @@ final class NavigationTests: XCTestCase {
     @MainActor
     func testTurkishOnboardingAndFeaturePages() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "-language", "tr"]
+        app.launchArguments = ["--ui-testing", "-firstRunPending", "NO", "-language", "tr"]
         XCUIDevice.shared.orientation = .landscapeLeft
         app.launch()
-        XCTAssertTrue(app.staticTexts["Ders dosyalarınız burada başlayacak."].waitForExistence(timeout: 20))
-        XCTAssertEqual(app.buttons["toolbar.pause"].label, "Senkronu duraklat")
+        XCTAssertTrue(app.staticTexts["Ders dosyalarınız iPad’inizde."].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["Blackboard'a giriş yapın"].exists)
+        XCTAssertEqual(app.buttons["toolbar.settings"].label, "Ayarlar")
         capture("Home-Turkish-landscape")
         app.descendants(matching: .any)["sidebar.calendar"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["Seçili derslerinizin duyurularını ve teslim tarihlerini görmek için giriş yapın."].waitForExistence(timeout: 5))
@@ -75,7 +69,7 @@ final class NavigationTests: XCTestCase {
     @MainActor
     func testAnnouncementsAndCalendarWithSampleBlackboard() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--ui-testing-features", "-language", "en"]
+        app.launchArguments = ["--ui-testing", "--ui-testing-features", "-firstRunPending", "NO", "-language", "en"]
         XCUIDevice.shared.orientation = .landscapeLeft
         app.launch()
         XCTAssertTrue(app.staticTexts["Exam rooms & times"].waitForExistence(timeout: 20))
@@ -115,7 +109,7 @@ final class NavigationTests: XCTestCase {
     @MainActor
     func testTurkishSamplePages() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--ui-testing-features", "-language", "tr"]
+        app.launchArguments = ["--ui-testing", "--ui-testing-features", "-firstRunPending", "NO", "-language", "tr"]
         XCUIDevice.shared.orientation = .landscapeLeft
         app.launch()
         app.descendants(matching: .any)["sidebar.calendar"].firstMatch.waitForExistence(timeout: 20)
@@ -245,10 +239,56 @@ final class NavigationTests: XCTestCase {
 
     @MainActor private func launchHome(_ state: String, language: String = "en", extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--ui-testing-features", "--ui-testing-home", state, "-language", language] + extra
+        app.launchArguments = ["--ui-testing", "--ui-testing-features", "--ui-testing-home", state, "-firstRunPending", "NO", "-language", language] + extra
         XCUIDevice.shared.orientation = .landscapeLeft
         app.launch()
         return app
+    }
+
+    /// The full-screen first run (F1) on a fresh install: no sidebar or top bar, the language menu, the
+    /// school menu with "Other school…" and the button into sign-in. No school page is loaded.
+    @MainActor
+    func testFullScreenFirstRun() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "-firstRunPending", "YES", "-language", "en"]
+        XCUIDevice.shared.orientation = .landscapeLeft
+        app.launch()
+        let page = app.descendants(matching: .any)["firstRun.page"].firstMatch
+        XCTAssertTrue(page.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Your course files, on your iPad."].exists)
+        XCTAssertTrue(app.staticTexts["Istanbul Health and Technology University"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["sidebar.folder"].firstMatch.exists)
+        XCTAssertFalse(app.buttons["toolbar.settings"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["firstRun.address"].firstMatch.exists)
+        capture("FirstRun-landscape")
+        XCUIDevice.shared.orientation = .portrait
+        XCTAssertTrue(app.buttons["firstRun.signIn"].isHittable)
+        capture("FirstRun-portrait")
+        // Language is the only other control.
+        app.buttons["firstRun.language"].tap()
+        app.buttons["Türkçe"].tap()
+        XCTAssertTrue(app.staticTexts["Ders dosyalarınız iPad’inizde."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Blackboard'a giriş yapın"].exists)
+        XCTAssertTrue(app.staticTexts["Okul"].exists)
+        capture("FirstRun-Turkish-portrait")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        capture("FirstRun-Turkish-landscape")
+        app.buttons["firstRun.language"].tap()
+        app.buttons["English"].tap()
+        XCTAssertTrue(app.staticTexts["Your course files, on your iPad."].waitForExistence(timeout: 5))
+        // "Other school…" shows the address field. An address that is not HTTPS stops before any page loads.
+        app.buttons["firstRun.school"].tap()
+        app.buttons["Other school…"].tap()
+        let address = app.textFields["firstRun.address"]
+        XCTAssertTrue(address.waitForExistence(timeout: 5))
+        address.tap()
+        address.typeText("http://school.invalid")
+        app.buttons["firstRun.signIn"].tap()
+        XCTAssertTrue(app.staticTexts["Enter an HTTPS tenant origin, without a path, query, or credentials."].waitForExistence(timeout: 5))
+        XCTAssertTrue(page.exists, "the first run stays until Blackboard is signed in")
+        capture("FirstRun-other-school")
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
     }
 
     /// The top bar (board pick T1) on every page, pushed folder pages included: the title and three
@@ -256,7 +296,7 @@ final class NavigationTests: XCTestCase {
     @MainActor
     func testTopBarOnEveryPage() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--ui-testing-features", "-language", "en"]
+        app.launchArguments = ["--ui-testing", "--ui-testing-features", "-firstRunPending", "NO", "-language", "en"]
         XCUIDevice.shared.orientation = .landscapeLeft
         app.launch()
         XCTAssertTrue(app.buttons["toolbar.settings"].waitForExistence(timeout: 20))

@@ -19,6 +19,21 @@ struct RootView: View {
     @State private var columns: NavigationSplitViewVisibility = .all
     @State private var portrait = false
     var body: some View {
+        // The full-screen first run (F1) stands in for the whole shell; the sheets below serve both.
+        Group {
+            if model.firstRunScreen == .fullScreen { FirstRunPage() } else { shell }
+        }
+        .tint(Color.appAccent)
+        .featureTheme(.app)
+        .sheet(isPresented: $model.showingSettings, onDismiss: {
+            if model.loginAfterSettings { model.loginAfterSettings = false; model.signIn() }
+        }) { SettingsView().environmentObject(model) }
+        .sheet(isPresented: $model.showingLogin) { SignInView().environmentObject(model) }
+        .sheet(item: $model.termConfirm) { card in FirstCoursesCard(card: card, selected: model.selected).environmentObject(model) }
+        .signOutConfirmation(isPresented: $model.confirmingSignOut)
+    }
+
+    private var shell: some View {
         NavigationSplitView(columnVisibility: $columns) {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
@@ -78,14 +93,6 @@ struct RootView: View {
             portrait = tall
             if !tall { columns = .all }
         }
-        .tint(Color.appAccent)
-        .featureTheme(.app)
-        .sheet(isPresented: $model.showingSettings, onDismiss: {
-            if model.loginAfterSettings { model.loginAfterSettings = false; model.signIn() }
-        }) { SettingsView().environmentObject(model) }
-        .sheet(isPresented: $model.showingLogin) { SignInView().environmentObject(model) }
-        .sheet(item: $model.termConfirm) { card in FirstCoursesCard(card: card, selected: model.selected).environmentObject(model) }
-        .signOutConfirmation(isPresented: $model.confirmingSignOut)
     }
     /// "4/5" beside Courses while some course is unticked, as on the Mac; nothing otherwise.
     private var courseCount: String? {
@@ -227,15 +234,19 @@ private struct TopBarRow<Extra: View>: View {
     }
 }
 
-/// Extra circles, then Pause, Settings and the account, with touching tap targets.
+/// Extra circles, then Pause, Settings and the account, with touching tap targets. With the welcome
+/// card (F2) there is nothing to pause or show for the account, so only Settings stays (and a Resume
+/// for a pause already set).
 private struct TopBarCircles<Extra: View>: View {
+    @EnvironmentObject var model: AppModel
     let extra: Extra
     var body: some View {
+        let welcome = model.firstRunScreen == .welcomeCard
         HStack(spacing: 0) {
             extra
-            PauseButton()
+            if !welcome || model.paused { PauseButton() }
             SettingsButton()
-            AccountMenu()
+            if !welcome { AccountMenu() }
         }
     }
 }
@@ -437,6 +448,9 @@ struct StatusCard: View {
             Button(model.text("Reconnect")) { model.signIn() }.buttonStyle(.appTertiary).disabled(model.busy)
         } else if model.hasSession {
             Button(model.text(retry ? "Retry sync" : "Sync now")) { model.syncNow() }.buttonStyle(.appTertiary).disabled(!model.canSync)
+        } else if !model.hasStoredSession {
+            // Signed out with files kept on the iPad (no welcome card then): the way back in.
+            Button(model.text("Sign in to Blackboard")) { model.signIn() }.buttonStyle(.appTertiary).disabled(model.busy)
         }
     }
 }
@@ -449,22 +463,6 @@ struct ViewAllButton: View {
     var title = "View all"
     var body: some View {
         Button(model.text(title)) { openPage(page) }.buttonStyle(.appSecondary)
-    }
-}
-
-struct WelcomeCard: View {
-    @EnvironmentObject var model: AppModel
-    var body: some View {
-        Card {
-            Text(model.text("Your course files start here.")).font(.largeTitle.weight(.bold))
-            Text(model.text("Connect your Blackboard account and bring your course files to this iPad.")).foregroundStyle(.secondary)
-            Text(model.text("1. Sign in to Blackboard\n2. Choose your courses\n3. Sync now and open your files offline"))
-                .font(.callout).lineSpacing(8)
-            TextField(model.text("Your school's Blackboard address"), text: $model.tenantText)
-                .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL).textFieldStyle(.roundedBorder)
-            SchoolMenu().disabled(model.busy)
-            Button(model.text("Sign in to Blackboard")) { model.signIn() }.buttonStyle(.appPrimaryLarge).disabled(model.busy)
-        }
     }
 }
 
