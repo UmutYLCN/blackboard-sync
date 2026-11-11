@@ -94,11 +94,17 @@ struct WeekCard: View {
         let thisWeek = week.sections.filter { [.today, .laterThisWeek].contains($0.kind) }
         Card {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: Spacing.xs) {
-                    Image(systemName: AppIcon.calendar).foregroundStyle(AppColor.accentText)
-                    Text(strings.thisWeek).font(.headline).accessibilityAddTraits(.isHeader)
-                    Spacer(minLength: Spacing.xs)
-                    Text(week.range).font(.subheadline).foregroundStyle(theme.secondaryText).lineLimit(1)
+                // The range moves under the title when the column is narrow (portrait beside the sidebar).
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Spacing.xs) {
+                        title(strings)
+                        Spacer(minLength: Spacing.xs)
+                        range
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        title(strings)
+                        range
+                    }
                 }
                 HStack(spacing: Spacing.xs - 2) {
                     ForEach(week.days) { day in
@@ -115,6 +121,17 @@ struct WeekCard: View {
             }
             .padding(.horizontal, Spacing.l).padding(.vertical, Spacing.m)
         }
+    }
+
+    private func title(_ strings: FeatureStrings) -> some View {
+        HStack(spacing: Spacing.xs) {
+            Image(systemName: AppIcon.calendar).foregroundStyle(AppColor.accentText)
+            Text(strings.thisWeek).font(.headline).accessibilityAddTraits(.isHeader)
+        }
+    }
+
+    private var range: some View {
+        Text(week.range).font(.subheadline).foregroundStyle(theme.secondaryText).lineLimit(1)
     }
 
     @ViewBuilder
@@ -224,27 +241,22 @@ struct WeekRowView: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: Spacing.s) {
-                VStack(spacing: 2) {
-                    Text(row.dayNumber).font(.headline.monospacedDigit())
-                    Text(row.month).font(.system(size: 10, weight: .bold)).tracking(0.5)
-                        .foregroundStyle(row.isToday ? AppColor.warning : theme.secondaryText)
+            // The due time sits at the right when it fits beside the title, else under the course.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Spacing.s) {
+                    tile
+                    names
+                    Spacer(minLength: Spacing.xs)
+                    when
                 }
-                .frame(width: 44, height: 44)
-                .background(row.isToday ? AppColor.warning.opacity(0.17) : AppColor.neutralFill,
-                            in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(row.row.title).font(.subheadline.weight(.medium)).lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    HStack(spacing: 6) {
-                        Circle().fill(color).frame(width: 7, height: 7)
-                        Text(row.row.course).font(.footnote).foregroundStyle(theme.secondaryText).lineLimit(1)
+                HStack(spacing: Spacing.s) {
+                    tile
+                    VStack(alignment: .leading, spacing: 2) {
+                        names
+                        when
                     }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: Spacing.xs)
-                Text(row.when).font(.footnote.weight(.semibold))
-                    .foregroundStyle(row.hot ? AppColor.warning : row.past ? theme.secondaryText : AppColor.accentText)
-                    .lineLimit(1)
             }
             .padding(.vertical, Spacing.xs + 2).padding(.horizontal, Spacing.xs)
             .background(selected ? AppColor.accentSoft : .clear,
@@ -257,6 +269,35 @@ struct WeekRowView: View {
         .accessibilityLabel(accessibility)
         .accessibilityAddTraits(.isButton)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// The date tile: day and month; tinted orange today.
+    private var tile: some View {
+        VStack(spacing: 2) {
+            Text(row.dayNumber).font(.headline.monospacedDigit())
+            Text(row.month).font(.system(size: 10, weight: .bold)).tracking(0.5)
+                .foregroundStyle(row.isToday ? AppColor.warning : theme.secondaryText)
+        }
+        .frame(width: 44, height: 44)
+        .background(row.isToday ? AppColor.warning.opacity(0.17) : AppColor.neutralFill,
+                    in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
+    }
+
+    private var names: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(row.row.title).font(.subheadline.weight(.medium)).lineLimit(2)
+                .multilineTextAlignment(.leading)
+            HStack(spacing: 6) {
+                Circle().fill(color).frame(width: 7, height: 7)
+                Text(row.row.course).font(.footnote).foregroundStyle(theme.secondaryText).lineLimit(1)
+            }
+        }
+    }
+
+    private var when: some View {
+        Text(row.when).font(.footnote.weight(.semibold))
+            .foregroundStyle(row.hot ? AppColor.warning : row.past ? theme.secondaryText : AppColor.accentText)
+            .lineLimit(1)
     }
 }
 
@@ -301,10 +342,15 @@ struct DeadlineDetailContent: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let url = row.deadline.url {
-                Link(destination: url) {
-                    Label(strings.openInBlackboard, systemImage: "arrow.up.forward.square")
+                // A narrow detail column (portrait beside the sidebar) drops the icon, then the large size.
+                ViewThatFits(in: .horizontal) {
+                    Link(destination: url) {
+                        Label(strings.openInBlackboard, systemImage: "arrow.up.forward.square")
+                    }
+                    .buttonStyle(.appPrimaryLarge)
+                    Link(strings.openInBlackboard, destination: url).buttonStyle(.appPrimaryLarge)
+                    Link(strings.openInBlackboard, destination: url).buttonStyle(.appPrimary)
                 }
-                .buttonStyle(.appPrimaryLarge)
             }
         }
         .padding(24)
