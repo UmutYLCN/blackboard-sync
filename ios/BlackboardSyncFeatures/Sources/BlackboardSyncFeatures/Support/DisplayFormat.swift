@@ -15,6 +15,21 @@ public enum DisplayFormat {
         return date.formatted(style)
     }
 
+    /// "NOV" / "KAS": a month's short name in capitals, for a date tile. `month` is 1 to 12.
+    public static func shortMonth(_ month: Int, language: FeatureLanguage) -> String {
+        let locale = Locale(identifier: language.rawValue)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = locale
+        let symbols = calendar.shortStandaloneMonthSymbols
+        guard symbols.indices.contains(month - 1) else { return "" }
+        return symbols[month - 1].replacingOccurrences(of: ".", with: "").uppercased(with: locale)
+    }
+
+    /// True when `day` is today in `timeZone`, as a due date's row marks it.
+    public static func isToday(_ day: LocalDay, now: Date = Date(), timeZone: TimeZone) -> Bool {
+        LocalTime(now, timeZone).day == day
+    }
+
     /// `language` with `region`'s conventions; a region without data falls back to the language's own.
     static func locale(_ language: FeatureLanguage, region: Locale.Region?) -> Locale {
         var components = Locale.Components(languageCode: Locale.LanguageCode(language.rawValue))

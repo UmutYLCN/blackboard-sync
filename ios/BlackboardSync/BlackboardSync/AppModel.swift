@@ -248,6 +248,44 @@ final class AppModel: ObservableObject {
         selected = Set(courses.map(\.id))
         connectFeatures(http: PreviewData.http(), tenant: PreviewData.baseURL)
     }
+
+    /// UI tests only (`--ui-testing-home <state>`, after `showSampleFeatures`): Home signed in with sample
+    /// files in one of its states: up-to-date (the default), syncing, failed, signin, loading or empty.
+    /// A paused Home is `-paused 1`. Nothing here reaches a network unless Sync now is tapped.
+    func showSampleHome(_ state: String) {
+        accountName = "Deniz Yilmaz"
+        hasSession = true
+        install(tenant: PreviewData.baseURL, cookies: [])
+        let now = Date()
+        func file(_ path: String, _ minutes: Double) -> (String, FileRecord) {
+            (path, FileRecord(relativePath: path, hash: "", updated: now.addingTimeInterval(-minutes * 60), size: 1))
+        }
+        library.records = Dictionary(uniqueKeysWithValues: [
+            file("Fall 2026/COE305 Software Project Management/SPM Slides-3.pdf", 30),
+            file("Fall 2026/CSE301 Database Management/Lecture 4 - Normalization.pptx", 31),
+            file("Fall 2026/COE305 Software Project Management/Assignment 1.docx", 32),
+            file("Fall 2026/CSE303 Algorithm Analysis/Week 6/Graph search notes.pdf", 90),
+        ])
+        library.lastSync = now.addingTimeInterval(-30 * 60)
+        status = "Up to date"
+        progress = SyncProgress(discovered: 40, completed: 40, downloaded: 3, unchanged: 37, discovering: false)
+        switch state {
+        case "syncing":
+            busy = true; syncing = true; status = "Syncing…"
+            progress = SyncProgress(discovered: 40, completed: 12, downloaded: 10, unchanged: 2,
+                                    currentName: "Lecture 4 - Normalization.pptx", discovering: false)
+        case "failed":
+            status = "Sync did not finish"; errorMessage = "Incomplete download. Retry sync."
+        case "signin":
+            hasSession = false; needsSignIn = true; status = "Sign-in needed"
+        case "loading":
+            busy = true; status = "Finding your courses…"
+        case "empty":
+            library.records = [:]; library.lastSync = nil; status = "Ready to sync"; progress = SyncProgress()
+        default:
+            break
+        }
+    }
     #endif
 
     /// Reloads the pages already shown once, after the selection changes or a reconnect. Requests

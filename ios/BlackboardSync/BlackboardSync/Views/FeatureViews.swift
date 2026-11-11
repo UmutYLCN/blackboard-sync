@@ -61,33 +61,61 @@ private struct ReconnectBar: View {
     }
 }
 
-/// Home's two small cards, as on the Mac's main window: the newest announcements and the next four due dates.
+/// Home's middle row (board pick H1): the next four due dates and the newest announcements side by
+/// side, one above the other when the page is too narrow for both (portrait with the sidebar open) or
+/// the text is set to an accessibility size.
 struct HomeFeatureCards: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @State private var width: CGFloat = 0
+    /// Two cards of at least 312 pt each and the gap between them.
+    static let sideBySideWidth: CGFloat = 640
     var body: some View {
-        VStack(spacing: Spacing.l) {
-            if let features = model.features {
-                HomeAnnouncements(page: features.announcements)
-                HomeDeadlines(page: features.deadlines)
+        Group {
+            if width >= Self.sideBySideWidth && !typeSize.isAccessibilitySize {
+                HStack(alignment: .top, spacing: Spacing.m) { deadlines; announcements }
             } else {
-                Card {
-                    Label(model.text("Announcements"), systemImage: AppIcon.announcements).font(.headline)
-                    signInHint
-                }
-                Card {
-                    Label(model.text("Upcoming deadlines"), systemImage: AppIcon.calendar).font(.headline)
-                    signInHint
-                }
+                VStack(spacing: Spacing.m) { deadlines; announcements }
             }
         }
+        .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .task(id: model.features.map(ObjectIdentifier.init)) {
             await model.features?.announcements.loadIfNeeded()
             await model.features?.deadlines.loadIfNeeded()
         }
     }
-    private var signInHint: some View {
-        Text(model.text("Sign in to see announcements and due dates from your selected courses."))
-            .font(.callout).foregroundStyle(.secondary)
+
+    @ViewBuilder private var deadlines: some View {
+        if let features = model.features { HomeDeadlines(page: features.deadlines) }
+        else { signedOut("Upcoming deadlines", symbol: AppIcon.calendar) }
+    }
+    @ViewBuilder private var announcements: some View {
+        if let features = model.features { HomeAnnouncements(page: features.announcements) }
+        else { signedOut("Announcements", symbol: AppIcon.announcements) }
+    }
+    private func signedOut(_ title: String, symbol: String) -> some View {
+        Card {
+            HomeCardHeader(title: model.text(title), symbol: symbol) { EmptyView() }
+            Text(model.text("Sign in to see announcements and due dates from your selected courses."))
+                .font(.callout).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// A Home card's title with its symbol, and its "View all" pill at the right.
+private struct HomeCardHeader<Trailing: View>: View {
+    let title: String
+    let symbol: String
+    @ViewBuilder var trailing: Trailing
+    var body: some View {
+        HStack(spacing: Spacing.xs) {
+            Image(systemName: symbol).foregroundStyle(AppColor.accentText).accessibilityHidden(true)
+            Text(title).font(.headline).lineLimit(2).accessibilityAddTraits(.isHeader)
+            Spacer(minLength: Spacing.xs)
+            // The pill keeps its full label; a long title wraps instead.
+            trailing.fixedSize()
+        }
     }
 }
 
@@ -96,22 +124,34 @@ private struct HomeAnnouncements: View {
     let page: AnnouncementsViewModel
     var body: some View {
         Card {
-            Label(page.strings.announcementsTab, systemImage: AppIcon.announcements).font(.headline)
+            HomeCardHeader(title: page.strings.announcementsTab, symbol: AppIcon.announcements) {
+                ViewAllButton(page: .announcements)
+            }
             let latest = page.announcements.prefix(3)
             if latest.isEmpty {
                 HomeCardState(phase: page.phase, message: page.message, empty: page.strings.announcementsEmpty,
                               loading: page.strings.loading)
             } else if let message = page.message {
-                Text(message).font(.caption).foregroundStyle(.orange)
+                Text(message).font(.caption).foregroundStyle(AppColor.warning)
             }
-            ForEach(Array(latest)) { announcement in
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(page.detail(for: announcement)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    Text(announcement.title).font(.subheadline.weight(.medium)).lineLimit(2)
-                }.accessibilityElement(children: .combine)
-                Divider()
+            VStack(spacing: 0) {
+                ForEach(Array(latest.enumerated()), id: \.element.id) { index, announcement in
+                    if index > 0 { Divider().padding(.leading, 48) }
+                    HStack(spacing: Spacing.s) {
+                        HomeTile(width: 36) {
+                            Text(HomeFormat.courseInitials(announcement.course, language: model.language))
+                                .font(.caption.weight(.bold)).foregroundStyle(AppColor.accentText)
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(announcement.title).font(.subheadline.weight(.medium)).lineLimit(2)
+                            Text(page.detail(for: announcement)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, Spacing.xs)
+                    .accessibilityElement(children: .combine)
+                }
             }
-            ViewAllButton(page: .announcements)
         }
     }
 }
@@ -121,7 +161,7 @@ struct HomeSubtitle: View {
     let page: DeadlinesViewModel
     var body: some View {
         if page.phase == .loaded, !page.subtitle.isEmpty {
-            Text(page.subtitle).font(.title3).foregroundStyle(.secondary).padding(.top, -12)
+            Text(page.subtitle).font(.title3).foregroundStyle(.secondary).padding(.top, -Spacing.xs)
         }
     }
 }
@@ -131,27 +171,65 @@ private struct HomeDeadlines: View {
     let page: DeadlinesViewModel
     var body: some View {
         Card {
-            Label(page.strings.upcomingDeadlines, systemImage: AppIcon.calendar).font(.headline)
+            HomeCardHeader(title: page.strings.upcomingDeadlines, symbol: AppIcon.calendar) {
+                ViewAllButton(page: .calendar, title: "Open calendar")
+            }
             let next = DeadlineCalendar.upcomingRows(page.page, limit: 4)
             if next.isEmpty {
                 HomeCardState(phase: page.phase, message: page.error, empty: page.strings.noUpcomingDeadlines,
                               loading: page.strings.loading)
             } else if let error = page.error {
-                Text(error).font(.caption).foregroundStyle(.orange)
+                Text(error).font(.caption).foregroundStyle(AppColor.warning)
             }
-            ForEach(next) { row in
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(row.title).font(.subheadline.weight(.medium)).lineLimit(2)
-                        Text(row.course).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            VStack(spacing: 0) {
+                ForEach(Array(next.enumerated()), id: \.element.id) { index, row in
+                    if index > 0 { Divider().padding(.leading, 56) }
+                    let today = DisplayFormat.isToday(row.day, timeZone: page.timeZone)
+                    HStack(spacing: Spacing.s) {
+                        // The day and month in a tile, orange when it is due today.
+                        HomeTile(width: 44, fill: today ? AppColor.warning.opacity(0.17) : AppColor.neutralFill) {
+                            VStack(spacing: 1) {
+                                Text(String(row.day.day)).font(.headline).monospacedDigit()
+                                Text(DisplayFormat.shortMonth(row.day.month, language: page.strings.language))
+                                    .font(.system(size: 9.5, weight: .bold))
+                                    .foregroundStyle(today ? AppColor.warning : .secondary)
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(row.title).font(.subheadline.weight(.medium)).lineLimit(2)
+                            Text(row.course).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer(minLength: Spacing.xs)
+                        Text(page.whenText(for: row)).font(.caption.weight(.semibold))
+                            .foregroundStyle(today ? AppColor.warning : AppColor.accentText)
                     }
-                    Spacer(minLength: 8)
-                    Text(page.whenText(for: row)).font(.caption.weight(.semibold)).foregroundStyle(Color.appAccentText)
-                }.accessibilityElement(children: .combine)
-                Divider()
+                    .padding(.vertical, Spacing.xs)
+                    .accessibilityElement(children: .combine)
+                }
             }
-            ViewAllButton(page: .calendar, title: "Open calendar")
         }
+    }
+}
+
+/// A small rounded square holding a row's date or course initials.
+private struct HomeTile<Content: View>: View {
+    var width: CGFloat
+    var fill: Color = AppColor.accentSoft
+    @ViewBuilder var content: Content
+    var body: some View {
+        content
+            .frame(width: width, height: width)
+            .background(fill, in: RoundedRectangle(cornerRadius: Radius.small))
+            .accessibilityHidden(true)
+    }
+}
+
+enum HomeFormat {
+    /// "CS" for "CSE301 Database Management": the first two letters of the course's first word.
+    static func courseInitials(_ course: String, language: String) -> String {
+        let word = course.split(separator: " ").first.map(String.init) ?? ""
+        let letters = word.filter(\.isLetter).prefix(2)
+        return letters.isEmpty ? "?" : String(letters).uppercased(with: Locale(identifier: language))
     }
 }
 
@@ -164,7 +242,7 @@ private struct HomeCardState: View {
         if phase == .idle || phase == .loading {
             ProgressView(loading).frame(maxWidth: .infinity, alignment: .leading)
         } else if let message {
-            Text(message).font(.callout).foregroundStyle(phase == .loaded ? Color.secondary : Color.orange)
+            Text(message).font(.callout).foregroundStyle(phase == .loaded ? Color.secondary : AppColor.warning)
         } else {
             Text(empty).font(.callout).foregroundStyle(.secondary)
         }

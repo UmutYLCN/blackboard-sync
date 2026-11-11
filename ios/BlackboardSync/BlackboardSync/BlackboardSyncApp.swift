@@ -19,6 +19,10 @@ struct BlackboardSyncApp: App {
                     await model.start(restoreSession: restoreSession)
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--ui-testing-features") { model.showSampleFeatures() }
+                    let arguments = ProcessInfo.processInfo.arguments
+                    if let index = arguments.firstIndex(of: "--ui-testing-home"), arguments.indices.contains(index + 1) {
+                        model.showSampleHome(arguments[index + 1])
+                    }
                     #endif
                 }
                 .onChange(of: phase) { _, phase in

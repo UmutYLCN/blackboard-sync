@@ -374,13 +374,10 @@ struct Card<Content: View>: View {
     }
 }
 
-/// The Mac's status card: the state symbol, the state in large type and the last sync, with at most one
-/// button at the top right. Home also lists the last files in it.
+/// The Mac's status card on Sync activity: the state symbol, the state in large type and the last sync,
+/// with at most one button at the top right. Home has its own strip (`HomeStatusStrip`).
 struct StatusCard: View {
     @EnvironmentObject var model: AppModel
-    var recent: Bool = false
-    @State private var preview: URL?
-    @State private var previewError: String?
     var body: some View {
         Card {
             HStack(alignment: .top, spacing: 14) {
@@ -414,10 +411,9 @@ struct StatusCard: View {
             if let error = model.errorMessage {
                 Text(model.text(error)).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
             }
-            if recent { recentFiles }
             Text(model.text("Keep Blackboard Sync open while syncing. Completed files stay available offline."))
                 .font(.caption).foregroundStyle(.secondary)
-        }.quickLookPreview($preview)
+        }
     }
 
     private var symbol: (name: String, tint: Color) {
@@ -443,37 +439,6 @@ struct StatusCard: View {
             Button(model.text(retry ? "Retry sync" : "Sync now")) { model.syncNow() }.buttonStyle(.appTertiary).disabled(!model.canSync)
         }
     }
-
-    @ViewBuilder private var recentFiles: some View {
-        Divider()
-        Text(model.text("Recent downloads")).font(.headline)
-        let records = model.library.records.values.sorted { $0.updated > $1.updated }.prefix(4)
-        if records.isEmpty { Text(model.text("Nothing downloaded yet.")).foregroundStyle(.secondary).font(.callout) }
-        ForEach(Array(records), id: \.relativePath) { record in
-            Button {
-                Task {
-                    do {
-                        if let url = try await model.store?.url(record.relativePath) {
-                            model.openExternally(url) { preview = $0 }
-                        }
-                    } catch { previewError = SyncLogic.safeError(error) }
-                }
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "doc.richtext").font(.title2).foregroundStyle(record.relativePath.lowercased().hasSuffix(".pdf") ? Color.red : .appAccentText)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text((record.relativePath as NSString).lastPathComponent).font(.subheadline.weight(.medium)).lineLimit(2).foregroundStyle(.primary)
-                        Text(model.dateTime(record.updated)).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                    Image(systemName: "arrow.up.right").foregroundStyle(.tertiary)
-                }.padding(.vertical, 5)
-            }.buttonStyle(.plain)
-            Divider()
-        }
-        if let previewError { Text(model.text(previewError)).font(.caption).foregroundStyle(.orange) }
-        ViewAllButton(page: .activity)
-    }
 }
 
 /// A "View all" (or "Open calendar") pill that switches the sidebar to the page.
@@ -484,29 +449,6 @@ struct ViewAllButton: View {
     var title = "View all"
     var body: some View {
         Button(model.text(title)) { openPage(page) }.buttonStyle(.appSecondary)
-    }
-}
-
-struct HomeView: View {
-    @EnvironmentObject var model: AppModel
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // The line under the greeting, as on the Mac: the next due dates.
-                if let deadlines = model.features?.deadlines { HomeSubtitle(page: deadlines) }
-                if !model.hasSession && !model.needsSignIn && !model.busy { WelcomeCard() }
-                // Left: the status card with the last files; right: announcements and the next due dates.
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 20) {
-                        StatusCard(recent: true).frame(minWidth: 340)
-                        HomeFeatureCards().frame(minWidth: 260, maxWidth: 380)
-                    }
-                    VStack(spacing: 20) { StatusCard(recent: true); HomeFeatureCards() }
-                }
-            }.padding(Spacing.page).frame(maxWidth: 1150)
-                .frame(maxWidth: .infinity)
-        }.background(Color(uiColor: .systemGroupedBackground))
-            .appTopBar(model.greeting)
     }
 }
 
