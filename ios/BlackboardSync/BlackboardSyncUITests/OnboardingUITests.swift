@@ -14,17 +14,20 @@ final class OnboardingUITests: XCTestCase {
     }
 
     @MainActor
-    private func launch(_ language: String, _ orientation: UIDeviceOrientation, extra: [String] = ["--ui-testing-onboarding"]) -> XCUIApplication {
+    /// `firstRun` starts on the full-screen first run after the introduction, as on a fresh install;
+    /// otherwise the app opens past it, on the welcome card.
+    private func launch(_ language: String, _ orientation: UIDeviceOrientation, extra: [String] = ["--ui-testing-onboarding"],
+                        firstRun: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing"] + extra + ["-language", language]
+        app.launchArguments = ["--ui-testing"] + extra + ["-firstRunPending", firstRun ? "YES" : "NO", "-language", language]
         XCUIDevice.shared.orientation = orientation
         app.launch()
         return app
     }
 
     @MainActor
-    func testContinueStepsThroughAllFivePagesThenGetStartedOpensHome() throws {
-        let app = launch("en", .landscapeLeft)
+    func testContinueStepsThroughAllFivePagesThenGetStartedOpensTheFirstRun() throws {
+        let app = launch("en", .landscapeLeft, firstRun: true)
         let next = app.buttons["onboarding.next"], indicator = app.descendants(matching: .any)["onboarding.indicator"]
         XCTAssertTrue(app.staticTexts[titles[0]].waitForExistence(timeout: 60))
         XCTAssertTrue(app.buttons["onboarding.skip"].exists)
@@ -40,9 +43,11 @@ final class OnboardingUITests: XCTestCase {
             if index > 0 { capture("Onboarding-\(index + 1)-landscape-en") }
             next.tap()
         }
-        XCTAssertTrue(app.staticTexts["Your course files start here."].waitForExistence(timeout: 15))
+        // Then the full-screen first run, as on the board: splash, introduction, first run, sign-in, Home.
+        XCTAssertTrue(app.descendants(matching: .any)["firstRun.page"].firstMatch.waitForExistence(timeout: 15))
         XCTAssertTrue(next.waitForNonExistence(timeout: 15))
-        XCTAssertTrue(app.buttons["toolbar.settings"].isHittable)
+        XCTAssertTrue(app.buttons["firstRun.signIn"].isHittable)
+        capture("Onboarding-then-first-run")
         app.terminate()
     }
 
@@ -60,7 +65,7 @@ final class OnboardingUITests: XCTestCase {
         swipe(app, on: titles[1], left: false)
         XCTAssertTrue(waitFor(indicator, label: "Page 1 of 5"))
         app.buttons["onboarding.skip"].tap()
-        XCTAssertTrue(app.staticTexts["Your course files start here."].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Your course files, on your iPad."].waitForExistence(timeout: 15))
         app.terminate()
     }
 
@@ -80,7 +85,7 @@ final class OnboardingUITests: XCTestCase {
         XCTAssertEqual(app.buttons["onboarding.next"].label, "Başlayın")
         capture("Onboarding-5-landscape-tr")
         app.buttons["onboarding.skip"].tap()
-        XCTAssertTrue(app.staticTexts["Ders dosyalarınız burada başlayacak."].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Ders dosyalarınız iPad’inizde."].waitForExistence(timeout: 15))
         // Settings › About & privacy › Show the introduction: the sheet closes onto page 1.
         app.buttons["toolbar.settings"].tap()
         let again = app.buttons["settings.showOnboarding"]
@@ -103,7 +108,7 @@ final class OnboardingUITests: XCTestCase {
     @MainActor
     func testNotShownToTheOtherUITests() throws {
         let app = launch("en", .landscapeLeft, extra: [])
-        XCTAssertTrue(app.staticTexts["Your course files start here."].waitForExistence(timeout: 60))
+        XCTAssertTrue(app.staticTexts["Your course files, on your iPad."].waitForExistence(timeout: 60))
         XCTAssertFalse(app.buttons["onboarding.next"].exists)
         app.terminate()
     }
@@ -113,7 +118,7 @@ final class OnboardingUITests: XCTestCase {
     func testSplashScreenshots() throws {
         for orientation in [UIDeviceOrientation.landscapeLeft, .portrait] {
             let app = launch("en", orientation, extra: ["--ui-testing-hold-splash"])
-            XCTAssertTrue(app.staticTexts["Your course files start here."].waitForExistence(timeout: 60))
+            XCTAssertTrue(app.staticTexts["Your course files, on your iPad."].waitForExistence(timeout: 60))
             sleep(4)
             capture("Splash-\(orientation == .portrait ? "portrait" : "landscape")")
             app.terminate()
