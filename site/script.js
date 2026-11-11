@@ -31,6 +31,42 @@
   }
 })();
 
+const MIN_TO_SHOW = 100;
+
+(async () => {
+  const statsElement = document.getElementById('download-stats');
+  const countElement = statsElement && statsElement.querySelector('[data-download-count]');
+  if (!statsElement || !countElement) return;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch('/stats.json', {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+    });
+    if (!response.ok) return;
+    const stats = await response.json();
+    if (!stats || typeof stats.total !== 'number' || !Number.isFinite(stats.total) || stats.total < MIN_TO_SHOW) return;
+    const rounded = Math.floor(stats.total / 100) * 100;
+    const locale = document.documentElement.lang === 'tr' ? 'tr-TR' : 'en-US';
+    countElement.textContent = `${new Intl.NumberFormat(locale).format(rounded)}+`;
+    statsElement.dataset.total = String(stats.total);
+    if (typeof stats.mac === 'number' && Number.isFinite(stats.mac)) {
+      statsElement.dataset.mac = String(stats.mac);
+    }
+    if (typeof stats.windows === 'number' && Number.isFinite(stats.windows)) {
+      statsElement.dataset.windows = String(stats.windows);
+    }
+    statsElement.hidden = false;
+  } catch {
+    // Keep the download counter hidden when stats are unavailable.
+  } finally {
+    clearTimeout(timeout);
+  }
+})();
+
 const video = document.getElementById('promo-video');
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 function applyMotionPreference() {
