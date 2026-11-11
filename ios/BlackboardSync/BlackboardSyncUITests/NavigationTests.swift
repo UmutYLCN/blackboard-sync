@@ -262,7 +262,9 @@ final class NavigationTests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["firstRun.address"].firstMatch.exists)
         capture("FirstRun-landscape")
         XCUIDevice.shared.orientation = .portrait
-        XCTAssertTrue(app.buttons["firstRun.signIn"].isHittable)
+        // The button stays in reach after the rotation settles.
+        expectation(for: NSPredicate(format: "isHittable == true"), evaluatedWith: app.buttons["firstRun.signIn"])
+        waitForExpectations(timeout: 10)
         capture("FirstRun-portrait")
         // Language is the only other control.
         app.buttons["firstRun.language"].tap()

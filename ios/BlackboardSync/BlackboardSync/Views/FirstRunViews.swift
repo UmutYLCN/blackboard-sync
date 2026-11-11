@@ -97,11 +97,12 @@ private struct SchoolField: View {
     var body: some View {
         VStack(spacing: Spacing.s) {
             Menu {
+                // First, so it is in reach above the long list of schools.
+                Button(model.text("Other school…")) { other = true; model.tenantText = "" }
+                Divider()
                 ForEach(Schools.all, id: \.url) { school in
                     Button(school.name) { model.tenantText = school.url; other = false }
                 }
-                Divider()
-                Button(model.text("Other school…")) { other = true; model.tenantText = "" }
             } label: {
                 HStack(spacing: Spacing.s) {
                     Image(systemName: "building.columns").font(.title3).foregroundStyle(AppColor.accentText)
@@ -118,6 +119,8 @@ private struct SchoolField: View {
                 .overlay(RoundedRectangle(cornerRadius: Radius.control).stroke(.primary.opacity(0.055), lineWidth: 1))
                 .contentShape(RoundedRectangle(cornerRadius: Radius.control))
             }
+            // A menu label takes the accent tint; the row keeps its own ink, like the board's.
+            .tint(.primary)
             .disabled(model.busy)
             .accessibilityIdentifier("firstRun.school")
             if showsAddress {
