@@ -4,7 +4,7 @@ import BlackboardSyncFeatures
 struct AnnouncementsPage: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
-        FeaturePage(title: "Announcements", symbol: "megaphone") { features in
+        FeaturePage(title: "Announcements", symbol: AppIcon.announcements) { features in
             AnnouncementsView(model: features.announcements).id(ObjectIdentifier(features.announcements))
         }
     }
@@ -13,7 +13,7 @@ struct AnnouncementsPage: View {
 struct DeadlinesPage: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
-        FeaturePage(title: "Calendar", symbol: "calendar") { features in
+        FeaturePage(title: "Calendar", symbol: AppIcon.calendar) { features in
             DeadlinesView(model: features.deadlines).id(ObjectIdentifier(features.deadlines))
         }
     }
@@ -39,10 +39,11 @@ private struct FeaturePage<Content: View>: View {
                     Text(model.text("Sign in to see announcements and due dates from your selected courses."))
                 } actions: {
                     Button(model.text(model.needsSignIn ? "Reconnect" : "Sign in to Blackboard")) { model.signIn() }
-                        .buttonStyle(.borderedProminent).disabled(model.busy)
+                        .buttonStyle(.appPrimaryLarge).disabled(model.busy)
                 }
             }
         }.background(Color(uiColor: .systemGroupedBackground))
+            .appTopBar(model.text(title))
     }
 }
 
@@ -53,9 +54,9 @@ private struct ReconnectBar: View {
             Image(systemName: "person.crop.circle.badge.exclamationmark").foregroundStyle(.orange)
             Text(model.text("Session expired. Sign in again.")).font(.callout)
             Spacer(minLength: 8)
-            Button(model.text("Reconnect")) { model.signIn() }.buttonStyle(.borderedProminent).disabled(model.busy)
+            Button(model.text("Reconnect")) { model.signIn() }.buttonStyle(.appPrimary).disabled(model.busy)
         }
-        .padding(.horizontal, 20).padding(.vertical, 10)
+        .padding(.horizontal, Spacing.l).padding(.vertical, Spacing.xs)
         .background(.bar)
     }
 }
@@ -64,17 +65,17 @@ private struct ReconnectBar: View {
 struct HomeFeatureCards: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: Spacing.l) {
             if let features = model.features {
                 HomeAnnouncements(page: features.announcements)
                 HomeDeadlines(page: features.deadlines)
             } else {
                 Card {
-                    Label(model.text("Announcements"), systemImage: "megaphone").font(.headline)
+                    Label(model.text("Announcements"), systemImage: AppIcon.announcements).font(.headline)
                     signInHint
                 }
                 Card {
-                    Label(model.text("Upcoming deadlines"), systemImage: "calendar").font(.headline)
+                    Label(model.text("Upcoming deadlines"), systemImage: AppIcon.calendar).font(.headline)
                     signInHint
                 }
             }
@@ -95,7 +96,7 @@ private struct HomeAnnouncements: View {
     let page: AnnouncementsViewModel
     var body: some View {
         Card {
-            Label(page.strings.announcementsTab, systemImage: "megaphone").font(.headline)
+            Label(page.strings.announcementsTab, systemImage: AppIcon.announcements).font(.headline)
             let latest = page.announcements.prefix(3)
             if latest.isEmpty {
                 HomeCardState(phase: page.phase, message: page.message, empty: page.strings.announcementsEmpty,
@@ -130,7 +131,7 @@ private struct HomeDeadlines: View {
     let page: DeadlinesViewModel
     var body: some View {
         Card {
-            Label(page.strings.upcomingDeadlines, systemImage: "calendar").font(.headline)
+            Label(page.strings.upcomingDeadlines, systemImage: AppIcon.calendar).font(.headline)
             let next = DeadlineCalendar.upcomingRows(page.page, limit: 4)
             if next.isEmpty {
                 HomeCardState(phase: page.phase, message: page.error, empty: page.strings.noUpcomingDeadlines,
@@ -145,7 +146,7 @@ private struct HomeDeadlines: View {
                         Text(row.course).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer(minLength: 8)
-                    Text(page.whenText(for: row)).font(.caption.weight(.semibold)).foregroundStyle(Color.appAccent)
+                    Text(page.whenText(for: row)).font(.caption.weight(.semibold)).foregroundStyle(Color.appAccentText)
                 }.accessibilityElement(children: .combine)
                 Divider()
             }
