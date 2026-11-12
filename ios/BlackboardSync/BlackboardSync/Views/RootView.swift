@@ -359,22 +359,6 @@ private struct SignOutConfirmation: ViewModifier {
     }
 }
 
-struct ComingSoon: View {
-    @EnvironmentObject var model: AppModel
-    let title: String
-    let symbol: String
-    var body: some View {
-        HStack(spacing: 10) {
-            Label(model.text(title), systemImage: symbol)
-            Spacer(minLength: 8)
-            Text(model.text("Coming soon")).font(.caption2.weight(.medium)).padding(.horizontal, 7).padding(.vertical, 4)
-                .background(.quaternary, in: Capsule())
-        }.foregroundStyle(.secondary).opacity(0.75)
-            .accessibilityElement(children: .combine).accessibilityAddTraits(.isStaticText)
-            .allowsHitTesting(false)
-    }
-}
-
 struct Card<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {

@@ -123,7 +123,7 @@ after the course selection changes.
 ### 3. Embed the views
 
 ```swift
-// In the sidebar's detail column, in place of the "coming soon" placeholders:
+// In the sidebar's detail column:
 case .announcements: AnnouncementsView(model: models.announcements)
 case .calendar:      DeadlinesView(model: models.deadlines)
 ```

@@ -31,9 +31,13 @@ final class NavigationTests: XCTestCase {
         capture("Calendar-signed-out")
         app.buttons["toolbar.settings"].tap()
         XCTAssertTrue(app.staticTexts["About & privacy"].exists || app.staticTexts["Account"].exists)
-        for item in ["Automatic background sync", "Connect Google Calendar", "Choose another folder", "Notes PDFs"] {
-            XCTAssertFalse(app.buttons[item].exists, item)
-        }
+        XCTAssertEqual(labelled("Coming soon", in: app).count, 0)
+        capture("Settings-signed-out")
+        // The Sync section is followed directly by Folder, with no Coming soon rows in between.
+        app.collectionViews.firstMatch.swipeUp()
+        XCTAssertTrue(app.staticTexts["Folder"].waitForExistence(timeout: 5))
+        XCTAssertEqual(labelled("Coming soon", in: app).count, 0)
+        capture("Settings-signed-out-scrolled")
         app.buttons["Done"].tap()
         app.staticTexts["Courses"].firstMatch.tap()
         XCTAssertTrue(app.descendants(matching: .any)["firstRun.card"].firstMatch.waitForExistence(timeout: 5))
@@ -62,6 +66,15 @@ final class NavigationTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Seçili derslerinizin duyurularını ve teslim tarihlerini görmek için giriş yapın."].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Takvim"].exists)
         capture("Calendar-Turkish-signed-out")
+        app.buttons["toolbar.settings"].tap()
+        XCTAssertTrue(app.buttons["Bitti"].waitForExistence(timeout: 5))
+        XCTAssertEqual(labelled("Çok yakında", in: app).count, 0)
+        capture("Settings-Turkish-signed-out")
+        app.collectionViews.firstMatch.swipeUp()
+        XCTAssertTrue(app.staticTexts["Klasör"].waitForExistence(timeout: 5))
+        XCTAssertEqual(labelled("Çok yakında", in: app).count, 0)
+        capture("Settings-Turkish-signed-out-scrolled")
+        app.buttons["Bitti"].tap()
         app.terminate()
         XCUIDevice.shared.orientation = .portrait
     }
@@ -372,6 +385,11 @@ final class NavigationTests: XCTestCase {
         XCTAssertEqual(account.frame.minX, settings.frame.maxX, accuracy: 0.5, file: file, line: line)
         XCTAssertEqual(app.frame.maxX - account.frame.maxX, 20, accuracy: 0.5, "24 pt to the circle, 20 to its target", file: file, line: line)
         XCTAssertEqual(heading.frame.midY, settings.frame.midY, accuracy: 2, "one centre line on \(title)", file: file, line: line)
+    }
+
+    /// Every element whose label contains the text, including rows that merge their children into one label.
+    @MainActor private func labelled(_ text: String, in app: XCUIApplication) -> [XCUIElement] {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", text)).allElementsBoundByIndex
     }
 
     @MainActor private func capture(_ name: String) {
