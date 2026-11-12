@@ -1,9 +1,7 @@
 """Known schools: a typed name, abbreviation or web domain becomes the Blackboard address."""
 
 import argparse
-import importlib.util
 import re
-from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
@@ -12,7 +10,6 @@ from blackboard_sync import schools
 from blackboard_sync.cli import make_config
 from blackboard_sync.settings import SettingsError, normalize_base_url
 
-ROOT = Path(__file__).resolve().parents[1]
 KSU = "https://lms.ksu.edu.sa"
 ISTUN = "https://blackboard.istun.edu.tr"
 
@@ -118,14 +115,6 @@ def test_every_school_is_still_found_by_local_name_abbreviation_domain_and_host(
         for typed in (school.name, *school.local_names, *school.aliases, school.domain, host):
             assert schools.find(typed) is school, f"{typed!r} no longer finds {school.name}"
             assert schools.resolve(typed) == school.url, typed
-
-
-def test_the_ipad_list_is_generated_from_this_one():
-    spec = importlib.util.spec_from_file_location("generate_schools", ROOT / "scripts" / "generate-schools.py")
-    generator = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(generator)
-    current = generator.SWIFT.read_text(encoding="utf-8")
-    assert generator.render(current, schools) == current, "run scripts/generate-schools.py"
 
 
 def test_the_list_has_the_original_sixteen_first_and_every_school_once():

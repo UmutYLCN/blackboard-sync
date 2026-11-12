@@ -50,7 +50,7 @@ Waiting for 1.7.2:
 
 ## Platform scope
 
-- **iPad:** Gets bug fixes and parity fixes, so it behaves like the desktop apps; no NotebookLM and no other large features.
+- **iPad:** An iPad app exists and is developed separately in a private repository.
 - **Windows and Mac:** NotebookLM is a major feature of these two versions only.
 
 ## No new big features

@@ -3,9 +3,7 @@
 The settings forms accept ``King Saud University``, ``KSU`` or ``ksu.edu.sa`` as well as a full address;
 ``normalize_base_url`` asks ``resolve`` first. Only addresses that answered Blackboard's public
 ``/learn/api/public/v1/system/version`` check (``scripts/verify-schools.py``) belong in ``SCHOOLS``,
-each with the date it was checked. The iPad app has the same list in
-``ios/BlackboardSync/BlackboardSync/Core/Schools.swift``; ``scripts/generate-schools.py`` writes it,
-and a test fails when the two differ.
+each with the date it was checked.
 """
 
 from __future__ import annotations
@@ -355,8 +353,7 @@ _SAME_LETTER = str.maketrans({"ı": "i", "ة": "ه", "ى": "ي", "ـ": ""})
 def fold(text: str) -> str:
     """Lower case, no accents or marks, one space between words: ``İstanbul`` and ``istanbul`` match.
 
-    Arabic hamza forms of alef (أ إ آ) fold to a plain alef and the vowel marks go. The Swift
-    twin in ``Schools.swift`` follows the same steps.
+    Arabic hamza forms of alef (أ إ آ) fold to a plain alef and the vowel marks go.
     """
     decomposed = unicodedata.normalize("NFKD", text or "")
     bare = "".join(c for c in decomposed if unicodedata.category(c) != "Mn")
