@@ -513,15 +513,7 @@ app shows **no courses found** with one notification, instead of staying silent.
 Courses the instructor has not opened yet (shown as private) are skipped until
 they open. `tests/test_term_scenarios.py` checks the rule against 28 synthetic
 school setups (`tests/fixtures/term_scenarios.json`); at the first school (İSTÜN)
-its result is exactly that of 1.7.0. The iPad app follows the same rule and the
-same term merging (`Term.current` in
-`ios/BlackboardSync/BlackboardSync/Core/SyncLogic.swift`, a function-by-function twin
-of the Python), and `TermScenarioTests` runs the same 28 setups from its own copy of the
-fixture with the same expected results. It shows the same no-courses message in its
-status line and keeps every course and term folder recorded in its saved library, so an
-existing `2026-2027 Güz` folder stays in use there too. Its library records the school
-(`LibraryState.school`); a library saved before that is the school's in use, and its
-folders were always kept per school and account.
+its result is exactly that of 1.7.0.
 
 **Asking before the first download at a new school.** The first sync at a school
 (no state for it in `state.json`) downloads at once when the term choice is clear.
@@ -536,13 +528,7 @@ and syncs. **Not now** (or closing the window) saves nothing, so the next sync a
 again. A school that already has state (every existing user, such as the first
 school with its files) never sees the card, and neither does the terminal's `sync`.
 The logic is in `src/blackboard_sync/term_confirm.py`, tested in
-`tests/test_term_confirm.py`. The iPad app has its own version of the card (`Core/TermConfirm.swift`, which keeps
-`term_confirm.py`'s reasons and school state, tested in `BlackboardSyncTests/TermConfirmTests.swift`
-with the same 28 setups). On the iPad it asks at every new school, whether or not the term is clear:
-right after the first sign-in there it takes Home and Courses until **Confirm and start**. It lets the
-student untick courses or switch to another term Blackboard lists. Its ticks are the selection of
-**Courses**, and the library (`library-v1.json`) records the confirmed schools, a switched term per
-account and the schools a sync has run at. See `ios/BlackboardSync/README.md`.
+`tests/test_term_confirm.py`.
 
 **One term, one folder.** Term folders keep the school's own term names as
 written (`2026-2027 Fall` stays `Fall`; nothing is renamed to Turkish).
@@ -572,12 +558,9 @@ CLI's `--base-url` call it first, so Windows, macOS and the command line share i
   `ttk.Combobox`, `NSComboBox`) that lists `suggestions()`: each school once, by its English name only
   (the local-language names and abbreviations are matched when typed, never listed); any other text still
   works as an address.
-- **iPad:** `Core/Schools.swift` has the same list and matching, and **Choose your school** in the
-  sign-in card and in Settings fills the address. `scripts/generate-schools.py` writes the list part of
-  that file; `tests/test_schools.py` fails when it is out of date (`--check` does the same by hand).
 
-Add a school by adding a `School(...)` entry, running `scripts/generate-schools.py`, then
-`scripts/verify-schools.py`. The latter sends each address one request to Blackboard's public
+Add a school by adding a `School(...)` entry, then running
+`scripts/verify-schools.py`. It sends each address one request to Blackboard's public
 `/learn/api/public/v1/system/version`, which a Blackboard Learn host answers without a sign-in. Only
 addresses that answered, and that belong to the school, go in the list; `verified` is the day it was
 checked. An address belongs to the school when it sits under the school's own web domain (`domain`), or

@@ -1,8 +1,0 @@
-.DS_Store
-DerivedData/
-*.xcuserstate
-xcuserdata/
-*.xcresult/
-
-# Per-developer signing (Team ID and bundle ID); see Signing.local.xcconfig.example
-Signing.local.xcconfig
