@@ -449,7 +449,7 @@ struct StatusCard: View {
         } else if model.hasSession {
             Button(model.text(retry ? "Retry sync" : "Sync now")) { model.syncNow() }.buttonStyle(.appTertiary).disabled(!model.canSync)
         } else if !model.hasStoredSession {
-            // Signed out with files kept on the iPad (no welcome card then): the way back in.
+            // Signed out (this card is on Sync activity, where no welcome card shows): the way back in.
             Button(model.text("Sign in to Blackboard")) { model.signIn() }.buttonStyle(.appTertiary).disabled(model.busy)
         }
     }
