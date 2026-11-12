@@ -7,7 +7,7 @@ name = "blackboard-sync"
 dynamic = ["version"]
 description = "Mirror Blackboard Learn Ultra course content into local folders."
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Proprietary"}
 requires-python = ">=3.10"
 dependencies = [
     "Send2Trash==2.1.0",
