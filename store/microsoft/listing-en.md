@@ -12,7 +12,7 @@ English and Turkish in Settings. Limits as in `listing-tr.md`.
 Limit 1,000; only the first 270 are shown in some views. 163 characters.
 
 ```text
-Downloads the course files, announcements and notes from your school's Blackboard to your PC in the background, organised by term and course. Free and open source.
+Downloads the course files, announcements and notes from your school's Blackboard to your PC in the background, organised by term and course. Free, with its source code publicly visible on GitHub.
 ```
 
 ## Description
@@ -68,7 +68,7 @@ REQUIREMENTS
 • A Blackboard Learn account at your school.
 • English and Turkish interface options.
 
-Free and open source (MIT License).
+Free. The source code is publicly visible on GitHub (all rights reserved).
 ```
 
 ## What's new in this version
@@ -101,7 +101,7 @@ Syncs your current term and asks you to confirm courses at a new school
 Can start in the background when the computer starts
 Never sees your password; your session stays on your computer
 No analytics, ads or usage tracking
-Free and open source
+Free, with source code visible on GitHub
 ```
 
 ## Screenshot captions
@@ -148,7 +148,7 @@ student
 Limit 200. 184 characters.
 
 ```text
-© 2026 Umut Yalçın. MIT License. blackboard-sync is an independent project, not affiliated with Anthology Inc. or Blackboard. “Blackboard” is a trademark of its owner, not of this app.
+© 2026 Umut Yalçın. All rights reserved. blackboard-sync is an independent project, not affiliated with Anthology Inc. or Blackboard. “Blackboard” is a trademark of its owner, not of this app.
 ```
 
 ## Additional license terms

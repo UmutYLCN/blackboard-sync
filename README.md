@@ -56,6 +56,6 @@ Blackboard Sync's use and transfer of information received from Google APIs adhe
 
 ---
 
-License: [MIT](LICENSE).
+All rights reserved; the source is public for reference only. See [LICENSE](LICENSE).
 
 Blackboard Sync is an independent project; it is not affiliated with or endorsed by Anthology Inc.

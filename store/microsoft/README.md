@@ -163,7 +163,7 @@ OAuth metadata and are for testing only.
   at the top of the listing only when this image is there.
 - [ ] **Supplemental fields:** short title, sort title, voice title and additional system
   requirements: leave empty.
-- [ ] **Additional license terms:** leave empty (MIT; see the listing files).
+- [ ] **Additional license terms:** leave empty (all rights reserved; see the listing files).
 
 ### 6. Submission options
 

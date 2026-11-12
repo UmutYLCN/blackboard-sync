@@ -74,6 +74,6 @@ app = BUNDLE(
         "CFBundleVersion": VERSION,
         "LSUIElement": True,  # menu bar app: no Dock icon
         "LSMinimumSystemVersion": "11.0",
-        "NSHumanReadableCopyright": "Copyright (c) 2026 Umut Yalcin. MIT License.",
+        "NSHumanReadableCopyright": "Copyright (c) 2026 Umut Yalcin. All rights reserved.",
     },
 )

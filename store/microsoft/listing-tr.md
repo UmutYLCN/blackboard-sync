@@ -16,7 +16,7 @@ the character counts below were measured.
 Limit 1,000; only the first 270 are shown in some views. 174 characters.
 
 ```text
-Blackboard’daki ders dosyalarını, duyuruları ve notları arka planda kendiliğinden bilgisayarına indirir; dönem ve ders klasörleriyle düzenli tutar. Ücretsiz ve açık kaynaklı.
+Blackboard’daki ders dosyalarını, duyuruları ve notları arka planda kendiliğinden bilgisayarına indirir; dönem ve ders klasörleriyle düzenli tutar. Ücretsizdir, kaynak kodu GitHub’da herkese açıktır.
 ```
 
 ## Description
@@ -72,7 +72,7 @@ GEREKSİNİMLER
 • Okulunun Blackboard Learn hesabı.
 • Türkçe ve İngilizce arayüz seçenekleri.
 
-Ücretsiz ve açık kaynaklıdır (MIT Lisansı).
+Ücretsizdir. Kaynak kodu GitHub’da herkese açıktır (tüm hakları saklıdır).
 ```
 
 ## What's new in this version
@@ -105,7 +105,7 @@ Güncel dönemi senkronize eder; yeni okulda dersleri onaylatır
 Bilgisayar açılınca arka planda başlayabilir
 Şifreni görmez; oturumun yalnızca kendi bilgisayarında kalır
 Analiz, reklam ve kullanım takibi yok
-Ücretsiz ve açık kaynaklı
+Ücretsiz, kaynak kodu GitHub’da
 ```
 
 ## Screenshot captions
@@ -154,13 +154,12 @@ senkronizasyon
 Limit 200. 192 characters.
 
 ```text
-© 2026 Umut Yalçın. MIT Lisansı. blackboard-sync bağımsız bir projedir; Anthology Inc. veya Blackboard ile bağlantılı değildir. “Blackboard” markası bu uygulamaya değil, kendi sahibine aittir.
+© 2026 Umut Yalçın. Tüm hakları saklıdır. blackboard-sync bağımsız bir projedir; Anthology Inc. veya Blackboard ile bağlantılı değildir. “Blackboard” markası bu uygulamaya değil, kendi sahibine aittir.
 ```
 
 ## Additional license terms
 
-Optional. Leave empty: the app is MIT-licensed and the Store's standard license applies.
-(If the maintainer wants the MIT text here, paste `LICENSE` as is.)
+Optional. Leave empty: the source is all rights reserved and the Store's standard license applies.
 
 ## Developed by
 

@@ -1093,7 +1093,7 @@ there is none, the app's own window.
 
 ## License
 
-MIT, see [LICENSE](../LICENSE).
+All rights reserved. The source is publicly visible for reference only; see [LICENSE](../LICENSE).
 
 ### Windows tray app (from source)
 
