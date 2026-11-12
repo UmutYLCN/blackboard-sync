@@ -37,9 +37,6 @@ struct SettingsView: View {
                     }
                     NavigationLink(model.text("Selected courses")) { CoursesView() }
                 }
-                Section(model.text("Google Calendar")) {
-                    ComingSoon(title: "Connect Google Calendar", symbol: "calendar.badge.plus")
-                }
                 Section(model.text("Folder")) {
                     NavigationLink(model.text("Open folder")) { FileBrowser(folder: "", title: model.text("University")) }
                     Text("Documents/University/<term>/<course>/…").font(.caption).foregroundStyle(.secondary)
