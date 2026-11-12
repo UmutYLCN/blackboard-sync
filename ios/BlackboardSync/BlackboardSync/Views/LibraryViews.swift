@@ -107,9 +107,10 @@ struct FirstDownloadCard: View {
     private var term: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(model.text(TermConfirm.termLabel)).font(.caption).foregroundStyle(.secondary)
-            Text(draft.termName).font(.headline).accessibilityIdentifier("termConfirm.term")
+            Text(draft.termName).font(.headline)
         }
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("termConfirm.term")
     }
 
     /// Another term Blackboard lists; nothing to offer when it lists only the one found.
