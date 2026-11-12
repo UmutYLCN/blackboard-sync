@@ -745,7 +745,7 @@ How it ended is one of `refreshed`, `sso-needs-interaction`, `timeout`, `browser
 4 for `locked`, otherwise 3. Reasons and timings go to the log; cookies and URLs do not.
 
 **When** is `session_refresh.SessionCare`, which has no GUI code so that the macOS and Windows
-apps share it, and the iPad can reuse it:
+apps share it:
 
 - A sync that ends with `login_required` tries once and runs again if that worked
   (`jobs.run_sync_refreshing`). Otherwise the outcome stays as it was and today's
@@ -1267,7 +1267,7 @@ app-created secondary calendars, without access to the user's primary calendar.
 
 ## Optional NotebookLM
 
-macOS and Windows; the core has no GUI code, so the iPad can follow. Nothing here runs until the
+macOS and Windows; the core has no GUI code. Nothing here runs until the
 user connects. `src/blackboard_sync/notebooklm/` holds:
 
 | Module | Job |

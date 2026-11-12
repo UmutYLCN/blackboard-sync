@@ -19,7 +19,7 @@ Status key: `Todo` · `In progress` · `Done` · `Blocked`
 1. **Store publication of 1.7.0.** Version 1.7.0 is not yet officially published on the Microsoft Store. This comes before everything else. See the [Pre-Store checklist](#pre-store-checklist) and the [Store listings](#microsoft-store-listings) section. Packaging steps are in [MSIX.md](MSIX.md).
 2. **Mac work.** All changes below are made on the Mac app first:
    - [School list with link fallback](#school-list-with-link-fallback)
-   - [Simple latest-term rule](#simple-latest-term-rule) ✓ Done (desktop and iPad apps)
+   - [Simple latest-term rule](#simple-latest-term-rule) ✓ Done
    - [Removal of the past-terms feature](#removal-of-the-past-terms-feature)
    - [File-move fixes](#file-move-fixes)
    - [No folders for courses without files](#no-folders-for-courses-without-files)
@@ -35,7 +35,7 @@ Version 1.7.1 gathers the Mac work that is ready, is tested by hand at the end a
 In 1.7.1:
 
 - Everything merged since 1.7.0: the [file-move fixes](#file-move-fixes), [no folders for courses without files](#no-folders-for-courses-without-files) and the [removal of the past-terms feature](#removal-of-the-past-terms-feature).
-- The [simple latest-term rule](#simple-latest-term-rule), on the desktop apps. The iPad app has it too, in its first App Store release, version 1.0.
+- The [simple latest-term rule](#simple-latest-term-rule).
 - Provider-independent silent sign-in with page stillness, fast-path checks (username/email, account picker, OTP) and session cookie fallback.
 - The [UI cleanup](#ui-cleanup): the profile card and the calendar error card.
 - The English and Turkish [Store listings](#microsoft-store-listings) with NotebookLM.
@@ -50,7 +50,6 @@ Waiting for 1.7.2:
 
 ## Platform scope
 
-- **iPad:** An iPad app exists and is developed separately in a private repository.
 - **Windows and Mac:** NotebookLM is a major feature of these two versions only.
 
 ## No new big features
@@ -86,17 +85,17 @@ Before the first download at a new school whose term is not clear, the apps ask 
 
 - When no state exists for the school and the term choice is ambiguous (undated terms, stale dates, terms that started on different days, or a term name with no year and season), a card lists the term(s) found and their courses, all ticked. The student can untick courses and presses Confirm; nothing is downloaded before that, and the choice is saved so it is asked once. Not now leaves nothing downloaded and the card comes back with the next sync.
 - A clear first run downloads at once as before. A school with existing state (the first school, İSTÜN, with its files) never sees the card.
-- Done on the desktop apps (Mac and Windows) and the iPad app (version 1.0). On the iPad the card asks at every new school, clear term or not, as the last step of the first run: right after the first Blackboard sign-in there it shows the term found and its courses, ticked as the selection of Courses. **Change term** switches to another term Blackboard lists, and nothing downloads until **Confirm and start**.
+- Done on the desktop apps (Mac and Windows). **Change term** switches to another term Blackboard lists, and nothing downloads until **Confirm and start**.
 
 Notes:
 
 - The rule was checked against 28 synthetic school setups (`tests/test_term_scenarios.py`); at the first school it gives exactly the result it gave before.
 - The real term and course data from the first school must be checked once to confirm which fields can be trusted. The real data check is part of the 1.7.1 test by hand at the first school.
-- Done on the desktop apps (Mac and Windows share the code) and the iPad app, which runs the same 28 setups with the same results (an iPad course keeps the folder its files are already in).
+- Done on the desktop apps (Mac and Windows share the code).
 
 ## Removal of the past-terms feature
 
-The past-terms feature has been removed from every app: the desktop controls, the terminal options and the iPad row are gone. Syncing the current term works as before. Terms an older version downloaded keep their files and stay as they are.
+The past-terms feature has been removed from every app: the desktop controls and the terminal options are gone. Syncing the current term works as before. Terms an older version downloaded keep their files and stay as they are.
 
 ## File-move fixes
 
@@ -131,18 +130,18 @@ Nothing else changes in the UI.
 
 Syncing other schools' data may break where the app's assumptions differ from how another school sets up Blackboard. Track these as the school list grows.
 
-- **Undated terms and term titles.** Some schools leave terms without dates and only name them (such as `2026-2027` or `Fall 2026`), or name them differently from the expected format. The current-term choice in `sync.py` and its iPad twin can then pick the wrong term, sort courses under the wrong term, or drop active ones.
-  Fixed on the desktop and iPad apps by the [Simple latest-term rule](#simple-latest-term-rule).
+- **Undated terms and term titles.** Some schools leave terms without dates and only name them (such as `2026-2027` or `Fall 2026`), or name them differently from the expected format. The current-term choice in `sync.py` can then pick the wrong term, sort courses under the wrong term, or drop active ones.
+  Fixed on the desktop apps by the [Simple latest-term rule](#simple-latest-term-rule).
 - **Courses without a term.** Courses with no term (`termId` null) are silently skipped, so the user sees zero courses and no error.
-  Fixed on the desktop and iPad apps by the [Simple latest-term rule](#simple-latest-term-rule).
+  Fixed on the desktop apps by the [Simple latest-term rule](#simple-latest-term-rule).
 - **Arabic text in PDF notes.** Arabic text in generated PDF notes shows as replacement characters because the bundled fonts cover only Latin, Turkish and Greek and shaping tables were stripped. This matters for the Saudi universities in the school list.
 - **Term-name aliases.** Term-name aliases rewrite English term names to Turkish (`Güz`, `Bahar`, `Yaz`) and miss other formats.
-  Fixed on the desktop and iPad apps by the [Simple latest-term rule](#simple-latest-term-rule).
-- **Unscoped desktop state files.** Desktop `state.json` and `courses.json` are not scoped by school or account, so switching schools can collide on Blackboard internal IDs; the iPad app already scopes them.
+  Fixed on the desktop apps by the [Simple latest-term rule](#simple-latest-term-rule).
+- **Unscoped desktop state files.** Desktop `state.json` and `courses.json` are not scoped by school or account, so switching schools can collide on Blackboard internal IDs.
   Course folders recorded in `state.json` are no longer reused across schools ([Simple latest-term rule](#simple-latest-term-rule)); the rest of `state.json` and `courses.json` are still unscoped.
 - **Course-code pattern.** The course-code pattern misses hyphenated codes like `CS-101` and can read a term prefix such as `FALL2026` as the course code.
 - **Windows path-length limit.** On Windows, term and course folder names are not shortened to fit the 259-character path limit (only subfolders are), which matters in OneDrive folders.
 - **English-only attachment check.** The check for items that do not support attachments looks for one English sentence, so a localized Blackboard server makes every such item fail and retry.
 - **Classic (non-Ultra) Blackboard.** Embedded file links without `xid-` or `rid-` markers are ignored and web links hardcode `/ultra/`.
 
-Lower-severity findings (sign-in methods, school directory gaps, iPad rate limits, language coverage) are kept in the private research notes and are not listed here.
+Lower-severity findings (sign-in methods, school directory gaps, rate limits, language coverage) are kept in the private research notes and are not listed here.

@@ -18,7 +18,7 @@ Between syncs ``keep_alive`` makes the one light request ``login.session_user``
 makes, which also tells early that the session is gone.
 
 The macOS menu bar app and the Windows tray app use this. No GUI here, so that
-they share the decisions (``SessionCare``), and the iPad can later.
+they share the decisions (``SessionCare``).
 """
 
 from __future__ import annotations
