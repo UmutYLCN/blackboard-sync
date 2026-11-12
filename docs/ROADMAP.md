@@ -86,7 +86,7 @@ Before the first download at a new school whose term is not clear, the apps ask 
 
 - When no state exists for the school and the term choice is ambiguous (undated terms, stale dates, terms that started on different days, or a term name with no year and season), a card lists the term(s) found and their courses, all ticked. The student can untick courses and presses Confirm; nothing is downloaded before that, and the choice is saved so it is asked once. Not now leaves nothing downloaded and the card comes back with the next sync.
 - A clear first run downloads at once as before. A school with existing state (the first school, İSTÜN, with its files) never sees the card.
-- Done on the desktop apps (Mac and Windows) and the iPad app (version 1.0). On the iPad the card asks when Sync now (or Sync on app open) would start the first download, and its ticks are the course selection of Courses.
+- Done on the desktop apps (Mac and Windows) and the iPad app (version 1.0). On the iPad the card asks at every new school, clear term or not, as the last step of the first run: right after the first Blackboard sign-in there it shows the term found and its courses, ticked as the selection of Courses. **Change term** switches to another term Blackboard lists, and nothing downloads until **Confirm and start**.
 
 Notes:
 

@@ -37,6 +37,8 @@ struct LibraryState: Codable {
     var syncedSchools: Set<String>?
     /// The schools whose first courses the student confirmed on the card (`TermConfirm`).
     var confirmedSchools: Set<String>?
+    /// The term each account switched to on that card, by account scope (`TermConfirm.TermChoice`).
+    var termChoices: [String: TermConfirm.TermChoice]?
 }
 
 /// All manifest and local-file operations serialize on this actor, including conflict decisions.
@@ -78,9 +80,16 @@ actor LibraryStore {
 
     func setTerms(_ terms: [Term], scope: String) throws { state.terms = terms; state.cachedScope = scope; try save() }
     func select(_ ids: Set<String>, scope: String) throws { state.selected[scope] = ids; try save() }
-    /// The card's choice (`TermConfirm.confirm`): the selection and the school asked, saved together.
-    func confirmFirstCourses(school: String, selected: Set<String>, scope: String) throws {
+    /// The card's choice (`TermConfirm.confirm`): the selection, the terms shown, a switched term and the
+    /// school asked, saved together.
+    func confirmFirstCourses(school: String, selected: Set<String>, terms: [Term], choice: TermConfirm.TermChoice?,
+                             scope: String) throws {
         state.selected[scope] = selected
+        state.terms = terms
+        state.cachedScope = scope
+        var choices = state.termChoices ?? [:]
+        choices[scope] = choice
+        state.termChoices = choices.isEmpty ? nil : choices
         state.confirmedSchools = (state.confirmedSchools ?? []).union([school])
         try save()
     }

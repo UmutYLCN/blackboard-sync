@@ -204,6 +204,13 @@ final class BlackboardAPI: MirrorAPI {
     /// Closed memberships and courses, Blackboard Organizations (clubs and communities listed among
     /// the courses) and courses that open with a term that is closed are left out.
     func courses(userID: String, now: Date = Date(), pastTerms: Set<String> = []) async throws -> [Term] {
+        try await discover(userID: userID, now: now, pastTerms: pastTerms).current
+    }
+
+    /// Every term the student's open courses are listed under, one semester's records merged
+    /// (`listed`), and the current ones among them (`current`, `Term.current`). The card before the
+    /// first download offers the other listed terms (`TermConfirm`).
+    func discover(userID: String, now: Date = Date(), pastTerms: Set<String> = []) async throws -> (listed: [Term], current: [Term]) {
         let memberships = try await paged("/learn/api/public/v1/users/\(Self.segment(userID))/courses?expand=course&limit=100", label: "Memberships")
         var terms: [String: Term] = [:]
         var order: [String] = []
@@ -237,7 +244,8 @@ final class BlackboardAPI: MirrorAPI {
                 childID: membership["childCourseId"] as? String))
         }
         // Courses with an empty termId are one "No term" group, always synced with the current term.
-        return Term.current(order.compactMap { terms[$0] }, now: now, pastTerms: pastTerms)
+        let found = order.compactMap { terms[$0] }
+        return (Term.mergeAliases(found), Term.current(found, now: now, pastTerms: pastTerms))
     }
 
     /// The term `id` with no courses yet, and whether it is closed; an empty id is the "No term" group.

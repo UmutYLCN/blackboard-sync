@@ -47,8 +47,11 @@ final class AppModel: ObservableObject {
     @Published var showingOnboarding = OnboardingRecord().showsOnLaunch(arguments: AppModel.launchArguments)
     /// The "Sign out?" question from the account menu; `signOut()` runs only once it is confirmed.
     @Published var confirmingSignOut = false
-    /// The card before the first download at a school whose current term is not clear (`TermConfirm`).
-    @Published var termConfirm: TermConfirm.Card?
+    /// The card before the first download at a new school, as the student fills it in (`TermConfirm`).
+    /// Home and Courses show it in place of their content until Confirm and start.
+    @Published private(set) var termConfirm: TermConfirm.Draft?
+    /// What the last course discovery found: every listed term and the current ones (`BlackboardAPI.discover`).
+    private var discovered: (listed: [Term], current: [Term])?
     /// Announcements and due dates for the signed-in account; nil while signed out.
     @Published private(set) var features: FeatureModels?
     /// True from `appAccountDidSignIn()` until Blackboard is first signed in: the full-screen first run.
@@ -212,6 +215,9 @@ final class AppModel: ObservableObject {
 
     func signIn() {
         guard !busy else { return }
+        #if DEBUG
+        if Self.launchArguments.contains("--ui-testing-sample-school") { signInToSampleSchool(); return }
+        #endif
         sessionRefresh?.cancel() // both would work on the same web data
         do {
             let tenant = try SyncLogic.tenant(tenantText)
@@ -254,16 +260,18 @@ final class AppModel: ObservableObject {
         let newScope = MirrorPaths.digest(api.tenant.absoluteString + ":" + id)
         try Task.checkCancellation()
         let accountChanged = scope != newScope || features == nil
-        if scope != newScope { terms = []; selected = [] }
+        if scope != newScope { terms = []; selected = []; termConfirm = nil }
         scope = newScope
         UserDefaults.standard.set(scope, forKey: "libraryScope")
         accountName = display.isEmpty ? (me["userName"] as? String ?? "Blackboard") : display
         hasSession = true; needsSignIn = false
         status = "Finding your courses…"
         try await store.useSchool(api.tenant)
-        let found = try await api.courses(userID: id)
+        let discovery = try await api.discover(userID: id)
         try Task.checkCancellation()
+        discovered = discovery
         let snapshot = await store.snapshot()
+        let found = TermConfirm.apply(snapshot.termChoices?[scope], detected: discovery.current, listed: discovery.listed)
         let ids = Set(found.flatMap(\.courses).map(\.id))
         selected = (snapshot.selected[scope] ?? ids).intersection(ids)
         terms = found
@@ -273,7 +281,9 @@ final class AppModel: ObservableObject {
             for course in term.courses { _ = try await store.courseFolder(course, term: term, scope: scope) }
         }
         await reloadLibrary()
-        status = found.isEmpty ? Self.noCoursesFound : "Ready to sync"
+        // A new school: the card asks right away, before anything can download.
+        if found.isEmpty { status = Self.noCoursesFound }
+        else { status = await askBeforeFirstDownload() ? TermConfirm.waiting : "Ready to sync" }
         if accountChanged {
             connectFeatures(http: ShellHTTP { [weak self] in self?.api }, tenant: api.tenant)
         } else {
@@ -338,6 +348,19 @@ final class AppModel: ObservableObject {
             break
         }
     }
+
+    /// UI tests only (`--ui-testing-sample-school`): Sign in to Blackboard signs in to `SampleSchool`
+    /// at once, without a web page, so the first run's card before the first download is reached as a
+    /// student reaches it. Nothing leaves the app; the library is a fresh one of its own.
+    func signInToSampleSchool() {
+        run { [self] in
+            tenantText = SampleSchool.tenant.absoluteString
+            install(tenant: SampleSchool.tenant, cookies: [], pageLoader: SampleSchool.answer)
+            try await verifyAndDiscover()
+            // The pages read the package's sample Blackboard, which answers without a network.
+            connectFeatures(http: PreviewData.http(), tenant: PreviewData.baseURL)
+        }
+    }
     #endif
 
     /// Reloads the pages already shown once, after the selection changes or a reconnect. Requests
@@ -384,10 +407,8 @@ final class AppModel: ObservableObject {
     }
     private func performSync() async throws {
         guard let api, let store else { return }
-        if let card = TermConfirm.card(library: await store.snapshot(), tenant: api.tenant, scope: scope, terms: terms) {
-            // The first sync at this school found no clear term: nothing is downloaded or saved until
-            // the student confirms the courses on the card.
-            termConfirm = card
+        if await askBeforeFirstDownload() {
+            // The first sync at this school: nothing is downloaded or saved until the card is confirmed.
             status = TermConfirm.waiting
             return
         }
@@ -400,23 +421,41 @@ final class AppModel: ObservableObject {
     }
     func cancel() { operation?.cancel() }
 
-    /// Confirm on the card: saves the ticked courses as the selection and the school as asked, then syncs.
-    func confirmFirstCourses(ticked: Set<String>) {
-        guard let card = termConfirm else { return }
+    /// Opens the card when this school's first download must wait for it (`TermConfirm.needsConfirmation`,
+    /// the one gate); true while it waits. A card already open keeps what the student did on it.
+    private func askBeforeFirstDownload() async -> Bool {
+        guard let api, let store else { return false }
+        let found = discovered ?? (terms, terms) // a sync from the courses saved at the last launch
+        guard let card = TermConfirm.card(library: await store.snapshot(), tenant: api.tenant, scope: scope,
+                                          detected: found.current, listed: found.listed) else {
+            termConfirm = nil
+            return false
+        }
+        if termConfirm?.card != card { termConfirm = TermConfirm.Draft(card: card, selected: selected) }
+        return true
+    }
+
+    /// Change term on the card: another term Blackboard lists, or nil for the one the app found.
+    func chooseFirstTerm(_ id: String?) { termConfirm?.choose(id) }
+
+    /// A course's tick on the card.
+    func toggleFirstCourse(_ id: String) { termConfirm?.toggle(id) }
+
+    /// Confirm and start: saves the ticks as the selection, the term shown and the school as asked, then syncs.
+    func confirmFirstCourses() {
+        // The school changed or other work runs: nothing is saved, and the card stays.
+        guard let draft = termConfirm, draft.canConfirm, !busy, let api, let store,
+              TermConfirm.school(api.tenant) == draft.card.school else { return }
         termConfirm = nil
-        // The school changed or other work started meanwhile: nothing is saved, and the next sync asks again.
-        guard !busy, let api, let store, TermConfirm.school(api.tenant) == card.school else { return }
-        let selected = selected, scope = scope
+        let scope = scope
         run { [self] in
-            self.selected = try await TermConfirm.confirm(card, ticked: ticked, selected: selected, scope: scope, store: store)
+            (self.terms, self.selected) = try await TermConfirm.confirm(draft, scope: scope, store: store)
+            await reloadLibrary()
             refreshFeatures()
             guard canStartSync else { status = "Ready to sync"; return }
             try await recovering { try await self.performSync() }
         }
     }
-
-    /// Not now (or closing the card): nothing is saved, so the next sync asks again.
-    func notNowFirstCourses() { termConfirm = nil }
 
     /// Pause also ends a sync that is running right now; Resume syncs right away when Sync on app open is on.
     func togglePause() {
@@ -443,7 +482,7 @@ final class AppModel: ObservableObject {
         let refresh = sessionRefresh
         refresh?.cancel()
         featureRefreshPending = false; featureHTTP = nil; featureTenant = nil; features = nil
-        termConfirm = nil
+        termConfirm = nil; discovered = nil
         let previous = operation
         Task {
             await previous?.value
@@ -609,3 +648,53 @@ final class AppModel: ObservableObject {
         }
     }
 }
+
+#if DEBUG
+/// UI tests only: a school with two terms, answered from memory (`AppModel.signInToSampleSchool`). This
+/// term started two months ago and holds three courses; last term ended four months ago and holds two.
+/// Their dates follow today, so the app always finds this term. Course pages hold no files.
+enum SampleSchool {
+    static let tenant = PreviewData.baseURL
+    static let user = "_sample_1"
+
+    static func answer(_ path: String) async throws -> [String: Any] {
+        let route = (path.split(separator: "?").first.map(String.init) ?? path).removingPercentEncoding ?? path
+        switch route {
+        case BlackboardAPI.accountPath:
+            return ["id": user, "userName": "deniz", "name": ["given": "Deniz", "family": "Yilmaz"]]
+        case "/learn/api/public/v1/users/\(user)/courses":
+            return ["results": courses.map { course in
+                ["courseId": course.id, "availability": ["available": "Yes"],
+                 "course": ["id": course.id, "courseId": course.code, "name": course.name, "termId": course.term,
+                            "availability": ["available": "Yes"], "created": stamp(course.term == "_fall" ? -75 : -300)]]
+            }]
+        case "/learn/api/public/v1/terms/_fall":
+            return term("_fall", "Fall 2026", start: -60, end: 60)
+        case "/learn/api/public/v1/terms/_spring":
+            return term("_spring", "Spring 2026", start: -270, end: -120)
+        default:
+            return ["results": [[String: Any]]()]
+        }
+    }
+
+    private static let courses: [(id: String, code: String, name: String, term: String)] = [
+        ("_101_1", "CSE303-1", "Algorithm Analysis", "_fall"),
+        ("_102_1", "CSE301-1", "Database Management", "_fall"),
+        ("_103_1", "COE305-1", "Software Project Management", "_fall"),
+        ("_201_1", "CSE202-1", "Data Structures", "_spring"),
+        ("_202_1", "MTH201-1", "Linear Algebra", "_spring"),
+    ]
+
+    private static func term(_ id: String, _ name: String, start: Double, end: Double) -> [String: Any] {
+        ["id": id, "name": name,
+         "availability": ["available": "Yes", "duration": ["type": "DateRange", "start": stamp(start), "end": stamp(end)]]]
+    }
+
+    /// `days` from now, as Blackboard writes a date.
+    private static func stamp(_ days: Double) -> String {
+        let format = ISO8601DateFormatter()
+        format.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return format.string(from: Date().addingTimeInterval(days * 86400))
+    }
+}
+#endif

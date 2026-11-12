@@ -1,12 +1,13 @@
 import XCTest
 @testable import BlackboardSync
 
-/// The card before the first download at a school whose current term is not clear (`TermConfirm`), the
-/// desktop's tests/test_term_confirm.py on the iPad.
+/// The card before the first download at a new school (`TermConfirm`), on the iPad.
 ///
-/// Only a first sync at a school (no state for it) with an unclear term choice asks; it downloads and saves
-/// nothing until the student confirms. Confirm keeps the ticked courses and asks once; Not now saves nothing,
-/// so the next sync asks again. A school with state, such as the first school with its files, never asks.
+/// The first download at a school the library holds nothing of waits for the card, whatever the term:
+/// it opens right after the first sign-in there and downloads and saves nothing until Confirm and start.
+/// The card keeps the desktop's reasons when the term is not clear (tests/test_term_confirm.py). Confirm
+/// keeps the ticked courses and a switched term, and asks once per school. A school with state, such as
+/// the first school with its files, never asks.
 @MainActor
 final class TermConfirmTests: XCTestCase {
     private let tenant = URL(string: "https://blackboard.example.edu")!
@@ -58,51 +59,26 @@ final class TermConfirmTests: XCTestCase {
 
     // MARK: When the card is needed
 
-    func testADatedTermWithASeasonNameIsClear() {
-        XCTAssertEqual(TermConfirm.ambiguity([term("_fall", "2026-2027 Güz", start: Self.fall, end: Self.fallEnd, courses: ["_c1"])]), [])
-        // Turkish and English records of one semester, merged, are still one clear term.
-        let both = Term(id: "_fall", name: "2026-2027 Güz", start: Self.fall, end: Self.fallEnd,
-                        courses: [Course(id: "_c1", name: "_c1", termID: "_fall", created: nil)],
-                        ids: ["_fall", "_fall_en"], names: ["2026-2027 Güz", "2026-2027 Fall"])
-        XCTAssertEqual(TermConfirm.ambiguity([both]), [])
-    }
-
-    func testUnclearTermsAreNamed() {
-        let fall = term("_fall", "2026-2027 Güz", start: Self.fall, end: Self.fallEnd, courses: ["_c1"])
-        XCTAssertEqual(TermConfirm.ambiguity([term("_u", "2026-2027 Güz", courses: ["_c2"])]), [.undated])
-        let stale = term("_s", "2026-2027 Güz", start: SyncLogic.date("2020-09-01T00:00:00Z"),
-                         end: SyncLogic.date("2021-01-31T00:00:00Z"), created: ["2026-08-01T00:00:00Z"])
-        XCTAssertEqual(TermConfirm.ambiguity([stale]), [.staleDates])
-        let block = term("_b", "2026-2027 Güz", start: SyncLogic.date("2026-11-01T00:00:00Z"), end: Self.fallEnd, courses: ["_c3"])
-        XCTAssertEqual(TermConfirm.ambiguity([fall, block]), [.severalStarts])
-        let odd = term("_o", "Term 1 (Sept)", start: Self.fall, end: Self.fallEnd, courses: ["_c4"])
-        XCTAssertEqual(TermConfirm.ambiguity([odd]), [.unknownName])
-        XCTAssertEqual(TermConfirm.Reason.allRawValues, ["undated", "stale_dates", "several_starts", "unknown_name"])
-    }
-
-    func testCoursesWithoutATermOrNoCoursesNeedNoCard() {
-        XCTAssertEqual(TermConfirm.ambiguity([term("", Term.noTerm, courses: ["_c1"])]), [])
-        XCTAssertEqual(TermConfirm.ambiguity([term("_u", "Term")]), []) // nothing to download
-        XCTAssertNil(TermConfirm.proposal(tenant: tenant, terms: [term("_u", "Term")]))
-    }
-
-    /// The 28 school setups: the iPad names the same reasons as the desktop, and the first school
-    /// (İSTÜN) is clear, so it never sees the card.
-    func testEachSetupIsAsUnclearAsOnTheDesktop() async throws {
+    /// The 28 school setups: the card names the same reasons as the desktop, and opens at each of them for
+    /// a new school, also where the term is clear (the first school, İSTÜN, among them).
+    func testEachSetupAsksAtANewSchoolWithTheDesktopsReasons() async throws {
         XCTAssertEqual(TermScenarioTests.scenarios.count, 28)
         for sid in TermScenarioTests.scenarios.keys.sorted() {
             let terms = try await TermScenarioTests.discover(TermScenarioTests.scenarios[sid]!)
             XCTAssertEqual(TermConfirm.ambiguity(terms).map(\.rawValue), Self.desktopReasons[sid] ?? [], sid)
-            let card = TermConfirm.card(library: LibraryState(), tenant: tenant, scope: scope, terms: terms)
-            XCTAssertEqual(card != nil, Self.desktopReasons[sid] != nil, sid)
-            if let card { // every course found is on the card, under the terms that hold them
-                XCTAssertEqual(Set(card.courses.map(\.id)), Set(terms.flatMap(\.courses).map(\.id)), sid)
-                XCTAssertEqual(card.terms, terms.filter { !$0.courses.isEmpty }.map(\.name), sid)
-            }
+            let card = try XCTUnwrap(TermConfirm.card(library: LibraryState(), tenant: tenant, scope: scope,
+                                                      detected: terms, listed: terms), sid)
+            XCTAssertEqual(card.reasons.map(\.rawValue), Self.desktopReasons[sid] ?? [], sid)
+            // Every course found is on the card, under the terms that hold them.
+            let draft = TermConfirm.Draft(card: card, selected: Set(terms.flatMap(\.courses).map(\.id)))
+            XCTAssertEqual(Set(draft.courses.map(\.id)), Set(terms.flatMap(\.courses).map(\.id)), sid)
+            XCTAssertEqual(draft.selection, Set(terms.flatMap(\.courses).map(\.id)), "every course ticked: \(sid)")
+            XCTAssertEqual(card.terms, terms.filter { !$0.courses.isEmpty }.map(\.name), sid)
         }
         for sid in TermScenarioTests.firstSchool {
             let terms = try await TermScenarioTests.discover(TermScenarioTests.scenarios[sid]!)
-            XCTAssertNil(TermConfirm.card(library: LibraryState(), tenant: tenant, scope: scope, terms: terms), sid)
+            let card = TermConfirm.card(library: LibraryState(), tenant: tenant, scope: scope, detected: terms, listed: terms)
+            XCTAssertEqual(card?.reasons, [], "a clear term still asks at a new school: \(sid)")
         }
     }
 
@@ -136,15 +112,27 @@ final class TermConfirmTests: XCTestCase {
         XCTAssertTrue(has(other))
     }
 
-    func testAnExistingSchoolWithItsStateNeverSeesTheCard() async throws {
-        let terms = try await TermScenarioTests.discover(TermScenarioTests.scenarios["S04"]!)
+    /// The one gate: a new school asks, once; a school with state or one confirmed never does, and a
+    /// second school asks again.
+    func testTheGateAsksOncePerNewSchool() {
         var library = LibraryState()
-        XCTAssertNotNil(TermConfirm.card(library: library, tenant: tenant, scope: scope, terms: terms))
+        XCTAssertTrue(TermConfirm.needsConfirmation(library, tenant: tenant, scope: scope))
         library.records = ["first-school:_1:_2:attachment:_3": record("T/C/a.pdf")] // from before 1.7.1
-        XCTAssertNil(TermConfirm.card(library: library, tenant: tenant, scope: scope, terms: terms))
+        XCTAssertFalse(TermConfirm.needsConfirmation(library, tenant: tenant, scope: scope))
         library = LibraryState()
         library.confirmedSchools = [school]
-        XCTAssertNil(TermConfirm.card(library: library, tenant: tenant, scope: scope, terms: terms), "asked once")
+        XCTAssertFalse(TermConfirm.needsConfirmation(library, tenant: tenant, scope: scope), "asked once")
+        // The same account's next school: the library holds nothing of it yet.
+        library.syncedSchools = [school]
+        library.records = [scope + ":_1:_2:attachment:_3": record("T/C/a.pdf")]
+        let other = URL(string: "https://bb.other.edu")!
+        XCTAssertTrue(TermConfirm.needsConfirmation(library, tenant: other, scope: "scope-b"))
+        let fall = term("_fall", "Fall 2026", start: Self.fall, end: Self.fallEnd, courses: ["_1"])
+        XCTAssertNil(TermConfirm.card(library: library, tenant: tenant, scope: scope, detected: [fall], listed: [fall]))
+        XCTAssertNotNil(TermConfirm.card(library: library, tenant: other, scope: "scope-b", detected: [fall], listed: [fall]))
+        // Nothing found: nothing to confirm (Home says no courses were found).
+        XCTAssertNil(TermConfirm.card(library: LibraryState(), tenant: tenant, scope: scope,
+                                      detected: [term("_fall", "Fall 2026")], listed: []))
     }
 
     func testABeginningSyncRecordsItsSchool() async throws {
@@ -159,62 +147,204 @@ final class TermConfirmTests: XCTestCase {
 
     // MARK: The card
 
+    private var fallTerm: Term { term("_fall", "Fall 2026", start: Self.fall, end: Self.fallEnd, courses: ["_1", "_2"]) }
+    private var springTerm: Term {
+        term("_spring", "Spring 2026", start: SyncLogic.date("2026-02-16T00:00:00.000Z"),
+             end: SyncLogic.date("2026-06-30T00:00:00.000Z"), courses: ["_7"])
+    }
+    private var oldTerm: Term {
+        term("_old", "Fall 2025", start: SyncLogic.date("2025-09-22T00:00:00.000Z"),
+             end: SyncLogic.date("2026-01-31T00:00:00.000Z"), courses: ["_5", "_6"])
+    }
+    private var noTerm: Term { term("", Term.noTerm, courses: ["_9"]) }
+
+    func testTheCardOffersTheOtherTermsNewestFirst() throws {
+        let card = try XCTUnwrap(TermConfirm.proposal(tenant: tenant, detected: [fallTerm, noTerm],
+                                                      listed: [oldTerm, fallTerm, term("_empty", "Summer 2026"), springTerm, noTerm]))
+        XCTAssertEqual(card.reasons, [])
+        XCTAssertEqual(card.detected.map(\.id), ["_fall", ""])
+        XCTAssertEqual(card.others.map(\.id), ["_spring", "_old"], "the found, empty and no-term groups are left out")
+        XCTAssertEqual(card.terms, ["Fall 2026", Term.noTerm])
+        XCTAssertEqual(TermConfirm.optionLabel(springTerm, language: "en"), "Spring 2026 · 1 course")
+        XCTAssertEqual(TermConfirm.optionLabel(oldTerm, language: "en"), "Fall 2025 · 2 courses")
+        XCTAssertEqual(TermConfirm.optionLabel(oldTerm, language: "tr"), "Fall 2025 · 2 ders")
+    }
+
     func testCardRowsNameTheTermOnlyWhenThereAreSeveral() {
-        let one = TermConfirm.Card(school: school, reasons: [.undated], terms: ["T"],
-                                   courses: [.init(id: "_1", name: "CSE303 Algorithms", term: "T")])
+        let algorithms = Course(id: "_1", name: "Algorithms", termID: "T", created: nil, code: "CSE303")
+        let seminar = Course(id: "_2", name: "Seminar", termID: "B", created: nil, code: "")
+        let one = [Term(id: "T", name: "T", start: nil, end: nil, courses: [algorithms])]
         XCTAssertEqual(TermConfirm.rows(one).map(\.label), ["CSE303 Algorithms"])
-        let two = TermConfirm.Card(school: school, reasons: [.undated], terms: ["A", "B"],
-                                   courses: [.init(id: "_1", name: "CSE303 Algorithms", term: "A"),
-                                             .init(id: "_2", name: "Seminar", term: "B")])
+        let two = one + [Term(id: "B", name: "B", start: nil, end: nil, courses: [seminar])]
         XCTAssertEqual(TermConfirm.rows(two).map(\.id), ["_1", "_2"])
-        XCTAssertEqual(TermConfirm.rows(two).map(\.label), ["CSE303 Algorithms · A", "Seminar · B"])
-        XCTAssertTrue(TermConfirm.message(two, language: "en").contains("It found A, B."))
-        XCTAssertTrue(TermConfirm.message(two, language: "tr").contains("Bulunan dönem(ler): A, B."))
-        for key in [TermConfirm.title, TermConfirm.messageTemplate, TermConfirm.confirmLabel, TermConfirm.notNow, TermConfirm.waiting] {
-            XCTAssertNotNil(L10n.turkish[key], key)
-        }
+        XCTAssertEqual(TermConfirm.rows(two).map(\.label), ["CSE303 Algorithms · T", "Seminar · B"])
+    }
+
+    func testTheMessageSaysWhetherTheTermIsClear() throws {
+        let clear = try XCTUnwrap(TermConfirm.proposal(tenant: tenant, detected: [fallTerm], listed: [fallTerm]))
+        XCTAssertEqual(TermConfirm.message(clear, language: "en"), TermConfirm.foundMessage)
+        XCTAssertTrue(TermConfirm.message(clear, language: "tr").hasPrefix("Blackboard Sync güncel döneminizi"))
+        let undated = [term("_a", "A", courses: ["_1"]), term("_b", "B", courses: ["_2"])]
+        let unclear = try XCTUnwrap(TermConfirm.proposal(tenant: tenant, detected: undated, listed: undated))
+        XCTAssertEqual(unclear.reasons, [.undated, .unknownName])
+        XCTAssertTrue(TermConfirm.message(unclear, language: "en").contains("It found A, B."))
+        XCTAssertTrue(TermConfirm.message(unclear, language: "tr").contains("Bulunan dönem(ler): A, B."))
+        for key in TermConfirm.strings { XCTAssertNotNil(L10n.turkish[key], key) }
     }
 
     func testTheCardNamesCoursesAsTheirFolders() throws {
         let algorithms = Course(id: "_13004_1", name: "Algorithm Analysis", termID: "_u", created: nil, code: "CSE303-1")
-        let card = try XCTUnwrap(TermConfirm.proposal(tenant: tenant, terms: [
-            Term(id: "_u", name: "2026-2027 Güz", start: nil, end: nil, courses: [algorithms])]))
-        XCTAssertEqual(card, TermConfirm.Card(school: school, reasons: [.undated], terms: ["2026-2027 Güz"],
-                                              courses: [.init(id: "_13004_1", name: "CSE303 Algorithm Analysis", term: "2026-2027 Güz")]))
+        let terms = [Term(id: "_u", name: "2026-2027 Güz", start: nil, end: nil, courses: [algorithms])]
+        let card = try XCTUnwrap(TermConfirm.proposal(tenant: tenant, detected: terms, listed: terms))
+        XCTAssertEqual(card.reasons, [.undated])
+        XCTAssertEqual(TermConfirm.Draft(card: card, selected: []).courses,
+                       [.init(id: "_13004_1", name: "CSE303 Algorithm Analysis", term: "2026-2027 Güz")])
     }
 
-    func testTheCardIsTickedAsCoursesAndConfirmKeepsOtherCourses() {
-        let card = TermConfirm.Card(school: school, reasons: [.undated], terms: ["T"],
-                                    courses: [.init(id: "_1", name: "A", term: "T"), .init(id: "_2", name: "B", term: "T")])
-        // A new school selects every course found; one unticked in Courses before stays unticked.
-        XCTAssertEqual(TermConfirm.initialTicks(card, selected: ["_1", "_2"]), ["_1", "_2"])
-        XCTAssertEqual(TermConfirm.initialTicks(card, selected: ["_2", "_9"]), ["_2"])
-        XCTAssertEqual(TermConfirm.confirmedSelection(card, ticked: ["_1", "_7"], selected: ["_1", "_2", "_9"]), ["_1", "_9"])
+    /// The ticks start as Courses; unticking counts; Confirm needs one course, and the count's plural
+    /// follows the number of courses.
+    func testTheTicksStartAsCoursesAndConfirmNeedsOne() throws {
+        let card = try XCTUnwrap(TermConfirm.proposal(tenant: tenant, detected: [fallTerm, noTerm], listed: [fallTerm, noTerm]))
+        var draft = TermConfirm.Draft(card: card, selected: ["_1", "_2", "_9"])
+        XCTAssertEqual(draft.termName, "Fall 2026")
+        XCTAssertEqual(draft.selection, ["_1", "_2", "_9"])
+        XCTAssertEqual(TermConfirm.selectedLine(draft, language: "en"), "3 of 3 courses selected")
+        XCTAssertEqual(TermConfirm.selectedLine(draft, language: "tr"), "3 dersin 3 tanesi seçili")
+        draft = TermConfirm.Draft(card: card, selected: ["_2", "_77"]) // one unticked in Courses stays unticked
+        XCTAssertEqual(draft.selection, ["_2"])
+        XCTAssertEqual(TermConfirm.selectedLine(draft, language: "en"), "1 of 3 courses selected")
+        draft.toggle("_2")
+        XCTAssertFalse(draft.canConfirm)
+        XCTAssertEqual(TermConfirm.selectedLine(draft, language: "en"), "0 of 3 courses selected")
+        draft.toggle("_1")
+        XCTAssertTrue(draft.canConfirm)
+        XCTAssertNil(draft.savedChoice, "the found term needs no choice saved")
+        let single = TermConfirm.Draft(card: try XCTUnwrap(TermConfirm.proposal(tenant: tenant, detected: [springTerm], listed: [])),
+                                       selected: ["_7"])
+        XCTAssertEqual(TermConfirm.selectedLine(single, language: "en"), "1 of 1 course selected")
     }
 
-    func testConfirmSavesTheTicksAndTheSchoolAndKeepsOtherSchools() async throws {
+    /// Change term: the card shows the chosen term (with the no-term group) with every course ticked;
+    /// switching back restores the found term; a term not offered changes nothing.
+    func testChangingTheTerm() throws {
+        let card = try XCTUnwrap(TermConfirm.proposal(tenant: tenant, detected: [fallTerm, noTerm],
+                                                      listed: [fallTerm, springTerm, oldTerm, noTerm]))
+        var draft = TermConfirm.Draft(card: card, selected: ["_1"])
+        draft.choose("_old")
+        XCTAssertEqual(draft.choice, "_old")
+        XCTAssertEqual(draft.terms.map(\.id), ["_old", ""])
+        XCTAssertEqual(draft.termName, "Fall 2025")
+        XCTAssertEqual(draft.selection, ["_5", "_6", "_9"])
+        XCTAssertEqual(draft.savedChoice, TermConfirm.TermChoice(detected: ["_fall"], chosen: "_old"))
+        draft.toggle("_6")
+        draft.choose("_nowhere")
+        XCTAssertNil(draft.choice, "a term not offered is the found term")
+        XCTAssertEqual(draft.terms.map(\.id), ["_fall", ""])
+        XCTAssertEqual(draft.selection, ["_1", "_2", "_9"])
+        XCTAssertNil(draft.savedChoice)
+    }
+
+    /// A saved choice holds while the app finds the same terms; once Blackboard's current term moves on,
+    /// the app's pick is used again.
+    func testASavedTermChoiceHoldsUntilTheCurrentTermChanges() {
+        let listed = [fallTerm, springTerm, oldTerm, noTerm]
+        let choice = TermConfirm.TermChoice(detected: ["_fall"], chosen: "_spring")
+        XCTAssertEqual(TermConfirm.apply(nil, detected: [fallTerm, noTerm], listed: listed).map(\.id), ["_fall", ""])
+        XCTAssertEqual(TermConfirm.apply(choice, detected: [fallTerm, noTerm], listed: listed).map(\.id), ["_spring", ""])
+        let next = term("_next", "Spring 2027", start: SyncLogic.date("2027-02-15T00:00:00.000Z"), courses: ["_8"])
+        XCTAssertEqual(TermConfirm.apply(choice, detected: [next], listed: listed + [next]).map(\.id), ["_next"])
+        XCTAssertEqual(TermConfirm.apply(choice, detected: [fallTerm], listed: [fallTerm]).map(\.id), ["_fall"],
+                       "the chosen term is gone")
+    }
+
+    func testConfirmSavesTheTicksTheTermAndTheSchoolAndKeepsOtherSchools() async throws {
         let store = try newStore()
-        let other = TermConfirm.Card(school: "bb.other.edu", reasons: [.undated], terms: ["T"], courses: [])
-        try await TermConfirm.confirm(other, ticked: [], selected: [], scope: "other", store: store)
-        let card = TermConfirm.Card(school: school, reasons: [.undated], terms: ["T"],
-                                    courses: [.init(id: "_1", name: "A", term: "T"), .init(id: "_2", name: "B", term: "T")])
-        let chosen = try await TermConfirm.confirm(card, ticked: ["_1"], selected: ["_1", "_2"], scope: scope, store: store)
-        XCTAssertEqual(chosen, ["_1"])
+        let other = try XCTUnwrap(TermConfirm.proposal(tenant: URL(string: "https://bb.other.edu")!, detected: [springTerm], listed: []))
+        try await TermConfirm.confirm(TermConfirm.Draft(card: other, selected: ["_7"]), scope: "other", store: store)
+        let card = try XCTUnwrap(TermConfirm.proposal(tenant: tenant, detected: [fallTerm], listed: [fallTerm, oldTerm]))
+        var draft = TermConfirm.Draft(card: card, selected: ["_1", "_2"])
+        draft.choose("_old")
+        draft.toggle("_5")
+        let chosen = try await TermConfirm.confirm(draft, scope: scope, store: store)
+        XCTAssertEqual(chosen.terms.map(\.id), ["_old"])
+        XCTAssertEqual(chosen.selected, ["_6"])
         let reopened = try await newStore().snapshot() // saved on disk
-        XCTAssertEqual(reopened.selected[scope], ["_1"])
+        XCTAssertEqual(reopened.selected[scope], ["_6"])
+        XCTAssertEqual(reopened.terms.map(\.id), ["_old"])
+        XCTAssertEqual(reopened.cachedScope, scope)
+        XCTAssertEqual(reopened.termChoices, [scope: TermConfirm.TermChoice(detected: ["_fall"], chosen: "_old")])
         XCTAssertEqual(reopened.confirmedSchools, ["bb.other.edu", school])
     }
 
     // MARK: The app
 
-    /// The whole flow on the app: the card instead of a download; Not now saves nothing and the next sync
-    /// asks again; Confirm saves the ticks, syncs only the ticked course, and is asked once.
-    func testNothingIsDownloadedBeforeConfirmAndConfirmIsAskedOnce() async throws {
+    private func newModel() async -> AppModel {
         let model = AppModel()
         let documents = root.appendingPathComponent("Documents"), support = root.appendingPathComponent("Support")
         model.libraryFolders = { (documents, support) }
         model.loadSession = { nil }
         await model.start(restoreSession: false)
+        return model
+    }
+
+    /// The first run's last step at the sample school: the card opens as soon as the courses are found,
+    /// before any course page is read; Sync now keeps it; Confirm and start saves the switched term and
+    /// ticks, then syncs only the ticked course; finding the courses again keeps the term and asks no more.
+    func testTheCardOpensRightAfterSignInAndNothingDownloadsBeforeConfirm() async throws {
+        let model = await newModel()
+        var requested: [String] = []
+        model.install(tenant: SampleSchool.tenant, cookies: [], pageLoader: { path in
+            requested.append(path)
+            return try await SampleSchool.answer(path)
+        })
+        model.refreshCourses() // what the first sign-in runs once the school's page closes
+        await waitUntil { !model.busy }
+        var draft = try XCTUnwrap(model.termConfirm, "the card opens right after sign-in")
+        XCTAssertEqual(draft.termName, "Fall 2026")
+        XCTAssertEqual(draft.card.reasons, [])
+        XCTAssertEqual(draft.courses.map(\.name), ["CSE303 Algorithm Analysis", "CSE301 Database Management",
+                                                   "COE305 Software Project Management"])
+        XCTAssertEqual(draft.selection.count, 3, "every course ticked")
+        XCTAssertEqual(draft.card.others.map(\.name), ["Spring 2026"])
+        XCTAssertEqual(model.status, TermConfirm.waiting)
+        func readCourses() -> [String] { requested.filter { $0.contains("/contents") } }
+        XCTAssertEqual(readCourses(), [], "no course page is read before Confirm")
+
+        model.syncNow()
+        await waitUntil { !model.busy }
+        XCTAssertNotNil(model.termConfirm, "Sync now keeps asking")
+        XCTAssertEqual(readCourses(), [])
+        XCTAssertNil(model.library.lastSync)
+
+        model.chooseFirstTerm("_spring")
+        model.toggleFirstCourse("_202_1")
+        draft = try XCTUnwrap(model.termConfirm)
+        XCTAssertEqual(draft.selection, ["_201_1"])
+        model.confirmFirstCourses()
+        XCTAssertNil(model.termConfirm)
+        await waitUntil { !model.busy }
+        XCTAssertEqual(model.status, "Up to date")
+        XCTAssertEqual(model.terms.map(\.id), ["_spring"])
+        XCTAssertEqual(model.selected, ["_201_1"])
+        XCTAssertFalse(readCourses().isEmpty)
+        XCTAssertTrue(readCourses().allSatisfy { $0.removingPercentEncoding?.contains("/courses/_201_1/") == true },
+                      "only the ticked course is read: \(readCourses())")
+        let library = try await newStore().snapshot()
+        XCTAssertEqual(library.confirmedSchools, [school])
+        XCTAssertEqual(library.selected[model.scope], ["_201_1"])
+        XCTAssertEqual(library.termChoices?[model.scope]?.chosen, "_spring")
+
+        model.refreshCourses()
+        await waitUntil { !model.busy }
+        XCTAssertNil(model.termConfirm, "asked once")
+        XCTAssertEqual(model.terms.map(\.id), ["_spring"], "the chosen term is kept")
+        XCTAssertEqual(model.selected, ["_201_1"])
+    }
+
+    /// A sync from the courses saved at the last launch (Sync on app open before any discovery) also
+    /// waits for the card.
+    func testASyncWithoutDiscoveryAlsoWaits() async throws {
+        let model = await newModel()
         var requested: [String] = []
         model.install(tenant: tenant, cookies: [], pageLoader: { path in
             requested.append(path)
@@ -222,45 +352,30 @@ final class TermConfirmTests: XCTestCase {
         })
         model.hasSession = true
         let algorithms = Course(id: "_1_1", name: "CSE303 Algorithm Analysis", termID: "_u", created: nil)
-        let algebra = Course(id: "_2_1", name: "MTH201 Linear Algebra", termID: "_u", created: nil)
-        model.terms = [Term(id: "_u", name: "2026-2027 Güz", start: nil, end: nil, courses: [algorithms, algebra])]
-        model.selected = ["_1_1", "_2_1"]
-
+        model.terms = [Term(id: "_u", name: "2026-2027 Güz", start: nil, end: nil, courses: [algorithms])]
+        model.selected = ["_1_1"]
         model.syncNow()
         await waitUntil { !model.busy }
-        let card = try XCTUnwrap(model.termConfirm)
-        XCTAssertEqual(card.reasons, [.undated])
-        XCTAssertEqual(TermConfirm.initialTicks(card, selected: model.selected), ["_1_1", "_2_1"], "every course ticked")
-        XCTAssertEqual(model.status, TermConfirm.waiting)
+        XCTAssertEqual(model.termConfirm?.card.reasons, [.undated])
         XCTAssertEqual(requested, [], "nothing is read or downloaded before Confirm")
-        XCTAssertNil(model.library.lastSync)
-
-        model.notNowFirstCourses()
-        XCTAssertNil(model.termConfirm)
-        var library = try await newStore().snapshot()
-        XCTAssertNil(library.confirmedSchools, "Not now saves nothing")
-        XCTAssertNil(library.syncedSchools)
-        model.syncNow()
+        model.confirmFirstCourses()
         await waitUntil { !model.busy }
-        XCTAssertNotNil(model.termConfirm, "the next sync asks again")
-        XCTAssertEqual(requested, [])
-
-        model.confirmFirstCourses(ticked: ["_1_1"])
-        XCTAssertNil(model.termConfirm)
-        await waitUntil { !model.busy }
-        XCTAssertEqual(model.selected, ["_1_1"])
         XCTAssertEqual(model.status, "Up to date")
         XCTAssertFalse(requested.isEmpty)
-        XCTAssertTrue(requested.allSatisfy { $0.removingPercentEncoding?.contains("/courses/_1_1/") == true }, "only the ticked course is read: \(requested)")
-        library = try await newStore().snapshot()
-        XCTAssertEqual(library.confirmedSchools, [school])
-        XCTAssertEqual(library.selected[model.scope], ["_1_1"])
+    }
 
-        requested = []
-        model.syncNow()
+    /// A school with state (an existing user's library) never sees the card, at sign-in or on sync.
+    func testAnExistingLibraryIsNeverAsked() async throws {
+        let store = try newStore()
+        try await store.useSchool(SampleSchool.tenant)
+        try await store.begin()
+        try await store.finish(success: true)
+        let model = await newModel()
+        model.install(tenant: SampleSchool.tenant, cookies: [], pageLoader: SampleSchool.answer)
+        model.refreshCourses()
         await waitUntil { !model.busy }
-        XCTAssertNil(model.termConfirm, "asked once")
-        XCTAssertFalse(requested.isEmpty)
+        XCTAssertNil(model.termConfirm)
+        XCTAssertEqual(model.status, "Ready to sync")
     }
 
     private func waitUntil(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async {

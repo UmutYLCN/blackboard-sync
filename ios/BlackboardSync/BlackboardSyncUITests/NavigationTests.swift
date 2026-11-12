@@ -306,6 +306,95 @@ final class NavigationTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
+    /// The first run's last step (`--ui-testing-sample-school`, a school answered from memory): Sign in
+    /// to Blackboard leads to the card with the term and courses found, under the top bar, before anything
+    /// downloads. Unticking and Change term update it; Confirm and start syncs, and Courses keeps the ticks.
+    @MainActor
+    func testFirstRunEndsWithTheCardBeforeTheFirstDownload() throws {
+        let app = launchSampleSchool("en", .landscapeLeft)
+        let card = app.descendants(matching: .any)["termConfirm.card"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 20), "the card opens right after sign-in")
+        XCTAssertFalse(app.descendants(matching: .any)["firstRun.page"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["Check your courses before the first download"].exists)
+        XCTAssertTrue(app.staticTexts["Blackboard Sync found your current term and its courses. Untick any course you do not want, or change the term, then tap Confirm and start. Nothing is downloaded until you do."].exists)
+        XCTAssertEqual(app.staticTexts["termConfirm.term"].label, "Fall 2026")
+        XCTAssertEqual(app.staticTexts["termConfirm.count"].label, "3 of 3 courses selected")
+        XCTAssertTrue(app.buttons["toolbar.settings"].exists, "the top bar stays")
+        XCTAssertTrue(app.buttons["termConfirm.confirm"].isEnabled)
+        XCTAssertFalse(app.staticTexts["Up to date"].exists, "nothing synced yet")
+        sleep(1)
+        capture("TermConfirm-landscape-en")
+        XCUIDevice.shared.orientation = .portrait
+        expectation(for: NSPredicate(format: "isHittable == true"), evaluatedWith: app.buttons["termConfirm.confirm"])
+        waitForExpectations(timeout: 10)
+        capture("TermConfirm-portrait-en")
+
+        let project = app.descendants(matching: .any)["termConfirm.course._103_1"].firstMatch
+        project.tap()
+        XCTAssertTrue(waitFor(app.staticTexts["termConfirm.count"], label: "2 of 3 courses selected"))
+        app.buttons["termConfirm.change"].tap()
+        app.buttons["Spring 2026 · 2 courses"].tap()
+        XCTAssertTrue(waitFor(app.staticTexts["termConfirm.term"], label: "Spring 2026"))
+        XCTAssertEqual(app.staticTexts["termConfirm.count"].label, "2 of 2 courses selected")
+        XCTAssertTrue(app.descendants(matching: .any)["termConfirm.course._201_1"].firstMatch.exists)
+        capture("TermConfirm-changed-term-portrait-en")
+        app.buttons["termConfirm.change"].tap()
+        app.buttons["Fall 2026"].tap()
+        XCTAssertTrue(waitFor(app.staticTexts["termConfirm.term"], label: "Fall 2026"))
+        XCTAssertEqual(app.staticTexts["termConfirm.count"].label, "3 of 3 courses selected")
+        project.tap()
+        XCTAssertTrue(waitFor(app.staticTexts["termConfirm.count"], label: "2 of 3 courses selected"))
+
+        XCUIDevice.shared.orientation = .landscapeLeft
+        app.buttons["termConfirm.confirm"].tap()
+        XCTAssertTrue(card.waitForNonExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Up to date"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["2/3"].exists, "Courses shows the ticks kept")
+        capture("TermConfirm-confirmed-landscape-en")
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    /// The same card in Turkish, with Turkish counts.
+    @MainActor
+    func testTheCardBeforeTheFirstDownloadInTurkish() throws {
+        let app = launchSampleSchool("tr", .portrait)
+        XCTAssertTrue(app.descendants(matching: .any)["termConfirm.card"].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["İlk indirmeden önce derslerinizi kontrol edin"].exists)
+        XCTAssertEqual(app.staticTexts["termConfirm.count"].label, "3 dersin 3 tanesi seçili")
+        XCTAssertEqual(app.buttons["termConfirm.confirm"].label, "Onayla ve başlat")
+        XCTAssertEqual(app.buttons["termConfirm.change"].label, "Dönemi değiştir")
+        sleep(1)
+        capture("TermConfirm-portrait-tr")
+        app.buttons["termConfirm.change"].tap()
+        XCTAssertTrue(app.buttons["Spring 2026 · 2 ders"].waitForExistence(timeout: 5))
+        capture("TermConfirm-menu-portrait-tr")
+        app.buttons["Spring 2026 · 2 ders"].tap()
+        XCTAssertTrue(waitFor(app.staticTexts["termConfirm.count"], label: "2 dersin 2 tanesi seçili"))
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(1)
+        capture("TermConfirm-landscape-tr")
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    /// A fresh install at the first run, whose Sign in to Blackboard signs in to the sample school.
+    @MainActor private func launchSampleSchool(_ language: String, _ orientation: UIDeviceOrientation) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-testing-sample-school", "-firstRunPending", "YES", "-language", language]
+        XCUIDevice.shared.orientation = orientation
+        app.launch()
+        let signIn = app.buttons["firstRun.signIn"]
+        XCTAssertTrue(signIn.waitForExistence(timeout: 20))
+        signIn.tap()
+        return app
+    }
+
+    @MainActor private func waitFor(_ element: XCUIElement, label: String) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", label), object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: 5) == .completed
+    }
+
     /// The top bar (board pick T1) on every page, pushed folder pages included: the title and three
     /// equal 44 pt targets on one centre line, the targets touching, the last circle 24 pt from the edge.
     @MainActor
