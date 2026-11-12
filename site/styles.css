@@ -576,9 +576,14 @@ p {
   margin-bottom: 8px;
 }
 
-.legal ul {
+.legal ul,.legal ol {
   padding-left: 20px;
   margin: 0;
+}
+
+.legal h3 {
+  font-size: 17px;
+  margin: 26px 0 8px;
 }
 
 .legal strong {
