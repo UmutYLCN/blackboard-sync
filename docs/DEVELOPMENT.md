@@ -536,11 +536,13 @@ and syncs. **Not now** (or closing the window) saves nothing, so the next sync a
 again. A school that already has state (every existing user, such as the first
 school with its files) never sees the card, and neither does the terminal's `sync`.
 The logic is in `src/blackboard_sync/term_confirm.py`, tested in
-`tests/test_term_confirm.py`. The iPad app has the same card (`Core/TermConfirm.swift`, a
-twin of `term_confirm.py`, tested in `BlackboardSyncTests/TermConfirmTests.swift` with the
-same 28 setups): Sync now shows it instead of downloading, its ticks are the selection of
-**Courses**, and the library (`library-v1.json`) records the confirmed schools and the
-schools a sync has run at. See `ios/BlackboardSync/README.md`.
+`tests/test_term_confirm.py`. The iPad app has its own version of the card (`Core/TermConfirm.swift`, which keeps
+`term_confirm.py`'s reasons and school state, tested in `BlackboardSyncTests/TermConfirmTests.swift`
+with the same 28 setups). On the iPad it asks at every new school, whether or not the term is clear:
+right after the first sign-in there it takes Home and Courses until **Confirm and start**. It lets the
+student untick courses or switch to another term Blackboard lists. Its ticks are the selection of
+**Courses**, and the library (`library-v1.json`) records the confirmed schools, a switched term per
+account and the schools a sync has run at. See `ios/BlackboardSync/README.md`.
 
 **One term, one folder.** Term folders keep the school's own term names as
 written (`2026-2027 Fall` stays `Fall`; nothing is renamed to Turkish).

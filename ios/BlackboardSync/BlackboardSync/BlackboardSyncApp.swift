@@ -19,6 +19,11 @@ struct BlackboardSyncApp: App {
                     guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
                     #if DEBUG
                     let restoreSession = !ProcessInfo.processInfo.arguments.contains("--ui-testing")
+                    if ProcessInfo.processInfo.arguments.contains("--ui-testing-sample-school") {
+                        // A fresh library each run, so the sample school is always new to it.
+                        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                        model.libraryFolders = { (folder.appendingPathComponent("Documents"), folder.appendingPathComponent("Support")) }
+                    }
                     #else
                     let restoreSession = true
                     #endif

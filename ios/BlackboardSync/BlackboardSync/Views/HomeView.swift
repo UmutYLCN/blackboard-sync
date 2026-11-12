@@ -4,20 +4,26 @@ import BlackboardSyncFeatures
 
 /// Home (board pick H1, "Status first"): the sync status as a wide strip with its one button on top,
 /// the next due dates and the newest announcements side by side under it, then the last downloaded
-/// files as a list. Before the first sign-in the welcome card takes the strip's place.
+/// files as a list. Before the first sign-in the welcome card takes the strip's place; before the first
+/// download at a new school the card with the term and courses found takes the whole page.
 struct HomeView: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.m) {
                 // The line under the greeting, as on the Mac: the next due dates.
-                if let deadlines = model.features?.deadlines { HomeSubtitle(page: deadlines) }
-                if welcome { WelcomeCard() }
-                if let status = HomeStatus.make(model) { HomeStatusStrip(status: status) }
-                // Signed out there is nothing to show in them but "sign in first".
-                if !welcome || model.features != nil { HomeFeatureCards() }
-                // A student who signed out keeps the files; before any download the list is not shown.
-                if !welcome || !model.library.records.isEmpty { HomeRecentDownloads() }
+                if let draft = model.termConfirm {
+                    // The first run's last step: nothing more is shown until the first download is confirmed.
+                    FirstDownloadCard(draft: draft)
+                } else {
+                    if let deadlines = model.features?.deadlines { HomeSubtitle(page: deadlines) }
+                    if welcome { WelcomeCard() }
+                    if let status = HomeStatus.make(model) { HomeStatusStrip(status: status) }
+                    // Signed out there is nothing to show in them but "sign in first".
+                    if !welcome || model.features != nil { HomeFeatureCards() }
+                    // A student who signed out keeps the files; before any download the list is not shown.
+                    if !welcome || !model.library.records.isEmpty { HomeRecentDownloads() }
+                }
             }.padding(Spacing.page).frame(maxWidth: 1150)
                 .frame(maxWidth: .infinity)
         }.background(Color(uiColor: .systemGroupedBackground))

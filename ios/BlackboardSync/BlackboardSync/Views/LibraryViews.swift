@@ -12,6 +12,10 @@ struct CoursesView: View {
                 // Signed out with nothing downloaded: the welcome card (F2) instead of an empty list.
                 ScrollView { WelcomeCard().padding(Spacing.page) }
                     .background(Color(uiColor: .systemGroupedBackground))
+            } else if inMainWindow, let draft = model.termConfirm {
+                // Before the first download at a new school the card holds the ticks, so the list waits.
+                ScrollView { FirstDownloadCard(draft: draft).padding(Spacing.page).frame(maxWidth: 1150).frame(maxWidth: .infinity) }
+                    .background(Color(uiColor: .systemGroupedBackground))
             } else {
                 courseList
             }
@@ -53,43 +57,102 @@ struct CoursesView: View {
     }
 }
 
-/// The card before the first download at a school whose current term is not clear (`TermConfirm`): the
-/// terms and courses found, ticked as in Courses. Confirm saves the ticks and syncs; Not now, or closing
-/// the card, saves nothing.
-struct FirstCoursesCard: View {
+/// The card before the first download at a new school (`TermConfirm`), the first run's last step: the
+/// term found and its courses, ticked as in Courses. Change term switches to another term Blackboard
+/// lists; Confirm and start saves the ticks and syncs. Home and Courses show it full width in place of
+/// their content until then, under the top bar.
+struct FirstDownloadCard: View {
     @EnvironmentObject var model: AppModel
-    let card: TermConfirm.Card
-    @State private var ticked: Set<String>
-
-    init(card: TermConfirm.Card, selected: Set<String>) {
-        self.card = card
-        _ticked = State(initialValue: TermConfirm.initialTicks(card, selected: selected))
-    }
+    let draft: TermConfirm.Draft
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    Text(model.text(TermConfirm.title)).font(.title3.weight(.semibold))
-                    Text(TermConfirm.message(card, language: model.language)).font(.callout).foregroundStyle(.secondary)
+        Card {
+            HStack(alignment: .top, spacing: Spacing.m) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: Radius.control).fill(AppColor.accentSoft)
+                    Image(systemName: AppIcon.courses).font(.system(size: 24, weight: .semibold)).foregroundStyle(AppColor.accentText)
                 }
-                Section {
-                    ForEach(TermConfirm.rows(card)) { row in
-                        Toggle(row.label, isOn: Binding(get: { ticked.contains(row.id) },
-                                                        set: { if $0 { ticked.insert(row.id) } else { ticked.remove(row.id) } }))
-                            .toggleStyle(.checkboxStyle).padding(.vertical, 4)
-                    }
+                .frame(width: 56, height: 56)
+                .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Spacing.xxs) {
+                    Text(model.text(TermConfirm.title)).font(.title).accessibilityAddTraits(.isHeader)
+                    Text(TermConfirm.message(draft.card, language: model.language)).font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(model.text(TermConfirm.notNow)) { model.notNowFirstCourses() }
+            Divider()
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Spacing.m) { term; Spacer(minLength: Spacing.xs); changeTerm }
+                VStack(alignment: .leading, spacing: Spacing.s) { term; changeTerm }
+            }
+            VStack(spacing: 0) {
+                ForEach(draft.rows) { row in
+                    Toggle(row.label, isOn: Binding(get: { draft.ticked.contains(row.id) }, set: { _ in model.toggleFirstCourse(row.id) }))
+                        .toggleStyle(.checkboxStyle).padding(.vertical, Spacing.s)
+                        .accessibilityIdentifier("termConfirm.course." + row.id)
+                    if row.id != draft.rows.last?.id { Divider() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(model.text(TermConfirm.confirmLabel)) { model.confirmFirstCourses(ticked: ticked) }
-                }
+            }
+            .padding(.horizontal, Spacing.m)
+            .background(Color(uiColor: .systemGroupedBackground), in: RoundedRectangle(cornerRadius: Radius.control))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Spacing.m) { summary; Spacer(minLength: Spacing.xs); confirm }
+                VStack(alignment: .leading, spacing: Spacing.s) { summary; confirm }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("termConfirm.card")
+    }
+
+    private var term: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(model.text(TermConfirm.termLabel)).font(.caption).foregroundStyle(.secondary)
+            Text(draft.termName).font(.headline)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("termConfirm.term")
+    }
+
+    /// Another term Blackboard lists; nothing to offer when it lists only the one found.
+    @ViewBuilder private var changeTerm: some View {
+        if !draft.card.others.isEmpty {
+            Menu {
+                Picker(model.text(TermConfirm.changeTerm), selection: Binding(get: { draft.choice ?? "" },
+                                                                            set: { model.chooseFirstTerm($0.isEmpty ? nil : $0) })) {
+                    Section(model.text(TermConfirm.detectedLabel)) {
+                        Text(TermConfirm.Draft(card: draft.card, selected: []).termName).tag("")
+                    }
+                    Section(model.text(TermConfirm.otherTerms)) {
+                        ForEach(draft.card.others) { term in
+                            Text(TermConfirm.optionLabel(term, language: model.language)).tag(term.id)
+                        }
+                    }
+                }
+            } label: {
+                Label(model.text(TermConfirm.changeTerm), systemImage: "arrow.left.arrow.right")
+            }
+            .menuStyle(.button)
+            .buttonStyle(.appSecondary)
+            .disabled(model.busy)
+            .accessibilityIdentifier("termConfirm.change")
+        }
+    }
+
+    private var summary: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(TermConfirm.selectedLine(draft, language: model.language)).font(.callout.weight(.semibold))
+                .accessibilityIdentifier("termConfirm.count")
+            if !draft.canConfirm {
+                Text(model.text(TermConfirm.tickOne)).font(.callout).foregroundStyle(AppColor.warning)
+            }
+        }
+    }
+
+    private var confirm: some View {
+        Button { model.confirmFirstCourses() } label: { Text(model.text(TermConfirm.confirmLabel)) }
+            .buttonStyle(.appPrimaryLarge)
+            .disabled(!draft.canConfirm || model.busy)
+            .accessibilityIdentifier("termConfirm.confirm")
     }
 }
 

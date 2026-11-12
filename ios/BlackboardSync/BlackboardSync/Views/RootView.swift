@@ -29,7 +29,6 @@ struct RootView: View {
             if model.loginAfterSettings { model.loginAfterSettings = false; model.signIn() }
         }) { SettingsView().environmentObject(model) }
         .sheet(isPresented: $model.showingLogin) { SignInView().environmentObject(model) }
-        .sheet(item: $model.termConfirm) { card in FirstCoursesCard(card: card, selected: model.selected).environmentObject(model) }
         .signOutConfirmation(isPresented: $model.confirmingSignOut)
     }
 
@@ -92,6 +91,10 @@ struct RootView: View {
         .onGeometryChange(for: Bool.self) { $0.size.height > $0.size.width } action: { tall in
             portrait = tall
             if !tall { columns = .all }
+        }
+        // The card before the first download opens on Home (also when Sync now was tapped elsewhere).
+        .onChange(of: model.termConfirm?.id) { _, card in
+            if card != nil, page != .courses { page = .home }
         }
     }
     /// "4/5" beside Courses while some course is unticked, as on the Mac; nothing otherwise.
