@@ -47,6 +47,15 @@ DEST = Path("/Users/student/Documents")
 FINISHED = NOW - timedelta(minutes=20)
 
 
+@pytest.fixture(autouse=True)
+def macos_self_updater(monkeypatch):
+    """The self-updater is macOS only; these tests cover its macOS behavior on any host OS."""
+    from blackboard_sync import updater
+    from blackboard_sync.windows import package
+    monkeypatch.setattr(updater, "enabled", lambda: not package.is_packaged())
+
+
+
 @pytest.mark.parametrize("first_run", [True, False])
 def test_home_update_banner_tracks_release_checks_and_downloads(first_run):
     model = AppModel(DEST, NOW, configured=not first_run)

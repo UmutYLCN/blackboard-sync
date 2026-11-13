@@ -22,6 +22,14 @@ from blackboard_sync.updater import CheckResult, Release, UpdateError
 
 from .conftest import FakeResponse
 
+
+@pytest.fixture(autouse=True)
+def macos_self_updater(monkeypatch):
+    """The self-updater is macOS only; these tests cover its macOS behavior on any host OS."""
+    from blackboard_sync import updater
+    from blackboard_sync.windows import package
+    monkeypatch.setattr(updater, "enabled", lambda: not package.is_packaged())
+
 NOW = datetime(2026, 10, 4, 12, 0, tzinfo=timezone.utc)
 DOWNLOAD = "https://github.com/UmutYLCN/blackboard-sync/releases/download/v1.1.0/"
 DMG = b"fake disk image" * 100
