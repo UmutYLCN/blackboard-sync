@@ -9,7 +9,7 @@
   <link rel="alternate" hreflang="tr" href="https://blackboardsyncapp.com/tr/privacy">
   <link rel="alternate" hreflang="x-default" href="https://blackboardsyncapp.com/privacy">
   <title>Privacy Policy — Blackboard Sync</title>
-  <meta name="description" content="What Blackboard Sync stores on your computer, what it sends over the internet, and how to delete your data, for the macOS app, the Windows Setup build and the Microsoft Store build.">
+  <meta name="description" content="What the Blackboard Sync apps store on your device, what they send over the internet, and how to delete your data, for the macOS app, the Windows apps and the iPad app (including its sign-in account).">
   <link rel="icon" href="/assets/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -30,27 +30,30 @@
   <main id="content" class="legal wrap">
     <p class="eyebrow">Privacy</p>
     <h1>Privacy Policy</h1>
-    <p class="legal-updated">Last updated: <time datetime="2026-11-11">11 November 2026</time></p>
+    <p class="legal-updated">Last updated: <time datetime="2026-11-13">13 November 2026</time></p>
 
-    <p class="legal-lead">Blackboard Sync is a free app for macOS and Windows, with its source code publicly visible on GitHub, that downloads your course content from Blackboard Learn to your own computer. This page explains what the app stores on your computer, what it sends over the internet, and how you can delete it. The app’s source code is public on <a href="https://github.com/UmutYLCN/blackboard-sync">GitHub</a>, and every statement here is based on that code.</p>
+    <p class="legal-lead">Blackboard Sync downloads your course content from Blackboard Learn to your own device. It comes as a free app for macOS and Windows, with its source code publicly visible on <a href="https://github.com/UmutYLCN/blackboard-sync">GitHub</a>, and as an iPad app on the App Store. This page covers all of them: what each app stores on your device, what it sends over the internet, and how you can delete it. The macOS and Windows apps need no account. The iPad app needs a small sign-in account (Sign in with Apple or Google), which is described in <a href="#ipad">The iPad app</a>. The statements about the macOS and Windows apps are based on their public source code.</p>
 
     <section aria-labelledby="builds">
       <h2 id="builds">Which version you have</h2>
-      <p>Blackboard Sync comes in three builds. Most of this page applies to all of them; where a statement applies to only some, it says so.</p>
+      <p>Blackboard Sync comes in four builds. Where a statement applies to only some of them, it says so. Unless a section says otherwise, “the app” in the sections below means the macOS and Windows apps; everything specific to the iPad app is in <a href="#ipad">The iPad app</a>.</p>
       <ul>
         <li><strong>macOS</strong>: the app downloaded as a <code>.dmg</code> from GitHub or this website.</li>
         <li><strong>Windows Setup</strong>: an older Windows app installed with <code>Blackboard-Sync-…-Setup.exe</code>. It is no longer distributed or updated; install the Microsoft Store build instead.</li>
         <li><strong>Microsoft Store</strong>: the Windows app installed from the Microsoft Store (an MSIX package). See <a href="#store">Microsoft Store build</a> for how it differs.</li>
+        <li><strong>iPad</strong>: the app installed from the App Store, free to download, with its features unlocked by the “Blackboard Sync Pro” subscription. See <a href="#ipad">The iPad app</a>.</li>
       </ul>
     </section>
 
     <section aria-labelledby="summary">
       <h2 id="summary">In short</h2>
       <ul>
-        <li>The app never sees or stores your password.</li>
-        <li>Your sign-in session, settings and download records stay on your computer.</li>
-        <li>It connects to your school’s Blackboard address (and its sign-in and file redirects), and to Google if you enable optional Google Calendar sync or connect optional NotebookLM on a Mac or Windows PC. The macOS build also contacts GitHub to check for updates; the Windows builds do not (the Microsoft Store delivers Windows updates).</li>
-        <li>No analytics, ads or usage tracking (telemetry), and no account to create.</li>
+        <li>None of the apps sees or stores your school password.</li>
+        <li>The macOS and Windows apps need no account. The iPad app needs an account that you create by signing in with Apple or Google; it is stored by our sign-in provider, Supabase, and holds only your email address, your name (if Apple or Google shares it) and the provider’s user ID.</li>
+        <li>Your Blackboard sign-in session, settings, course files and download records stay on your device. On iPad, course data goes straight from your school’s Blackboard to your iPad and never to us.</li>
+        <li>The macOS and Windows apps connect to your school’s Blackboard address (and its sign-in and file redirects), and to Google if you enable optional Google Calendar sync or connect optional NotebookLM on a Mac or Windows PC. The macOS build also contacts GitHub to check for updates; the Windows builds do not (the Microsoft Store delivers Windows updates).</li>
+        <li>No analytics, ads or usage tracking (telemetry) in any of the apps.</li>
+        <li>You can delete the iPad account inside the app (Settings › Account › Delete account). The iPad subscription is billed by Apple, not by us.</li>
         <li>Your data is not sold. If you enable Google Calendar, deadline information is sent to Google at your request. If you connect NotebookLM, your course files are sent to Google at your request.</li>
       </ul>
     </section>
@@ -110,6 +113,48 @@
       <p>Disconnect in the app’s Settings → NotebookLM, or run <code>blackboard-sync notebooklm disconnect</code>, to delete the stored session and browser profile. Notebooks and sources stay in your Google account; delete them in NotebookLM if you wish. Uninstalling the app deletes these local files too. To end the session on Google’s side as well, use <a href="https://myaccount.google.com/device-activity">Google Account → Your devices</a>.</p>
     </section>
 
+    <section aria-labelledby="ipad">
+      <h2 id="ipad">The iPad app</h2>
+      <p>This section covers the Blackboard Sync app for iPad, an app that is free to download on the App Store, with its features unlocked by the “Blackboard Sync Pro” auto-renewable subscription and a free built-in sample-data mode. Unlike the macOS and Windows apps, the iPad app needs an account to use.</p>
+
+      <h3>The account we collect</h3>
+      <ul>
+        <li><strong>How you sign in.</strong> You create and use the account by choosing <strong>Sign in with Apple</strong> or <strong>Sign in with Google</strong>, using the native sign-in sheets of those services. There is no separate password for the account.</li>
+        <li><strong>What is stored.</strong> Your email address, your name (only if Apple or Google shares it with the app) and the sign-in provider’s user ID for you. Nothing else about you is stored in the account.</li>
+        <li><strong>Where.</strong> The account is stored and managed by <a href="https://supabase.com">Supabase</a>, which provides the app’s authentication service and back end.</li>
+        <li><strong>What it is used for.</strong> Only to provide the app’s account and sign-in. It is not used for tracking, advertising or analytics, and it is not sold or shared for advertising.</li>
+        <li><strong>How long.</strong> The account data is kept for as long as your account exists and is deleted when you delete the account (see below).</li>
+      </ul>
+
+      <h3>Who processes this data</h3>
+      <ul>
+        <li><strong>Supabase</strong>, which stores the account as described above. See <a href="https://supabase.com/privacy">Supabase’s privacy policy</a>.</li>
+        <li><strong>Apple</strong>, for Sign in with Apple. It is Apple’s own service and is covered by <a href="https://www.apple.com/legal/privacy/">Apple’s privacy policy</a>. Apple also processes your App Store purchase (see Subscription below).</li>
+        <li><strong>Google</strong>, for Sign in with Google. The app uses Google’s Sign-In SDK for this option, and Google’s handling of your sign-in is covered by <a href="https://policies.google.com/privacy">Google’s privacy policy</a>. The Google sign-in is used only to sign you in to the app.</li>
+      </ul>
+
+      <h3>Your Blackboard, on your iPad</h3>
+      <ul>
+        <li>You sign in to your school’s Blackboard on your school’s own web page inside the app. The app never sees or stores your school password.</li>
+        <li>Your Blackboard session (cookies) is stored on your iPad, in the iOS Keychain and the app’s web data.</li>
+        <li>Course files, announcements and deadlines are fetched directly from your school’s Blackboard to your iPad and are stored only on your iPad. They are not sent to our servers.</li>
+        <li>“Try with sample data” uses data built into the app and sends nothing anywhere.</li>
+      </ul>
+
+      <h3>Subscription</h3>
+      <p>“Blackboard Sync Pro” is purchased and billed by Apple through the App Store. We receive no payment card details, and the app checks your purchase status on your device. Deleting the app account does <strong>not</strong> cancel your subscription: cancel it in your Apple Account settings (Settings → your name → Subscriptions).</p>
+
+      <h3>No analytics, ads or tracking; no extra permissions</h3>
+      <p>The iPad app contains no analytics, advertising or tracking SDKs. It does not access your location, camera, microphone, contacts or photos.</p>
+
+      <h3>Deleting your account and data on iPad</h3>
+      <ul>
+        <li><strong>In the app:</strong> go to <strong>Settings › Account › Delete account</strong>. This deletes your account at Supabase, revokes the Sign in with Apple authorization where it applies, and removes the account’s local files, cache, Blackboard session and settings from your iPad.</li>
+        <li><strong>Uninstalling the app</strong> also removes its local data from your iPad. Uninstalling alone does not delete the account stored at Supabase; delete the account first if you want it removed.</li>
+        <li><strong>Subscription:</strong> deleting the account does not cancel it. Cancel it in your Apple Account settings.</li>
+      </ul>
+    </section>
+
     <section aria-labelledby="network">
       <h2 id="network">What is sent over the internet</h2>
       <p>The app connects to:</p>
@@ -124,13 +169,13 @@
 
     <section aria-labelledby="analytics">
       <h2 id="analytics">No analytics or tracking</h2>
-      <p>The app has no analytics, ads, usage statistics, crash reporting or other telemetry. It sends no data to any server run by its developer, and the developer receives no data about you.</p>
+      <p>None of the apps has analytics, ads, usage statistics, crash reporting or other telemetry. The macOS and Windows apps send no data to any server run by their developer, and the developer receives no data about you from them. The only data the developer’s service holds about an iPad user is the sign-in account described in <a href="#ipad">The iPad app</a>.</p>
       <p>The website uses no tracking scripts, cookies or page-view analytics. When you use the short download links (<code>/mac</code> or <code>/windows</code>), the website counts download clicks per platform and country (along with the referring website’s host) with nothing personal. No IP addresses, full referrer URLs or cookies are stored.</p>
     </section>
 
     <section aria-labelledby="sharing">
       <h2 id="sharing">Sharing with third parties</h2>
-      <p>Your data is not sold or rented. The app contacts your school’s Blackboard server, GitHub for updates in the macOS build, and Google when you opt into Calendar sync or NotebookLM. Deadline information and course files are transferred to Google only to provide those features. These services have their own privacy policies.</p>
+      <p>Your data is not sold or rented. The macOS and Windows apps contact your school’s Blackboard server, GitHub for updates in the macOS build, and Google when you opt into Calendar sync or NotebookLM. Deadline information and course files are transferred to Google only to provide those features. The iPad app contacts your school’s Blackboard server and, for its account, Supabase, Apple (Sign in with Apple, and the App Store for your purchase) and Google (Sign in with Google); iPad course data goes only to your device. These services have their own privacy policies.</p>
     </section>
 
     <section aria-labelledby="delete">
@@ -139,23 +184,24 @@
         <li><strong>Sign out</strong>, in all builds: deletes the session file and all sign-in data (the sign-in browser profile and the sign-in window’s web data). Settings, download records and course files are kept.</li>
         <li><strong>Uninstall app…</strong> (in the settings, under Updates), <strong>macOS and Windows Setup builds</strong>: removes the app, its data folder (session, sign-in data, settings, download records, logs) and the start-at-login entry. If you tick <strong>Also delete the downloaded course files</strong>, the files the app downloaded are moved to the Trash / Recycle Bin too.</li>
         <li><strong>Microsoft Store build</strong>: remove the app in Windows Settings → Apps. Windows removes the package’s data folder with it. Delete the <strong>University</strong> folder yourself if you no longer want the course files.</li>
+        <li><strong>iPad app</strong>: use <strong>Settings › Account › Delete account</strong> in the app to delete your account and the app’s local data; see <a href="#ipad">The iPad app</a>. This does not cancel your App Store subscription.</li>
         <li><strong>By hand</strong>, macOS and Windows Setup builds: remove the app (on macOS move it to the Trash; on Windows use Settings → Apps), then delete the data folder listed above and, if you like, the <strong>University</strong> folder. On macOS you can also delete <code>~/Library/LaunchAgents/io.github.umutylcn.blackboard-sync.menubar.plist</code>.</li>
       </ul>
     </section>
 
     <section aria-labelledby="children">
       <h2 id="children">Children</h2>
-      <p>The app is meant for students using their school’s Blackboard account and is not directed at children. It does not ask anyone for their age or any other personal information.</p>
+      <p>The apps are meant for students using their school’s Blackboard account and are not directed at children. They do not ask anyone for their age. The macOS and Windows apps ask for no personal information, and the iPad app asks only for the sign-in account details described above.</p>
     </section>
 
     <section aria-labelledby="changes">
       <h2 id="changes">Changes to this policy</h2>
-      <p>If the app’s use of data changes, this page is updated and the date above is changed. Earlier versions can be seen in the repository history on GitHub.</p>
+      <p>If the apps’ use of data changes, this page is updated and the date above is changed. Earlier versions can be seen in the repository history on GitHub.</p>
     </section>
 
     <section aria-labelledby="contact">
       <h2 id="contact">Contact</h2>
-      <p>Send questions or requests through <a href="https://github.com/UmutYLCN/blackboard-sync/issues">GitHub Issues</a>.</p>
+      <p>Send questions or requests, including about your iPad account, through <a href="https://github.com/UmutYLCN/blackboard-sync/issues">GitHub Issues</a>. Please leave out passwords and personal details.</p>
     </section>
 
     <p class="legal-note">blackboard-sync is an independent project, not affiliated with Anthology Inc. or Blackboard. “Blackboard” is a trademark of its owner, not of this app.</p>
