@@ -2,13 +2,11 @@
 
 The Windows app can also ship as an MSIX package for the Microsoft Store. The
 Store signs the packages it publishes, so the build needs no code-signing
-certificate. The Inno Setup installer (`scripts/build-windows.ps1`) and the
-GitHub release downloads are unchanged; the MSIX package is a second way to
-ship the same PyInstaller build.
+certificate. The MSIX package is the only way Windows ships: GitHub releases
+carry no Windows installer, and the earlier Inno Setup `.exe` was withdrawn.
 
 It is a full-trust desktop package (`Windows.FullTrustApplication`, capabilities
-`runFullTrust` and `internetClient`): the frozen app runs as it does when
-installed by Setup, but with package identity.
+`runFullTrust` and `internetClient`): the frozen app runs with package identity.
 
 ## Files
 
@@ -149,8 +147,8 @@ The in-app uninstall button is replaced with a note pointing to **Windows
 Settings > Apps**. The uninstall backend (including CLI `uninstall` and
 `--delete-course-files`) returns that guidance before changing any app data,
 startup settings or course files. **Sign out** still clears the session
-normally. The unpackaged Setup build retains its updater and Inno uninstaller;
-macOS behavior is unchanged.
+normally. An older unpackaged Setup build keeps its Inno uninstaller but no longer
+checks for updates; macOS behavior is unchanged.
 
 ## Notifications and activation
 

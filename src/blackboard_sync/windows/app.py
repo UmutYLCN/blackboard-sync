@@ -506,39 +506,7 @@ class TrayApp:
         if release is None:
             self.start_update_check()
             return
-        if self.model.updates.busy is not None:
-            return
-        if not runtime.is_frozen():
-            webbrowser.open(release.page_url)
-            return
-        if self.model.busy is not None:
-            self.model.note = tr("Wait for the running job to finish before updating.")
-            self.refresh()
-            return
-        if not self.model.updates.begin("download"):
-            return
-        self.refresh()
-        threading.Thread(target=self.update_install_worker, args=(release,), daemon=True).start()
-
-    def update_install_worker(self, release):
-        error = ""
-        try:
-            updater.install_windows_update(release)
-        except updater.UpdateError as exc:
-            error = str(exc)
-        except Exception:
-            log.exception("Update installation failed")
-            error = tr("Could not install the update; try again later.")
-        self.post(self.update_installed, error)
-
-    def update_installed(self, error):
-        self.post_notifications(self.model.updates.finish_download(error))
-        self.save()
-        if error:
-            self.refresh()
-        else:
-            # The installer has started; release the app and its lifetime lock.
-            self.dispatch("quit")
+        webbrowser.open(release.page_url)
 
     def notification_clicked(self, data):
         if data.get("action") in UPDATE_ACTIONS:

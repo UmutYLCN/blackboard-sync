@@ -39,7 +39,7 @@
       <p>Blackboard Sync üç farklı paket olarak sunulur. Bu sayfanın büyük bölümü hepsi için geçerlidir; yalnızca belirli paketler için geçerli olan açıklamalarda bu ayrıca belirtilir.</p>
       <ul>
         <li><strong>macOS</strong>: GitHub’dan veya bu web sitesinden <code>.dmg</code> olarak indirilen uygulama.</li>
-        <li><strong>Windows Setup</strong>: GitHub’dan veya bu web sitesinden indirilen <code>Blackboard-Sync-…-Setup.exe</code> ile kurulan uygulama.</li>
+        <li><strong>Windows Setup</strong>: <code>Blackboard-Sync-…-Setup.exe</code> ile kurulan eski Windows uygulaması. Artık dağıtılmıyor ve güncellenmiyor; bunun yerine Microsoft Store paketini kurun.</li>
         <li><strong>Microsoft Store</strong>: Microsoft Store’dan kurulan Windows uygulaması (MSIX paketi). Farklar için <a href="#store">Microsoft Store sürümü</a> bölümüne bakın.</li>
       </ul>
     </section>
@@ -49,7 +49,7 @@
       <ul>
         <li>Uygulama şifrenizi hiçbir zaman görmez veya saklamaz.</li>
         <li>Giriş oturumunuz, ayarlarınız ve indirme kayıtlarınız bilgisayarınızda kalır.</li>
-        <li>Okulunuzun Blackboard adresine ve bu adresin giriş ve dosya yönlendirmelerine bağlanır. İsteğe bağlı Google Takvim eşitlemesini açarsanız veya Mac ya da Windows bilgisayarda isteğe bağlı NotebookLM’i bağlarsanız Google’a da bağlanır. macOS ve Windows Setup paketleri güncellemeleri kontrol etmek için GitHub’a bağlanır; Microsoft Store paketi bağlanmaz.</li>
+        <li>Okulunuzun Blackboard adresine ve bu adresin giriş ve dosya yönlendirmelerine bağlanır. İsteğe bağlı Google Takvim eşitlemesini açarsanız veya Mac ya da Windows bilgisayarda isteğe bağlı NotebookLM’i bağlarsanız Google’a da bağlanır. macOS paketi güncellemeleri kontrol etmek için GitHub’a bağlanır; Windows paketleri bağlanmaz (Windows güncellemelerini Microsoft Store getirir).</li>
         <li>Analiz, reklam, kullanım takibi (telemetri) veya oluşturmanız gereken ayrı bir hesap yoktur.</li>
         <li>Verileriniz satılmaz. Google Takvim’i etkinleştirirseniz teslim tarihi bilgileri, NotebookLM’i bağlarsanız ders dosyalarınız isteğiniz üzerine Google’a gönderilir.</li>
       </ul>
@@ -117,7 +117,7 @@
         <li>Tüm paketlerde <strong>okulunuzun Blackboard adresi</strong> (ayarlara yazdığınız adres). Ders listesi, ders içerikleri, duyurular ve dosyalar kayıtlı oturum çerezlerinizle bu adresten istenir. Blackboard bir dosya indirmesini kendi dosya depolama adresine yönlendirirse dosya o adresten indirilir. Giriş sırasında okulunuzun giriş sayfası sizi okulunuzun tek oturum açma sağlayıcısına yönlendirebilir.</li>
         <li><strong>Google</strong> (<code>accounts.google.com</code>, <code>oauth2.googleapis.com</code> ve <code>www.googleapis.com</code>), yalnızca isteğe bağlı Takvim eşitlemesine bağlandığınızda: yukarıda açıklanan izin, belirteç yenileme/iptal ve Blackboard Deadlines takvimini yönetme işlemleri için. Her web hizmetinde olduğu gibi Google IP adresinizi görür.</li>
         <li><strong>Google</strong> (<code>notebook.google.com</code> ve <code>accounts.google.com</code>), yalnızca Mac ya da Windows bilgisayarda isteğe bağlı NotebookLM’i bağladığınızda: yukarıda açıklanan şekilde ders dosyalarını yüklemek ve oturumu yenilemek için. Dosyalar Google’ın sunucularına yüklenir.</li>
-        <li>Yalnızca <strong>macOS ve Windows Setup paketlerinde GitHub</strong> (<code>api.github.com</code> ve <code>github.com</code>): yeni sürüm olup olmadığını öğrenmek ve güncellemeyi indirmek için. Otomatik kontrol günde bir kez çalışır ve ayarlardaki <strong>Güncellemeleri otomatik kontrol et</strong> seçeneğiyle kapatılabilir. İstek, uygulamanın sürüm numarasını içerir; her web isteğinde olduğu gibi GitHub IP adresinizi görür. Güncellemeler GitHub’ın dosya sunucularından indirilir; kurulmadan önce boyutları ve sürümle birlikte yayımlanan SHA-256 özetleri kontrol edilir. Microsoft Store paketi bu istekleri yapmaz.</li>
+        <li>Yalnızca <strong>macOS paketinde GitHub</strong> (<code>api.github.com</code> ve <code>github.com</code>): yeni sürüm olup olmadığını öğrenmek ve güncellemeyi indirmek için. Otomatik kontrol günde bir kez çalışır ve ayarlardaki <strong>Güncellemeleri otomatik kontrol et</strong> seçeneğiyle kapatılabilir. İstek, uygulamanın sürüm numarasını içerir; her web isteğinde olduğu gibi GitHub IP adresinizi görür. Güncellemeler GitHub’ın dosya sunucularından indirilir; kurulmadan önce boyutları ve sürümle birlikte yayımlanan SHA-256 özetleri kontrol edilir. Windows paketleri bu istekleri yapmaz.</li>
       </ul>
       <p>Giriş için kullanılan tarayıcının veya giriş penceresinin ağ etkinlikleri, ilgili tarayıcı veya bileşenin üreticisine bağlıdır. Uygulamanın giriş tarayıcısıyla iletişimi yalnızca bilgisayarınızın içinde (<code>127.0.0.1</code>) gerçekleşir.</p>
     </section>
@@ -130,7 +130,7 @@
 
     <section aria-labelledby="sharing">
       <h2 id="sharing">Üçüncü taraflarla paylaşım</h2>
-      <p>Verileriniz satılmaz veya kiralanmaz. Uygulama okulunuzun Blackboard sunucusuna; macOS ve Windows Setup paketlerinde güncellemeler için GitHub’a; Takvim eşitlemesini veya NotebookLM’i seçtiğinizde ise Google’a bağlanır. Teslim tarihi bilgileri ve ders dosyaları yalnızca bu özellikleri sağlamak için Google’a aktarılır. Bu hizmetlerin kendi gizlilik politikaları vardır.</p>
+      <p>Verileriniz satılmaz veya kiralanmaz. Uygulama okulunuzun Blackboard sunucusuna; macOS paketinde güncellemeler için GitHub’a; Takvim eşitlemesini veya NotebookLM’i seçtiğinizde ise Google’a bağlanır. Teslim tarihi bilgileri ve ders dosyaları yalnızca bu özellikleri sağlamak için Google’a aktarılır. Bu hizmetlerin kendi gizlilik politikaları vardır.</p>
     </section>
 
     <section aria-labelledby="delete">

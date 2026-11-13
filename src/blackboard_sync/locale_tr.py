@@ -181,7 +181,6 @@ CATALOG = {
     "File not found.": "Dosya bulunamadı.",
     "Could not install the update.": "Güncelleme yüklenemedi.",
     "Could not install the update": "Güncelleme yüklenemedi",
-    "Could not install the update; try again later.": "Güncelleme yüklenemedi; daha sonra tekrar deneyin.",
     "Could not change the start-at-login setting.": "Açılışta başlatma ayarı değiştirilemedi.",
     "Could not restart Blackboard Sync; quit it and open it again.":
         "Blackboard Sync yeniden başlatılamadı; uygulamadan çıkıp yeniden açın.",
@@ -209,8 +208,6 @@ CATALOG = {
     "arrow that shows hidden icons.":
         "Menü için saatin yanındaki Blackboard Sync simgesine sağ tıklayın. Simge görünmüyorsa gizli "
         "simgeleri gösteren ^ okuna tıklayın.",
-    "Wait for the running job to finish before updating.":
-        "Güncellemeden önce çalışan işlemin tamamlanmasını bekleyin.",
     "Wait for the running job to finish before updating, then try again.":
         "Güncellemeden önce çalışan işlemin tamamlanmasını bekleyin; sonra tekrar deneyin.",
     "Could not open the announcement.": "Duyuru açılamadı.",

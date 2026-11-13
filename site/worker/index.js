@@ -1,4 +1,4 @@
-// Short download links: /mac and /windows redirect to the latest release asset.
+// Short download links: /mac redirects to the latest release asset, /windows to the Microsoft Store listing.
 // /stats.json aggregates release download counts across all releases.
 // The promo video gets byte ranges. Every other path is served by the static
 // assets binding (see wrangler.jsonc).
@@ -13,10 +13,12 @@ const MAX_PAGES = 20;
 // Microsoft Store downloads not counted by GitHub releases (as of 2026-11-11).
 const MICROSOFT_STORE_DOWNLOADS = 568;
 
-// Asset name matchers per platform, most specific first.
+// Windows ships only through the Microsoft Store; no release carries a Windows installer.
+const MICROSOFT_STORE_URL = "https://apps.microsoft.com/detail/9nxjcq5jl1kb";
+
+// Asset name matchers per release-hosted platform, most specific first.
 const PLATFORMS = {
   mac: [/\.dmg$/i],
-  windows: [/-Setup\.exe$/i, /\.exe$/i, /\.msi$/i],
 };
 
 // Resolved release and download stats, kept per isolate so most requests skip the GitHub API.
@@ -283,6 +285,11 @@ export default {
     if (pathname === "/stats.json") return statsJson(request, env, ctx);
     const platform = pathname.replace(/^\/|\/$/g, "");
     const patterns = PLATFORMS[platform];
+
+    if (platform === "windows") {
+      recordDownload(request, env, ctx, platform);
+      return redirect(MICROSOFT_STORE_URL, `public, max-age=${CACHE_SECONDS}`);
+    }
 
     // Only /mac, /windows, /stats.json and the video are routed here; anything else is a static asset.
     if (!patterns) return env.ASSETS.fetch(request);

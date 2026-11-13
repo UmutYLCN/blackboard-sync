@@ -6,8 +6,10 @@ The release workflow (``.github/workflows/release.yml``) publishes exactly
 these asset names; changing one side means changing the other:
 
 - macOS:   ``Blackboard-Sync-<version>.dmg``
-- Windows: ``Blackboard-Sync-<version>-Setup.exe`` (an Inno Setup installer)
 - both:    ``SHA256SUMS.txt``, one ``<sha256>  <asset name>`` line per installer
+
+Windows ships only through the Microsoft Store, which delivers its own updates:
+the self-updater is off there (``enabled()``) and no Windows asset is published.
 
 Only HTTPS downloads from this repository's releases are accepted, and when a
 release carries ``SHA256SUMS.txt`` the installer must match its line. Every
@@ -17,8 +19,7 @@ means "no update information": checking never raises.
 macOS: ``update_macos`` verifies the app on the .dmg and swaps it in place of
 the running one, then restarts it; where it cannot (an unsigned app, a folder
 it cannot write, ...) the .dmg is opened and the student drags the new app
-over the old one. Windows: the installer runs silently and restarts the app,
-after the tray app has quit.
+over the old one.
 """
 
 from __future__ import annotations
@@ -52,8 +53,6 @@ USER_AGENT = f"blackboard-sync/{__version__} (update check)"
 CHECK_TIMEOUT = 10
 DOWNLOAD_TIMEOUT = 60
 CHUNK = 1 << 16
-# Inno Setup: no wizard, no message boxes, no reboot; the installer restarts the app.
-WINDOWS_INSTALLER_ARGS = ("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART")
 
 _VERSION = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
 _SHA256 = re.compile(r"[0-9a-fA-F]{64}")
@@ -70,8 +69,12 @@ STORE_UPDATES = tr("Updates are installed through the Microsoft Store.")
 
 
 def enabled() -> bool:
-    """Package identity means the Store owns updates, including stale requests."""
-    return not package.is_packaged()
+    """Only the macOS app updates itself: the Microsoft Store owns Windows updates.
+
+    That covers the Store package (including stale requests) and any leftover
+    unpackaged Windows build, which no release carries an installer for anymore.
+    """
+    return sys.platform == "darwin" and not package.is_packaged()
 
 
 def _require_enabled() -> None:
@@ -100,7 +103,7 @@ class Release:
 
 @dataclass(frozen=True)
 class CheckResult:
-    status: str  # "available" | "current" | "unknown" | "store" (self-updater disabled)
+    status: str  # "available" | "current" | "unknown" | "store" (self-updater disabled: Windows)
     release: Release | None = None
 
 
@@ -120,8 +123,6 @@ def asset_name(version: str, platform: str | None = None) -> str | None:
     platform = platform or sys.platform
     if platform == "darwin":
         return f"Blackboard-Sync-{version}.dmg"
-    if platform == "win32":
-        return f"Blackboard-Sync-{version}-Setup.exe"
     return None
 
 
@@ -228,7 +229,7 @@ def expected_checksum(release: Release, get: Getter = _get) -> str | None:
 
 
 def download_dir(platform: str | None = None, home: Path | None = None) -> Path:
-    """macOS: the Downloads folder, where the student sees the .dmg. Windows: a temp folder."""
+    """macOS: the Downloads folder, where the student sees the .dmg. Elsewhere: a temp folder."""
     platform = platform or sys.platform
     if platform == "darwin":
         return (home or Path.home()) / "Downloads"
@@ -282,28 +283,3 @@ def download(release: Release, folder: Path, get: Getter = _get) -> Path:
 def open_disk_image(path: Path, popen: Callable[..., object] = subprocess.Popen) -> None:
     """macOS: mount the .dmg; Finder shows the app next to the Applications link."""
     popen(["open", str(path)], stdin=subprocess.DEVNULL)
-
-
-def installer_command(path: Path) -> list[str]:
-    return [str(path), *WINDOWS_INSTALLER_ARGS]
-
-
-def launch_installer(path: Path, popen: Callable[..., object] = subprocess.Popen) -> None:
-    """Windows: start the silent installer detached; the caller quits right after.
-
-    The installer waits for nothing from this process, replaces the app once it
-    has exited and starts it again.
-    """
-    _require_enabled()
-    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    popen(installer_command(path), stdin=subprocess.DEVNULL, close_fds=True, creationflags=flags)
-
-
-def install_windows_update(release: Release, get: Getter = _get, popen: Callable[..., object] = subprocess.Popen) -> None:
-    """Windows tray app's "Güncelle": download, verify, start the silent installer.
-
-    Raises ``UpdateError`` when nothing was started; on success the caller
-    quits at once so the installer can replace the running app.
-    """
-    _require_enabled()
-    launch_installer(download(release, download_dir("win32"), get), popen)

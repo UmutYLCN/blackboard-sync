@@ -55,7 +55,7 @@ Local references below use this repository snapshot and line numbers, not a stud
 | Deadline cache | `deadlines.py:38`, `:49`, `:174`; `sync.py:672` | Use cached grading due dates, explicit timezone, and unavailable/stale status. Do not ask a model to infer dates from text. |
 | State loading and ownership | `state.py:130`, `:245`, `:278` | Default load can rename corrupt files. MCP needs a strictly read-only, validated snapshot and an output-to-course ownership map. |
 | Existing settings | `settings.py:54`, `:90` | Corrupt settings currently collapse to defaults. MCP must report configuration unavailable rather than silently choose a new root or permission scope. |
-| Installation/update paths | `packaging/installer.iss:22`, `:70`; `packaging/msix/AppxManifest.xml.in:33` | Setup path is stable and per-user. Its updater kills both executables. MSIX has no execution alias today; a stable Store launcher is future work. |
+| Installation/update paths | `packaging/msix/AppxManifest.xml.in:33` | The former per-user Setup path (`packaging/installer.iss`) was removed. MSIX has no execution alias today; a stable Store launcher is future work. |
 | Python in release builds | `.github/workflows/release.yml:27`, `:224` | Builds use Python 3.12, despite source support beginning at 3.10. SDK runtime compatibility must be explicit. |
 
 These are integration constraints, not reproduced existing defects. Existing sync behavior should not be changed merely to add MCP; introduce strict export-only adapters where necessary.
