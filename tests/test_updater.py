@@ -25,7 +25,6 @@ from .conftest import FakeResponse
 NOW = datetime(2026, 10, 4, 12, 0, tzinfo=timezone.utc)
 DOWNLOAD = "https://github.com/UmutYLCN/blackboard-sync/releases/download/v1.1.0/"
 DMG = b"fake disk image" * 100
-EXE = b"MZ fake installer" * 100
 
 
 def sha(data: bytes) -> str:
@@ -44,7 +43,6 @@ def latest(tag="v1.1.0", assets=None, **extra):
         "prerelease": False,
         "assets": assets if assets is not None else [
             asset("Blackboard-Sync-1.1.0.dmg", len(DMG)),
-            asset("Blackboard-Sync-1.1.0-Setup.exe", len(EXE)),
             asset("SHA256SUMS.txt"),
         ],
     }
@@ -81,13 +79,10 @@ def github(release=None, sums=None, dmg=DMG):
     routes[DOWNLOAD + "Blackboard-Sync-1.1.0.dmg"] = FakeResponse(
         200, "https://objects.githubusercontent.com/x/dmg", content=dmg
     )
-    routes[DOWNLOAD + "Blackboard-Sync-1.1.0-Setup.exe"] = FakeResponse(
-        200, "https://objects.githubusercontent.com/x/exe", content=EXE
-    )
     return FakeGitHub(routes)
 
 
-SUMS = f"{sha(DMG)}  Blackboard-Sync-1.1.0.dmg\n{sha(EXE)} *Blackboard-Sync-1.1.0-Setup.exe\n"
+SUMS = f"{sha(DMG)}  Blackboard-Sync-1.1.0.dmg\n"
 
 
 # -- versions and assets ------------------------------------------------------
@@ -111,7 +106,7 @@ def test_version_comparison(candidate, current, newer):
 
 def test_asset_name_contract():
     assert updater.asset_name("1.1.0", "darwin") == "Blackboard-Sync-1.1.0.dmg"
-    assert updater.asset_name("1.1.0", "win32") == "Blackboard-Sync-1.1.0-Setup.exe"
+    assert updater.asset_name("1.1.0", "win32") is None  # Windows ships through the Microsoft Store
     assert updater.asset_name("1.1.0", "linux") is None
 
 
@@ -125,8 +120,7 @@ def test_newer_release_picks_this_platforms_installer():
         asset_size=len(DMG),
         checksums_url=DOWNLOAD + "SHA256SUMS.txt",
     )
-    win = updater.check("0.1.0", "win32", github()).release
-    assert win.asset_name == "Blackboard-Sync-1.1.0-Setup.exe"
+    assert updater.parse_release(latest(), "0.1.0", "win32").status == "current"
 
 
 def test_check_is_unauthenticated_with_a_user_agent_and_a_short_timeout(monkeypatch):
@@ -146,7 +140,7 @@ def test_check_is_unauthenticated_with_a_user_agent_and_a_short_timeout(monkeypa
         latest(tag="v0.1.0"),  # same version
         latest(draft=True),
         latest(prerelease=True),
-        latest(assets=[asset("Blackboard-Sync-1.1.0-Setup.exe")]),  # no .dmg yet
+        latest(assets=[asset("Blackboard-Sync-1.1.0.zip")]),  # no .dmg yet
         latest(assets=[{"name": "Blackboard-Sync-1.1.0.dmg", "browser_download_url": "https://evil.example/x.dmg"}]),
         latest(assets=[{"name": "Blackboard-Sync-1.1.0.dmg", "browser_download_url": "http://github.com/UmutYLCN/"
                         "blackboard-sync/releases/download/v1.1.0/Blackboard-Sync-1.1.0.dmg"}]),
@@ -195,7 +189,7 @@ def test_checksum_mismatch_is_refused_and_leaves_nothing(tmp_path):
 
 
 def test_installer_missing_from_the_checksum_file_is_refused(tmp_path):
-    fake = github(sums=f"{sha(EXE)}  Blackboard-Sync-1.1.0-Setup.exe\n")
+    fake = github(sums=f"{sha(DMG)}  Blackboard-Sync-1.1.0-other.dmg\n")
     with pytest.raises(UpdateError):
         updater.download(mac_release(fake), tmp_path, fake)
     assert not (tmp_path / "Blackboard-Sync-1.1.0.dmg").exists()
@@ -252,7 +246,6 @@ def test_interrupted_download_leaves_no_partial_file(tmp_path):
 def test_parse_checksums():
     assert updater.parse_checksums(SUMS + "garbage line\n\n") == {
         "Blackboard-Sync-1.1.0.dmg": sha(DMG),
-        "Blackboard-Sync-1.1.0-Setup.exe": sha(EXE),
     }
 
 
@@ -263,27 +256,6 @@ def test_mac_opens_the_disk_image():
     dmg = Path("/Users/me/Downloads/Blackboard-Sync-1.1.0.dmg")
     updater.open_disk_image(dmg, lambda *a, **k: calls.append(a[0]))
     assert calls == [["open", str(dmg)]]
-
-
-def test_windows_downloads_verifies_and_starts_the_silent_installer(tmp_path, monkeypatch):
-    monkeypatch.setattr(updater.tempfile, "gettempdir", lambda: str(tmp_path))
-    fake = github(sums=SUMS)
-    release = updater.check("0.1.0", "win32", fake).release
-    calls = []
-    updater.install_windows_update(release, fake, lambda *a, **k: calls.append(a[0]))
-    exe = tmp_path / "blackboard-sync-update" / "Blackboard-Sync-1.1.0-Setup.exe"
-    assert exe.read_bytes() == EXE
-    assert calls == [[str(exe), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"]]
-
-
-def test_windows_mismatch_starts_nothing(tmp_path, monkeypatch):
-    monkeypatch.setattr(updater.tempfile, "gettempdir", lambda: str(tmp_path))
-    fake = github(sums=SUMS.replace(sha(EXE), "0" * 64))
-    release = updater.check("0.1.0", "win32", fake).release
-    calls = []
-    with pytest.raises(UpdateError):
-        updater.install_windows_update(release, fake, lambda *a, **k: calls.append(a))
-    assert calls == []
 
 
 def test_download_folders():

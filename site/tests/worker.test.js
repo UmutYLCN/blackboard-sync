@@ -44,10 +44,6 @@ const RELEASE_RESPONSE = {
       name: "Blackboard-Sync-9.8.7.dmg",
       browser_download_url: "https://github.com/UmutYLCN/blackboard-sync/releases/download/v9.8.7/Blackboard-Sync-9.8.7.dmg",
     },
-    {
-      name: "Blackboard-Sync-9.8.7-Setup.exe",
-      browser_download_url: "https://github.com/UmutYLCN/blackboard-sync/releases/download/v9.8.7/Blackboard-Sync-9.8.7-Setup.exe",
-    },
   ],
 };
 
@@ -91,7 +87,7 @@ test("records download for /mac with platform, country and referrer host", async
   }
 });
 
-test("records download for /windows and strips trailing slash", async () => {
+test("sends /windows to the Microsoft Store and records the download", async () => {
   const restoreFetch = mockFetch(async () => Response.json(RELEASE_RESPONSE));
   try {
     const env = mockEnv();
@@ -107,10 +103,7 @@ test("records download for /windows and strips trailing slash", async () => {
     await Promise.all(ctx.promises);
 
     assert.strictEqual(res.status, 302);
-    assert.strictEqual(
-      res.headers.get("Location"),
-      "https://github.com/UmutYLCN/blackboard-sync/releases/download/v9.8.7/Blackboard-Sync-9.8.7-Setup.exe"
-    );
+    assert.strictEqual(res.headers.get("Location"), "https://apps.microsoft.com/detail/9nxjcq5jl1kb");
     assert.strictEqual(env.dataPoints.length, 1);
     assert.deepStrictEqual(env.dataPoints[0], {
       blobs: ["windows", "US", "github.com"],

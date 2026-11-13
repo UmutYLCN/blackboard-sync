@@ -707,8 +707,7 @@ def test_the_windows_build_ships_the_library_and_checks_it():
     spec = (ROOT / "packaging" / "blackboard_sync_windows.spec").read_text(encoding="utf-8")
     assert 'copy_metadata("notebooklm-py")' in spec and "NOTEBOOKLM_IMPORTS" in spec
     assert '"blackboard_sync.notebooklm.gateway"' in spec
-    for script in ("smoke-test-windows.ps1", "smoke-test-msix.ps1"):
-        assert "--check-notebooklm" in (ROOT / "scripts" / script).read_text(encoding="utf-8")
+    assert "--check-notebooklm" in (ROOT / "scripts" / "smoke-test-msix.ps1").read_text(encoding="utf-8")
     assert "--check-notebooklm" in (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
 

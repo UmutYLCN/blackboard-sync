@@ -39,7 +39,7 @@
       <p>Blackboard Sync comes in three builds. Most of this page applies to all of them; where a statement applies to only some, it says so.</p>
       <ul>
         <li><strong>macOS</strong>: the app downloaded as a <code>.dmg</code> from GitHub or this website.</li>
-        <li><strong>Windows Setup</strong>: the app installed with <code>Blackboard-Sync-…-Setup.exe</code> from GitHub or this website.</li>
+        <li><strong>Windows Setup</strong>: an older Windows app installed with <code>Blackboard-Sync-…-Setup.exe</code>. It is no longer distributed or updated; install the Microsoft Store build instead.</li>
         <li><strong>Microsoft Store</strong>: the Windows app installed from the Microsoft Store (an MSIX package). See <a href="#store">Microsoft Store build</a> for how it differs.</li>
       </ul>
     </section>
@@ -49,7 +49,7 @@
       <ul>
         <li>The app never sees or stores your password.</li>
         <li>Your sign-in session, settings and download records stay on your computer.</li>
-        <li>It connects to your school’s Blackboard address (and its sign-in and file redirects), and to Google if you enable optional Google Calendar sync or connect optional NotebookLM on a Mac or Windows PC. The macOS and Windows Setup builds also contact GitHub to check for updates; the Microsoft Store build does not.</li>
+        <li>It connects to your school’s Blackboard address (and its sign-in and file redirects), and to Google if you enable optional Google Calendar sync or connect optional NotebookLM on a Mac or Windows PC. The macOS build also contacts GitHub to check for updates; the Windows builds do not (the Microsoft Store delivers Windows updates).</li>
         <li>No analytics, ads or usage tracking (telemetry), and no account to create.</li>
         <li>Your data is not sold. If you enable Google Calendar, deadline information is sent to Google at your request. If you connect NotebookLM, your course files are sent to Google at your request.</li>
       </ul>
@@ -117,7 +117,7 @@
         <li><strong>Your school’s Blackboard address</strong> (the address you enter in the settings), in all builds. The course list, course content, announcements and files are requested from this address with your saved session cookies. If Blackboard redirects a file download to its own file storage address, the file is downloaded from there. During sign-in, your school’s sign-in page may redirect to your school’s single sign-on provider.</li>
         <li><strong>Google</strong> (accounts.google.com, oauth2.googleapis.com and www.googleapis.com), only when you connect optional Calendar sync: consent, token refresh/revocation, and management of Blackboard Deadlines as described above. Like any web service, Google sees your IP address.</li>
         <li><strong>Google</strong> (<code>notebook.google.com</code> and <code>accounts.google.com</code>), only when you connect optional NotebookLM on a Mac or Windows PC: uploading course files and renewing the session as described above. Files are uploaded to Google’s servers.</li>
-        <li><strong>GitHub</strong> (<code>api.github.com</code> and <code>github.com</code>), <strong>macOS and Windows Setup builds only</strong>: to learn whether a new version exists and to download it. The automatic check runs once a day and can be turned off with <strong>Check for updates automatically</strong> in the settings. The request includes the app’s version number; like any web request, GitHub sees your IP address. Updates are downloaded from GitHub’s file servers, and their size and the SHA-256 digest published with the release are checked before installing. The Microsoft Store build never makes these requests.</li>
+        <li><strong>GitHub</strong> (<code>api.github.com</code> and <code>github.com</code>), <strong>macOS build only</strong>: to learn whether a new version exists and to download it. The automatic check runs once a day and can be turned off with <strong>Check for updates automatically</strong> in the settings. The request includes the app’s version number; like any web request, GitHub sees your IP address. Updates are downloaded from GitHub’s file servers, and their size and the SHA-256 digest published with the release are checked before installing. The Windows builds never make these requests.</li>
       </ul>
       <p>The network activity of the browser or sign-in window used for sign-in is up to the maker of that browser or component. The app talks to the sign-in browser only inside your computer (<code>127.0.0.1</code>).</p>
     </section>
@@ -130,7 +130,7 @@
 
     <section aria-labelledby="sharing">
       <h2 id="sharing">Sharing with third parties</h2>
-      <p>Your data is not sold or rented. The app contacts your school’s Blackboard server, GitHub for updates in the macOS and Windows Setup builds, and Google when you opt into Calendar sync or NotebookLM. Deadline information and course files are transferred to Google only to provide those features. These services have their own privacy policies.</p>
+      <p>Your data is not sold or rented. The app contacts your school’s Blackboard server, GitHub for updates in the macOS build, and Google when you opt into Calendar sync or NotebookLM. Deadline information and course files are transferred to Google only to provide those features. These services have their own privacy policies.</p>
     </section>
 
     <section aria-labelledby="delete">

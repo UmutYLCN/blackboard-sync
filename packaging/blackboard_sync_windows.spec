@@ -1,4 +1,4 @@
-# PyInstaller spec for the Windows tray app. Build with scripts/build-windows.ps1.
+# PyInstaller spec for the Windows tray app. Build with scripts/freeze-windows.ps1.
 import re
 import sys
 from pathlib import Path

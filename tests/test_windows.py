@@ -846,6 +846,8 @@ def update_app(tmp_path, monkeypatch):
     import blackboard_sync.windows.app as module
 
     app = make_app(tmp_path)
+    # The self-updater is macOS only; these tests drive the shared update flow.
+    monkeypatch.setattr(module.updater, 'enabled', lambda: not module.updater.package.is_packaged())
     app.events = queue.Queue()
     app.closed = False
     app.uninstalling = False
@@ -866,8 +868,8 @@ def update_app(tmp_path, monkeypatch):
 def release():
     from blackboard_sync.updater import Release
     return Release('99.0.0', 'https://github.com/UmutYLCN/blackboard-sync/releases/tag/v99.0.0',
-                   'Blackboard-Sync-99.0.0-Setup.exe',
-                   'https://github.com/UmutYLCN/blackboard-sync/releases/download/v99.0.0/Blackboard-Sync-99.0.0-Setup.exe')
+                   'Blackboard-Sync-99.0.0.dmg',
+                   'https://github.com/UmutYLCN/blackboard-sync/releases/download/v99.0.0/Blackboard-Sync-99.0.0.dmg')
 
 
 def drain_one(app):
@@ -919,54 +921,9 @@ def test_update_check_exception_recovers_row(tmp_path, monkeypatch):
     assert app.notices[0].title == 'Could not check for updates'
 
 
-def test_update_install_waits_for_idle_and_quits_only_after_success(tmp_path, monkeypatch):
-    from blackboard_sync.windows.app import runtime, updater
+def test_update_opens_release_page_without_installer(tmp_path, monkeypatch):
+    from blackboard_sync.windows.app import webbrowser
     app, workers = update_app(tmp_path, monkeypatch)
-    monkeypatch.setattr(runtime, 'is_frozen', lambda: True)
-    installed, actions = [], []
-    monkeypatch.setattr(updater, 'install_windows_update', installed.append)
-    app.dispatch = actions.append
-    app.model.updates.available = release()
-    app.model.begin('sync')
-    app.start_update()
-    assert not workers
-    app.model.busy = None
-    app.start_update()
-    app.start_update()
-    assert len(workers) == 1
-    app.start_job('sync')
-    assert app.model.busy is None
-    assert app.settings_submitted(FormValues('school.edu', str(tmp_path), False), False)
-    workers.pop()()
-    assert installed == [release()]
-    assert not actions  # Worker does not touch Tk or quit.
-    drain_one(app)
-    assert actions == ['quit']
-    assert app.model.updates.busy is None
-
-
-def test_update_install_failure_preserves_app_and_allows_retry(tmp_path, monkeypatch):
-    from blackboard_sync.windows.app import runtime, updater
-    app, workers = update_app(tmp_path, monkeypatch)
-    monkeypatch.setattr(runtime, 'is_frozen', lambda: True)
-    def fail(value):
-        raise updater.UpdateError('The update could not be verified.')
-    monkeypatch.setattr(updater, 'install_windows_update', fail)
-    app.model.updates.available = release()
-    app.dispatch = lambda action: (_ for _ in ()).throw(AssertionError('Must not quit'))
-    app.start_update()
-    workers.pop()()
-    drain_one(app)
-    assert app.model.updates.busy is None
-    assert app.notices[0].message == 'The update could not be verified.'
-    app.start_update()
-    assert len(workers) == 1
-
-
-def test_source_update_opens_release_without_installer(tmp_path, monkeypatch):
-    from blackboard_sync.windows.app import runtime, webbrowser
-    app, workers = update_app(tmp_path, monkeypatch)
-    monkeypatch.setattr(runtime, 'is_frozen', lambda: False)
     opened = []
     monkeypatch.setattr(webbrowser, 'open', opened.append)
     app.model.updates.available = release()

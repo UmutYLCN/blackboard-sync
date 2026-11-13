@@ -1,6 +1,6 @@
 # Freeze the Windows tray app with PyInstaller into dist\Blackboard Sync (it
 # bundles its own Python, so the result needs nothing installed). Shared by
-# build-windows.ps1 (Inno Setup installer) and build-msix.ps1 (Store package).
+# build-msix.ps1 (Store package).
 # Run from a Windows machine with Python 3.12 on PATH.
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")

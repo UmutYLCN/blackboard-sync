@@ -1,8 +1,8 @@
 """The MSIX (Microsoft Store) build: package identity and what comes with it.
 
-The same frozen app ships two ways: the Inno Setup installer, which runs without
-package identity, and an MSIX package (``packaging/msix``), which Windows starts
-with one. Code that must behave differently in the package asks ``is_packaged()``;
+The frozen app ships as an MSIX package (``packaging/msix``), which Windows starts
+with package identity; an older Inno Setup install runs without it. Code that must
+behave differently in the package asks ``is_packaged()``;
 the rest of this module wraps WinRT APIs that only a packaged process can use.
 """
 

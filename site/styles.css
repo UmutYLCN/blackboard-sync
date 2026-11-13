@@ -468,15 +468,6 @@ p {
   margin: 12px 0 0;
 }
 
-.install-grid .install-alt {
-  font-size: 12px;
-}
-
-.install-alt a {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 .install-grid strong,.first-run strong {
   color: var(--text);
   font-weight: 550;

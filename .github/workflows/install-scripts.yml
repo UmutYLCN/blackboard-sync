@@ -1,17 +1,15 @@
 name: Install scripts
 
-# Runs the one-line installers against the latest public release.
+# Runs the macOS one-line installer against the latest public release.
 on:
   pull_request:
     paths:
       - install.sh
-      - install.ps1
       - .github/workflows/install-scripts.yml
   push:
     branches: [main]
     paths:
       - install.sh
-      - install.ps1
       - .github/workflows/install-scripts.yml
   workflow_dispatch:
 
@@ -35,16 +33,3 @@ jobs:
           test -x "$app/Contents/MacOS/Blackboard Sync"
           if xattr "$app" | grep -q com.apple.quarantine; then echo "quarantine flag still set"; exit 1; fi
           if mount | grep -q blackboard-sync; then echo "disk image still mounted"; exit 1; fi
-
-  windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Run install.ps1 in Windows PowerShell 5.1
-        shell: powershell
-        run: Get-Content -Raw install.ps1 | Invoke-Expression
-      - name: Assert the app is installed
-        shell: powershell
-        run: |
-          $exe = Join-Path $env:LOCALAPPDATA 'Programs\Blackboard Sync\Blackboard Sync.exe'
-          if (-not (Test-Path $exe)) { throw "not installed: $exe" }

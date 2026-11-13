@@ -13,7 +13,6 @@ DOWNLOAD = 'https://github.com/UmutYLCN/blackboard-sync/releases/download/v9.8.7
 API = 'https://api.github.com/repos/UmutYLCN/blackboard-sync/releases/latest'
 RELEASE = {'tag_name': 'v9.8.7', 'assets': [
     {'name': 'Blackboard-Sync-9.8.7.dmg', 'browser_download_url': DOWNLOAD + 'Blackboard-Sync-9.8.7.dmg'},
-    {'name': 'Blackboard-Sync-9.8.7-Setup.exe', 'browser_download_url': DOWNLOAD + 'Blackboard-Sync-9.8.7-Setup.exe'},
 ]}
 STATS = {'total': 746, 'mac': 100, 'windows': 646, 'updated': '2026-11-11T00:00:00Z'}
 
@@ -178,8 +177,6 @@ def test_old_turkish_privacy_links_redirect_to_turkish(browser, path):
 @pytest.mark.parametrize('path,suffix', [
     ('/mac', '.dmg'),
     ('/mac/', '.dmg'),
-    ('/windows', '-Setup.exe'),
-    ('/windows/', '-Setup.exe'),
 ])
 def test_short_download_links_redirect_to_release_asset(browser, path, suffix):
     with browser.new_context() as context:
@@ -189,6 +186,14 @@ def test_short_download_links_redirect_to_release_asset(browser, path, suffix):
         assert location.startswith('https://github.com/UmutYLCN/blackboard-sync/releases/download/')
         assert location.endswith(suffix)
         assert 'public' in response.headers.get('cache-control', '')
+
+
+@pytest.mark.parametrize('path', ['/windows', '/windows/'])
+def test_windows_short_link_redirects_to_the_store(browser, path):
+    with browser.new_context() as context:
+        response = context.request.get(BASE + path, max_redirects=0)
+        assert response.status == 302
+        assert response.headers['location'] == 'https://apps.microsoft.com/detail/9nxjcq5jl1kb'
 
 
 def test_promo_video_answers_byte_ranges(browser):

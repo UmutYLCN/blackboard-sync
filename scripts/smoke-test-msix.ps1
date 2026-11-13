@@ -73,7 +73,7 @@ try {
   Check (Test-Path "$app\Blackboard Sync.exe") "app in the package"
   Check (Test-Path "$app\blackboard-sync-cli.exe") "CLI twin in the package"
 
-  # The self-tests of scripts/smoke-test-windows.ps1 and --check-package (identity
+  # The app's self-tests and --check-package (identity
   # and the startup task). Only a process in the package's context may run the
   # package's programs, so they run there, writing to a file.
   $out = Invoke-InPackage "--check-login-runtime"

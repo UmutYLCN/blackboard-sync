@@ -251,12 +251,17 @@ def test_layout_needs_the_pyinstaller_build(tmp_path):
         make_layout.make_layout(tmp_path, tmp_path / "msix", IDENTITY)
 
 
-@pytest.mark.parametrize("packaged", [True, False])
-def test_updater_never_contacts_github_or_touches_installer_in_package(tmp_path, monkeypatch, packaged):
+@pytest.mark.parametrize("platform,packaged,enabled", [
+    ("win32", True, False),   # the Store package: the Store updates it
+    ("win32", False, False),  # a leftover unpackaged build: no release carries an installer anymore
+    ("darwin", False, True),
+])
+def test_self_updater_is_macos_only_and_never_installs_on_windows(tmp_path, monkeypatch, platform, packaged, enabled):
     from blackboard_sync import updater
 
+    monkeypatch.setattr(updater.sys, "platform", platform)
     monkeypatch.setattr(package, "is_packaged", lambda: packaged)
-    network, launched = [], []
+    network = []
 
     class Response:
         status_code = 404
@@ -267,26 +272,21 @@ def test_updater_never_contacts_github_or_touches_installer_in_package(tmp_path,
         network.append(args[0])
         return Response()
 
-    assert updater.enabled() is not packaged
+    assert updater.enabled() is enabled
     result = updater.check(get=get)
-    assert result.status == ("store" if packaged else "unknown")
-    assert len(network) == (0 if packaged else 1)
+    assert result.status == ("unknown" if enabled else "store")
+    assert len(network) == (1 if enabled else 0)
     network.clear()
-    release = updater.Release("9.0.0", "", "Setup.exe", updater.DOWNLOAD_PREFIX + "v9.0.0/Setup.exe")
-    if packaged:
+    release = updater.Release("9.0.0", "", "Blackboard-Sync-9.0.0.dmg", updater.DOWNLOAD_PREFIX + "v9.0.0/x.dmg")
+    if not enabled:
         for operation in (
             lambda: updater.expected_checksum(release, get),
             lambda: updater.download(release, tmp_path / "update", get),
-            lambda: updater.launch_installer(tmp_path / "Setup.exe", lambda *args, **kw: launched.append(args)),
-            lambda: updater.install_windows_update(release, get, lambda *args, **kw: launched.append(args)),
         ):
             with pytest.raises(updater.UpdateError, match="Microsoft Store"):
                 operation()
-        assert network == launched == []
+        assert network == []
         assert not (tmp_path / "update").exists()
-    else:
-        updater.launch_installer(tmp_path / "Setup.exe", lambda *args, **kw: launched.append(args))
-        assert launched[0][0] == [str(tmp_path / "Setup.exe"), *updater.WINDOWS_INSTALLER_ARGS]
 
 
 @pytest.mark.parametrize("delete_files", [True, False])

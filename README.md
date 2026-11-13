@@ -19,22 +19,13 @@ Downloads your Blackboard course content to your computer automatically.
 
 ## Installation
 
-[Download the latest version](https://github.com/UmutYLCN/blackboard-sync/releases/latest):
+- **macOS:** [Download the latest `.dmg`](https://github.com/UmutYLCN/blackboard-sync/releases/latest), open it and drag the app into the **Applications** folder. Or with a single command in the terminal:
 
-- **macOS:** Open the `.dmg` and drag the app into the **Applications** folder.
-- **Windows:** Run `Setup.exe`. If SmartScreen warns you, choose **More info → Run anyway**.
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.sh | sh
+  ```
 
-Or with a single command in the terminal:
-
-```sh
-# macOS
-curl -fsSL https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.sh | sh
-```
-
-```powershell
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/UmutYLCN/blackboard-sync/main/install.ps1 | iex
-```
+- **Windows:** [Install from the Microsoft Store](https://apps.microsoft.com/detail/9nxjcq5jl1kb). Windows downloads are no longer published on GitHub.
 
 On first launch choose your school's address and the folder to save files in, then **Sign in**. See the [user guide](docs/USAGE.md) for details and terminal commands.
 

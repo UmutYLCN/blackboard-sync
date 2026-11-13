@@ -1014,59 +1014,41 @@ git tag "v<version>"
 git push origin "v<version>"
 ```
 
-The `Release` workflow builds the `.dmg` on a macOS runner and the Windows
-installer on a Windows runner, then publishes one GitHub Release holding both
-plus a `SHA256SUMS.txt` covering both, which the app's updater verifies them
-against. Rerunning it for the same tag replaces the release's assets. Running
-the workflow by hand (Actions > Release > Run workflow) builds and smoke-tests
-both files as workflow artifacts and publishes nothing. A tag with a `-`
-(`v1.3.0-rc1`) is published as a pre-release, which `install.sh` and the
-updater ignore.
+The `Release` workflow builds the `.dmg` on a macOS runner, then publishes one
+GitHub Release holding it plus a `SHA256SUMS.txt` that the app's updater
+verifies it against. Rerunning it for the same tag replaces the release's
+assets. Running the workflow by hand (Actions > Release > Run workflow) builds
+and smoke-tests the `.dmg` as a workflow artifact and publishes nothing. A tag
+with a `-` (`v1.3.0-rc1`) is published as a pre-release, which `install.sh` and
+the updater ignore. Windows is not published to GitHub: it ships only through
+the Microsoft Store ([MSIX.md](MSIX.md)).
 
-### Windows installer
+### Windows build
 
-On Windows with Python 3.12 and [Inno Setup 6](https://jrsoftware.org/isinfo.php)
-(`iscc`) on `PATH`:
-
-```powershell
-./scripts/build-windows.ps1   # dist\Blackboard-Sync-<version>-Setup.exe
-```
-
-PyInstaller freezes the tray app (`packaging/blackboard_sync_windows.spec`) into
-two programs sharing one folder: the windowed `Blackboard Sync.exe`, and
+Windows ships only as the Microsoft Store package ([MSIX.md](MSIX.md)); GitHub
+releases carry no Windows installer. `scripts/freeze-windows.ps1` freezes the
+tray app with PyInstaller (`packaging/blackboard_sync_windows.spec`) into two
+programs sharing one folder: the windowed `Blackboard Sync.exe`, and
 `blackboard-sync-cli.exe`, a console twin the app runs for sync and sign-in
 jobs (a windowed exe may lose its standard streams, and the job's report is read
-from them). `packaging/installer.iss` installs per user into
-`%LOCALAPPDATA%\Programs\Blackboard Sync` (no administrator rights), adds a
-Start Menu shortcut and starts the app. It closes a running copy before an
-upgrade and starts it again afterwards, also with `/VERYSILENT`, which is how
-the updater runs it. The uninstaller removes the app and its start-at-login
-entry, never the downloaded files or `%APPDATA%` data. The installer is
-unsigned: Windows SmartScreen shows "More info > Run anyway" once.
-`scripts/smoke-test-windows.ps1` (run by the workflow) installs, checks the
-installed app and `--version`, checks the GUI (within 45 s `windows-tray.log`
-exists, the app runs and its main window "Blackboard Sync" is visible; closed,
-the app keeps running, and started again, the running copy shows it), upgrades, and
-uninstalls. On a failure it prints `scripts/windows-gui-snapshot.ps1`: the
-app's windows, its data folder and the logs (the periodic thread stacks are in
-`windows-tray-faults.log`).
+from them). `scripts/build-msix.ps1` wraps that folder into the package and
+`scripts/smoke-test-msix.ps1` installs and checks it. On a failure the smoke
+test prints `scripts/windows-gui-snapshot.ps1`: the app's windows, its data
+folder and the logs (the periodic thread stacks are in `windows-tray-faults.log`).
 
 The `CI` workflow runs the tests on macOS and Windows and builds the unsigned
 Microsoft Store package ([MSIX.md](MSIX.md)) for pull requests and pushes to `main`.
 
-The release asset contract is `Blackboard-Sync-<version>.dmg` for macOS and
-`Blackboard-Sync-<version>-Setup.exe` for Windows. Both must be listed in the
-release's `SHA256SUMS.txt`; the updater rejects missing or mismatched checksums.
-The first public release, `v1.0.0`, must ship both installers together. Check
-`.github/workflows/release.yml` for the build jobs before publishing. The
-Windows updater launches the installer with
-`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`; the installer must restart the app
-(with `--background`, so an update does not open the main window).
+The release asset contract is `Blackboard-Sync-<version>.dmg` for macOS, listed
+in the release's `SHA256SUMS.txt`; the updater rejects missing or mismatched
+checksums. Check `.github/workflows/release.yml` for the build jobs before
+publishing. The self-updater is macOS only: the Microsoft Store delivers
+Windows updates.
 
-### One-line installers
+### One-line installer
 
-`install.sh` (macOS) and `install.ps1` (Windows) download the latest release,
-verify its SHA-256 checksum and install it. A macOS release signed with the
+`install.sh` (macOS) downloads the latest release, verifies its SHA-256
+checksum and installs it. A macOS release signed with the
 Developer ID must also pass `install.sh`'s signature, team and notarization
 checks or nothing is installed. For an unsigned release only the installed
 app's quarantine attribute is removed, which makes the first-open right click →
