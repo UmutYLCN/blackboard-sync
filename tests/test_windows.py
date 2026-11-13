@@ -17,6 +17,14 @@ from blackboard_sync.windows import autostart, notifications, presentation
 from blackboard_sync.windows.app import LogThrottle, TrayApp, cli_runner
 
 
+@pytest.fixture(autouse=True)
+def shared_update_flow(monkeypatch):
+    """The self-updater is macOS only; these tests drive the shared update UI on any host OS."""
+    from blackboard_sync import updater
+    from blackboard_sync.windows import package
+    monkeypatch.setattr(updater, "enabled", lambda: not package.is_packaged())
+
+
 class Menu:
     SEPARATOR = object()
 
@@ -846,8 +854,6 @@ def update_app(tmp_path, monkeypatch):
     import blackboard_sync.windows.app as module
 
     app = make_app(tmp_path)
-    # The self-updater is macOS only; these tests drive the shared update flow.
-    monkeypatch.setattr(module.updater, 'enabled', lambda: not module.updater.package.is_packaged())
     app.events = queue.Queue()
     app.closed = False
     app.uninstalling = False
