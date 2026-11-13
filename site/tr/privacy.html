@@ -9,7 +9,7 @@
   <link rel="alternate" hreflang="tr" href="https://blackboardsyncapp.com/tr/privacy">
   <link rel="alternate" hreflang="x-default" href="https://blackboardsyncapp.com/privacy">
   <title>Gizlilik Politikası — Blackboard Sync</title>
-  <meta name="description" content="Blackboard Sync’in bilgisayarınızda sakladığı veriler, internet üzerinden gönderdiği bilgiler ve verilerinizi silme yolları. macOS, Windows kurulum ve Microsoft Store sürümleri için.">
+  <meta name="description" content="Blackboard Sync uygulamalarının cihazınızda sakladığı veriler, internet üzerinden gönderdiği bilgiler ve verilerinizi silme yolları. macOS, Windows ve iPad uygulaması (giriş hesabı dahil) için.">
   <link rel="icon" href="/assets/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -30,27 +30,30 @@
   <main id="content" class="legal wrap">
     <p class="eyebrow">Gizlilik</p>
     <h1>Gizlilik Politikası</h1>
-    <p class="legal-updated">Son güncelleme: <time datetime="2026-11-11">11 Kasım 2026</time></p>
+    <p class="legal-updated">Son güncelleme: <time datetime="2026-11-13">13 Kasım 2026</time></p>
 
-    <p class="legal-lead">Blackboard Sync, Blackboard Learn’deki ders içeriklerinizi kendi bilgisayarınıza indiren, macOS ve Windows için ücretsiz, kaynak kodu GitHub’da herkese açık bir uygulamadır. Bu sayfa uygulamanın bilgisayarınızda neleri sakladığını, internet üzerinden neleri gönderdiğini ve bu verileri nasıl silebileceğinizi açıklar. Uygulamanın kaynak kodu <a href="https://github.com/UmutYLCN/blackboard-sync">GitHub</a> üzerinde herkese açıktır; buradaki açıklamalar bu koda dayanır.</p>
+    <p class="legal-lead">Blackboard Sync, Blackboard Learn’deki ders içeriklerinizi kendi cihazınıza indirir. macOS ve Windows için kaynak kodu <a href="https://github.com/UmutYLCN/blackboard-sync">GitHub</a>’da herkese açık, ücretsiz bir uygulama olarak ve App Store’da bir iPad uygulaması olarak sunulur. Bu sayfa hepsini kapsar: her uygulamanın cihazınızda neleri sakladığını, internet üzerinden neleri gönderdiğini ve bu verileri nasıl silebileceğinizi açıklar. macOS ve Windows uygulamaları hesap gerektirmez. iPad uygulaması ise küçük bir giriş hesabı (Apple veya Google ile giriş) gerektirir; bu hesap <a href="#ipad">iPad uygulaması</a> bölümünde açıklanır. macOS ve Windows uygulamalarına ilişkin açıklamalar, bu uygulamaların herkese açık kaynak koduna dayanır.</p>
 
     <section aria-labelledby="builds">
       <h2 id="builds">Kullandığınız sürüm</h2>
-      <p>Blackboard Sync üç farklı paket olarak sunulur. Bu sayfanın büyük bölümü hepsi için geçerlidir; yalnızca belirli paketler için geçerli olan açıklamalarda bu ayrıca belirtilir.</p>
+      <p>Blackboard Sync dört farklı paket olarak sunulur. Yalnızca belirli paketler için geçerli olan açıklamalarda bu ayrıca belirtilir. Bir bölümde aksi belirtilmedikçe aşağıdaki bölümlerde geçen “uygulama” macOS ve Windows uygulamalarını ifade eder; iPad uygulamasına özgü her şey <a href="#ipad">iPad uygulaması</a> bölümündedir.</p>
       <ul>
         <li><strong>macOS</strong>: GitHub’dan veya bu web sitesinden <code>.dmg</code> olarak indirilen uygulama.</li>
         <li><strong>Windows Setup</strong>: <code>Blackboard-Sync-…-Setup.exe</code> ile kurulan eski Windows uygulaması. Artık dağıtılmıyor ve güncellenmiyor; bunun yerine Microsoft Store paketini kurun.</li>
         <li><strong>Microsoft Store</strong>: Microsoft Store’dan kurulan Windows uygulaması (MSIX paketi). Farklar için <a href="#store">Microsoft Store sürümü</a> bölümüne bakın.</li>
+        <li><strong>iPad</strong>: App Store’dan kurulan ücretli uygulama. Bkz. <a href="#ipad">iPad uygulaması</a>.</li>
       </ul>
     </section>
 
     <section aria-labelledby="summary">
       <h2 id="summary">Genel bakış</h2>
       <ul>
-        <li>Uygulama şifrenizi hiçbir zaman görmez veya saklamaz.</li>
-        <li>Giriş oturumunuz, ayarlarınız ve indirme kayıtlarınız bilgisayarınızda kalır.</li>
-        <li>Okulunuzun Blackboard adresine ve bu adresin giriş ve dosya yönlendirmelerine bağlanır. İsteğe bağlı Google Takvim eşitlemesini açarsanız veya Mac ya da Windows bilgisayarda isteğe bağlı NotebookLM’i bağlarsanız Google’a da bağlanır. macOS paketi güncellemeleri kontrol etmek için GitHub’a bağlanır; Windows paketleri bağlanmaz (Windows güncellemelerini Microsoft Store getirir).</li>
-        <li>Analiz, reklam, kullanım takibi (telemetri) veya oluşturmanız gereken ayrı bir hesap yoktur.</li>
+        <li>Hiçbir uygulama okul şifrenizi görmez veya saklamaz.</li>
+        <li>macOS ve Windows uygulamaları hesap gerektirmez. iPad uygulaması, Apple veya Google ile giriş yaparak oluşturduğunuz bir hesap gerektirir; bu hesap giriş hizmeti sağlayıcımız Supabase tarafından saklanır ve yalnızca e-posta adresinizi, adınızı (Apple veya Google paylaşırsa) ve giriş sağlayıcısının kullanıcı kimliğini içerir.</li>
+        <li>Blackboard giriş oturumunuz, ayarlarınız, ders dosyalarınız ve indirme kayıtlarınız cihazınızda kalır. iPad’de ders verileri doğrudan okulunuzun Blackboard’undan iPad’inize gelir; bize hiç gönderilmez.</li>
+        <li>macOS ve Windows uygulamaları okulunuzun Blackboard adresine ve bu adresin giriş ve dosya yönlendirmelerine bağlanır. İsteğe bağlı Google Takvim eşitlemesini açarsanız veya Mac ya da Windows bilgisayarda isteğe bağlı NotebookLM’i bağlarsanız Google’a da bağlanır. macOS paketi güncellemeleri kontrol etmek için GitHub’a bağlanır; Windows paketleri bağlanmaz (Windows güncellemelerini Microsoft Store getirir).</li>
+        <li>Hiçbir uygulamada analiz, reklam veya kullanım takibi (telemetri) yoktur.</li>
+        <li>iPad hesabını uygulamanın içinden silebilirsiniz (Ayarlar › Hesap › Hesabı sil). iPad aboneliğinin faturasını biz değil Apple keser.</li>
         <li>Verileriniz satılmaz. Google Takvim’i etkinleştirirseniz teslim tarihi bilgileri, NotebookLM’i bağlarsanız ders dosyalarınız isteğiniz üzerine Google’a gönderilir.</li>
       </ul>
     </section>
@@ -110,6 +113,48 @@
       <p>Saklanan oturumu ve tarayıcı profilini silmek için uygulamanın Ayarlar → NotebookLM bölümünden bağlantıyı kesin veya <code>blackboard-sync notebooklm disconnect</code> komutunu çalıştırın. Not defterleri ve kaynaklar Google hesabınızda kalır; isterseniz NotebookLM’de silebilirsiniz. Uygulamayı kaldırmak bu yerel dosyaları da siler. Oturumu Google tarafında da sonlandırmak için <a href="https://myaccount.google.com/device-activity">Google Hesabı → Cihazlarınız</a> sayfasını kullanın.</p>
     </section>
 
+    <section aria-labelledby="ipad">
+      <h2 id="ipad">iPad uygulaması</h2>
+      <p>Bu bölüm, App Store’da isteğe bağlı abonelikle (“Blackboard Sync Pro”) satılan ücretli Blackboard Sync iPad uygulamasını kapsar. macOS ve Windows uygulamalarından farklı olarak iPad uygulamasını kullanmak için bir hesap gerekir.</p>
+
+      <h3>Topladığımız hesap bilgileri</h3>
+      <ul>
+        <li><strong>Nasıl giriş yaparsınız.</strong> Hesabı, bu hizmetlerin yerel giriş ekranlarını kullanarak <strong>Apple ile Giriş Yap</strong> veya <strong>Google ile Giriş Yap</strong> seçeneğiyle oluşturur ve kullanırsınız. Hesap için ayrı bir şifre yoktur.</li>
+        <li><strong>Neler saklanır.</strong> E-posta adresiniz, adınız (yalnızca Apple veya Google uygulamayla paylaşırsa) ve giriş sağlayıcısının sizin için verdiği kullanıcı kimliği. Hesapta sizinle ilgili başka bir şey saklanmaz.</li>
+        <li><strong>Nerede.</strong> Hesap, uygulamanın kimlik doğrulama hizmetini ve arka ucunu sağlayan <a href="https://supabase.com">Supabase</a> tarafından saklanır ve yönetilir.</li>
+        <li><strong>Ne için kullanılır.</strong> Yalnızca uygulamanın hesap ve giriş işlevini sağlamak için. Takip, reklam veya analiz için kullanılmaz; satılmaz ve reklam amacıyla paylaşılmaz.</li>
+        <li><strong>Ne kadar süre.</strong> Hesap verileri hesabınız var olduğu sürece saklanır ve hesabı sildiğinizde silinir (aşağıya bakın).</li>
+      </ul>
+
+      <h3>Bu verileri kimler işler</h3>
+      <ul>
+        <li>Hesabı yukarıda açıklandığı gibi saklayan <strong>Supabase</strong>. Bkz. <a href="https://supabase.com/privacy">Supabase gizlilik politikası</a>.</li>
+        <li>Apple ile Giriş Yap için <strong>Apple</strong>. Bu, Apple’ın kendi hizmetidir ve <a href="https://www.apple.com/legal/privacy/">Apple’ın gizlilik politikası</a> kapsamındadır. Apple, App Store satın alımınızı da işler (aşağıda Abonelik’e bakın).</li>
+        <li>Google ile Giriş Yap için <strong>Google</strong>. Uygulama bu seçenek için Google Sign-In SDK’sını kullanır; Google’ın girişinizi işlemesi <a href="https://policies.google.com/privacy">Google’ın gizlilik politikası</a> kapsamındadır. Google ile giriş yalnızca uygulamada oturum açmanız için kullanılır.</li>
+      </ul>
+
+      <h3>Blackboard’unuz, iPad’inizde</h3>
+      <ul>
+        <li>Okulunuzun Blackboard’una, uygulamanın içinde okulunuzun kendi web sayfasında giriş yaparsınız. Uygulama okul şifrenizi görmez veya saklamaz.</li>
+        <li>Blackboard oturumunuz (çerezler) iPad’inizde, iOS Anahtar Zinciri’nde ve uygulamanın web verilerinde saklanır.</li>
+        <li>Ders dosyaları, duyurular ve teslim tarihleri doğrudan okulunuzun Blackboard’undan iPad’inize alınır ve yalnızca iPad’inizde saklanır. Sunucularımıza gönderilmez.</li>
+        <li>“Örnek verilerle dene” uygulamanın içinde yerleşik verileri kullanır ve hiçbir yere hiçbir şey göndermez.</li>
+      </ul>
+
+      <h3>Abonelik</h3>
+      <p>“Blackboard Sync Pro”, Apple tarafından App Store üzerinden satılır ve faturalandırılır. Ödeme kartı bilgilerinizi almayız; uygulama satın alma durumunuzu cihazınızda kontrol eder. Uygulama hesabını silmek aboneliğinizi <strong>iptal etmez</strong>: aboneliği Apple Hesabı ayarlarınızdan (Ayarlar → adınız → Abonelikler) iptal edin.</p>
+
+      <h3>Analiz, reklam veya takip yoktur; ek izin yoktur</h3>
+      <p>iPad uygulamasında analiz, reklam veya takip SDK’sı bulunmaz. Konumunuza, kameranıza, mikrofonunuza, kişilerinize veya fotoğraflarınıza erişmez.</p>
+
+      <h3>iPad’de hesabınızı ve verilerinizi silme</h3>
+      <ul>
+        <li><strong>Uygulamada:</strong> <strong>Ayarlar › Hesap › Hesabı sil</strong> yolunu izleyin. Bu işlem Supabase’deki hesabınızı siler, uygulanabildiği yerde Apple ile Giriş Yap yetkisini iptal eder ve hesabın yerel dosyalarını, önbelleğini, Blackboard oturumunu ve ayarlarını iPad’inizden kaldırır.</li>
+        <li><strong>Uygulamayı kaldırmak</strong> da yerel verilerini iPad’inizden kaldırır. Yalnızca uygulamayı kaldırmak Supabase’deki hesabı silmez; hesabın kaldırılmasını istiyorsanız önce hesabı silin.</li>
+        <li><strong>Abonelik:</strong> hesabı silmek aboneliği iptal etmez. Aboneliği Apple Hesabı ayarlarınızdan iptal edin.</li>
+      </ul>
+    </section>
+
     <section aria-labelledby="network">
       <h2 id="network">İnternet üzerinden gönderilen bilgiler</h2>
       <p>Uygulama şu adreslere bağlanır:</p>
@@ -124,13 +169,13 @@
 
     <section aria-labelledby="analytics">
       <h2 id="analytics">Analiz veya takip yoktur</h2>
-      <p>Uygulamada analiz, reklam, kullanım istatistikleri, çökme raporlaması veya başka bir telemetri bulunmaz. Geliştiricisinin işlettiği herhangi bir sunucuya veri göndermez; geliştirici sizinle ilgili veri almaz.</p>
+      <p>Hiçbir uygulamada analiz, reklam, kullanım istatistikleri, çökme raporlaması veya başka bir telemetri bulunmaz. macOS ve Windows uygulamaları geliştiricilerinin işlettiği herhangi bir sunucuya veri göndermez; geliştirici bu uygulamalardan sizinle ilgili veri almaz. Geliştiricinin hizmetinin bir iPad kullanıcısı hakkında tuttuğu tek veri, <a href="#ipad">iPad uygulaması</a> bölümünde açıklanan giriş hesabıdır.</p>
       <p>Web sitesinde takip betikleri, çerezler veya sayfa görüntüleme analizleri kullanılmaz. Kısa indirme bağlantılarını (<code>/mac</code> veya <code>/windows</code>) kullandığınızda web sitesi, hiçbir kişisel veri kaydetmeden yalnızca platform, ülke ve yönlendiren alan adı bazında indirme tıklamalarını sayar. IP adresleri, tam yönlendirme adresleri veya çerezler kaydedilmez.</p>
     </section>
 
     <section aria-labelledby="sharing">
       <h2 id="sharing">Üçüncü taraflarla paylaşım</h2>
-      <p>Verileriniz satılmaz veya kiralanmaz. Uygulama okulunuzun Blackboard sunucusuna; macOS paketinde güncellemeler için GitHub’a; Takvim eşitlemesini veya NotebookLM’i seçtiğinizde ise Google’a bağlanır. Teslim tarihi bilgileri ve ders dosyaları yalnızca bu özellikleri sağlamak için Google’a aktarılır. Bu hizmetlerin kendi gizlilik politikaları vardır.</p>
+      <p>Verileriniz satılmaz veya kiralanmaz. macOS ve Windows uygulamaları okulunuzun Blackboard sunucusuna; macOS paketinde güncellemeler için GitHub’a; Takvim eşitlemesini veya NotebookLM’i seçtiğinizde ise Google’a bağlanır. Teslim tarihi bilgileri ve ders dosyaları yalnızca bu özellikleri sağlamak için Google’a aktarılır. iPad uygulaması okulunuzun Blackboard sunucusuna ve hesabı için Supabase’e, Apple’a (Apple ile Giriş Yap ve satın alımınız için App Store) ve Google’a (Google ile Giriş Yap) bağlanır; iPad ders verileri yalnızca cihazınıza gider. Bu hizmetlerin kendi gizlilik politikaları vardır.</p>
     </section>
 
     <section aria-labelledby="delete">
@@ -139,23 +184,24 @@
         <li>Tüm paketlerde <strong>Çıkış yap</strong>: oturum dosyasını ve tüm giriş verilerini (giriş tarayıcısının profilini ve giriş penceresinin web verilerini) siler. Ayarlar, indirme kayıtları ve ders dosyaları korunur.</li>
         <li><strong>macOS ve Windows Setup paketlerinde Uygulamayı kaldır…</strong> (ayarlardaki Güncellemeler bölümünde): uygulamayı, veri klasörünü (oturum, giriş verileri, ayarlar, indirme kayıtları ve günlükler) ve oturum açıldığında başlatma kaydını kaldırır. <strong>İndirilen ders dosyalarını da sil</strong> seçeneğini işaretlerseniz uygulamanın indirdiği dosyalar da Çöp Sepeti’ne / Geri Dönüşüm Kutusu’na taşınır.</li>
         <li><strong>Microsoft Store paketi</strong>: uygulamayı Windows Ayarları → Uygulamalar üzerinden kaldırın. Windows, paketin veri klasörünü de kaldırır. Ders dosyalarını artık istemiyorsanız <strong>University</strong> klasörünü kendiniz silin.</li>
+        <li><strong>iPad uygulaması</strong>: hesabınızı ve uygulamanın yerel verilerini silmek için uygulamada <strong>Ayarlar › Hesap › Hesabı sil</strong> yolunu kullanın; bkz. <a href="#ipad">iPad uygulaması</a>. Bu işlem App Store aboneliğinizi iptal etmez.</li>
         <li><strong>Elle kaldırma</strong>, macOS ve Windows Setup paketlerinde: uygulamayı kaldırın (macOS’te Çöp Sepeti’ne taşıyın; Windows’ta Ayarlar → Uygulamalar’ı kullanın). Ardından yukarıda belirtilen veri klasörünü ve isterseniz <strong>University</strong> klasörünü silin. macOS’te <code>~/Library/LaunchAgents/io.github.umutylcn.blackboard-sync.menubar.plist</code> dosyasını da silebilirsiniz.</li>
       </ul>
     </section>
 
     <section aria-labelledby="children">
       <h2 id="children">Çocuklar</h2>
-      <p>Uygulama, okulunun Blackboard hesabını kullanan öğrenciler için tasarlanmıştır; çocukları hedeflemez. Kimseye yaşını veya başka bir kişisel bilgisini sormaz.</p>
+      <p>Uygulamalar, okulunun Blackboard hesabını kullanan öğrenciler için tasarlanmıştır; çocukları hedeflemez. Kimseye yaşını sormaz. macOS ve Windows uygulamaları hiçbir kişisel bilgi istemez; iPad uygulaması yalnızca yukarıda açıklanan giriş hesabı bilgilerini ister.</p>
     </section>
 
     <section aria-labelledby="changes">
       <h2 id="changes">Bu politikadaki değişiklikler</h2>
-      <p>Uygulamanın veri kullanımı değişirse bu sayfa güncellenir ve yukarıdaki tarih değiştirilir. Önceki sürümleri GitHub’daki depo geçmişinden inceleyebilirsiniz.</p>
+      <p>Uygulamaların veri kullanımı değişirse bu sayfa güncellenir ve yukarıdaki tarih değiştirilir. Önceki sürümleri GitHub’daki depo geçmişinden inceleyebilirsiniz.</p>
     </section>
 
     <section aria-labelledby="contact">
       <h2 id="contact">İletişim</h2>
-      <p>Soru veya taleplerinizi <a href="https://github.com/UmutYLCN/blackboard-sync/issues">GitHub Issues</a> üzerinden iletebilirsiniz.</p>
+      <p>Soru veya taleplerinizi, iPad hesabınızla ilgili olanlar dahil, <a href="https://github.com/UmutYLCN/blackboard-sync/issues">GitHub Issues</a> üzerinden iletebilirsiniz. Lütfen şifrelerinizi ve kişisel bilgilerinizi yazmayın.</p>
     </section>
 
     <p class="legal-note">Blackboard Sync bağımsız bir projedir; Anthology Inc. veya Blackboard ile bağlantılı değildir. “Blackboard” markası ilgili hak sahibine aittir.</p>
