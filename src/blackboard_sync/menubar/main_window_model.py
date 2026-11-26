@@ -535,7 +535,7 @@ def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
     finished = parse_iso(status.finished_at)
     if finished is None:
         return NotebookLMCard(NOTEBOOKLM_IDLE, T_NEVER_SYNCED, **sync)
-    detail = tr("Your notebooks are up to date")
+    detail = tr("No new files were added")
     if status.added:
         detail = ntr("{n} new file added to your notebooks", "{n} new files added to your notebooks",
                      status.added).format(n=status.added)

@@ -41,13 +41,20 @@ def test_the_notebooklm_section_has_connection_controls_and_footer():
     assert "unofficial" in section.footer
 
 
-@pytest.mark.parametrize("language, expected", [
-    ("en", "29 files can't go to NotebookLM (images, videos or unsupported formats). "
-           "31 files changed after they were added; NotebookLM keeps the version it has."),
-    ("tr", "29 dosya NotebookLM'e eklenemiyor (görsel, video ya da desteklenmeyen biçim). "
-           "31 dosya eklendikten sonra değişti; NotebookLM elindeki sürümü tutuyor."),
+@pytest.mark.parametrize("language, skipped, modified, expected", [
+    ("en", 29, 31, "29 files can't go to NotebookLM: their format isn't supported, or they're missing, empty "
+                   "or over 200 MB. 31 files changed after they were added; NotebookLM keeps the version it has."),
+    ("en", 1, 0, "1 file can't go to NotebookLM: its format isn't supported, or it's missing, empty or over 200 MB."),
+    ("en", 0, 1, "1 file changed after it was added; NotebookLM keeps the version it has."),
+    ("en", 0, 0, ""),
+    ("tr", 29, 31, "29 dosya NotebookLM'e eklenemiyor: biçimi desteklenmiyor ya da dosya bulunamadı, boş veya "
+                   "200 MB'tan büyük. 31 dosya eklendikten sonra değişti; NotebookLM elindeki sürümü tutuyor."),
+    ("tr", 2, 0, "2 dosya NotebookLM'e eklenemiyor: biçimi desteklenmiyor ya da dosya bulunamadı, boş veya "
+                 "200 MB'tan büyük."),
+    ("tr", 0, 0, ""),
 ])
-def test_notebooklm_settings_explain_totals_after_a_check(monkeypatch, tmp_path, language, expected):
+def test_notebooklm_settings_explain_totals_after_a_check(monkeypatch, tmp_path, language, skipped, modified,
+                                                          expected):
     monkeypatch.setattr(i18n, "_language", language)
     now = datetime(2026, 11, 26, tzinfo=timezone.utc)
     model = AppModel(tmp_path, now)
@@ -59,7 +66,8 @@ def test_notebooklm_settings_explain_totals_after_a_check(monkeypatch, tmp_path,
         return next(section["totals"] for section in settings["sections"] if section["key"] == SECTION_NOTEBOOKLM)
 
     assert section_totals() == ""
-    model.notebooklm = replace(model.notebooklm, finished_at=now.isoformat(), skipped=29, modified=31)
+    model.notebooklm = replace(model.notebooklm, finished_at=now.isoformat(), skipped=skipped,
+                                modified=modified)
     assert section_totals() == expected
     model.notebooklm = NotebookLMStatus()
     assert section_totals() == ""

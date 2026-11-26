@@ -407,17 +407,20 @@ def notebooklm_totals(status: NotebookLMStatus) -> str:
     """Explain the totals from the latest completed NotebookLM check."""
     if not status.connected or status.error or status.needs_login or parse_iso(status.finished_at) is None:
         return ""
-    skipped = ntr(
-        "{n} file can't go to NotebookLM (images, videos or unsupported formats).",
-        "{n} files can't go to NotebookLM (images, videos or unsupported formats).",
-        status.skipped,
-    ).format(n=status.skipped)
-    modified = ntr(
-        "{n} file changed after it was added; NotebookLM keeps the version it has.",
-        "{n} files changed after they were added; NotebookLM keeps the version it has.",
-        status.modified,
-    ).format(n=status.modified)
-    return f"{skipped} {modified}"
+    parts = []
+    if status.skipped:
+        parts.append(ntr(
+            "{n} file can't go to NotebookLM: its format isn't supported, or it's missing, empty or over 200 MB.",
+            "{n} files can't go to NotebookLM: their format isn't supported, or they're missing, empty or over 200 MB.",
+            status.skipped,
+        ).format(n=status.skipped))
+    if status.modified:
+        parts.append(ntr(
+            "{n} file changed after it was added; NotebookLM keeps the version it has.",
+            "{n} files changed after they were added; NotebookLM keeps the version it has.",
+            status.modified,
+        ).format(n=status.modified))
+    return " ".join(parts)
 
 
 def window_status(model: AppModel) -> WindowStatus:

@@ -891,7 +891,8 @@ def test_settings_page_is_sections_of_rows(tmp_path):
         model.notebooklm = NotebookLMStatus(connected=True, finished_at=NOW.isoformat(), skipped=29, modified=31)
         window.update_status(main_status(model, NOW))
         with_totals = {text: top for top, text in settings_texts(window)}
-        totals = ("29 files can't go to NotebookLM (images, videos or unsupported formats). "
+        totals = ("29 files can't go to NotebookLM: their format isn't supported, or they're missing, empty "
+                  "or over 200 MB. "
                   "31 files changed after they were added; NotebookLM keeps the version it has.")
         assert with_totals["Disconnect NotebookLM"] < with_totals[totals] < with_totals["Folder"]
         assert window.form_height > original_height

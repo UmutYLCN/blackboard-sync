@@ -458,7 +458,7 @@ def test_windows_tk_window_draws_the_notebooklm_card_and_keeps_its_settings(monk
     model.notebooklm_busy, model.notebooklm_progress = None, None
     model.notebooklm = NotebookLMStatus(connected=True, finished_at=now.isoformat(), skipped=29, modified=31, failed=1)
     window.update_status(main.main_status(model, now))
-    assert window.notebooklm_detail.options["text"] == "Your notebooks are up to date"
+    assert window.notebooklm_detail.options["text"] == "No new files were added"
     assert window.notebooklm_secondary.options["text"].startswith("Last checked: ")
     assert window.notebooklm_warning_counts.options["text"] == "1 failed"
     assert window.notebooklm_warning_counts.options["foreground"] == "#b00020"

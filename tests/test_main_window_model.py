@@ -334,10 +334,10 @@ def test_notebooklm_not_connected_offers_to_connect():
 
 
 @pytest.mark.parametrize("language, added, detail, checked", [
-    ("en", 0, "Your notebooks are up to date", "Last checked: today"),
+    ("en", 0, "No new files were added", "Last checked: today"),
     ("en", 1, "1 new file added to your notebooks", "Last checked: today"),
     ("en", 3, "3 new files added to your notebooks", "Last checked: today"),
-    ("tr", 0, "Defterleriniz güncel", "Son kontrol: bugün"),
+    ("tr", 0, "Yeni dosya eklenmedi", "Son kontrol: bugün"),
     ("tr", 1, "Defterlerinize 1 yeni dosya eklendi", "Son kontrol: bugün"),
     ("tr", 3, "Defterlerinize 3 yeni dosya eklendi", "Son kontrol: bugün"),
 ])
