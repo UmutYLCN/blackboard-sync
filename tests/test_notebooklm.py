@@ -1572,3 +1572,23 @@ def test_the_app_lists_duplicates_through_the_child_and_survives_its_failure(mon
 
     monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: subprocess.CompletedProcess([], 1, stdout="", stderr=""))
     assert jobs.run_notebooklm_duplicates()["status"] == "error"
+
+
+def test_a_course_without_a_term_is_never_scanned_unless_ticked(config):
+    from blackboard_sync import courses
+    write_state(config, [CS], [put(config, CS, "a.pdf")])
+    state = State.load(config.state_file)
+    state.courses["_9_1"] = {"code": "PDR01", "title": "T", "term": "No term", "termless": True,
+                             "folder": "No term/PDR01 Guidance"}
+    state.outputs.update(dict([put(config, "No term/PDR01 Guidance", "note.pdf")]))
+    state.dirty = True
+    state.save()
+    gateway = FakeGateway()
+
+    run(config, gateway)
+    assert [n.title for n in gateway.notebooks] == ["CSE301 Database"]
+    assert [title for _, title in gateway.added] == ["a.pdf"]
+
+    courses.set_enabled(config, "_9_1", True)
+    run(config, gateway)
+    assert {n.title for n in gateway.notebooks} == {"CSE301 Database", "PDR01 Guidance"}

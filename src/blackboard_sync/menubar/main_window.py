@@ -2111,7 +2111,14 @@ class MainWindow:
             detail = _label(course_detail(row), _small(), secondary=True)
             detail.setFrame_(NSMakeRect(48, y + 28, width - 68, 15))
             document.addSubview_(detail)
-        document.setFrame_(NSMakeRect(0, 0, width, max(len(rows) * ROW_HEIGHT, 50)))
+        height = max(len(rows) * ROW_HEIGHT, 50)
+        note = courses.termless_hint(rows)
+        if note:
+            label, label_height = _wrapping(note, width - 32, _small(), secondary=True)
+            label.setFrame_(NSMakeRect(16, height + 4, width - 32, label_height))
+            document.addSubview_(label)
+            height += label_height + 20
+        document.setFrame_(NSMakeRect(0, 0, width, height))
         self.courses_scroll.setDocumentView_(document)
 
     def toggle_course(self, course_id: str, enabled: bool) -> None:

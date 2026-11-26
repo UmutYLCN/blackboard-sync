@@ -536,7 +536,7 @@ def check_reminders(config: Config, model: AppModel, now: datetime) -> list[Noti
     try:
         state = State.load(config.state_file, backup=False)
         reminders, sent = deadlines.due_reminders(
-            state, sync_root(model.dest), now, model.reminders_sent, courses.load_disabled(config))
+            state, sync_root(model.dest), now, model.reminders_sent, courses.effective_disabled(config, state.courses))
     except OSError as exc:
         log.warning("could not look for due dates: %s", exc)
         return []

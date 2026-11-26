@@ -376,7 +376,8 @@ def choose_current_terms(terms: list[Term], now: datetime) -> list[Term]:
        term is running, the newer of the dated group and the undated terms of
        the newest semester (``_undated_cohort``) is current.
     3. A term holding the merged (cross-listed) parent of a current course comes along.
-    4. Courses without a term (``termId`` empty) are always included.
+    4. Courses without a term (``termId`` empty) are always included here, so Dersler lists
+       them; ``courses.default_off`` leaves them unticked when any other course is current.
     5. When no term can be dated at all, the terms whose names give the latest
        academic year and season (``_latest_named``); if no name gives one, every course.
     """
@@ -1493,7 +1494,7 @@ def run_sync(
     report has status ``confirm`` and the terms and courses found, for the app to ask.
     """
     from blackboard_sync import term_confirm  # it builds on this module
-    from blackboard_sync.courses import load_disabled  # it builds on this module's State
+    from blackboard_sync.courses import effective_disabled  # it builds on this module's State
 
     now = now or datetime.now(timezone.utc)
     report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.root))
@@ -1529,16 +1530,21 @@ def run_sync(
         report.finished_at = _now_iso()
         return report
     everything = not all_terms and not course_filters
-    if everything and not dry_run:
-        # Dersler lists every current course, the unticked ones too.
-        found = {c.id: {"code": c.code, "title": course_code_and_title(c.course_id, c.name)[1],
-                        "term": c.term_name, "folder": c.rel_dir} for c in courses}
-        if found != state.courses:
-            state.courses = found
-            state.dirty = True
-    disabled = load_disabled(config)
+    # Dersler lists every current course, the unticked ones too. "termless" is stored, so nothing
+    # compares the English folder name "No term" (courses.default_off).
+    found = {c.id: {"code": c.code, "title": course_code_and_title(c.course_id, c.name)[1],
+                    "term": c.term_name, "folder": c.rel_dir, "termless": not c.term_id} for c in courses}
+    if everything and not dry_run and found != state.courses:
+        state.courses = found
+        state.dirty = True
+    # What the last normal sync found, plus these courses: a termless course is off by default
+    # only when a termed one is current (a filtered or dry run knows only part of them).
+    known = found if everything else {**state.courses, **found}
+    disabled = effective_disabled(config, known)
     discovered = bool(courses)
     courses = [c for c in courses if c.id not in disabled]
+    # The terms that are synced, not the ones with only unticked courses.
+    report.terms = [t.name for t in terms if any(c.id not in disabled for c in t.courses)]
     if everything and not dry_run:
         current_ids = {c.id for c in courses}
         active = {key: value for key, value in state.deadline_courses.items() if key in current_ids}
@@ -1560,7 +1566,7 @@ def run_sync(
         report.warnings.append(report.message)
     try:
         for course in courses:
-            if course.id in load_disabled(config):
+            if course.id in effective_disabled(config, known):
                 log.info("Skipping %s: unticked in Dersler", course.rel_dir)
                 continue
             log.info("Syncing %s", course.rel_dir)

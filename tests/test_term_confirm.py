@@ -200,3 +200,12 @@ def test_an_unreadable_confirm_file_counts_as_none(config, content):
     config.term_confirm_file.parent.mkdir(parents=True, exist_ok=True)
     config.term_confirm_file.write_text(content, encoding="utf-8")
     assert term_confirm.load_confirmed(config) == set()
+
+
+def test_the_card_does_not_list_courses_without_a_term():
+    """They are off by default beside termed courses, so the card has nothing to ask about them."""
+    unclear = term("_u", "2026-2027 Güz", courses=["_c1"])
+    termless = term(None, "No term", courses=["_c2"])
+    card = term_confirm.proposal("https://bb.example.edu", [unclear, termless], unclear.courses + termless.courses)
+    assert [c["id"] for c in card["courses"]] == ["_c1"]
+    assert card["terms"] == ["2026-2027 Güz"]

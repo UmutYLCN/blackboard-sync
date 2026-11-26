@@ -50,6 +50,8 @@ CATALOG = {
     "files are not deleted. Tick it again and its missing files come right away.":
         "İşaretini kaldırdığınız ders artık senkronize edilmez, Takvim'de ve Duyurular'da görünmez. İndirilmiş "
         "dosyaları silinmez. Yeniden işaretlediğinizde eksik dosyaları hemen gelir.",
+    "Courses without a term, such as guidance or orientation pages, are not synced unless you tick them.":
+        "Rehberlik veya oryantasyon sayfaları gibi dönemi olmayan dersler, işaretlemediğiniz sürece eşitlenmez.",
     "Your courses are listed here after the first sync.": "Dersleriniz ilk senkrondan sonra burada listelenir.",
     # The card before the first download at a school whose current term is not clear
     "Check your courses before the first download": "İlk indirmeden önce derslerinizi kontrol edin",

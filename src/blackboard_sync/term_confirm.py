@@ -93,9 +93,9 @@ def proposal(base_url: str, terms: list[Term], found: list[Course]) -> dict | No
     return {
         "school": school_of(base_url),
         "reasons": reasons,
-        "terms": [t.name for t in terms if t.courses],
+        "terms": [t.name for t in terms if t.courses and t.id],
         "courses": [{"id": c.id, "code": c.code, "title": course_code_and_title(c.course_id, c.name)[1],
-                     "term": c.term_name} for c in found],
+                     "term": c.term_name} for c in found if c.term_id],
     }
 
 

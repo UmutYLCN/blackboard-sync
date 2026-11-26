@@ -101,9 +101,10 @@ def rows(state: State, base_url: str, hidden: frozenset[str] | set[str] = frozen
 
 
 def load_rows(config: Config) -> tuple[AnnouncementRow, ...]:
-    from blackboard_sync.courses import load_disabled  # it imports this module's State too
+    from blackboard_sync.courses import effective_disabled  # it imports this module's State too
 
-    return rows(State.load(config.state_file, backup=False), config.base_url, hidden=load_disabled(config))
+    state = State.load(config.state_file, backup=False)
+    return rows(state, config.base_url, hidden=effective_disabled(config, state.courses))
 
 
 def open_target(row: AnnouncementRow, root: Path) -> Path | str | None:

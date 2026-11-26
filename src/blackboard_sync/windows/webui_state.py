@@ -244,6 +244,7 @@ def courses_page(rows) -> dict:
         "hint": courses.T_HINT,
         "untick": courses.T_UNTICK_HINT,
         "empty": courses.T_EMPTY,
+        "termless": courses.termless_hint(rows),
         "rows": [{"id": row.id, "title": main.course_title(row), "detail": main.course_detail(row),
                   "enabled": row.enabled} for row in rows],
     }

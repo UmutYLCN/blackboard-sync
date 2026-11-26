@@ -1144,6 +1144,10 @@ class MainWindow:
             ttk.Label(text, text=main.course_title(row), font=BOLD_FONT if row.enabled else None,
                       foreground="" if row.enabled else MUTED, wraplength=WRAP - 60).pack(anchor="w")
             ttk.Label(text, text=main.course_detail(row), foreground=MUTED, wraplength=WRAP - 60).pack(anchor="w")
+        note = courses.termless_hint(rows)
+        if note:
+            ttk.Label(self.courses_frame, text=note, foreground=MUTED, wraplength=WRAP - 60).pack(
+                anchor="w", pady=(8, 0))
 
     @staticmethod
     def courses_nav_title(rows):
