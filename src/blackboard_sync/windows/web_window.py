@@ -95,14 +95,18 @@ def form_values(data) -> form.FormValues | None:
     base_url, dest = data.get("base_url"), data.get("dest")
     interval, code = data.get("sync_interval_minutes"), data.get("language")
     switches = tuple(data.get(key) for key in ("autostart", "check_updates", "auto_relogin", "notebooklm_auto"))
+    ai_cli, ai_resume = data.get("ai_cli", ""), data.get("ai_resume", True)
     if not (isinstance(base_url, str) and len(base_url) <= 2048 and isinstance(dest, str) and len(dest) <= MAX_ID):
         return None
     if any(not isinstance(value, bool) for value in switches) or isinstance(interval, bool):
         return None
     if interval not in INTERVALS or code not in LANGUAGE_CODES:
         return None
+    if not isinstance(ai_cli, str) or ai_cli not in form.AI_VALUES or not isinstance(ai_resume, bool):
+        return None
     autostart, check_updates, auto_relogin, notebooklm_auto = switches
-    return form.FormValues(base_url, dest, autostart, check_updates, interval, code, auto_relogin, notebooklm_auto)
+    return form.FormValues(base_url, dest, autostart, check_updates, interval, code, auto_relogin, notebooklm_auto,
+                           ai_cli, ai_resume)
 
 
 class Bridge:

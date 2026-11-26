@@ -699,6 +699,8 @@ class AppModel:
         self.notebooklm_busy: str | None = None  # NOTEBOOKLM_CONNECT | NOTEBOOKLM_SYNC | NOTEBOOKLM_DUPLICATES
         self.notebooklm_progress = None  # main_window_model.NotebookLMProgress of the running job
         self.notebooklm_again = False  # a sync finished during a run: look again once it ends
+        # The AI tools found on this computer (``ai_launcher.Detector.installed``); None: not looked for yet.
+        self.ai_installed: frozenset[str] | None = None
         self.busy: str | None = None  # "sync" | "login" | "move" | ...
         # A job asked for by a destination change, started as soon as the slot is free:
         # MOVE_JOB (from ``move_from``) or "sync" (download into the new folder).

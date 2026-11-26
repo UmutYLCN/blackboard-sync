@@ -159,6 +159,9 @@ from blackboard_sync.menubar.settings_form import (
     T_URL_PLACEHOLDER,
     FormValues,
     RowState,
+    ai_cli_choices,
+    ai_cli_index,
+    ai_cli_value,
     dest_change_message,
     interval_title,
     language_code,
@@ -196,7 +199,7 @@ ROW_MIN = 56
 SECTION_GAP = 26
 CONTROL_GAP = 16  # between a row's text and its control
 FIELD_WIDTH, FIELD_WITH_BUTTON = 300, 230
-POPUP_WIDTH = {"interval": 190, "language": 160}
+POPUP_WIDTH = {"interval": 190, "language": 160, "ai_cli": 220}
 AVATAR = 34  # the sidebar's account card
 SCENE_HEIGHT = 84  # the small illustration in Home's status card while a sync runs
 UPDATE_BANNER_HEIGHT = 86
@@ -581,6 +584,8 @@ ROW_ATTRIBUTES = {
     "notebooklm_auto": ("notebooklm_switch", None, None),
     "notebooklm_duplicates": (None, None, None),
     "notebooklm_disconnect": (None, None, None),
+    "ai_cli": ("ai_popup", None, None),
+    "ai_resume": ("ai_resume_switch", None, None),
     "check_updates": ("check_updates", None, None),
     "update": ("update_button", "version_label", None),
     "uninstall": ("uninstall_button", None, None),
@@ -1602,7 +1607,8 @@ class MainWindow:
             popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
                 NSMakeRect(0, 0, POPUP_WIDTH[row.key], 25), False)
             titles = {"interval": [title for _, title in INTERVAL_OPTIONS],
-                      "language": [name for _, name in LANGUAGE_OPTIONS]}.get(row.key)
+                      "language": [name for _, name in LANGUAGE_OPTIONS],
+                      "ai_cli": [title for _, title in ai_cli_choices(None)]}.get(row.key)
             if titles:
                 popup.addItemsWithTitles_(titles)
                 popup.setTarget_(self.target)
@@ -1817,6 +1823,8 @@ class MainWindow:
             language=language_code(str(self.language_popup.titleOfSelectedItem())),
             auto_relogin=bool(self.auto_relogin.state()),
             notebooklm_auto=bool(self.notebooklm_switch.state()),
+            ai_cli=ai_cli_value(int(self.ai_popup.indexOfSelectedItem())),
+            ai_resume=bool(self.ai_resume_switch.state()),
         )
 
     def set_values(self, values: FormValues) -> None:
@@ -1833,6 +1841,8 @@ class MainWindow:
         self.interval_popup.selectItemWithTitle_(interval_title(values.sync_interval_minutes))
         self.language_popup.selectItemWithTitle_(language_title(values.language))
         self.notebooklm_switch.setState_(1 if values.notebooklm_auto else 0)
+        self.ai_popup.selectItemAtIndex_(ai_cli_index(values.ai_cli))
+        self.ai_resume_switch.setState_(1 if values.ai_resume else 0)
         self.show_error("")
 
     def changed(self, control) -> None:
@@ -1941,6 +1951,11 @@ class MainWindow:
         self._update_google_calendar(form)
         self._apply_row_state("notebooklm_disconnect", notebooklm_disconnect_state(form))
         self._apply_row_state("notebooklm_duplicates", notebooklm_disconnect_state(form))
+        # "Open with": each tool says whether it is installed once the app has looked.
+        for index, (_value, title) in enumerate(ai_cli_choices(form.ai_installed)):
+            item = self.ai_popup.itemAtIndex_(index)
+            if item is not None and str(item.title()) != title:
+                item.setTitle_(title)
         self._animate()
         self.refresh_announcements()
 

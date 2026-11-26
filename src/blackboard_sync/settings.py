@@ -30,11 +30,19 @@ DEFAULT_SYNC_INTERVAL_MINUTES = 60
 # The main window's colors (the Windows WebView2 window): follow Windows, or always light or dark.
 THEME_SYSTEM, THEME_LIGHT, THEME_DARK = "system", "light", "dark"
 THEMES = (THEME_SYSTEM, THEME_LIGHT, THEME_DARK)
+# "Yapay zekâ asistanı": the command-line AI tool the term folder opens with (``ai_launcher``); "" is none.
+AI_CLAUDE, AI_GEMINI, AI_CODEX = "claude", "gemini", "codex"
+AI_CLIS = (AI_CLAUDE, AI_GEMINI, AI_CODEX)
 
 
 def normalize_theme(value: object) -> str:
     """A known theme, else following Windows."""
     return value if value in THEMES else THEME_SYSTEM
+
+
+def normalize_ai_cli(value: object) -> str:
+    """A known AI tool, else none ("")."""
+    return value if value in AI_CLIS else ""
 
 
 def normalize_sync_interval(value: object) -> int:
@@ -64,6 +72,8 @@ class Settings:
     # "Otomatik yeniden giriş": keep the session alive and sign in again in the background (``session_refresh``).
     auto_relogin: bool = True
     notebooklm_auto: bool = True  # add new files to NotebookLM after each sync, once it is connected
+    ai_cli: str = ""  # AI_CLIS or "": the AI tool the term folder opens with
+    ai_resume: bool = True  # continue that tool's last session in the folder instead of starting a new one
 
     def to_dict(self) -> dict:
         return {
@@ -75,6 +85,8 @@ class Settings:
             "theme": self.theme,
             "auto_relogin": self.auto_relogin,
             "notebooklm_auto": self.notebooklm_auto,
+            "ai_cli": self.ai_cli,
+            "ai_resume": self.ai_resume,
         }
 
     @classmethod
@@ -88,6 +100,8 @@ class Settings:
             theme=normalize_theme(data.get("theme")),
             auto_relogin=data.get("auto_relogin", True) is not False,
             notebooklm_auto=data.get("notebooklm_auto", True) is not False,
+            ai_cli=normalize_ai_cli(data.get("ai_cli")),
+            ai_resume=data.get("ai_resume", True) is not False,
         )
 
 

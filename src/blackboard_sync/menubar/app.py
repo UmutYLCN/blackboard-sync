@@ -17,8 +17,8 @@ import webbrowser
 from dataclasses import replace
 from pathlib import Path
 
-from blackboard_sync import (announcements, courses, deadlines, runtime, session_refresh, signout, term_confirm,
-                            update_macos, updater, uninstall)
+from blackboard_sync import (ai_launcher, announcements, courses, deadlines, runtime, session_refresh, signout,
+                            term_confirm, update_macos, updater, uninstall)
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.i18n import tr
@@ -280,6 +280,7 @@ def build_app(config: Config, show_window: bool = False):
             self.menu._menu.setDelegate_(self._menu_delegate)
             self._window = None  # the main window, built when first shown
             self._uninstalling = False
+            self._ai_detecting = False  # ``detect_ai_tools`` is looking
             self._login_after_job = False  # asked for while another job was running
             self._timer = rumps.Timer(self.tick, TICK_SECONDS)
             self._timer.start()
@@ -767,12 +768,37 @@ def build_app(config: Config, show_window: bool = False):
                     on_open_announcement=self.open_announcement,
                     on_courses=lambda: courses.load_rows(self.config),
                     on_course_toggle=self.course_toggled,
-                    on_section=lambda _section: self.refresh(),
+                    on_section=self.section_shown,
                     recent_seen=self.model.recent_seen,
                     on_seen=self._save,
                 )
             log.info("showing the main window")
             self._window.show(section)
+            self.detect_ai_tools()
+            self.refresh()
+
+        def section_shown(self, section: str) -> None:
+            if section == GENERAL:
+                self.detect_ai_tools()  # Settings → AI assistant says which tools are installed
+            self.refresh()
+
+        def detect_ai_tools(self) -> None:
+            """Look for the AI tools again in the background (a login shell may take a moment)."""
+            if self._ai_detecting:
+                return
+            self._ai_detecting = True
+
+            def work() -> None:
+                try:
+                    ai_launcher.DETECTOR.refresh()
+                except Exception:  # never lose the flag; Settings keeps the names without a state
+                    log.exception("Looking for the AI tools failed")
+                AppHelper.callAfter(self._ai_detected)
+            threading.Thread(target=work, daemon=True).start()
+
+        def _ai_detected(self) -> None:
+            self._ai_detecting = False
+            self.model.ai_installed = ai_launcher.DETECTOR.installed()
             self.refresh()
 
         def course_toggled(self, course_id: str, enabled: bool) -> None:
