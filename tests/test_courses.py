@@ -182,6 +182,17 @@ def test_ticking_a_termless_course_is_saved_as_an_opt_in_and_unticking_takes_it_
     assert json.loads(config.courses_file.read_text(encoding="utf-8"))["enabled"] == []
 
 
+def test_ticking_a_termless_course_when_nothing_else_is_current_keeps_it_on_later(config):
+    only = {"_2_1": info("No term", True, "PDR01")}
+    state = State(config.state_file)
+    state.courses = dict(only)
+    state.dirty = True
+    state.save()
+    courses.set_enabled(config, "_2_1", False)
+    courses.set_enabled(config, "_2_1", True)
+    assert courses.effective_disabled(config, MIXED) == set()
+
+
 def test_saving_the_unticked_courses_keeps_the_opt_in(config):
     config.ensure_data_dir()
     config.courses_file.write_text(json.dumps({"version": 2, "disabled": [], "enabled": ["_2_1"]}), encoding="utf-8")

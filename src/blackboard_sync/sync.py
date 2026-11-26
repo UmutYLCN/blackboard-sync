@@ -1543,11 +1543,11 @@ def run_sync(
     disabled = effective_disabled(config, known)
     discovered = bool(courses)
     courses = [c for c in courses if c.id not in disabled]
-    # The terms that are synced, not the ones with only unticked courses.
-    report.terms = [t.name for t in terms if any(c.id not in disabled for c in t.courses)]
+    synced_ids = {c.id for c in courses}
+    # The terms of the courses this sync takes, not ones with only unticked or filtered-out courses.
+    report.terms = [t.name for t in terms if any(c.id in synced_ids for c in t.courses)]
     if everything and not dry_run:
-        current_ids = {c.id for c in courses}
-        active = {key: value for key, value in state.deadline_courses.items() if key in current_ids}
+        active = {key: value for key, value in state.deadline_courses.items() if key in synced_ids}
         if active != state.deadline_courses:
             state.deadline_courses = active
             state.dirty = True

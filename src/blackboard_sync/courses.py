@@ -116,15 +116,11 @@ def effective_disabled(config: Config, known: Mapping[str, dict]) -> set[str]:
     return disabled | (default_off(known) - enabled)
 
 
-def load_effective_disabled(config: Config) -> set[str]:
-    return effective_disabled(config, State.load(config.state_file, backup=False).courses)
-
-
 def set_enabled(config: Config, course_id: str, enabled: bool) -> None:
     disabled, on_purpose = _read(config)
     if enabled:
         disabled.discard(course_id)
-        if course_id in default_off(State.load(config.state_file, backup=False).courses):
+        if is_termless(State.load(config.state_file, backup=False).courses.get(course_id, {})):
             on_purpose.add(course_id)
     else:
         disabled.add(course_id)

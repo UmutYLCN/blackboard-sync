@@ -150,3 +150,13 @@ def test_a_termless_course_is_listed_but_not_synced_at_the_first_school(tmp_path
     assert listed["_14000_1"]["code"] == "LIB100" and listed["_14000_1"]["termless"] is True
     from blackboard_sync import courses
     assert {r.code: r.enabled for r in courses.load_rows(config)} == {"CSE303": True, "LIB100": False}
+
+
+def test_a_filtered_sync_reports_only_the_term_of_the_synced_course(tmp_path):
+    """S11 has two current terms; syncing one course names only that course's term."""
+    scenario = SCENARIOS["S11"]
+    config = Config(base_url=BASE_URL, dest=tmp_path / "University", data_dir=tmp_path / "data")
+    report = run_sync(config, BlackboardClient(BASE_URL, FakeBlackboard(scenario["api_routes"])),
+                      course_filters=["CSE303"], now=parse_time(scenario["now"]))
+    assert [c.code for c in report.courses] == ["CSE303"]
+    assert report.terms == ["Fall 2026"]
