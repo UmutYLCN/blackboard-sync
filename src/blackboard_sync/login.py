@@ -402,10 +402,10 @@ def prune_tabs(context):
 def leave_one_blank_tab(browser) -> None:
     """Leave a blank tab in the restored session while retaining profile cookies."""
     for context in browser.contexts:
-        page = prune_tabs(context)
-        if page is not None:
+        if context.pages:
             with suppress(Exception):  # still quit if the tab closes or navigation fails
-                page.goto("about:blank", wait_until="commit", timeout=2000)
+                context.pages[0].goto("about:blank", wait_until="commit", timeout=2000)
+        prune_tabs(context)
 
 
 def _close_browser(browser) -> None:

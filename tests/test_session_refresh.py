@@ -228,6 +228,8 @@ def test_silent_sign_in_prunes_restored_tabs_before_navigation_and_popups_before
     def goto(url, **kwargs):
         if url == BASE_URL + "/":
             pages_at_navigation.extend(context.pages)
+        if url == "about:blank":  # Playwright learns of a popup opened during the last check only now
+            context.add_page(FakePage("https://login.school.edu/late-popup"))
         navigate(url, **kwargs)
 
     def check_user(base, cookies):
@@ -869,6 +871,63 @@ def test_e2e_successful_auto_redirect(config, static_server, monkeypatch):
     )
     assert res.ok
     assert res.reason == sr.REFRESHED
+
+
+def test_e2e_consecutive_refreshes_do_not_pile_up_restored_tabs(config, static_server):
+    app = login_mod.discover_browser("auto")
+    if app is None or app.name in sr.NO_SILENT_START:
+        pytest.skip("no Chromium-based browser that starts without a window")
+    sync_api = pytest.importorskip("playwright.sync_api")
+
+    def bb_root(handler):
+        if "BbRouter=" in handler.headers.get("Cookie", ""):
+            return (200, {"Content-Type": "text/html"}, "<html><body>Welcome Ada</body></html>")
+        return (302, {"Location": "/sso"}, "")
+
+    def sso_page(handler):
+        return (302, {"Location": "/", "Set-Cookie": "BbRouter=expires:2000000000; Path=/"}, "")
+
+    def saved_tab(handler):
+        return (200, {"Content-Type": "text/html"}, "<html><body>A tab from an earlier session</body></html>")
+
+    base_url = static_server({"/": bb_root, "/sso": sso_page, "/saved": saved_tab})
+    config.ensure_data_dir()
+    config.profile_dir.mkdir(exist_ok=True)
+    save_session(config.session_file, base_url, OLD, USER)
+    cfg = replace(config, base_url=base_url)
+    saved_urls = [f"{base_url}/saved?tab={n}" for n in range(4)]
+    restored = []
+
+    with sync_api.sync_playwright() as pw:
+        process = subprocess.Popen(
+            [str(sr.browser_executable(app)), *sr.silent_flags(config.profile_dir)],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        try:
+            port = login_mod.wait_for_devtools_port(config.profile_dir, timeout=sr.BROWSER_START_TIMEOUT)
+            browser = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+            try:
+                for url in saved_urls:
+                    browser.contexts[0].new_page().goto(url)
+            finally:
+                login_mod._close_browser(browser)
+        finally:
+            sr._stop_browser(process)
+
+        def connect(url):
+            browser = pw.chromium.connect_over_cdp(url)
+            restored.append(sorted(page.url for page in browser.contexts[0].pages))
+            return browser
+
+        for _ in range(3):
+            res = sr.silent_sign_in(
+                cfg, timeout=10.0, stillness_timeout=3.0, connect=connect,
+                check_user=lambda base, cookies: USER if any(c.get("name") == "BbRouter" for c in cookies) else None,
+            )
+            assert res.reason == sr.REFRESHED
+
+    assert set(saved_urls) <= set(restored[0])  # the profile restores its saved tabs on relaunch
+    assert all(len(tabs) <= 1 and not set(tabs) & set(saved_urls) for tabs in restored[1:])
 
 
 def test_e2e_username_first_page_exits_fast(config, static_server):
