@@ -442,8 +442,8 @@ button, input, select { font: inherit; color: inherit; }
 .nlm-icon.attention { color: var(--caution); }
 .nlm-text { flex: 1; min-width: 0; }
 .nlm-title { font: 400 19px/1.25 var(--font-display); letter-spacing: -0.01em; }
-.nlm-detail, .nlm-counts { color: var(--muted); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nlm-notice { color: var(--caution); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nlm-detail, .nlm-secondary { color: var(--muted); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nlm-warning-counts, .nlm-notice { color: var(--caution); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nlm-bar { position: relative; height: 6px; margin-top: 10px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
 .nlm-bar > span { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 3px; background: var(--accent); transition: width 0.3s ease-out; }
 .nlm-bar.moving > span { width: 35%; transition: none; animation: slide 1.4s ease-in-out infinite; }

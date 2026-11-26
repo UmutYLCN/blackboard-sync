@@ -1,10 +1,16 @@
 """The Settings page as data: which sections and rows it has, and what changes while the app runs."""
 
-from dataclasses import fields
+from dataclasses import fields, replace
+from datetime import datetime, timezone
 
-from blackboard_sync import uninstall
+import pytest
+
+from blackboard_sync import i18n, uninstall
 from blackboard_sync.gcal import CalendarStatus
 from blackboard_sync.menubar import settings_form as f
+from blackboard_sync.menubar.model import AppModel
+from blackboard_sync.notebooklm.store import NotebookLMStatus
+from blackboard_sync.windows import webui_state
 from blackboard_sync.menubar.settings_form import (
     CONTROL_BUTTON,
     CONTROL_FIELD,
@@ -27,12 +33,36 @@ from blackboard_sync.menubar.settings_form import (
 from blackboard_sync.menubar.settings_form import SECTION_NOTEBOOKLM
 
 
-def test_only_the_macos_window_has_the_notebooklm_section():
+def test_the_notebooklm_section_has_connection_controls_and_footer():
     assert SECTION_NOTEBOOKLM not in [section.key for section in settings_sections(appearance=True)]
     section = next(s for s in settings_sections(notebooklm=True) if s.key == SECTION_NOTEBOOKLM)
     assert [row.key for row in section.rows] == ["notebooklm_auto", "notebooklm_duplicates", "notebooklm_disconnect"]
     assert section.rows[0].title == "Add new files to NotebookLM after each sync"
     assert "unofficial" in section.footer
+
+
+@pytest.mark.parametrize("language, expected", [
+    ("en", "29 files can't go to NotebookLM (images, videos or unsupported formats). "
+           "31 files changed after they were added; NotebookLM keeps the version it has."),
+    ("tr", "29 dosya NotebookLM'e eklenemiyor (görsel, video ya da desteklenmeyen biçim). "
+           "31 dosya eklendikten sonra değişti; NotebookLM elindeki sürümü tutuyor."),
+])
+def test_notebooklm_settings_explain_totals_after_a_check(monkeypatch, tmp_path, language, expected):
+    monkeypatch.setattr(i18n, "_language", language)
+    now = datetime(2026, 11, 26, tzinfo=timezone.utc)
+    model = AppModel(tmp_path, now)
+    model.notebooklm = NotebookLMStatus(connected=True)
+    values = FormValues("", str(tmp_path), True)
+
+    def section_totals():
+        settings = webui_state.settings(f.window_status(model), values, ("", ""), False, "system")
+        return next(section["totals"] for section in settings["sections"] if section["key"] == SECTION_NOTEBOOKLM)
+
+    assert section_totals() == ""
+    model.notebooklm = replace(model.notebooklm, finished_at=now.isoformat(), skipped=29, modified=31)
+    assert section_totals() == expected
+    model.notebooklm = NotebookLMStatus()
+    assert section_totals() == ""
 
 
 def all_rows():

@@ -58,6 +58,7 @@ from blackboard_sync.menubar.model import (
     shorten,
 )
 from blackboard_sync.menubar.settings_form import T_SAVE, FormValues, WindowStatus, window_status
+from blackboard_sync.notebooklm.store import NotebookLMStatus
 
 OVERVIEW, GENERAL, COURSES, CALENDAR, ANNOUNCEMENTS = "overview", "general", "courses", "calendar", "announcements"
 ACTIVITY = "activity"
@@ -308,13 +309,14 @@ class NotebookLMCard:
 
     kind: str  # one of the NOTEBOOKLM_* values
     detail: str
-    counts: str = ""  # "3 added · 2 skipped · 1 course blocked"
+    secondary: str = ""  # time of the last check, or the course being uploaded
     notice: str = ""  # why something was left out
     action: str = ""
     action_title: str = ""
     enabled: bool = True
     open_action: bool = False  # the "Open NotebookLM" pill beside the action
     progress: float | None = None  # 0 to 1 while files go up; None: no telling, the bar just moves
+    warning_counts: str = ""  # "1 course blocked · 2 held back · 3 failed"
 
     @property
     def warning(self) -> bool:
@@ -493,13 +495,9 @@ def notebooklm_progress(event: dict) -> NotebookLMProgress:
     return NotebookLMProgress(T_NOTEBOOKLM_CHECKING)
 
 
-def notebooklm_counts(status) -> str:
-    """"3 added · 2 skipped · 1 course blocked"; a count of zero only for what was added."""
-    parts = [tr("{n} added").format(n=status.added)]
-    if status.skipped:
-        parts.append(tr("{n} skipped").format(n=status.skipped))
-    if status.modified:
-        parts.append(tr("{n} changed, not replaced").format(n=status.modified))
+def notebooklm_warning_counts(status: NotebookLMStatus) -> str:
+    """Summarize the files or courses that need attention."""
+    parts = []
     if status.blocked:
         parts.append(ntr("{n} course blocked", "{n} courses blocked", status.blocked).format(n=status.blocked))
     if status.held:
@@ -530,15 +528,20 @@ def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
             return NotebookLMCard(NOTEBOOKLM_ATTENTION, status.message, **connect)
         return NotebookLMCard(NOTEBOOKLM_OFF, T_NOTEBOOKLM_INTRO, **connect)
     if status.needs_login:
-        return NotebookLMCard(NOTEBOOKLM_ATTENTION, status.message, "", "", "notebooklm_connect", T_LOGIN)
+        return NotebookLMCard(NOTEBOOKLM_ATTENTION, status.message, action="notebooklm_connect", action_title=T_LOGIN)
     if status.error:
         return NotebookLMCard(NOTEBOOKLM_ATTENTION, tr("Sync did not finish: {error}").format(error=status.message),
                               **sync)
     finished = parse_iso(status.finished_at)
     if finished is None:
         return NotebookLMCard(NOTEBOOKLM_IDLE, T_NEVER_SYNCED, **sync)
-    return NotebookLMCard(NOTEBOOKLM_IDLE, tr("Last synced: {time}").format(time=day_time(finished, now)),
-                          counts=notebooklm_counts(status), notice=status.message, **sync)
+    detail = tr("Your notebooks are up to date")
+    if status.added:
+        detail = ntr("{n} new file added to your notebooks", "{n} new files added to your notebooks",
+                     status.added).format(n=status.added)
+    checked = tr("Last checked: {time}").format(time=day_time(finished, now))
+    return NotebookLMCard(NOTEBOOKLM_IDLE, detail, secondary=checked, notice=status.message,
+                          warning_counts=notebooklm_warning_counts(status), **sync)
 
 
 def duplicates_title(report: dict) -> str:

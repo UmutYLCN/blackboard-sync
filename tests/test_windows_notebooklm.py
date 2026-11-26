@@ -204,7 +204,7 @@ def test_progress_reaches_the_card(app):
     app.model.begin_notebooklm(NOTEBOOKLM_SYNC)
     app.notebooklm_event({"event": "progress", "file": "W/a.pdf", "done": 1, "total": 4, "finished": 1, "course": "CSE"})
     card = main.notebooklm_card(app.model, NOW)
-    assert card.running and card.progress == 0.25 and card.counts == "CSE" and "a.pdf" in card.detail
+    assert card.running and card.progress == 0.25 and card.secondary == "CSE" and "a.pdf" in card.detail
 
 
 def test_pause_stops_only_an_upload_run_and_quit_stops_any(app, monkeypatch):
@@ -499,6 +499,16 @@ def test_the_card_follows_every_state_and_clicks_stay_within_it(card, kind, butt
     assert bool(data["open"]) is opens and data["warning"] is (kind == "attention")
     allowed = webui_state.ids(drawn)["notebooklm"]
     assert (button in allowed) is enabled and ("notebooklm_open" in allowed) is opens
+
+
+def test_the_idle_card_sends_the_result_check_time_and_warnings_to_webview():
+    last_run = replace(CONNECTED, finished_at=NOW.isoformat(), skipped=29, modified=31, blocked=1,
+                       message="CSE301: source limit")
+    card = state(model_card(notebooklm=last_run))["home"]["notebooklm"]
+    assert card["detail"] == "Your notebooks are up to date"
+    assert card["secondary"] == f"Last checked: {main.day_time(NOW, NOW)}"
+    assert card["warning-counts"] == "1 course blocked"
+    assert card["notice"] == last_run.message
 
 
 def test_a_run_shows_how_far_it_has_come_or_that_there_is_no_telling():

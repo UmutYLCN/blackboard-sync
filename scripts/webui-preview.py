@@ -41,8 +41,9 @@ def fixtures(now: datetime) -> dict[str, dict]:
     from blackboard_sync.announcements import AnnouncementRow
     from blackboard_sync.i18n import tr
     from blackboard_sync.menubar import main_window_model as main
-    from blackboard_sync.menubar.model import T_SYNC_NOW
-    from blackboard_sync.menubar.settings_form import WindowStatus
+    from blackboard_sync.menubar.model import T_SYNC_NOW, AppModel
+    from blackboard_sync.menubar.settings_form import WindowStatus, notebooklm_totals
+    from blackboard_sync.notebooklm.store import NotebookLMStatus
     from blackboard_sync.windows import webui_state
 
     form =WindowStatus(account=tr("Signed in as {name}").format(name="UMUT YALÇIN"), account_warning=False,
@@ -83,6 +84,9 @@ def fixtures(now: datetime) -> dict[str, dict]:
         first_run=False, account=account, sync_title=T_SYNC_NOW, sync_enabled=True, recent=recent, form=form,
         home=main.HomeState(main.STATE_SYNCED, main.T_STATE_TITLES[main.STATE_SYNCED], account.detail),
         pause_enabled=True, home_heading=heading, home_subtitle=subtitle)
+    notebooklm = AppModel(Path("."), now)
+    notebooklm.notebooklm = NotebookLMStatus(connected=True, finished_at=local.replace(hour=18, minute=14).isoformat(),
+                                            added=3, skipped=2, modified=1, held=2)
     states = {
         "up-to-date": (synced, announcements, page),
         "syncing": (replace(synced, sync_title=tr("Syncing…"), sync_enabled=False, scene=main.SCENE_COMPACT,
@@ -119,11 +123,7 @@ def fixtures(now: datetime) -> dict[str, dict]:
                 done=3, total=8, file="Lecture 4 - Normalization.pptx"),
             "CSE301 Database Management", action="notebooklm_sync", action_title=main.T_NOTEBOOKLM_SYNC, enabled=False,
             open_action=True, progress=0.375)), announcements, page),
-        "notebooklm-idle": (replace(synced, notebooklm=main.NotebookLMCard(
-            main.NOTEBOOKLM_IDLE, tr("Last synced: {time}").format(time=tr("today {time}").format(time="18:14")),
-            counts=" · ".join((tr("{n} added").format(n=3), tr("{n} skipped").format(n=2))),
-            notice="2 files were held back.", action="notebooklm_sync", action_title=main.T_NOTEBOOKLM_SYNC,
-            open_action=True),
+        "notebooklm-idle": (replace(synced, notebooklm=main.notebooklm_card(notebooklm, now),
             home=main.HomeState(main.STATE_SYNCED, main.T_STATE_TITLES[main.STATE_SYNCED],
                                 f"{account.detail} · {main.T_SESSION_REFRESHED}")), announcements, page),
         "notebooklm-attention": (replace(synced, notebooklm=main.NotebookLMCard(
@@ -165,7 +165,8 @@ def fixtures(now: datetime) -> dict[str, dict]:
     full = replace(synced, activity=activity, attention=(main.AttentionItem(
         tr("Blackboard Sync {version} is ready").format(version="1.7.0"), main.T_UPDATE_INTRO, "update", main.T_UPDATE,
         warning=False),))
-    settings_form = replace(form, uninstall_enabled=True,
+    settings_form = replace(form, uninstall_enabled=True, notebooklm_connected=True,
+                            notebooklm_totals=notebooklm_totals(notebooklm.notebooklm),
                             calendar=CalendarStatus(connected=True, last_sync="2026-10-18T12:05:00+00:00"))
     for name, section, current, extra in (
         ("activity", main.ACTIVITY, full, {}),

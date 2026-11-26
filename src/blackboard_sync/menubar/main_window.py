@@ -166,6 +166,7 @@ from blackboard_sync.menubar.settings_form import (
     notebooklm_disconnect_state,
     row_states,
     calendar_presentation,
+    SECTION_NOTEBOOKLM,
     settings_sections,
     window_height,
 )
@@ -206,7 +207,7 @@ RIGHT_W = INNER - LEFT_W - GAP
 SCENE_SMALL = (72, 44)  # the illustration in place of the state symbol while a sync runs
 NOTEBOOKLM_TEXT_X = 64  # the NotebookLM card's text lines up with the status card's
 NOTEBOOKLM_BASE = 88  # its height before the first layout
-NOTEBOOKLM_LINE = 20  # one more line: the detail, the counts, the notice, the bar
+NOTEBOOKLM_LINE = 20  # height of each visible text or progress line
 NOTEBOOKLM_FADE = 0.3  # seconds the card takes from one state to the next
 ICON_SIZE = 28  # the state symbol beside "Up to date", like Drive's cloud
 PILL_H = 36  # Drive's rounded "View all" buttons
@@ -1013,8 +1014,11 @@ class MainWindow:
         content.addSubview_(self.notebooklm_title)
         self.notebooklm_detail = _label("", 13, secondary=True)
         content.addSubview_(self.notebooklm_detail)
-        self.notebooklm_counts = _label("", _small(), secondary=True)
-        content.addSubview_(self.notebooklm_counts)
+        self.notebooklm_secondary = _label("", _small(), secondary=True)
+        content.addSubview_(self.notebooklm_secondary)
+        self.notebooklm_warning_counts = _label("", _small())
+        self.notebooklm_warning_counts.setTextColor_(NSColor.systemOrangeColor())
+        content.addSubview_(self.notebooklm_warning_counts)
         self.notebooklm_notice = _label("", _small())
         self.notebooklm_notice.setTextColor_(NSColor.systemOrangeColor())
         content.addSubview_(self.notebooklm_notice)
@@ -1060,7 +1064,8 @@ class MainWindow:
         text = LEFT_W - x - 20
         self.notebooklm_title.setFrame_(NSMakeRect(x, 16, text, 24))
         y = 46
-        for label, value in ((self.notebooklm_detail, card.detail), (self.notebooklm_counts, card.counts),
+        for label, value in ((self.notebooklm_detail, card.detail), (self.notebooklm_secondary, card.secondary),
+                             (self.notebooklm_warning_counts, card.warning_counts),
                              (self.notebooklm_notice, card.notice)):
             label.setStringValue_(value)
             label.setToolTip_(value or None)
@@ -1431,6 +1436,13 @@ class MainWindow:
         y = 8
         for section in settings_sections(notebooklm=True, auto_relogin=True):
             y = self._build_section(view, section, y)
+            if section.key == SECTION_NOTEBOOKLM:
+                self.notebooklm_settings_totals, _ = _wrapping("", INNER - 8, _small(), secondary=True)
+                self.notebooklm_settings_totals.setFrame_(NSMakeRect(PAD + 4, y - SECTION_GAP + 8, INNER - 8, 0))
+                self.notebooklm_settings_totals.setHidden_(True)
+                view.addSubview_(self.notebooklm_settings_totals)
+                notebooklm_footer_end = len(view.subviews())
+        self.settings_below_notebooklm = view.subviews()[notebooklm_footer_end:]
         y += PAD - SECTION_GAP
         view.setFrame_(NSMakeRect(0, 0, PAGE, y))
         self.form_height = y
@@ -1486,6 +1498,23 @@ class MainWindow:
             view.addSubview_(note)
             y += 8 + note_height
         return y + SECTION_GAP
+
+    def _update_notebooklm_totals(self, text: str) -> None:
+        label = self.notebooklm_settings_totals
+        if text == label.stringValue():
+            return
+        frame = label.frame()
+        old_space = frame.size.height + 8 if frame.size.height else 0
+        label.setStringValue_(text)
+        height = label.fittingSize().height if text else 0
+        label.setFrameSize_((frame.size.width, height))
+        label.setHidden_(not text)
+        shift = (height + 8 if text else 0) - old_space
+        for view in self.settings_below_notebooklm:
+            origin = view.frame().origin
+            view.setFrameOrigin_((origin.x, origin.y + shift))
+        self.form_height += shift
+        self.form_scroll.documentView().setFrameSize_((PAGE, self.form_height))
 
     def _build_google_calendar(self, content, section) -> float:
         """A compact card shared by connected, disconnected and reconnect states.
@@ -1939,6 +1968,7 @@ class MainWindow:
             if not key.startswith("google_calendar"):
                 self._apply_row_state(key, state)
         self._update_google_calendar(form)
+        self._update_notebooklm_totals(form.notebooklm_totals)
         self._apply_row_state("notebooklm_disconnect", notebooklm_disconnect_state(form))
         self._apply_row_state("notebooklm_duplicates", notebooklm_disconnect_state(form))
         self._animate()

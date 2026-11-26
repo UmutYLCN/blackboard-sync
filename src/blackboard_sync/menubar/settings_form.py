@@ -29,7 +29,9 @@ from blackboard_sync.menubar.model import (
     T_LOGOUT,
     AppModel,
     login_waiting_line,
+    parse_iso,
 )
+from blackboard_sync.notebooklm.store import NotebookLMStatus
 from blackboard_sync.settings import (
     SYNC_INTERVAL_CHOICES,
     THEME_DARK,
@@ -398,6 +400,24 @@ class WindowStatus:
     calendar_notice: str = ""
     notebooklm_connected: bool = False
     notebooklm_busy: bool = False
+    notebooklm_totals: str = ""
+
+
+def notebooklm_totals(status: NotebookLMStatus) -> str:
+    """Explain the totals from the latest completed NotebookLM check."""
+    if not status.connected or status.error or status.needs_login or parse_iso(status.finished_at) is None:
+        return ""
+    skipped = ntr(
+        "{n} file can't go to NotebookLM (images, videos or unsupported formats).",
+        "{n} files can't go to NotebookLM (images, videos or unsupported formats).",
+        status.skipped,
+    ).format(n=status.skipped)
+    modified = ntr(
+        "{n} file changed after it was added; NotebookLM keeps the version it has.",
+        "{n} files changed after they were added; NotebookLM keeps the version it has.",
+        status.modified,
+    ).format(n=status.modified)
+    return f"{skipped} {modified}"
 
 
 def window_status(model: AppModel) -> WindowStatus:
@@ -424,6 +444,7 @@ def window_status(model: AppModel) -> WindowStatus:
         calendar=model.calendar, calendar_busy=model.calendar_busy, calendar_paused=model.paused,
         calendar_notice=model.current_calendar_notice(),
         notebooklm_connected=model.notebooklm.connected, notebooklm_busy=model.notebooklm_busy is not None,
+        notebooklm_totals=notebooklm_totals(model.notebooklm),
         account=account,
         account_warning=expired and model.busy != "login",
         account_title=title,

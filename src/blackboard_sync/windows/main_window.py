@@ -379,14 +379,16 @@ class MainWindow:
         card.columnconfigure(0, weight=1)
         self.notebooklm_detail = ttk.Label(card, foreground=MUTED, wraplength=NOTEBOOKLM_WRAP)
         self.notebooklm_detail.grid(row=0, column=0, sticky="w")
-        self.notebooklm_counts = ttk.Label(card, foreground=MUTED, wraplength=NOTEBOOKLM_WRAP)
-        self.notebooklm_counts.grid(row=1, column=0, sticky="w")
+        self.notebooklm_secondary = ttk.Label(card, foreground=MUTED, wraplength=NOTEBOOKLM_WRAP)
+        self.notebooklm_secondary.grid(row=1, column=0, sticky="w")
+        self.notebooklm_warning_counts = ttk.Label(card, foreground=WARNING, wraplength=NOTEBOOKLM_WRAP)
+        self.notebooklm_warning_counts.grid(row=2, column=0, sticky="w")
         self.notebooklm_notice = ttk.Label(card, foreground=WARNING, wraplength=NOTEBOOKLM_WRAP)
-        self.notebooklm_notice.grid(row=2, column=0, sticky="w")
+        self.notebooklm_notice.grid(row=3, column=0, sticky="w")
         self.notebooklm_bar = ttk.Progressbar(card, maximum=1.0)
-        self.notebooklm_bar.grid(row=3, column=0, sticky="ew", pady=(6, 0))
+        self.notebooklm_bar.grid(row=4, column=0, sticky="ew", pady=(6, 0))
         buttons = ttk.Frame(card)
-        buttons.grid(row=4, column=0, sticky="w", pady=(8, 0))
+        buttons.grid(row=5, column=0, sticky="w", pady=(8, 0))
         self.notebooklm_button = PillButton(buttons, command=lambda: self.on_action(self.status.notebooklm.action))
         self.notebooklm_button.pack(side="left")
         self.notebooklm_open = PillButton(buttons, main.T_NOTEBOOKLM_OPEN, lambda: self.on_action("notebooklm_open"))
@@ -394,7 +396,8 @@ class MainWindow:
 
     def _draw_notebooklm_card(self):
         card = self.status.notebooklm
-        for label, text in ((self.notebooklm_detail, card.detail), (self.notebooklm_counts, card.counts),
+        for label, text in ((self.notebooklm_detail, card.detail), (self.notebooklm_secondary, card.secondary),
+                            (self.notebooklm_warning_counts, card.warning_counts),
                             (self.notebooklm_notice, card.notice)):
             label.configure(text=text)
             if text:
@@ -581,6 +584,10 @@ class MainWindow:
         if section.footer:
             ttk.Label(frame, text=section.footer, foreground=MUTED, wraplength=WRAP).grid(
                 row=row, column=0, sticky="w", pady=(4, 0))
+            row += 1
+        if section.key == form.SECTION_NOTEBOOKLM:
+            self.notebooklm_settings_totals = ttk.Label(frame, foreground=MUTED, wraplength=WRAP)
+            self.notebooklm_settings_totals.grid(row=row, column=0, sticky="w", pady=(4, 0))
             row += 1
         return row
 
@@ -919,6 +926,12 @@ class MainWindow:
                                 fill=WARNING if card.warning else AVATAR_TEXT)
         # Genel
         form_status = status.form
+        totals = form_status.notebooklm_totals
+        self.notebooklm_settings_totals.configure(text=totals)
+        if totals:
+            self.notebooklm_settings_totals.grid()
+        else:
+            self.notebooklm_settings_totals.grid_remove()
         for key, state in form.row_states(form_status).items():
             if key.startswith("google_calendar"):
                 continue

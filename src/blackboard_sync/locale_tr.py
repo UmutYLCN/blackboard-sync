@@ -635,9 +635,18 @@ CATALOG = {
     "Open NotebookLM": "NotebookLM'i aç",
     "Google took the sign-in, but NotebookLM did not open. Try again.":
         "Google girişi kabul etti ama NotebookLM açılmadı. Yeniden deneyin.",
-    "{n} added": "{n} eklendi",
-    "{n} skipped": "{n} atlandı",
-    "{n} changed, not replaced": "{n} değişti, değiştirilmedi",
+    "{n} new file added to your notebooks": "Defterlerinize {n} yeni dosya eklendi",
+    "{n} new files added to your notebooks": "Defterlerinize {n} yeni dosya eklendi",
+    "Your notebooks are up to date": "Defterleriniz güncel",
+    "Last checked: {time}": "Son kontrol: {time}",
+    "{n} file can't go to NotebookLM (images, videos or unsupported formats).":
+        "{n} dosya NotebookLM'e eklenemiyor (görsel, video ya da desteklenmeyen biçim).",
+    "{n} files can't go to NotebookLM (images, videos or unsupported formats).":
+        "{n} dosya NotebookLM'e eklenemiyor (görsel, video ya da desteklenmeyen biçim).",
+    "{n} file changed after it was added; NotebookLM keeps the version it has.":
+        "{n} dosya eklendikten sonra değişti; NotebookLM elindeki sürümü tutuyor.",
+    "{n} files changed after they were added; NotebookLM keeps the version it has.":
+        "{n} dosya eklendikten sonra değişti; NotebookLM elindeki sürümü tutuyor.",
     "{n} course blocked": "{n} ders engellendi",
     "{n} courses blocked": "{n} ders engellendi",
     "{n} failed": "{n} başarısız",

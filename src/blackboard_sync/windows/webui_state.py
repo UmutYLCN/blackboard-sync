@@ -156,7 +156,8 @@ def notebooklm_card(card: main.NotebookLMCard) -> dict:
         "kind": card.kind,
         "title": main.T_NOTEBOOKLM,
         "detail": card.detail,
-        "counts": card.counts,
+        "secondary": card.secondary,
+        "warning-counts": card.warning_counts,
         "notice": card.notice,
         "button": {"id": card.action, "title": card.action_title, "enabled": card.enabled} if card.action else None,
         "open": {"id": "notebooklm_open", "title": main.T_NOTEBOOKLM_OPEN} if card.open_action else None,
@@ -335,7 +336,8 @@ def settings(status_form: form.WindowStatus, values: form.FormValues, error: tup
             _calendar_rows(rows, status_form)
         notes = [updater.STORE_UPDATES, uninstall.STORE_REMOVAL] if packaged and section.key == form.SECTION_UPDATES else []
         sections.append({"key": section.key, "title": section.title, "rows": rows, "footer": section.footer,
-                         "danger": section.danger, "notes": notes})
+                         "danger": section.danger, "notes": notes,
+                         "totals": status_form.notebooklm_totals if section.key == form.SECTION_NOTEBOOKLM else ""})
     message, field = error
     return {
         "sections": sections,
