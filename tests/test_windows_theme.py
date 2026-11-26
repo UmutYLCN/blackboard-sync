@@ -13,6 +13,20 @@ def test_apps_use_light_theme_defaults_safely():
     assert not theme.apps_use_light_theme(0)
 
 
+@pytest.mark.parametrize("light, expected", [
+    (True, (
+        ("#e3edfd", "#1a56c4"), ("#e3f4e8", "#137333"), ("#feefe0", "#9a4a00"), ("#f0eefa", "#5b4bb7"),
+        ("#fdecf6", "#a02a6e"), ("#e0f4f4", "#00696b"), ("#fde8e7", "#b3261e"), ("#f4f1dc", "#625200"),
+    )),
+    (False, (
+        ("#1d2b42", "#9cc0ff"), ("#1b3224", "#7fd69a"), ("#3a2b1c", "#ffb871"), ("#2a2640", "#c2b8ff"),
+        ("#3a2232", "#ff9fd3"), ("#16302f", "#7fd8d4"), ("#3a2224", "#ff9e97"), ("#33301a", "#e3cf6b"),
+    )),
+])
+def test_course_badges_use_the_theme_palette(light, expected):
+    assert tuple(theme.course_badge_colors(index, light=light) for index in range(8)) == expected
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows UI runtime")
 def test_real_theme_controls_in_both_appearance_modes(monkeypatch):
     """Exercise Tcl layouts and image assets that fake widgets cannot validate."""

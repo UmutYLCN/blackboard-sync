@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 from blackboard_sync.i18n import tr
 from blackboard_sync.config import Config
+from blackboard_sync.courses import cached_course_code
 from blackboard_sync.htmltext import body_text, feed_html
 from blackboard_sync.state import State
 
@@ -67,6 +68,7 @@ class AnnouncementRow:
     preview: str
     path: str
     url: str
+    course_code: str = ""
 
     @property
     def detail(self) -> str:
@@ -94,7 +96,8 @@ def rows(state: State, base_url: str, hidden: frozenset[str] | set[str] = frozen
         row = AnnouncementRow(key, entry["course"], entry["title"],
                               when.astimezone().strftime("%d.%m.%Y %H:%M") if when else T_NO_DATE,
                               entry["preview"], output.get("path", ""),
-                              base_url.rstrip("/") + entry["source_path"])
+                              base_url.rstrip("/") + entry["source_path"],
+                              cached_course_code(state, entry["course_id"], entry["course"]))
         result.append((when or floor, row))
     result.sort(key=lambda pair: (pair[0], pair[1].key), reverse=True)
     return tuple(row for _, row in result)

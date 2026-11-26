@@ -20,7 +20,8 @@ from blackboard_sync.menubar import settings_form as form
 from blackboard_sync.i18n import tr
 from blackboard_sync.menubar.model import T_RECENT_EMPTY
 from blackboard_sync.windows.pill_button import PillButton
-from blackboard_sync.windows.sync_scene_view import SyncScene, background_of
+from blackboard_sync.windows.sync_scene_view import SyncScene, background_of, is_dark, rounded
+from blackboard_sync.windows.theme import course_badge_colors
 
 log = logging.getLogger(__name__)
 
@@ -426,7 +427,8 @@ class MainWindow:
 
         items = self.status.attention[:main.HOME_ANNOUNCEMENT_ROWS]
         rows = tuple(self.on_announcements()[:max(main.HOME_ANNOUNCEMENT_ROWS - len(items), 0)])
-        key = ("announcements", items, rows)
+        colors = tuple(main.course_color_index(self.status.course_colors, row.course_code) for row in rows)
+        key = ("announcements", items, rows, colors)
         if key != self._drawn_home_notifications:
             self._drawn_home_notifications = key
             for child in self.notify_frame.winfo_children():
@@ -437,10 +439,10 @@ class MainWindow:
                     anchor="w", pady=(2, 4))
             for item in items:
                 self._attention_row(self.notify_frame, item, 240)
-            for row in rows:
+            for row, color in zip(rows, colors):
                 ttk.Button(self.notify_frame, text=row.title, style="Toolbutton",
                            command=lambda item=row: self.on_open_announcement(item)).pack(anchor="w")
-                ttk.Label(self.notify_frame, text=row.detail, foreground=MUTED, wraplength=240).pack(
+                self._course_detail(self.notify_frame, row.detail, row.course_code, row.date, color, wrap=240).pack(
                     anchor="w", padx=(4, 0), pady=(0, 6))
             if items or rows:
                 PillButton(self.notify_frame, main.T_VIEW_ALL, lambda: self.select(main.ANNOUNCEMENTS),
@@ -448,7 +450,8 @@ class MainWindow:
         page = self.on_deadlines()
         today = datetime.now().astimezone().date()
         rows = deadlines.upcoming_rows(page, main.HOME_DEADLINE_ROWS)
-        key = ("calendar", rows, today)
+        colors = tuple(main.course_color_index(self.status.course_colors, row.course_code) for row in rows)
+        key = ("calendar", rows, today, colors)
         if key != self._drawn_home_calendar:
             self._drawn_home_calendar = key
             for child in self.calendar_frame.winfo_children():
@@ -456,13 +459,36 @@ class MainWindow:
             if not rows:
                 ttk.Label(self.calendar_frame, text=page.message or main.T_NO_DEADLINES, foreground=MUTED,
                           wraplength=240).pack(anchor="w")
-            for row in rows:
+            for row, color in zip(rows, colors):
                 ttk.Button(self.calendar_frame, text=row.title, style="Toolbutton",
                            command=lambda target=row.target: self.on_deadline(target)).pack(anchor="w")
-                ttk.Label(self.calendar_frame, text=f"{deadlines.when_text(row, today)} · {row.course}",
-                          foreground=MUTED, wraplength=240).pack(anchor="w", padx=(4, 0), pady=(0, 6))
+                when = deadlines.when_text(row, today)
+                self._course_detail(self.calendar_frame, f"{when} · {row.course}", row.course_code,
+                                    when, color, wrap=240).pack(anchor="w", padx=(4, 0), pady=(0, 6))
             PillButton(self.calendar_frame, main.T_OPEN_CALENDAR, lambda: self.select(main.CALENDAR),
                        accent=True).pack(anchor="w", pady=(6, 0))
+
+    def _course_detail(self, parent, detail, code, when, color, wrap=0):
+        import tkinter as tk
+        from tkinter import ttk
+
+        if not code or color is None:
+            return ttk.Label(parent, text=detail, style="Muted.TLabel", wraplength=wrap)
+        row = ttk.Frame(parent)
+        background = background_of(row, "TFrame")
+        fill, ink = course_badge_colors(color, light=not is_dark(background))
+        badge = tk.Canvas(row, background=background, highlightthickness=0, borderwidth=0)
+        text = badge.create_text(6, 2, text=code, fill=ink, anchor="nw", font=("Segoe UI Semibold", 11))
+        left, top, right, bottom = badge.bbox(text) or (0, 0, len(code) * 8, 15)
+        width, height = right - left + 12, bottom - top + 4
+        badge.configure(width=width, height=height)
+        shape = badge.create_polygon(rounded(0, 0, width, height, 6), smooth=True, fill=fill)
+        badge.tag_lower(shape, text)
+        badge.pack(side="left")
+        if when:
+            ttk.Label(row, text=when, style="Muted.TLabel",
+                      wraplength=max(1, wrap - width - 6) if wrap else 0).pack(side="left", padx=(6, 0))
+        return row
 
     def _attention_row(self, parent, item, wrap):
         from tkinter import ttk
@@ -990,10 +1016,10 @@ class MainWindow:
         if not rows:
             ttk.Label(self.recent_frame, text=T_RECENT_EMPTY, foreground=MUTED).pack(anchor="w", pady=8)
         for row in rows[:main.HOME_RECENT_ROWS]:
-            entry = self._file_row(self.recent_frame, row.name, row.kind, row.detail, None, row.path, is_new=row.is_new)
+            entry = self._file_row(self.recent_frame, row.name, row.kind, row.detail, None, row.path, recent=row)
             self._recent_entries.append((entry, row))
 
-    def _file_row(self, parent, name, kind, detail, size, path, is_new=False):
+    def _file_row(self, parent, name, kind, detail, size, path, recent=None):
         """Drive's file row: kind, name with a line under it, (size), ✓ (or YENİ) and "⋮"."""
         import tkinter as tk
         from tkinter import ttk
@@ -1006,13 +1032,17 @@ class MainWindow:
         # A click opens the file in its own application.
         ttk.Button(entry, text=name, style="Toolbutton", command=lambda: self.on_open(path)).grid(
             row=0, column=1, sticky="w")
-        ttk.Label(entry, text=detail, foreground=MUTED).grid(row=1, column=1, sticky="w", padx=(4, 0))
+        if recent:
+            metadata = self._course_detail(entry, detail, recent.course_code, recent.when, recent.color)
+        else:
+            metadata = ttk.Label(entry, text=detail, foreground=MUTED)
+        metadata.grid(row=1, column=1, sticky="w", padx=(4, 0))
         column = 2
         if size is not None:
             ttk.Label(entry, text=size, foreground=MUTED, width=10, anchor="e").grid(
                 row=0, column=column, rowspan=2, padx=(8, 0))
             column += 1
-        if is_new:
+        if recent and recent.is_new:
             pill = tk.Canvas(entry, width=52, height=22, highlightthickness=0,
                              background=background_of(entry))
             pill.grid(row=0, column=column, rowspan=2, padx=(8, 0))

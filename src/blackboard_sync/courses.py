@@ -22,6 +22,7 @@ from typing import Iterable
 
 from blackboard_sync.i18n import tr
 from blackboard_sync.config import Config
+from blackboard_sync.paths import course_code_and_title
 from blackboard_sync.session import write_private_json
 from blackboard_sync.state import State
 
@@ -83,6 +84,15 @@ def course_rows(state: State, disabled: set[str]) -> tuple[CourseRow, ...]:
                       course_id not in disabled)
             for course_id, info in state.courses.items())
     return tuple(sorted(rows, key=lambda r: (r.term.casefold(), r.code.casefold(), r.title.casefold(), r.id)))
+
+
+def cached_course_code(state: State, course_id: str, label: str) -> str:
+    """Read the saved code, or recover it from the label in an older cache."""
+    code = state.courses.get(course_id, {}).get("code")
+    if code:
+        return code
+    code, _ = course_code_and_title("", label)
+    return "" if code == "Course" else code
 
 
 def hidden_folders(state: State, disabled: set[str]) -> tuple[str, ...]:

@@ -25,6 +25,7 @@ from blackboard_sync.notebooklm import store as notebooklm_store
 from blackboard_sync.config import Config
 from blackboard_sync.errors import EXIT_ERROR, LoginRequired
 from blackboard_sync.i18n import tr
+from blackboard_sync.menubar.main_window_model import MainStatus, load_course_colors, main_status
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     NOTEBOOKLM_CONNECT,
@@ -506,6 +507,7 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
     model.reminders_sent = sent if isinstance(sent, dict) else {}
     model.paused = bool((saved or {}).get("paused"))
     model.activity_log = load_activity((saved or {}).get("activity"))
+    model.course_colors = load_course_colors((saved or {}).get("course_colors"))
     model.restore_pending((saved or {}).get("pending"))  # a move or download the last run never got to
     model.calendar = gcal.status(config)
     model.notebooklm = notebooklm_store.status(config)
@@ -554,6 +556,29 @@ def check_reminders(config: Config, model: AppModel, now: datetime) -> list[Noti
 def save_model(config: Config, model: AppModel) -> None:
     config.ensure_data_dir()
     write_private_json(menubar_state_file(config), model.saved_state())
+    model.course_colors_dirty = False
+
+
+def window_status(config: Config, model: AppModel, now: datetime, dest: Path) -> MainStatus:
+    """Build the desktop window state and persist colors assigned on first display."""
+    state = State.load(config.state_file, backup=False)
+    disabled = courses.load_disabled(config)
+    page = deadlines.calendar_page(state, sync_root(dest), now, hidden=disabled)
+    codes = [info["code"] for info in state.courses.values() if info.get("code")]
+    # Older caches have the course label on the deadline or announcement itself.
+    missing = set(state.current_courses) - disabled
+    missing.difference_update(course_id for course_id, info in state.courses.items() if info.get("code"))
+    if missing:
+        codes.extend(courses.cached_course_code(state, entry["course_id"], entry["course"])
+                     for entry in state.announcements.values() if entry["course_id"] in missing)
+    codes.extend(row.course_code for day in page.days for row in day.rows)
+    status = main_status(model, now, page, current_course_codes=codes)
+    if model.course_colors_dirty:
+        try:
+            save_model(config, model)
+        except OSError as exc:
+            log.warning("Could not save course colors: %s", exc)
+    return status
 
 
 def single_instance(config: Config) -> IO | None:

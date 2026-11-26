@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import urlencode
 
 from blackboard_sync.config import Config
+from blackboard_sync.courses import cached_course_code
 from blackboard_sync.i18n import tr
 from blackboard_sync.state import State
 from blackboard_sync.system import sync_root
@@ -131,6 +132,7 @@ class DeadlineRow:
     course: str
     due: datetime
     target: str  # existing note path relative to University, otherwise a Blackboard URL
+    course_code: str = ""
 
     @property
     def time(self) -> str:
@@ -184,13 +186,14 @@ def calendar_page(state: State, root: Path, now: datetime, zone: tzinfo | None =
     grouped: dict[tuple[bool, date], list[DeadlineRow]] = {}
     shown = {course_id: course for course_id, course in state.deadline_courses.items() if course_id not in hidden}
     for course_id, course in shown.items():
+        code = cached_course_code(state, course_id, course.get("name", ""))
         for item in course.get("items", []):
             due = parse_due(item.get("due"))
             if due is None:
                 continue
             local = due.astimezone(zone)
             grouped.setdefault((due < now, local.date()), []).append(
-                DeadlineRow(item["title"], course["name"], local, note_target(state, root, course_id, item)))
+                DeadlineRow(item["title"], course["name"], local, note_target(state, root, course_id, item), code))
     days = tuple(DeadlineDay(day, day_title(day, local_now.date()), past,
                             tuple(sorted(rows, key=lambda r: (r.due.astimezone(timezone.utc), r.course, r.title))))
                  for (past, day), rows in sorted(grouped.items(), key=lambda entry: (

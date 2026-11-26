@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from blackboard_sync.config import Config
 from blackboard_sync.courses import CourseRow
+from blackboard_sync.menubar import jobs
 from blackboard_sync.menubar.main_window_model import (
     COURSES,
     GENERAL,
@@ -41,6 +43,7 @@ from blackboard_sync.menubar.settings_form import FormValues, window_status
 from blackboard_sync.notebooklm.store import NotebookLMStatus
 from blackboard_sync import __version__, updater
 from blackboard_sync.menubar.model import UpdateState
+from blackboard_sync.state import State
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
 DEST = Path("/Users/student/Documents")
@@ -265,7 +268,47 @@ def test_recent_rows_name_the_file_course_and_day():
         ("Quiz", "CSE301", ""),
     ]
     assert rows[0].path == "2026-2027 Güz/SWE305 Web/Homework1.docx"
+    assert (rows[0].course_code, rows[0].when) == ("SWE305", day_time(NOW - timedelta(days=1), NOW))
+    assert (rows[1].course_code, rows[1].when) == ("CSE301", "")
     assert recent_count(rows) == "2 files" and recent_count(()) == ""
+
+
+def test_course_colors_persist_across_reload_and_new_courses_use_unused_colors(tmp_path):
+    config = Config(data_dir=tmp_path / "data", dest=tmp_path / "dest")
+    config.ensure_data_dir()
+    state = State.load(config.state_file)
+    state.courses = {"first": {"code": "MTH201"}, "second": {"code": "PHY101"}}
+    state.dirty = True
+    state.save()
+
+    model = jobs.load_model(config, NOW, autostart=False)
+    first = jobs.window_status(config, model, NOW, config.dest).course_colors
+    assert set(first) == {"mth201", "phy101"}
+    assert len(set(first.values())) == 2
+
+    # Reopen after the next sync changed the course order and found another course.
+    state.courses = {"third": {"code": "MTH301"}, "second": {"code": "PHY101"}, "first": {"code": "MTH201"}}
+    state.dirty = True
+    state.save()
+    reloaded = jobs.load_model(config, NOW, autostart=False)
+    assert reloaded.course_colors == first
+    updated = jobs.window_status(config, reloaded, NOW, config.dest).course_colors
+    assert {key: updated[key] for key in first} == first
+    assert updated["mth301"] not in first.values()
+
+
+@pytest.mark.parametrize("codes, key", [
+    (("MTH301", "MTH301"), "mth301"),
+    (("BİL101", "bıl101", "bil101"), "bil101"),
+])
+def test_recent_files_for_the_same_folded_course_share_a_color(codes, key):
+    model = synced(recent=[RecentItem(f"Term/{code}/file{i}.pdf", code, NOW.isoformat())
+                           for i, code in enumerate(codes)])
+    status = main_status(model, NOW, current_course_codes=codes)
+    assert set(status.course_colors) == {key}
+    assert [(row.course_code, row.color) for row in status.recent] == [
+        (code, status.course_colors[key]) for code in codes
+    ]
 
 
 def test_course_rows_name_the_course_and_whether_it_syncs():

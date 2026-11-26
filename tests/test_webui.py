@@ -9,11 +9,15 @@ from pathlib import Path
 
 import pytest
 
-from blackboard_sync import deadlines
+from blackboard_sync import announcements, deadlines
 from blackboard_sync.announcements import AnnouncementRow
+from blackboard_sync.config import Config
 from blackboard_sync.courses import CourseRow
+from blackboard_sync.menubar import jobs
 from blackboard_sync.menubar import main_window_model as main
+from blackboard_sync.menubar.model import AppModel, RecentItem
 from blackboard_sync.menubar.settings_form import WindowStatus
+from blackboard_sync.state import State
 from blackboard_sync.windows import webui_page, webui_state
 
 APP_JS = (webui_page.ASSETS / "app.js").read_text(encoding="utf-8")
@@ -85,6 +89,38 @@ def test_window_state_is_plain_json_with_home_and_sidebar():
     assert [row["id"] for row in home["deadlines"]] == ["Term/CSE301/Proposal.pdf", "https://bb.example/report"]
     # The initials are only a badge: the menu behind them is gone (Settings has Sign out).
     assert data["chrome"]["account"] == {"initials": "UY", "name": "UMUT YALÇIN", "warning": False}
+
+
+@pytest.mark.parametrize("has_course_metadata", [True, False])
+def test_home_payload_carries_one_course_color_for_files_announcements_and_deadlines(tmp_path, has_course_metadata):
+    config = Config(data_dir=tmp_path, dest=tmp_path / "dest")
+    cache = State.load(config.state_file)
+    if has_course_metadata:
+        cache.courses = {"first": {"code": "MTH201"}}
+    label = "Mathematics" if has_course_metadata else "MTH201 Mathematics"
+    cache.current_courses = ["first"]
+    cache.announcements["a"] = {
+        "course_id": "first", "course": label, "title": "Exam",
+        "date": NOW.isoformat(), "preview": "", "source_path": "/announcement/a", "output_key": "a",
+    }
+    cache.deadline_courses["first"] = {"name": label, "items": [
+        {"title": "Homework", "due": (NOW + timedelta(days=1)).isoformat(), "url": "https://bb.example/homework"},
+    ]}
+    cache.dirty = True
+    cache.save()
+    model = AppModel(config.dest, NOW, recent=[RecentItem("Term/MTH201/file.pdf", "MTH201", NOW.isoformat())])
+    current = jobs.window_status(config, model, NOW, config.dest)
+    rows = announcements.load_rows(config)
+    page = deadlines.calendar_page(cache, config.root, NOW)
+    home = state(current, rows, page)["home"]
+
+    for section in ("recent", "announcements", "deadlines"):
+        row, = home[section]
+        assert row["course_code"] == "MTH201"
+        assert row["color"] == current.course_colors["mth201"]
+        assert row["when"] and row["when"] in row["detail"]
+    assert label in home["announcements"][0]["detail"]
+    assert label in home["deadlines"][0]["detail"]
 
 
 def test_home_button_follows_the_state():
