@@ -28,7 +28,7 @@ from __future__ import annotations
 import os
 import subprocess
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import IO, Callable, Mapping
 
@@ -390,6 +390,24 @@ def session_user(base_url: str, cookies: list[dict], http: requests.Session | No
     return data if data.get("id") else None
 
 
+def prune_tabs(context):
+    """Close extra pages and return the first page, if any."""
+    pages = context.pages
+    for page in pages[1:]:
+        with suppress(Exception):  # the tab or browser may already have closed
+            page.close()
+    return pages[0] if pages else None
+
+
+def leave_one_blank_tab(browser) -> None:
+    """Leave a blank tab in the restored session while retaining profile cookies."""
+    for context in browser.contexts:
+        page = prune_tabs(context)
+        if page is not None:
+            with suppress(Exception):  # still quit if the tab closes or navigation fails
+                page.goto("about:blank", wait_until="commit", timeout=2000)
+
+
 def _close_browser(browser) -> None:
     """Quit the sign-in browser instance (not the student's everyday browser)."""
     try:
@@ -507,6 +525,7 @@ def _sign_in_on_profile(config, app, timeout, out, run, connect, check_user, spa
         try:
             return _wait_for_sign_in(cdp_browser, config.base_url, timeout, check_user)
         finally:
+            leave_one_blank_tab(cdp_browser)
             _close_browser(cdp_browser)
 
 

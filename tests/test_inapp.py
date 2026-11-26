@@ -187,7 +187,7 @@ def test_failures_after_the_sign_in_page_is_up_do_not_fall_back(config, tmp_path
         (login_mod.Path(profile) / DEVTOOLS_PORT_FILE).write_text("40000\n")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    browser = SimpleNamespace(new_browser_cdp_session=lambda: None, close=lambda: None)
+    browser = SimpleNamespace(contexts=[], new_browser_cdp_session=lambda: None, close=lambda: None)
     window = FakeWindow()
     with pytest.raises(BlackboardSyncError, match="closed before sign-in"):
         login(config, platform="darwin", run=opened, connect=lambda url: browser,
