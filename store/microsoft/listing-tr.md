@@ -29,9 +29,16 @@ Blackboard’daki ders içeriklerini otomatik olarak bilgisayarına indirir. Her
 blackboard-sync bağımsız bir projedir; Anthology Inc. veya Blackboard ile bağlantılı değildir. “Blackboard” markası bu uygulamaya değil, kendi sahibine aittir.
 
 NASIL ÇALIŞIR
-1. Okulunun Blackboard adresini yaz ve dosyaların kaydedileceği klasörü seç.
+1. Okulunu adıyla, kısaltmasıyla veya alan adıyla seç (ya da Blackboard adresini yaz) ve dosyaların kaydedileceği klasörü belirle.
 2. Okulunun kendi giriş sayfasında giriş yap. Girişten sonra ilk senkron başlar.
 3. Dosyaların kendiliğinden güncellensin: uygulama varsayılan olarak her saat Blackboard’u kontrol eder.
+
+DESTEKLENEN OKULLAR (190+ DOĞRULANMIŞ ÜNİVERSİTE)
+Dahili okul listesi 41 ülkeden 193 üniversiteyi kapsar ve Blackboard Learn’ün canlı sistem kontrolüyle düzenli olarak doğrulanır. Listede olmayan herhangi bir Blackboard Learn okulu da adresi girilerek kullanılabilir.
+• Avrupa (61): Birleşik Krallık (34 — Edinburgh, Imperial College London, Sheffield, Bristol, Southampton, Leeds Beckett, UEA, York ve diğerleri), İspanya (9 — Sevilla, Navarra, UEM, Alcalá, CEU San Pablo ve diğerleri), Türkiye (6 — İstinye, MEF, Fenerbahçe, Okan, Maltepe, İSTÜN), İtalya (3 — Bocconi, Cattolica, San Raffaele), Belçika (2 — KU Leuven, Antwerp), İrlanda (2 — Trinity College Dublin, ATU Donegal), Avusturya (Salzburg), Hollanda (NHL Stenden), İsveç (Halmstad), Norveç (NTNU), Portekiz (Minho).
+• Amerika (62): Amerika Birleşik Devletleri (34 — Boston University, Syracuse, UConn, Alabama, Miami, South Carolina, UIC, Drexel, GWU ve diğerleri), Meksika (5 — UVM, UDEM, CETYS ve diğerleri), Peru (5 — UPC, Lima, Pacífico ve diğerleri), Kanada (4 — Humber, Seneca, Centennial, Georgian), Şili (3), Arjantin (2), Brezilya (2), Dominik Cumhuriyeti (2), Ekvador (2), Porto Riko (2), El Salvador (UTEC).
+• Orta Doğu ve Afrika (48): Suudi Arabistan (27 — KSU, KFUPM, KAU, KAUST, SEU, UQU ve diğerleri), Güney Afrika (8 — Pretoria, Free State, CPUT ve diğerleri), Birleşik Arap Emirlikleri (5 — Khalifa, AUS, Abu Dhabi, Sharjah, BUiD), Lübnan (2), Bahreyn, Güney Kıbrıs, Kenya, Katar, Mısır, Tunus.
+• Asya-Pasifik (22): Avustralya (10 — UQ, Curtin, UWA, Western Sydney, JCU ve diğerleri), Singapur (3 — NTU, SUTD, SingHealth), Hong Kong (2 — CUHK, PolyU), Filipinler (2), Çin (CUHK-Shenzhen), Hindistan (Shiv Nadar), Japonya (Osaka), Malezya (Sunway), Yeni Zelanda (Otago).
 
 NELER İNER
 • Derslerindeki dosyalar ve ödev yönergelerindeki ekler.
@@ -80,7 +87,7 @@ GEREKSİNİMLER
 Limit 1,500. Update from the published Store version 1.5.1 to 1.7.1 (1.6.2 added the redesigned interface, themes, due dates, announcements and Google Calendar):
 
 ```text
-1.7 ile NotebookLM geliyor: Ana sayfadaki yeni karttan bağla; her senkrondan sonra ders dosyaların her ders için ayrı bir notebook’a eklenir, aynı dosya iki kez eklenmez. Blackboard oturumun dolunca uygulama sessizce yeniden giriş yapar. Artık güncel dönemini senkronize eder, okulunun kendi dönem adlarını korur ve yeni bir okulda ilk indirmeden önce derslerini onaylamanı ister. Okul listesi yaklaşık 143 okula çıktı, boş ders klasörleri artık açılmaz, eski dönemler bölümü kaldırıldı. 1.6’dan gelen yenilenen arayüz, açık/koyu/sistem temaları, teslim tarihleri, duyurular ve Google Takvim de var. Güncellemeler Microsoft Store üzerinden yüklenmeye devam eder.
+1.7 ile NotebookLM geliyor: Ana sayfadaki yeni karttan bağla; her senkrondan sonra ders dosyaların her ders için ayrı bir notebook’a eklenir, aynı dosya iki kez eklenmez. Blackboard oturumun dolunca uygulama sessizce yeniden giriş yapar. Artık güncel dönemini senkronize eder, okulunun kendi dönem adlarını korur ve yeni bir okulda ilk indirmeden önce derslerini onaylamanı ister. Okul listesi 41 ülkeden düzenli doğrulanan 193 okula çıktı, boş ders klasörleri artık açılmaz, eski dönemler bölümü kaldırıldı. 1.6’dan gelen yenilenen arayüz, açık/koyu/sistem temaları, teslim tarihleri, duyurular ve Google Takvim de var. Güncellemeler Microsoft Store üzerinden yüklenmeye devam eder.
 ```
 
 ## Product features
@@ -106,6 +113,7 @@ Bilgisayar açılınca arka planda başlayabilir
 Şifreni görmez; oturumun yalnızca kendi bilgisayarında kalır
 Analiz, reklam ve kullanım takibi yok
 Ücretsiz, kaynak kodu GitHub’da
+Düzenli doğrulanan 190+ üniversitelik dahili okul listesi
 ```
 
 ## Screenshot captions

@@ -25,9 +25,16 @@ Downloads your Blackboard course content to your computer automatically, so you 
 blackboard-sync is an independent project, not affiliated with Anthology Inc. or Blackboard. “Blackboard” is a trademark of its owner, not of this app.
 
 HOW IT WORKS
-1. Enter your school's Blackboard address and choose the folder for your files.
+1. Pick your school by name, abbreviation or web domain (or enter its Blackboard address) and choose the folder for your files.
 2. Sign in on your school's own sign-in page. The first sync starts right after.
 3. Your files stay up to date: by default the app checks Blackboard every hour.
+
+SUPPORTED SCHOOLS (190+ VERIFIED UNIVERSITIES)
+The built-in directory covers 193 schools across 41 countries and is verified periodically against Blackboard Learn's live system check. Any other Blackboard Learn school works too by entering its address.
+• Europe (61): United Kingdom (34 — Edinburgh, Imperial College London, Sheffield, Bristol, Southampton, Leeds Beckett, UEA, York and more), Spain (9 — Seville, Navarra, UEM, Alcala, CEU San Pablo and more), Turkey (6 — Istinye, MEF, Fenerbahce, Okan, Maltepe, ISTUN), Italy (3 — Bocconi, Cattolica, San Raffaele), Belgium (2 — KU Leuven, Antwerp), Ireland (2 — Trinity College Dublin, ATU Donegal), Austria (Salzburg), Netherlands (NHL Stenden), Norway (NTNU), Portugal (Minho), Sweden (Halmstad).
+• Americas (62): United States (34 — Boston University, Syracuse, UConn, Alabama, Miami, South Carolina, UIC, Drexel, GWU and more), Mexico (5 — UVM, UDEM, CETYS and more), Peru (5 — UPC, Lima, Pacifico and more), Canada (4 — Humber, Seneca, Centennial, Georgian), Chile (3), Argentina (2), Brazil (2), Dominican Republic (2), Ecuador (2), Puerto Rico (2), El Salvador (UTEC).
+• Middle East & Africa (48): Saudi Arabia (27 — KSU, KFUPM, KAU, KAUST, SEU, UQU and more), South Africa (8 — Pretoria, Free State, CPUT and more), United Arab Emirates (5 — Khalifa, AUS, Abu Dhabi, Sharjah, BUiD), Lebanon (2), Bahrain, Cyprus, Egypt, Kenya, Qatar, Tunisia.
+• Asia-Pacific (22): Australia (10 — UQ, Curtin, UWA, Western Sydney, JCU and more), Singapore (3 — NTU, SUTD, SingHealth), Hong Kong (2 — CUHK, PolyU), Philippines (2), China (CUHK-Shenzhen), India (Shiv Nadar), Japan (Osaka), Malaysia (Sunway), New Zealand (Otago).
 
 WHAT IT DOWNLOADS
 • The files in your courses and the attachments in assignment instructions.
@@ -76,7 +83,7 @@ Free. The source code is publicly visible on GitHub (all rights reserved).
 Limit 1,500. Update from the published Store version 1.5.1 to 1.7.1 (1.6.2 added the redesigned interface, themes, due dates, announcements and Google Calendar):
 
 ```text
-Version 1.7 brings NotebookLM: connect it from the new card on Home, and after each sync your course files are added to one notebook per course, without adding a file twice. The app also signs in again quietly when your Blackboard session expires. It now syncs your current term, keeps your school's own term names, and at a new school asks you to confirm the courses before the first download. The school list grew to about 143 schools, empty course folders are no longer created, and the past-terms section is gone. Plus the redesigned interface, light/dark/system themes, due dates, announcements and Google Calendar from 1.6. Updates continue through the Microsoft Store.
+Version 1.7 brings NotebookLM: connect it from the new card on Home, and after each sync your course files are added to one notebook per course, without adding a file twice. The app also signs in again quietly when your Blackboard session expires. It now syncs your current term, keeps your school's own term names, and at a new school asks you to confirm the courses before the first download. The school list grew to 193 periodically verified schools across 41 countries, empty course folders are no longer created, and the past-terms section is gone. Plus the redesigned interface, light/dark/system themes, due dates, announcements and Google Calendar from 1.6. Updates continue through the Microsoft Store.
 ```
 
 ## Product features
@@ -102,6 +109,7 @@ Can start in the background when the computer starts
 Never sees your password; your session stays on your computer
 No analytics, ads or usage tracking
 Free, with source code visible on GitHub
+Built-in directory of 190+ periodically verified universities
 ```
 
 ## Screenshot captions
