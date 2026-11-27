@@ -538,6 +538,54 @@ def test_home_announcements_and_deadlines_show_course_title_beside_badge(tmp_pat
         window.window.close()
 
 
+def test_activity_announcements_and_calendar_pages_draw_course_badges(tmp_path):
+    from datetime import timedelta
+    from AppKit import NSBox, NSTextField
+    from blackboard_sync import deadlines
+    from blackboard_sync.announcements import AnnouncementRow
+    from blackboard_sync.menubar.main_window_model import main_status
+    from blackboard_sync.menubar.model import ActivityItem, CourseChange
+
+    ann_rows = (
+        AnnouncementRow('a1', 'CSE301 Databases', 'Exam', '22.11', 'Room 101', '', '', 'CSE301'),
+    )
+    due = NOW + timedelta(minutes=30)
+    dl_row = deadlines.DeadlineRow('Proposal', 'PHY101 Physics I', due, 'https://bb.example/p', 'PHY101')
+    page = deadlines.DeadlinePage((deadlines.DeadlineDay(due.date(), 'Tomorrow', False, (dl_row,)),), '')
+    window, model, _ = make_window(tmp_path, on_announcements=lambda: ann_rows, on_deadlines=lambda: page)
+    try:
+        signed_in(model)
+        model.courses = [CourseChange('CSE301', 'Term/CSE301', {}, (), name='CSE301 Databases')]
+        model.activity_log = [
+            ActivityItem('Term/CSE301/notes.pdf', 'CSE301', NOW.isoformat(), 'new_file', 1024),
+            ActivityItem('Term/legacy.pdf', '', NOW.isoformat(), 'new_file', 512),
+        ]
+        status = main_status(model, NOW, page, current_course_codes=('CSE301', 'PHY101'))
+        window.update_status(status)
+        window.refresh_activity()
+        window.refresh_announcements()
+        window.refresh_calendar()
+
+        def all_badges(view):
+            result = []
+            for sub in view.subviews():
+                if isinstance(sub, NSBox) and sub.contentView() is not None:
+                    if sub.cornerRadius() == 6:
+                        for inner in sub.contentView().subviews():
+                            if isinstance(inner, NSTextField):
+                                result.append(str(inner.stringValue()))
+                    result.extend(all_badges(sub.contentView()))
+                elif hasattr(sub, 'subviews'):
+                    result.extend(all_badges(sub))
+            return result
+
+        assert all_badges(window.activity_scroll.documentView()) == ['CSE301']
+        assert all_badges(window.announcements_scroll.documentView()) == ['CSE301']
+        assert all_badges(window.calendar_scroll.documentView()) == ['PHY101']
+    finally:
+        window.window.close()
+
+
 def test_recent_badges_and_viewport_seen_tracking(tmp_path, monkeypatch):
     from types import SimpleNamespace
     import AppKit

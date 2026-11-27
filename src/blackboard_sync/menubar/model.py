@@ -1315,7 +1315,7 @@ def load_activity(data: object) -> list[ActivityItem]:
     for item in data if isinstance(data, list) else []:
         try:
             size = item.get("size")
-            items.append(ActivityItem(path=str(item["path"]), course=str(item["course"]), at=str(item["at"]),
+            items.append(ActivityItem(path=str(item["path"]), course=str(item.get("course") or ""), at=str(item["at"]),
                                       kind=str(item["kind"]), size=size if isinstance(size, int) else None))
         except (KeyError, TypeError, AttributeError):
             continue

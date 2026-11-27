@@ -765,6 +765,7 @@ class MainWindow:
         self.on_section = on_section
         self.on_deadlines, self.on_deadline = on_deadlines, on_deadline
         self._drawn_deadlines = None
+        self._drawn_deadline_colors = None
         self.deadline_targets = []
         self.home_deadline_targets = []
         self.home_announcements = ()
@@ -783,6 +784,7 @@ class MainWindow:
         self.error = ""
         self._drawn_recent = None
         self._drawn_announcements = None
+        self._drawn_announcement_colors = None
         self._drawn_attention = None
         self._drawn_courses = None
         self.course_ids: list[str] = []
@@ -1592,7 +1594,8 @@ class MainWindow:
                 line = NSBox.alloc().initWithFrame_(NSMakeRect(20, y, width - 40, 1))
                 line.setBoxType_(NSBoxSeparator)
                 document.addSubview_(line)
-            self._file_row(document, y, width, index, row.name, row.status, row.size, "openActivity:", "activityMenu:")
+            self._file_row(document, y, width, index, row.name, row.status, row.size, "openActivity:", "activityMenu:",
+                           activity=row)
         self.activity_scroll.setDocumentView_(document)
 
     def _build_announcements(self, page) -> None:
@@ -1856,9 +1859,14 @@ class MainWindow:
 
     def refresh_calendar(self) -> None:
         data = self.on_deadlines()
-        if data == self._drawn_deadlines:
+        colors = tuple(
+            tuple(course_color_index(self.status.course_colors, row.course_code) for row in day.rows)
+            for day in data.days
+        )
+        if data == self._drawn_deadlines and colors == self._drawn_deadline_colors:
             return
         self._drawn_deadlines = data
+        self._drawn_deadline_colors = colors
         self.deadline_targets = []
         document = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, INNER, 1))
         y = 8
@@ -1873,7 +1881,7 @@ class MainWindow:
             document.addSubview_(empty)
             y += 32
         section = None
-        for day in data.days:
+        for day, day_colors in zip(data.days, colors):
             if day.past != section:
                 section = day.past
                 heading = _label(deadlines.T_PAST if day.past else deadlines.T_UPCOMING, 15, bold=True)
@@ -1892,7 +1900,7 @@ class MainWindow:
             title = _label(day.title, 13, bold=True)
             title.setFrame_(NSMakeRect(16, 12, INNER - 32, 18))
             content.addSubview_(title)
-            for index, row in enumerate(day.rows):
+            for index, (row, color) in enumerate(zip(day.rows, day_colors)):
                 top = 42 + index * ROW_HEIGHT
                 time_label = _label(row.time, 13, bold=True)
                 time_label.setFrame_(NSMakeRect(16, top + 10, 58, 20))
@@ -1901,10 +1909,8 @@ class MainWindow:
                 name.setFrame_(NSMakeRect(86, top + 7, INNER - 102, 18))
                 name.setToolTip_(row.title)
                 content.addSubview_(name)
-                course = _label(row.course, _small(), secondary=True)
-                course.setFrame_(NSMakeRect(86, top + 27, INNER - 102, 18))
-                course.setToolTip_(row.course)
-                content.addSubview_(course)
+                _course_detail(content, 86, top + 26, INNER - 102, row.course, row.course_code, "", color,
+                               course_name_without_code(row.course, row.course_code))
                 button = NSButton.buttonWithTitle_target_action_("", self.target, "openDeadline:")
                 button.setBordered_(False)
                 button.setTransparent_(True)
@@ -2180,7 +2186,8 @@ class MainWindow:
         self.recent_scroll.setDocumentView_(document)
 
     def _file_row(self, document, y: float, width: float, index: int, name: str, detail: str,
-                  size: str | None, action: str, menu_action: str, recent: RecentRow | None = None) -> None:
+                  size: str | None, action: str, menu_action: str, recent: RecentRow | None = None,
+                  activity=None) -> None:
         """Drive's file row: icon, name, a line under it, (size), a green check (or YENİ) and "⋮"."""
         icon = NSImageView.alloc().initWithFrame_(NSMakeRect(20, y + 10, 32, 32))
         icon.setImage_(file_icon(name))
@@ -2193,6 +2200,9 @@ class MainWindow:
         if recent:
             _course_detail(document, 64, y + 27, width - 64 - right, detail,
                            recent.course_code, recent.when, recent.color)
+        elif activity is not None:
+            _course_detail(document, 64, y + 27, width - 64 - right, detail,
+                           activity.course_code, activity.status, activity.color, activity.course_title)
         else:
             line = _label(detail, _small(), secondary=True)
             line.setFrame_(NSMakeRect(64, y + 28, width - 64 - right, 15))
@@ -2250,9 +2260,11 @@ class MainWindow:
     def refresh_announcements(self) -> None:
         rows = self.on_announcements()
         attention = self.status.attention
-        if rows == self._drawn_announcements and attention == self._drawn_attention:
+        colors = tuple(course_color_index(self.status.course_colors, row.course_code) for row in rows)
+        if (rows == self._drawn_announcements and colors == self._drawn_announcement_colors
+                and attention == self._drawn_attention):
             return
-        self._drawn_announcements, self._drawn_attention = rows, attention
+        self._drawn_announcements, self._drawn_announcement_colors, self._drawn_attention = rows, colors, attention
         document = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, INNER, 1))
         y = 0
         # Drive's notifications on top: what needs the student (sign in again, an update, a failed sync).
@@ -2272,18 +2284,17 @@ class MainWindow:
             empty.setFrame_(NSMakeRect(20, y + 16, INNER - 40, height))
             document.addSubview_(empty)
             y += height + 32
-        for index, row in enumerate(rows):
+        for index, (row, color) in enumerate(zip(rows, colors)):
             width = INNER - 40
-            detail = _label(row.detail, _small(), secondary=True)
-            detail.setFrame_(NSMakeRect(20, 16, width, 17))
-            detail.setToolTip_(row.detail)
             title, title_height = _wrapping(row.title, width, 14, bold=True)
             title.setFrame_(NSMakeRect(20, 40, width, title_height))
             preview, preview_height = _wrapping(row.preview, width, _small(), secondary=True)
             preview.setFrame_(NSMakeRect(20, 48 + title_height, width, preview_height))
             height = 64 + title_height + preview_height
             card = _card(NSMakeRect(0, y, INNER, height))
-            for label in (detail, title, preview):
+            _course_detail(card.contentView(), 20, 16, width, row.detail, row.course_code, row.date, color,
+                           course_name_without_code(row.course, row.course_code))
+            for label in (title, preview):
                 card.contentView().addSubview_(label)
             button = NSButton.buttonWithTitle_target_action_("", self.target, "openAnnouncement:")
             button.setBordered_(False)

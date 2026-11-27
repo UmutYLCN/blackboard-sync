@@ -610,7 +610,7 @@ class MainWindow:
         if not rows:
             ttk.Label(self.activity_frame, text=main.T_ACTIVITY_EMPTY, foreground=MUTED).pack(anchor="w", pady=8)
         for row in rows:
-            self._file_row(self.activity_frame, row.name, row.kind, row.status, row.size, row.path)
+            self._file_row(self.activity_frame, row.name, row.kind, row.status, row.size, row.path, activity=row)
 
     def _build_announcements(self, page):
         from tkinter import ttk
@@ -1065,9 +1065,13 @@ class MainWindow:
         from tkinter import ttk
 
         data = self.on_deadlines()
-        if data == self._drawn_deadlines:
+        colors = tuple(
+            tuple(main.course_color_index(self.status.course_colors, row.course_code) for row in day.rows)
+            for day in data.days
+        )
+        if (data, colors) == self._drawn_deadlines:
             return
-        self._drawn_deadlines = data
+        self._drawn_deadlines = (data, colors)
         for child in self.calendar_body.winfo_children():
             child.destroy()
         if data.message:
@@ -1075,7 +1079,7 @@ class MainWindow:
         if not data.days:
             ttk.Label(self.calendar_body, text=deadlines.T_EMPTY).pack(anchor="w", pady=12)
         section = None
-        for day in data.days:
+        for day, day_colors in zip(data.days, colors):
             if day.past != section:
                 section = day.past
                 ttk.Label(self.calendar_body, text=deadlines.T_PAST if day.past else deadlines.T_UPCOMING,
@@ -1086,12 +1090,13 @@ class MainWindow:
             card = ttk.LabelFrame(self.calendar_body, text=day.title, padding=(16, 10))
             card.pack(fill="x", pady=(0, 14))
             card.columnconfigure(1, weight=1)
-            for index, row in enumerate(day.rows):
+            for index, (row, color) in enumerate(zip(day.rows, day_colors)):
                 ttk.Label(card, text=row.time, font=BOLD_FONT, width=7).grid(
                     row=index * 2, column=0, rowspan=2, sticky="nw", padx=(0, 12), pady=(4, 12))
                 ttk.Button(card, text=row.title, command=lambda target=row.target: self.on_deadline(target)).grid(
                     row=index * 2, column=1, sticky="ew", pady=(2, 0))
-                ttk.Label(card, text=row.course, wraplength=WRAP).grid(
+                self._course_detail(card, row.course, row.course_code, "", color, wrap=WRAP - 80,
+                                    course_title=main.course_name_without_code(row.course, row.course_code)).grid(
                     row=index * 2 + 1, column=1, sticky="w", pady=(2, 12))
 
     def _animate(self):
@@ -1118,7 +1123,7 @@ class MainWindow:
             entry = self._file_row(self.recent_frame, row.name, row.kind, row.detail, None, row.path, recent=row)
             self._recent_entries.append((entry, row))
 
-    def _file_row(self, parent, name, kind, detail, size, path, recent=None):
+    def _file_row(self, parent, name, kind, detail, size, path, recent=None, activity=None):
         """Drive's file row: kind, name with a line under it, (size), ✓ (or YENİ) and "⋮"."""
         import tkinter as tk
         from tkinter import ttk
@@ -1133,6 +1138,9 @@ class MainWindow:
             row=0, column=1, sticky="w")
         if recent:
             metadata = self._course_detail(entry, detail, recent.course_code, recent.when, recent.color)
+        elif activity is not None:
+            metadata = self._course_detail(entry, detail, activity.course_code, activity.status, activity.color,
+                                           wrap=WRAP - 120, course_title=activity.course_title)
         else:
             metadata = ttk.Label(entry, text=detail, foreground=MUTED)
         metadata.grid(row=1, column=1, sticky="w", padx=(4, 0))
@@ -1215,9 +1223,10 @@ class MainWindow:
 
         rows = self.on_announcements()
         attention = self.status.attention
-        if (rows, attention) == self._drawn_announcements:
+        colors = tuple(main.course_color_index(self.status.course_colors, row.course_code) for row in rows)
+        if (rows, attention, colors) == self._drawn_announcements:
             return
-        self._drawn_announcements = (rows, attention)
+        self._drawn_announcements = (rows, attention, colors)
         for widget in self.announcements_frame.winfo_children():
             widget.destroy()
         # Drive's notifications on top: what needs the student (sign in again, an update, a failed sync).
@@ -1231,14 +1240,15 @@ class MainWindow:
         if not rows:
             ttk.Label(self.announcements_frame, text=announcements.T_EMPTY,
                       foreground=MUTED, wraplength=WRAP).pack(anchor="w", pady=12)
-        for row in rows:
+        for row, color in zip(rows, colors):
             card = ttk.LabelFrame(self.announcements_frame, padding=14)
             card.pack(fill="x", pady=(0, 10))
-            detail = ttk.Label(card, text=row.detail, foreground=MUTED, wraplength=WRAP - 60)
+            detail = self._course_detail(card, row.detail, row.course_code, row.date, color, wrap=WRAP - 60,
+                                         course_title=main.course_name_without_code(row.course, row.course_code))
             detail.pack(anchor="w")
             title = ttk.Label(card, text=row.title, font=BOLD_FONT, wraplength=WRAP - 60)
             title.pack(anchor="w", pady=4)
-            clickable = [card, detail, title]
+            clickable = [card, detail, *detail.winfo_children(), title]
             if row.preview:
                 preview = ttk.Label(card, text=row.preview, wraplength=WRAP - 60)
                 preview.pack(anchor="w")
