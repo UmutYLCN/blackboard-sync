@@ -328,17 +328,18 @@ def build_app(config: Config, show_window: bool = False):
 
         def start_next(self) -> None:
             """A job a folder change asked for goes first, then the scheduled sync."""
+            now = jobs.utcnow()
             jobs.refresh_session(self.config, self.model, self.settings)  # a queued sync waits for it
-            job = self.model.pending_job()
+            job = self.model.pending_job(now)
             if job == MOVE_JOB:
                 self.start_move()
             elif job is not None:
                 self.start_sync(job=job)
-            elif self.model.due(jobs.utcnow()):
+            elif self.model.due(now):
                 self.start_sync()
 
         def start_sync(self, _sender=None, job: str = "sync") -> None:
-            if not self.model.begin(job):
+            if self.model.license_expired(jobs.utcnow()) or not self.model.begin(job):
                 return
             log.info("%s started", job)
             self.refresh()

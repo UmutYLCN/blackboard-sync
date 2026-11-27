@@ -42,9 +42,11 @@ BACKGROUND = {True: "#F1F4F9", False: "#111317"}  # app.css --bg, light and dark
 STATE_WAIT = 20.0  # seconds a page's request for a new state waits before it asks again
 QUIT_GRACE = 10.0  # seconds pywebview's loop gets to end after Quit before the process ends anyway
 # What the page may ask the window to do (``Bridge.action``, ``Bridge.setting``).
+LICENSE_ACTIONS = (main.LICENSE_BUY_ACTION, main.LICENSE_RESTORE_ACTION)
 NOTEBOOKLM_ACTIONS = ("notebooklm_connect", "notebooklm_sync", "notebooklm_open")
 AI_ACTIONS = ("ai_install", "ai_detect", *(main.AI_OPEN_PREFIX + key for key in AI_CLIS))
-ACTIONS = ("sync", "pause", "folder", "update", "home_action", "account", *NOTEBOOKLM_ACTIONS, *AI_ACTIONS)
+ACTIONS = ("sync", "pause", "folder", "update", "home_action", "account", *LICENSE_ACTIONS, *NOTEBOOKLM_ACTIONS,
+           *AI_ACTIONS)
 SETTING_BUTTONS = ("account", "update", "uninstall", "google_calendar", "google_calendar_sync",
                    "google_calendar_disconnect", "notebooklm_disconnect")
 BUTTON_ACTIONS = {"google_calendar": "calendar_connect", "google_calendar_sync": "calendar_sync",
@@ -412,6 +414,29 @@ class WebHost:
         page = self.page
         return self._hwnd if page is not None and page.state.open else None
 
+    def window_handle(self) -> int | None:
+        """The Win32 HWND for modal Store purchase dialogs (``IInitializeWithWindow``)."""
+        if self._hwnd is not None:
+            return self._hwnd
+        try:
+            hwnd = int(self.window.native.Handle.ToInt64())
+            if hwnd:
+                self._hwnd = hwnd
+                return hwnd
+        except Exception:
+            pass
+        return None
+
+    def invoke_ui(self, callback) -> None:
+        """Run ``callback()`` on the WinForms UI thread that owns the window."""
+        native = getattr(self.window, "native", None)
+        if native is not None and getattr(native, "InvokeRequired", False):
+            import System
+
+            native.BeginInvoke(System.Action(callback))
+        else:
+            callback()
+
 
 def _user32():
     if sys.platform != "win32":
@@ -546,6 +571,9 @@ class WebMainWindow:
         if name == "home_action":
             if status.home.action:
                 self.on_action(status.home.action)
+        elif name in LICENSE_ACTIONS:
+            if name in self._ids.get("license", ()):
+                self.on_action(name)
         elif name in NOTEBOOKLM_ACTIONS:
             if name in self._ids.get("notebooklm", ()):
                 self.on_action(name)

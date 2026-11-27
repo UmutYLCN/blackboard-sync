@@ -34,6 +34,7 @@ a = Analysis(
     # pyinstaller-hooks-contrib's pywebview hook bundles the WebView2 interop DLLs.
     hiddenimports=[
         "blackboard_sync.cli",
+        "blackboard_sync.licensing",
         "blackboard_sync.windows.app",
         "blackboard_sync.windows.web_window",
         "pystray._win32",
@@ -49,6 +50,12 @@ a = Analysis(
         "webview.platforms.winforms",
         "webview.platforms.edgechromium",
         "clr",
+        "winrt.runtime",
+        "winrt.runtime.interop",
+        "winrt.system",
+        "winrt.windows.foundation",
+        "winrt.windows.foundation.collections",
+        "winrt.windows.services.store",
         "send2trash.win.IFileOperationProgressSink",
         "win32cred",  # Google Calendar refresh tokens in Credential Manager
         "win32com.shell.shell",

@@ -108,6 +108,22 @@ def banner(status: main.MainStatus, enabled: bool) -> dict | None:
     return {"title": update.title, "button": update.button_title, "enabled": update.enabled}
 
 
+def license_banner(status: main.MainStatus) -> dict | None:
+    """Home's free-trial line or expired-trial buy card; None when licensed or in offline grace."""
+    card = status.license
+    if card is None:
+        return None
+    return {
+        "kind": card.kind,
+        "title": card.title,
+        "detail": card.detail,
+        "notice": card.notice,
+        "buy": {"id": card.buy_action, "title": card.buy_title, "enabled": card.buy_enabled},
+        "restore": ({"id": card.restore_action, "title": card.restore_title, "enabled": card.restore_enabled}
+                    if card.restore_action else None),
+    }
+
+
 def home_button(status: main.MainStatus) -> dict | None:
     """At most one button on the status card: what the state asks for (Sign in), else "Sync now".
 
@@ -400,6 +416,7 @@ def window_state(status: main.MainStatus, section: str, page: str, announcement_
         "nav": nav(status),
         "chrome": chrome(status),
         "banner": banner(status, updates_enabled),
+        "license": license_banner(status),
         "home": home(status, announcement_rows, deadline_page, today),
         "start": start(status, error[0]),
         "activity": activity(status),
@@ -417,6 +434,7 @@ def ids(state: dict) -> dict[str, set[str]]:
     home_state = state["home"]
     card = home_state["notebooklm"]
     ai = home_state["ai"]
+    lic = state.get("license")
     settings_state = state["settings"]
     rows = [row for section in settings_state["sections"] for row in section["rows"]]
     return {
@@ -426,6 +444,8 @@ def ids(state: dict) -> dict[str, set[str]]:
         "deadline": ({row["id"] for row in home_state["deadlines"]}
                      | {row["id"] for day in state["calendar"]["days"] for row in day["rows"]}),
         "course": {row["id"] for row in state["courses"]["rows"]},
+        "license": (({lic["buy"]["id"]} if lic and lic["buy"] and lic["buy"]["enabled"] else set())
+                    | ({lic["restore"]["id"]} if lic and lic["restore"] and lic["restore"]["enabled"] else set())),
         # The card's own buttons, while it shows them and they work.
         "notebooklm": ({card["button"]["id"]} if card["button"] and card["button"]["enabled"] else set())
                       | ({card["open"]["id"]} if card["open"] else set()),

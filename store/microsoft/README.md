@@ -51,8 +51,23 @@ Items marked **Decide** are the maintainer's call; all are collected again under
 - [ ] **Discoverability:** Make this product available and discoverable in the Microsoft Store.
 - [ ] **Schedule:** Release as soon as possible; Stop acquisition never. (Use
   [6. Submission options](#6-submission-options) to hold the release instead.)
-- [ ] **Base price:** One-time purchase, approximately US$5, with a one-day free trial in Partner Center.
+- [ ] **Base price:** Paid one-time purchase (~**4.99 USD** tier; no subscription).
+- [ ] **Free trial:** **1 day** (time-limited; all features and courses enabled during the
+  trial). The app reads the trial expiry and `StoreProduct.Price.FormattedPrice` directly
+  from `Windows.Services.Store.StoreContext` (`src/blackboard_sync/licensing.py`), so
+  adjusting price tiers or trial duration in Partner Center requires no app rebuild.
 - [ ] **Organizational licensing:** leave the defaults.
+
+#### Testing the trial and purchase
+
+- **Store test account / private flight:** submit to a hidden Partner Center package flight
+  (or issue a promotional code to a test Microsoft account signed into the Microsoft Store
+  app on a Windows 10/11 PC) to test acquiring the 1-day free trial, seeing the formatted
+  Store price, and completing `RequestPurchaseAsync` over the app window.
+- **Local license simulation:** set `BBSYNC_LICENSE_SIMULATE` (`trial:18h`, `trial:30s`,
+  `expired`, or `offline`) and `BBSYNC_LICENSE_PRICE` (for example `'$4.99'`) to verify the
+  Home trial bar, sync gating on expiry, `"I already bought it"` re-check, and offline grace
+  (see `docs/MSIX.md`).
 
 ### 2. Properties
 
@@ -74,7 +89,7 @@ Items marked **Decide** are the maintainer's call; all are collected again under
 - [ ] **Contact details:** required only for company accounts.
 - [ ] **Display mode:** leave all unchecked.
 - [ ] **Product declarations:**
-  - "Allows users to make purchases, but does not use the Microsoft Store commerce system": unchecked (no purchases).
+  - "Allows users to make purchases, but does not use the Microsoft Store commerce system": unchecked (paid app + trial purchase uses the Microsoft Store commerce system, `Windows.Services.Store`).
   - "Tested to meet accessibility guidelines": unchecked (not tested to that standard).
   - "Can install to alternate drives or removable storage": leave checked (default).
   - "Windows can include this product's data in automatic backups to OneDrive": default
@@ -101,7 +116,7 @@ below follow what the app does. Check each question's info icon when its wording
 | Users can interact or exchange content with other users (chat, posting, sharing) | No | It only downloads from the student's own courses; nothing is posted |
 | Shares the user's location | No | It reads no location |
 | Shares personal information with third parties | Yes, optional | Optional integrations send data to Google at the user’s request. Disclose this sharing in the submission. Blackboard cookies go only to the school. |
-| Digital purchases | No | No in-app purchases |
+| Digital purchases | No | One-time Store purchase of the app itself (with 1-day free trial); no consumable or recurring in-app purchases |
 | Unrestricted internet access (for example a web browser) | No | The sign-in window opens the school's sign-in page; the app is not a browser. Confirm against the question's info text |
 
 The course material comes from the student's school, not from the app. Expect the lowest
