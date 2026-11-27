@@ -9,6 +9,7 @@ import copy
 import json
 from datetime import timedelta
 
+from blackboard_sync import courses
 from blackboard_sync.state import State
 from blackboard_sync.sync import (
     NO_TERM,
@@ -223,12 +224,55 @@ def test_old_state_file_loads_unchanged_and_keeps_the_guz_folder(config, client,
     assert CSE in {c.folder for c in report.courses}
 
 
-def test_course_without_a_term_is_synced_with_the_current_term(config, client, archive):
+def drop_terms(archive):
+    """A school with no terms: no course names one."""
+    for path, page in archive.routes.items():
+        if path.startswith(MEMBERS):  # every page of the memberships
+            for member in page["results"]:
+                member["course"]["termId"] = None
+
+
+def test_course_without_a_term_is_listed_but_not_synced_beside_termed_courses(config, client, archive):
     add_membership(archive, "_14000_1", None, name="Library Orientation", code="LIB100-1")
     report = sync(config, client)
+    assert report.terms == [CURRENT]  # only what was synced
+    assert top_folders(config) == [CURRENT]
+    assert [c.code for c in report.courses if c.code == "LIB100"] == []
+    assert not any("_14000_1" in call for call in archive.calls)  # not one request for it
+    listed = State.load(config.state_file).courses["_14000_1"]
+    assert listed["termless"] is True and State.load(config.state_file).courses["_13004_1"]["termless"] is False
+
+
+def test_course_without_a_term_syncs_once_the_student_ticks_it(config, client, archive):
+    add_membership(archive, "_14000_1", None, name="Library Orientation", code="LIB100-1")
+    sync(config, client)
+    courses.set_enabled(config, "_14000_1", True)
+    report = sync(config, client)
     assert sorted(report.terms) == sorted([CURRENT, NO_TERM])
-    assert top_folders(config) == [CURRENT, NO_TERM]
     assert (config.root / NO_TERM / "LIB100 Library Orientation" / "first.pdf").is_file()
+    courses.set_enabled(config, "_14000_1", False)
+    archive.calls.clear()
+    sync(config, client)
+    assert not any("_14000_1" in call for call in archive.calls)
+
+
+def test_a_school_without_terms_still_syncs_all_its_courses(config, client, archive):
+    drop_terms(archive)
+    report = sync(config, client)
+    assert report.terms == [NO_TERM]
+    assert report.courses and (config.root / NO_TERM).is_dir()
+    assert {r.enabled for r in courses.load_rows(config)} == {True}
+    assert courses.termless_hint(courses.load_rows(config)) == ""  # nothing to explain there
+
+
+def test_a_termless_course_is_not_the_only_course_once_a_termed_one_appears(config, client, archive):
+    """Only termless courses sync by default; a later termed course turns them off."""
+    drop_terms(archive)
+    sync(config, client)
+    assert top_folders(config) == [NO_TERM]
+    add_membership(archive, "_14500_1", "_50_1", name="Termed", code="TRM100-1")
+    sync(config, client)
+    assert {r.enabled for r in courses.load_rows(config) if r.termless} == {False}
 
 
 def test_year_long_and_semester_term_with_the_same_start_are_both_synced(config, client, archive):

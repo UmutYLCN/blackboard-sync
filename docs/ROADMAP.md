@@ -73,7 +73,7 @@ Download the current term the way a student means "this term", and keep the scho
 
 Safeguards:
 
-- Courses with no term at all (`termId` empty) are included.
+- Courses with no term at all (`termId` empty) are listed in Courses; they sync only when no course with a term is current, or once the student ticks them.
 - Closed courses and enrolments, courses that open with a closed term, and Blackboard Organizations (clubs and communities listed among the courses) are skipped.
 - A term whose dates ended before any of its courses was created has dates copied from an earlier year; it is dated by its courses instead.
 - A term an older version archived stays frozen and can never be picked, so it cannot leave the student with no course at all.

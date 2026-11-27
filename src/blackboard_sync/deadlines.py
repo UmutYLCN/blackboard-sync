@@ -202,10 +202,11 @@ def calendar_page(state: State, root: Path, now: datetime, zone: tzinfo | None =
 
 
 def load_calendar(config: Config, dest: Path) -> DeadlinePage:
-    from blackboard_sync.courses import load_disabled  # it imports this module's State too
+    from blackboard_sync.courses import effective_disabled  # it imports this module's State too
 
-    return calendar_page(State.load(config.state_file, backup=False), sync_root(dest), datetime.now(timezone.utc),
-                         hidden=load_disabled(config))
+    state = State.load(config.state_file, backup=False)
+    return calendar_page(state, sync_root(dest), datetime.now(timezone.utc),
+                         hidden=effective_disabled(config, state.courses))
 
 
 
