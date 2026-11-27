@@ -8,7 +8,9 @@ what was written locally:
   seen when it was last processed and the output keys it produced. An item
   whose ``modified`` is unchanged is skipped entirely on the next run. Embedded
   videos and audio that were left as links are listed under ``media``; files
-  skipped for size are listed in ``large_files`` with their reported byte count.
+  skipped for size are listed in ``large_files`` with their reported byte count;
+  files Blackboard answered with 403/404/410 are listed in ``unavailable`` so
+  they are not retried until ``modified`` changes.
 * ``outputs`` - one entry per local file (attachment, embedded file or note),
   keyed by Blackboard attachment/file id, holding the path relative to the
   destination folder, its SHA-256, size and (since files are restored) the
@@ -277,17 +279,22 @@ class State:
         partial: bool = False,
         media: list[str] | None = None,
         large_files: dict[str, int] | None = None,
+        unavailable: list[str] | None = None,
     ) -> None:
         """``partial`` marks an item some of whose files failed: it is retried next run.
 
         ``media`` lists the keys of embedded video/audio files that were not downloaded
-        (they are links in the note); they count as handled, but own no local file.
+        (they are links in the note); ``unavailable`` lists files Blackboard rejected
+        permanently (403/404/410) for this ``modified``. Both count as handled without
+        owning a local file.
         """
         entry = {"modified": modified, "outputs": outputs, "title": title}
         if media:
             entry["media"] = media
         if large_files:
             entry["large_files"] = large_files
+        if unavailable:
+            entry["unavailable"] = unavailable
         if partial:
             entry["partial"] = True
         if self.items.get(key) != entry:

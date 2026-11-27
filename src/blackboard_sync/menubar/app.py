@@ -25,9 +25,11 @@ from blackboard_sync.i18n import tr
 from blackboard_sync.menubar import jobs, launchagent, settings_form
 from blackboard_sync.menubar.main_window_model import (
     GENERAL,
+    OPEN_ITEM_PREFIX,
     duplicates_text,
     duplicates_title,
     notebooklm_progress,
+    open_item_url,
     removable_ids,
     shows_window_at_launch,
 )
@@ -814,6 +816,11 @@ def build_app(config: Config, show_window: bool = False):
 
         def window_action(self, action: str) -> None:
             """A button in the main window that acts right away instead of saving."""
+            if action.startswith(OPEN_ITEM_PREFIX):
+                url = open_item_url(action, self.settings.base_url, self.config.base_url)
+                if url:
+                    open_url(url)
+                return
             {
                 "calendar_connect": lambda: self.start_calendar("connect"),
                 "calendar_sync": self.start_calendar, "calendar_disconnect": self.disconnect_calendar,

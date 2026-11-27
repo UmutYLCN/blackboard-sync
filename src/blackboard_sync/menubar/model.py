@@ -24,6 +24,7 @@ from blackboard_sync import __version__, term_confirm
 from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
 from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.inapp import INAPP
+from blackboard_sync.report import UNAVAILABLE_STATUSES
 from blackboard_sync.session_refresh import EXPIRED, REFRESHED, RefreshResult, SessionCare
 from blackboard_sync.settings import DEFAULT_SYNC_INTERVAL_MINUTES, Settings, normalize_sync_interval
 from blackboard_sync.system import sync_root
@@ -163,6 +164,20 @@ class CourseChange:
         return sum(self.counts.values())
 
 
+@dataclass(frozen=True)
+class FailedFile:
+    """One file download that failed during a sync run."""
+
+    course: str
+    name: str
+    status: int | None = None  # HTTP status when Blackboard answered, else None (network/OS error)
+    link: str = ""
+
+    @property
+    def unavailable(self) -> bool:
+        return self.status in UNAVAILABLE_STATUSES
+
+
 @dataclass
 class RunOutcome:
     """The result of one ``blackboard-sync sync --json`` run."""
@@ -174,6 +189,8 @@ class RunOutcome:
     courses: list[CourseChange] = field(default_factory=list)
     warning_count: int = 0
     unreadable_courses: int = 0  # courses whose content could not be read at all
+    failed_files: list[FailedFile] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)  # non-file warnings
     # The sync first moved files of an older version into the University folder.
     moved_into_root: int = 0
     left_outside_root: int = 0  # ...and these could not be moved
@@ -195,6 +212,8 @@ class RunOutcome:
     def from_report(cls, data: dict) -> "RunOutcome":
         courses = []
         entries: list[tuple[str, str, str]] = []
+        failed_files: list[FailedFile] = []
+        warnings: list[str] = [str(w) for w in data.get("warnings") or [] if w]
         for c in data.get("courses") or []:
             counts = {
                 key: (int(c.get(key) or 0) if key == "skipped_large_files" else len(c.get(key) or []))
@@ -203,10 +222,23 @@ class RunOutcome:
             recent = [p for key in RECENT_KEYS for p in c.get(key) or []]
             code = c.get("code") or c.get("name") or "?"
             entries.extend((code, p, kind) for key, kind in ENTRY_KINDS.items() for p in c.get(key) or [])
+            course_failed = []
+            for entry in c.get("failed_files") or []:
+                if isinstance(entry, dict) and entry.get("name"):
+                    status = entry.get("status")
+                    course_failed.append(FailedFile(
+                        course=code,
+                        name=str(entry["name"]),
+                        status=status if isinstance(status, int) and not isinstance(status, bool) else None,
+                        link=str(entry.get("link") or ""),
+                    ))
+            failed_files.extend(course_failed)
+            if not c.get("content_error") and not course_failed:
+                warnings.extend(str(w) for w in c.get("warnings") or [] if w)
             courses.append(
                 CourseChange(
                     name=c.get("name") or "",
-                    code=c.get("code") or c.get("name") or "?",
+                    code=code,
                     folder=c.get("folder") or "",
                     counts=counts,
                     recent_paths=recent,
@@ -221,6 +253,8 @@ class RunOutcome:
             warning_count=len(data.get("warnings") or []) + sum(
                 len(c.get("warnings") or []) for c in data.get("courses") or []),
             unreadable_courses=sum(1 for c in data.get("courses") or [] if c.get("content_error")),
+            failed_files=failed_files,
+            warnings=warnings,
             moved_into_root=data.get("moved_into_root") or 0,
             left_outside_root=len(data.get("left_outside_root") or []),
             entries=entries,

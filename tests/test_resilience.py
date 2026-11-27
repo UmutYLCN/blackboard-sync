@@ -11,7 +11,9 @@ import requests
 
 from blackboard_sync import cli
 from blackboard_sync.session import http_session
+from blackboard_sync.state import State
 
+from .conftest import FakeResponse, note_text
 from .test_sync import CSE, SLIDES, SYLLABUS, SYLLABUS_DL, files_under, sync
 
 
@@ -131,3 +133,141 @@ def test_transient_503_is_retried_with_backoff(monkeypatch):
         server.server_close()
     assert resp.status_code == 200 and _Flaky.hits == 3
     assert sleeps  # backed off between attempts
+
+
+@pytest.mark.parametrize("status", [404, 410, 403])
+def test_unavailable_attachment_is_recorded_and_not_retried_until_modified(config, client, fake_bb, status):
+    real_get = fake_bb.get
+    failing = [True]
+    hits = []
+
+    def get(url, **kw):
+        if url.endswith(SYLLABUS_DL):
+            hits.append(url)
+            if failing[0]:
+                return FakeResponse(status, url=url, content=b"Not Found")
+        return real_get(url, **kw)
+
+    fake_bb.get = get
+    report = sync(config, client)
+
+    assert report.status == "ok"
+    assert len(hits) == 1
+    cse = next(c for c in report.courses if c.code == "CSE303")
+    assert len(cse.failed_files) == 1
+    failed = cse.failed_files[0]
+    assert failed["name"] == Path(SYLLABUS).name
+    assert failed["status"] == status
+    assert "courseId=_13004_1" in failed["link"] and "contentId=_c11_1" in failed["link"]
+    assert any(f"HTTP {status}" in w for w in cse.warnings)
+    assert SYLLABUS not in files_under(config.dest)
+
+    # State marks the item complete (not partial) with the attachment in ``unavailable`` and writes a note PDF.
+    state = State.load(config.state_file)
+    item_state = state.items["content:_13004_1:_c11_1"]
+    assert "partial" not in item_state
+    assert item_state["unavailable"] == ["attachment:_13004_1:_a11_1"]
+    note_rel = state.outputs["note:_13004_1:_c11_1"]["path"]
+    note_path = config.dest / note_rel
+    assert note_path.exists()
+    note = note_text(note_path)
+    assert "Open in Blackboard:" in note
+    assert failed["link"] in note
+
+    # Next run with the same modified: no retry, no failed_files, no warnings.
+    hits.clear()
+    second = sync(config, client)
+    cse2 = next(c for c in second.courses if c.code == "CSE303")
+    assert hits == []
+    assert cse2.failed_files == [] and cse2.warnings == []
+
+    # Deleting the note PDF locally rebuilds it without retrying the unavailable file or warning again.
+    note_path.unlink()
+    hits.clear()
+    restored = sync(config, client)
+    cse_restored = next(c for c in restored.courses if c.code == "CSE303")
+    assert hits == []
+    assert cse_restored.failed_files == [] and cse_restored.warnings == []
+    assert note_path.exists()
+
+    # Once modified changes (instructor re-uploads), the attachment is retried and succeeds.
+    failing[0] = False
+    fake_bb.routes["/learn/api/public/v1/courses/_13004_1/contents/_c1_1/children"]["results"][0]["modified"] = (
+        "2026-10-05T12:00:00.000Z"
+    )
+    hits.clear()
+    third = sync(config, client)
+    cse3 = next(c for c in third.courses if c.code == "CSE303")
+    assert len(hits) == 1
+    assert SYLLABUS in files_under(config.dest)
+    assert cse3.failed_files == [] and cse3.warnings == []
+    refreshed_state = State.load(config.state_file).items["content:_13004_1:_c11_1"]
+    assert "unavailable" not in refreshed_state and "partial" not in refreshed_state
+
+
+def test_transient_500_attachment_stays_partial_and_is_retried(config, client, fake_bb):
+    real_get = fake_bb.get
+    failing = [True]
+
+    def get(url, **kw):
+        if failing[0] and url.endswith(SYLLABUS_DL):
+            return FakeResponse(500, url=url, content=b"Internal Server Error")
+        return real_get(url, **kw)
+
+    fake_bb.get = get
+    report = sync(config, client)
+
+    cse = next(c for c in report.courses if c.code == "CSE303")
+    assert len(cse.failed_files) == 1
+    assert cse.failed_files[0]["name"] == Path(SYLLABUS).name
+    assert cse.failed_files[0]["status"] == 500
+    assert any("HTTP 500" in w for w in cse.warnings)
+    item_state = State.load(config.state_file).items["content:_13004_1:_c11_1"]
+    assert item_state.get("partial") is True
+    assert "unavailable" not in item_state
+
+    # Next run retries even without a modified change.
+    failing[0] = False
+    fake_bb.calls.clear()
+    second = sync(config, client)
+    cse2 = next(c for c in second.courses if c.code == "CSE303")
+    assert SYLLABUS_DL in fake_bb.downloads()
+    assert SYLLABUS in files_under(config.dest)
+    assert cse2.failed_files == [] and cse2.warnings == []
+    assert "partial" not in State.load(config.state_file).items["content:_13004_1:_c11_1"]
+
+
+def test_unavailable_announcement_embedded_file_is_not_retried_until_modified(config, client, fake_bb):
+    ann_route = "/learn/api/public/v1/courses/_13004_1/announcements"
+    ann = fake_bb.routes[ann_route]["results"][0]
+    ann_id = ann["id"]
+    ann["body"] = '<p>See <a href="/bbcswebdav/xid-999_1">missing.pdf</a></p>'
+    real_get = fake_bb.get
+    hits = []
+
+    def get(url, **kw):
+        if url.endswith("/bbcswebdav/xid-999_1"):
+            hits.append(url)
+            return FakeResponse(404, url=url, content=b"Not Found")
+        return real_get(url, **kw)
+
+    fake_bb.get = get
+    report = sync(config, client)
+
+    assert len(hits) == 1
+    cse = next(c for c in report.courses if c.code == "CSE303")
+    assert len(cse.failed_files) == 1
+    assert cse.failed_files[0]["name"] == "missing.pdf"
+    assert cse.failed_files[0]["status"] == 404
+    assert cse.failed_files[0]["link"].endswith("/ultra/courses/_13004_1/announcements")
+    ann_state = State.load(config.state_file).items[f"announcement:_13004_1:{ann_id}"]
+    assert "partial" not in ann_state
+    assert ann_state["unavailable"] == [f"xid:_13004_1:announcement:{ann_id}:999_1"]
+    ann_note = note_text(config.dest / CSE / "Duyurular" / "2026-09-20 Welcome to CSE303.pdf")
+    assert "missing.pdf" in ann_note
+
+    hits.clear()
+    second = sync(config, client)
+    cse2 = next(c for c in second.courses if c.code == "CSE303")
+    assert hits == []
+    assert cse2.failed_files == [] and cse2.warnings == []

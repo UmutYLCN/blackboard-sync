@@ -24,9 +24,11 @@ from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.menubar import jobs, settings_form
 from blackboard_sync.menubar.main_window_model import (
     GENERAL,
+    OPEN_ITEM_PREFIX,
     duplicates_text,
     duplicates_title,
     notebooklm_progress,
+    open_item_url,
     removable_ids,
     shows_window_at_launch,
 )
@@ -597,6 +599,10 @@ class TrayApp:
             self.find_notebooklm_duplicates()
         elif action == "notebooklm_disconnect":
             self.disconnect_notebooklm()
+        elif action.startswith(OPEN_ITEM_PREFIX):
+            url = open_item_url(action, self.settings.base_url, self.config.base_url)
+            if url:
+                webbrowser.open(url)
         elif action == "deadline":
             if value.startswith(self.config.base_url.rstrip("/") + "/"):
                 webbrowser.open(value)

@@ -9,9 +9,21 @@ HOMEWORK_DL = "/learn/api/public/v1/courses/_13004_1/contents/_c4_1/attachments/
 
 
 def _bad_sibling(fake_bb):
+    from .conftest import FakeResponse
+
+    bad_url = "/learn/api/public/v1/courses/_13004_1/contents/_c11_1/attachments/_bad_1/download"
     fake_bb.routes["/learn/api/public/v1/courses/_13004_1/contents/_c11_1/attachments"]["results"].append(
         {"id": "_bad_1", "fileName": "missing.pdf"}
     )
+    real_get = fake_bb.get
+
+    def get(url, **kw):
+        if url.endswith(bad_url) and bad_url not in fake_bb.files:
+            fake_bb.calls.append(bad_url)
+            return FakeResponse(503, url, content=b"Service Unavailable")
+        return real_get(url, **kw)
+
+    fake_bb.get = get
 
 
 def test_R3_failing_attachment_does_not_redownload_its_siblings(config, client, fake_bb):

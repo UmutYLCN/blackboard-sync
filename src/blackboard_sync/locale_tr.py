@@ -294,8 +294,15 @@ CATALOG = {
     "Blackboard Sync {version} is ready": "Blackboard Sync {version} hazır",
     "Blackboard did not return the content; the next sync tries again.":
         "Blackboard içeriği vermedi; sonraki senkronda yeniden denenecek.",
-    "Some files could not be downloaded; the next sync tries again.":
-        "Bazı dosyalar indirilemedi; sonraki senkronda yeniden denenecek.",
+    "{n} file is missing on Blackboard": "{n} dosya Blackboard'da yok",
+    "{n} files are missing on Blackboard": "{n} dosya Blackboard'da yok",
+    "{file}: Blackboard has no file behind this link. Open it in Blackboard or ask your instructor.":
+        "{file}: Blackboard'da bu bağlantının arkasında dosya yok. Blackboard'da açın ya da hocanıza sorun.",
+    "+{k} more": "+{k} daha",
+    "{n} file could not be downloaded": "{n} dosya indirilemedi",
+    "{n} files could not be downloaded": "{n} dosya indirilemedi",
+    "{files}. The next sync tries again.": "{files}. Sonraki eşitleme yeniden dener.",
+    "Something went wrong during the last sync": "Son eşitlemede bir sorun çıktı",
     "Could not read {courses}": "{courses} okunamadı",
     "syncing": "senkronize ediliyor",
     "not syncing": "senkronize edilmiyor",

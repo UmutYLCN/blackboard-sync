@@ -193,7 +193,7 @@ def test_attention_lists_only_what_needs_the_student(tmp_path):
     model.pause()
     assert attention_items(model) == ()  # a pause is on Home's card, not an alarm
     model.last = RunOutcome("ok", finished_at=NOW, warning_count=3)
-    assert [i.title for i in attention_items(model)] == ["3 warnings"]
+    assert [i.title for i in attention_items(model)] == ["Something went wrong during the last sync"]
     model.last = RunOutcome("ok", finished_at=NOW, unreadable_courses=2, warning_count=3)
     assert [i.title for i in attention_items(model)] == ["Could not read 2 courses"]
     model.last = RunOutcome("error", message="No network", finished_at=NOW)

@@ -227,6 +227,25 @@ def test_attention_comes_before_announcements_and_ids_are_what_was_drawn():
     assert ids["deadline"] == {"Term/CSE301/Proposal.pdf", "https://bb.example/report"}
 
 
+def test_attention_open_item_action_passes_through_webui_state():
+    link = "https://bb.example/ultra/redirect?redirectType=nautilus&courseId=_1_1&contentId=_2_1"
+    item = main.AttentionItem(
+        "1 file is missing on Blackboard",
+        "PHY101 · W10_Quiz_CH6.pdf: Blackboard has no file behind this link. Open it in Blackboard or ask your instructor.",
+        f"open_item:{link}",
+        "Open in Blackboard",
+    )
+    data = state(status(attention=(item,)))
+    assert data["home"]["attention"] == [{
+        "id": f"open_item:{link}",
+        "title": item.title,
+        "detail": item.detail,
+        "action_title": "Open in Blackboard",
+        "warning": True,
+    }]
+    assert webui_state.ids(data)["attention"] == {f"open_item:{link}"}
+
+
 def test_empty_home_says_why():
     data = state(status(recent=()), rows=(), page=deadlines.DeadlinePage())
     assert data["home"]["recent"] == [] and data["home"]["recent_count"] == ""
