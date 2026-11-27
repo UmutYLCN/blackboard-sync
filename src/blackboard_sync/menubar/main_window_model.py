@@ -447,6 +447,9 @@ class ActivityRow:
     size: str  # "14 KB", "—" for a note without a measurable file
     path: str  # relative to the University folder, for ``open_target``
     kind: str  # "PDF", "MD", ...
+    course_code: str = ""
+    course_title: str = ""
+    color: int | None = None
 
 
 @dataclass(frozen=True)
@@ -833,13 +836,19 @@ def attention_items(model: AppModel) -> tuple[AttentionItem, ...]:
 
 
 def activity_rows(model: AppModel, now: datetime) -> tuple[ActivityRow, ...]:
+    course_titles = {fold_course_key(c.code): course_name_without_code(c.name, c.code)
+                     for c in model.courses if c.code}
     rows = []
     for item in model.visible_activity():
         name = PurePosixPath(item.path).name
+        code = item.course.strip()
         when = parse_iso(item.at)
-        detail = f"{item.course} · {day_time(when, now)}" if when else item.course
-        rows.append(ActivityRow(name, item.course, detail, item.label, format_size(item.size), item.path,
-                                Path(name).suffix[1:].upper()[:4]))
+        when_text = day_time(when, now) if when else ""
+        detail = " · ".join(filter(None, (code, when_text)))
+        title = course_titles.get(fold_course_key(code), "") if code else ""
+        color = course_color_index(model.course_colors, code) if code else None
+        rows.append(ActivityRow(name, code, detail, item.label, format_size(item.size), item.path,
+                                Path(name).suffix[1:].upper()[:4], code, title, color))
     return tuple(rows)
 
 
@@ -862,7 +871,11 @@ def recent_rows(model: AppModel, now: datetime) -> tuple[RecentRow, ...]:
 
 def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.DeadlinePage | None = None,
                 zone: tzinfo | None = None, *, current_course_codes: Iterable[str] = ()) -> MainStatus:
-    assign_course_colors(model, current_course_codes, (item.course for item in model.visible_recent()))
+    assign_course_colors(
+        model,
+        current_course_codes,
+        (*(item.course for item in model.visible_recent()), *(item.course for item in model.visible_activity())),
+    )
     name, _expired = model.account()
     idle = model.busy is None and model.updates.busy != "download"
     if model.busy == "login":

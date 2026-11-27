@@ -319,6 +319,30 @@ def test_recent_files_for_the_same_folded_course_share_a_color(codes, key):
     ]
 
 
+def test_activity_rows_carry_course_code_title_and_color_and_tolerate_missing_course():
+    from blackboard_sync.menubar.model import ActivityItem, CourseChange, load_activity
+
+    loaded = load_activity([
+        {"path": "Term/CSE301/a.pdf", "course": "CSE301", "at": NOW.isoformat(), "kind": "new_file", "size": 100},
+        {"path": "Term/old.pdf", "at": NOW.isoformat(), "kind": "new_file", "size": 50},
+    ])
+    assert [item.course for item in loaded] == ["CSE301", ""]
+
+    model = synced(
+        courses=[CourseChange("CSE301", "Term/CSE301", {}, (), name="CSE301 Database Management")],
+    )
+    model.activity_log = loaded
+    status = main_status(model, NOW, current_course_codes=("PHY101",))
+    with_course, without_course = status.activity
+    assert with_course.course_code == "CSE301"
+    assert with_course.course_title == "Database Management"
+    assert with_course.color == status.course_colors["cse301"]
+    assert without_course.course_code == ""
+    assert without_course.course_title == ""
+    assert without_course.color is None
+    assert not without_course.detail.startswith(" · ")
+
+
 @pytest.mark.parametrize("course, code, expected", [
     ("CSE301 Database Management", "CSE301", "Database Management"),
     ("CSE301-1 Database Management", "CSE301", "Database Management"),

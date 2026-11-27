@@ -125,6 +125,56 @@ def test_home_payload_carries_one_course_color_for_files_announcements_and_deadl
     assert label in home["deadlines"][0]["detail"]
 
 
+def test_activity_announcements_and_calendar_pages_carry_course_badges(tmp_path):
+    config = Config(data_dir=tmp_path, dest=tmp_path / "dest")
+    cache = State.load(config.state_file)
+    cache.courses = {"first": {"code": "CSE301"}}
+    cache.current_courses = ["first"]
+    cache.announcements["a"] = {
+        "course_id": "first", "course": "CSE301 Database Management", "title": "Exam",
+        "date": NOW.isoformat(), "preview": "Room 101", "source_path": "/announcement/a", "output_key": "a",
+    }
+    cache.deadline_courses["first"] = {"name": "CSE301 Database Management", "items": [
+        {"title": "Homework", "due": (NOW + timedelta(days=1)).isoformat(), "url": "https://bb.example/homework"},
+    ]}
+    cache.dirty = True
+    cache.save()
+    from blackboard_sync.menubar.model import ActivityItem, CourseChange
+    model = AppModel(
+        config.dest,
+        NOW,
+        courses=[CourseChange("CSE301", "Term/CSE301", {}, (), name="CSE301 Database Management")],
+    )
+    model.activity_log = [
+        ActivityItem("Term/CSE301/file.pdf", "CSE301", NOW.isoformat(), "new_file", 1024),
+        ActivityItem("Term/old.pdf", "", NOW.isoformat(), "new_file", 512),
+    ]
+    current = jobs.window_status(config, model, NOW, config.dest)
+    rows = announcements.load_rows(config)
+    page = deadlines.calendar_page(cache, config.root, NOW)
+    data = state(current, rows, page)
+    expected_color = current.course_colors["cse301"]
+
+    act_with, act_without = data["activity"]["rows"]
+    assert act_with["course_code"] == "CSE301"
+    assert act_with["course_title"] == "Database Management"
+    assert act_with["color"] == expected_color
+    assert act_with["when"] == act_with["status"]
+    assert act_without["course_code"] == ""
+    assert act_without["color"] is None
+
+    ann_row, = data["announcements"]["rows"]
+    assert ann_row["course_code"] == "CSE301"
+    assert ann_row["course_title"] == "Database Management"
+    assert ann_row["color"] == expected_color
+    assert ann_row["when"]
+
+    cal_row, = data["calendar"]["days"][0]["rows"]
+    assert cal_row["course_code"] == "CSE301"
+    assert cal_row["course_title"] == "Database Management"
+    assert cal_row["color"] == expected_color
+
+
 def test_home_announcements_and_deadlines_keep_course_title_visible_beside_badge():
     due = datetime(2026, 10, 18, 20, 59, tzinfo=timezone.utc)
     long_course = "PHY101 Physics I (Mechatronics - CENG - Chemical Engineering)"
@@ -396,7 +446,8 @@ def test_other_pages_carry_their_rows_and_ids():
     data = webui_state.window_state(status(activity=activity), main.ACTIVITY, main.ACTIVITY, ANNOUNCEMENTS,
                                     deadline_page(), date(2026, 10, 18), course_rows=COURSES)
     assert data["activity"]["rows"][0] == {"id": "Term/CSE303/a.pdf", "name": "a.pdf", "detail": "CSE303 · today",
-                                           "kind": "pdf", "size": "2 MB", "status": "Downloaded"}
+                                           "kind": "pdf", "size": "2 MB", "status": "Downloaded",
+                                           "course_code": "", "course_title": "", "when": "Downloaded", "color": None}
     assert [row["enabled"] for row in data["courses"]["rows"]] == [True, True, True, True, False]
     assert [len(day["rows"]) for day in data["calendar"]["days"]] == [1, 1]
     ids = webui_state.ids(data)

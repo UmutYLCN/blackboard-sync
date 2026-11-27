@@ -531,7 +531,7 @@
           chip(row.kind),
           h("span", { class: "row-text" },
             h("div", { class: "row-title", text: row.name }),
-            h("div", { class: "row-detail", text: row.detail }))),
+            courseDetail({ ...row, detail: row.status }))),
         h("span", { class: "size", text: row.size }),
         icon("check_circle-fill", "done"),
         moreButton(row)))
@@ -552,7 +552,7 @@
       data.rows.length ? h("div", { class: "stack" }, data.rows.map((row) => h("section", {
         class: "card announcement", onclick: () => call("announcement", row.id),
       },
-      h("div", { class: "meta", text: row.detail }),
+      h("div", { class: "meta" }, courseDetail(row)),
       h("div", { class: "title", text: row.title }),
       row.preview ? h("div", { class: "preview", text: row.preview }) : null,
       h("div", { class: "card-footer" },
@@ -602,7 +602,7 @@
           h("button", { class: "row-main", type: "button", title: row.title, onclick: () => call("deadline", row.id) },
             h("span", { class: "row-text" },
               h("div", { class: "row-title", text: row.title }),
-              h("div", { class: "row-detail", text: row.course })))))));
+              courseDetail({ ...row, detail: row.course })))))));
       parts.push(h("div", { class: "form-gap" }));
     }
     return h("div", {}, parts);

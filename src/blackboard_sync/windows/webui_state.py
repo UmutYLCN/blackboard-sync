@@ -246,7 +246,9 @@ def activity(status: main.MainStatus) -> dict:
         "detail": state.detail,
         "columns": [main.T_NAME, main.T_SIZE, main.T_STATUS],
         "rows": [{"id": row.path, "name": row.name, "detail": row.detail, "kind": file_kind(row.kind),
-                  "size": row.size, "status": row.status} for row in status.activity],
+                  "size": row.size, "status": row.status, "course_code": row.course_code,
+                  "course_title": row.course_title, "when": row.status, "color": row.color}
+                 for row in status.activity],
         "empty": main.T_ACTIVITY_EMPTY,
     }
 
@@ -257,7 +259,11 @@ def announcements_page(status: main.MainStatus, rows) -> dict:
         "hint": announcements.T_HINT,
         "attention_title": main.T_NEEDS_ATTENTION,
         "attention": attention_items(status.attention),
-        "rows": [{"id": row.key, "title": row.title, "detail": row.detail, "preview": row.preview} for row in rows],
+        "rows": [{"id": row.key, "title": row.title, "detail": row.detail, "preview": row.preview,
+                  "when": row.date, "course_code": row.course_code,
+                  "course_title": main.course_name_without_code(row.course, row.course_code),
+                  "color": main.course_color_index(status.course_colors, row.course_code)}
+                 for row in rows],
         "empty": announcements.T_EMPTY,
         "open": announcements.T_OPEN,
     }
@@ -275,8 +281,9 @@ def courses_page(rows) -> dict:
     }
 
 
-def calendar_page(page: deadlines.DeadlinePage) -> dict:
+def calendar_page(page: deadlines.DeadlinePage, status: main.MainStatus | None = None) -> dict:
     """Calendar: due dates by day, upcoming first; past ones in their own section."""
+    colors = status.course_colors if status is not None else {}
     return {
         "hint": deadlines.T_HINT,
         "message": page.message,
@@ -285,7 +292,10 @@ def calendar_page(page: deadlines.DeadlinePage) -> dict:
         "past": deadlines.T_PAST,
         "past_hint": deadlines.T_PAST_HINT,
         "days": [{"title": day.title, "past": day.past,
-                  "rows": [{"id": row.target, "time": row.time, "title": row.title, "course": row.course}
+                  "rows": [{"id": row.target, "time": row.time, "title": row.title, "course": row.course,
+                            "detail": row.course, "course_code": row.course_code,
+                            "course_title": main.course_name_without_code(row.course, row.course_code),
+                            "color": main.course_color_index(colors, row.course_code)}
                            for row in day.rows]}
                  for day in page.days],
     }
@@ -404,7 +414,7 @@ def window_state(status: main.MainStatus, section: str, page: str, announcement_
         "activity": activity(status),
         "announcements": announcements_page(status, announcement_rows),
         "courses": courses_page(course_rows),
-        "calendar": calendar_page(deadline_page),
+        "calendar": calendar_page(deadline_page, status),
         "settings": settings(status.form, values, error, packaged, theme),
         "schools": schools.suggestions(),  # offered while typing the school's address
         "dialog": dialog,
