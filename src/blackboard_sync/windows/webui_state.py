@@ -266,7 +266,9 @@ def calendar_page(page: deadlines.DeadlinePage) -> dict:
     }
 
 
-def _choices(key: str) -> list[dict]:
+def _choices(key: str, ai_installed: frozenset[str] | None = None) -> list[dict]:
+    if key == "ai_cli":
+        return [{"value": value, "title": title} for value, title in form.ai_cli_choices(ai_installed)]
     if key == "interval":
         return [{"value": minutes, "title": title} for minutes, title in form.INTERVAL_OPTIONS]
     if key == "language":
@@ -276,7 +278,8 @@ def _choices(key: str) -> list[dict]:
     return []
 
 
-def _row(definition: form.SettingRow, state: form.RowState | None, packaged: bool) -> dict:
+def _row(definition: form.SettingRow, state: form.RowState | None, packaged: bool,
+         ai_installed: frozenset[str] | None = None) -> dict:
     state = state or form.RowState()
     title = definition.title if state.title is None else state.title
     detail = definition.detail if state.detail is None else state.detail
@@ -293,7 +296,7 @@ def _row(definition: form.SettingRow, state: form.RowState | None, packaged: boo
         "destructive": definition.destructive,
         "enabled": state.enabled,
         "warning": state.warning,
-        "choices": _choices(definition.key),
+        "choices": _choices(definition.key, ai_installed),
         "hidden": False,
     }
 
@@ -330,7 +333,8 @@ def settings(status_form: form.WindowStatus, values: form.FormValues, error: tup
     for section in form.settings_sections(appearance=True, notebooklm=True, auto_relogin=True):
         if packaged and section.danger:
             continue  # the Store removes the app; the Updates card says so
-        rows = [_row(definition, states.get(definition.key), packaged) for definition in section.rows
+        rows = [_row(definition, states.get(definition.key), packaged, status_form.ai_installed)
+                for definition in section.rows
                 if not (packaged and definition.key in PACKAGED_HIDDEN_ROWS)]
         if section.key == form.SECTION_CALENDAR:
             _calendar_rows(rows, status_form)
@@ -343,7 +347,8 @@ def settings(status_form: form.WindowStatus, values: form.FormValues, error: tup
         "values": {"base_url": values.base_url, "dest": values.dest, "autostart": values.autostart,
                    "check_updates": values.check_updates, "sync_interval_minutes": values.sync_interval_minutes,
                    "language": values.language, "auto_relogin": values.auto_relogin,
-                   "notebooklm_auto": values.notebooklm_auto},
+                   "notebooklm_auto": values.notebooklm_auto, "ai_cli": values.ai_cli,
+                   "ai_resume": values.ai_resume},
         "theme": theme,
         "error": message,
         "error_field": field,

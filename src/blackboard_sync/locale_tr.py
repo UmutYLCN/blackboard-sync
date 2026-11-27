@@ -619,6 +619,22 @@ CATALOG = {
     "Light": "Açık",
     "Dark": "Koyu",
 
+    # Settings → AI assistant (ai_launcher)
+    "AI assistant": "Yapay zekâ asistanı",
+    "Open with": "Şununla aç",
+    "The AI tool that starts in a terminal, in your current term's folder.":
+        "Güncel dönem klasörünüzde bir terminalde başlayan yapay zekâ aracı.",
+    "Continue my last session in this folder": "Bu klasördeki son oturumumdan devam et",
+    "When it is off, a new session starts every time.": "Kapalıyken her seferinde yeni bir oturum başlar.",
+    "The app only opens a terminal in your course folder. The AI tool runs with your own account and its own "
+    "rules.":
+        "Uygulama yalnızca ders klasörünüzde bir terminal açar. Yapay zekâ aracı kendi hesabınız ve kendi "
+        "kurallarıyla çalışır.",
+    "None": "Hiçbiri",
+    "{name} (installed)": "{name} (kurulu)",
+    "{name} (not found)": "{name} (bulunamadı)",
+    "No earlier session here, starting a new one.": "Burada önceki oturum yok, yeni bir oturum başlıyor.",
+
     # NotebookLM
     "Sign in to Google again to keep adding files.": "Dosya eklemek için Google'da yeniden oturum açın.",
     "Disconnect NotebookLM?": "NotebookLM bağlantısı kesilsin mi?",

@@ -4,7 +4,8 @@ The settings live in the main window (``main_window_model``). Its Settings page
 is one scrolling page of sections, each a card of rows (``SECTIONS``, in the order of
 ``SECTION_ORDER``): Account (school address, who is signed in, sign in or out), Sync
 (sync interval, start at login, automatic re-sign-in, language), Folder (destination), Updates (automatic checks, check now, version) and, last, a Danger
-zone (uninstall). Calendar connection actions sit between Sync and Folder. Dersler (``courses.py``) picks the courses that sync. The GUI layers (``main_window.py`` on macOS,
+zone (uninstall). Calendar connection actions sit between Sync and Folder, and so does AI assistant (the AI
+tool the term folder opens with, ``ai_launcher``). Dersler (``courses.py``) picks the courses that sync. The GUI layers (``main_window.py`` on macOS,
 ``windows/main_window.py``) only draw ``FormValues`` and ``WindowStatus`` and
 report which button was pressed.
 
@@ -31,12 +32,17 @@ from blackboard_sync.menubar.model import (
     login_waiting_line,
 )
 from blackboard_sync.settings import (
+    AI_CLAUDE,
+    AI_CLIS,
+    AI_CODEX,
+    AI_GEMINI,
     SYNC_INTERVAL_CHOICES,
     THEME_DARK,
     THEME_LIGHT,
     THEME_SYSTEM,
     Settings,
     display_path,
+    normalize_ai_cli,
     normalize_base_url,
     normalize_dest,
     normalize_sync_interval,
@@ -134,9 +140,10 @@ SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER = "account", "sy
 SECTION_UPDATES, SECTION_DANGER = "updates", "danger"
 SECTION_APPEARANCE = "appearance"  # the Windows WebView2 window only (``settings_sections(appearance=True)``)
 SECTION_NOTEBOOKLM = "notebooklm"  # only where the app has it (``settings_sections(notebooklm=True)``)
+SECTION_AI = "ai"
 # Top to bottom; Calendar actions are immediate, outside the saved form.
 SECTION_ORDER = (SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR, SECTION_NOTEBOOKLM,
-                 SECTION_FOLDER, SECTION_UPDATES, SECTION_DANGER)
+                 SECTION_AI, SECTION_FOLDER, SECTION_UPDATES, SECTION_DANGER)
 
 CONTROL_FIELD, CONTROL_POPUP, CONTROL_SWITCH, CONTROL_BUTTON = "field", "popup", "switch", "button"
 
@@ -153,6 +160,42 @@ T_THEME_LABEL = tr("Theme")
 T_THEME_DETAIL = tr("System follows the light or dark mode chosen in Windows.")
 # (value, menu text); applies at once, outside the Save/Cancel form.
 THEME_OPTIONS = ((THEME_SYSTEM, tr("System")), (THEME_LIGHT, tr("Light")), (THEME_DARK, tr("Dark")))
+
+# Settings → AI assistant (``ai_launcher``).
+T_SECTION_AI = tr("AI assistant")
+T_AI_CLI = tr("Open with")
+T_AI_CLI_DETAIL = tr("The AI tool that starts in a terminal, in your current term's folder.")
+T_AI_RESUME = tr("Continue my last session in this folder")
+T_AI_RESUME_DETAIL = tr("When it is off, a new session starts every time.")
+T_AI_FOOTER = tr("The app only opens a terminal in your course folder. The AI tool runs with your own account "
+                 "and its own rules.")
+# (value, name) in the popup's order; "" is none. The names are the products' own, never translated.
+AI_OPTIONS = (("", tr("None")), (AI_CLAUDE, "Claude Code"), (AI_GEMINI, "Gemini CLI"), (AI_CODEX, "Codex"))
+assert tuple(value for value, _ in AI_OPTIONS[1:]) == AI_CLIS
+AI_VALUES = tuple(value for value, _ in AI_OPTIONS)
+
+
+def ai_cli_choices(installed: frozenset[str] | None) -> tuple[tuple[str, str], ...]:
+    """(value, menu text) of the "Open with" popup: each tool says whether it is installed.
+
+    ``installed`` is ``ai_launcher.Detector.installed()``; None (not looked for yet) shows the
+    names alone. A tool that is not found stays selectable.
+    """
+    if installed is None:
+        return AI_OPTIONS
+    return tuple((value, name if not value else
+                  (tr("{name} (installed)") if value in installed else tr("{name} (not found)")).format(name=name))
+                 for value, name in AI_OPTIONS)
+
+
+def ai_cli_index(value: str) -> int:
+    """The popup's row for a saved ``Settings.ai_cli``."""
+    return AI_VALUES.index(normalize_ai_cli(value))
+
+
+def ai_cli_value(index: int) -> str:
+    """The ``Settings.ai_cli`` of the popup's row ``index``; none for anything else."""
+    return AI_VALUES[index] if isinstance(index, int) and 0 <= index < len(AI_VALUES) else ""
 
 
 @dataclass(frozen=True)
@@ -207,6 +250,10 @@ SECTIONS = {section.key: section for section in (
                    CONTROL_BUTTON, button=tr("Disconnect")),
     ), footer=tr("NotebookLM (Gemini Notebook) is reached through an unofficial connection that may stop working "
                  "if Google changes NotebookLM. Your course files go to your own Google account.")),
+    SettingsSection(SECTION_AI, T_SECTION_AI, (
+        SettingRow("ai_cli", T_AI_CLI, T_AI_CLI_DETAIL, CONTROL_POPUP, field="ai_cli"),
+        SettingRow("ai_resume", T_AI_RESUME, T_AI_RESUME_DETAIL, CONTROL_SWITCH, field="ai_resume"),
+    ), footer=T_AI_FOOTER),
     SettingsSection(SECTION_FOLDER, T_SECTION_FOLDER, (
         SettingRow("dest", T_DEST_LABEL, T_DEST_ROOT_NOTE, CONTROL_FIELD, field="dest", button=T_CHOOSE_FOLDER),
     ), footer=T_DEST_CHANGE_NOTE),
@@ -356,6 +403,8 @@ class FormValues:
     language: str = DEFAULT_LANGUAGE
     auto_relogin: bool = True
     notebooklm_auto: bool = True
+    ai_cli: str = ""  # settings.AI_CLIS or "" (none)
+    ai_resume: bool = True
 
 
 @dataclass(frozen=True)
@@ -398,6 +447,8 @@ class WindowStatus:
     calendar_notice: str = ""
     notebooklm_connected: bool = False
     notebooklm_busy: bool = False
+    # The AI tools found on this computer (``ai_launcher.Detector.installed``); None: not looked for yet.
+    ai_installed: frozenset[str] | None = None
 
 
 def window_status(model: AppModel) -> WindowStatus:
@@ -424,6 +475,7 @@ def window_status(model: AppModel) -> WindowStatus:
         calendar=model.calendar, calendar_busy=model.calendar_busy, calendar_paused=model.paused,
         calendar_notice=model.current_calendar_notice(),
         notebooklm_connected=model.notebooklm.connected, notebooklm_busy=model.notebooklm_busy is not None,
+        ai_installed=model.ai_installed,
         account=account,
         account_warning=expired and model.busy != "login",
         account_title=title,
@@ -454,6 +506,8 @@ def initial_values(saved: Settings | None, current: Settings, autostart: bool) -
         language=shown.language,
         auto_relogin=shown.auto_relogin,
         notebooklm_auto=shown.notebooklm_auto,
+        ai_cli=shown.ai_cli,
+        ai_resume=shown.ai_resume,
     )
 
 
@@ -472,6 +526,8 @@ def submit(values: FormValues, current: Settings) -> Submission:
         theme=current.theme,  # chosen apart from the form (``Settings.theme``)
         auto_relogin=values.auto_relogin,
         notebooklm_auto=values.notebooklm_auto,
+        ai_cli=normalize_ai_cli(values.ai_cli),
+        ai_resume=values.ai_resume,
     )
     return Submission(
         settings=settings,
