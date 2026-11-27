@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Container
+from urllib.parse import urlencode
 
 import requests
 
@@ -46,7 +47,7 @@ from blackboard_sync.paths import (
     numbered_variant,
     sanitize_name,
 )
-from blackboard_sync.report import CourseReport, SyncReport
+from blackboard_sync.report import UNAVAILABLE_STATUSES, CourseReport, SyncReport
 from blackboard_sync.state import State, intact, untouched
 from blackboard_sync.system import is_windows, set_hidden, try_lock
 
@@ -798,6 +799,13 @@ class Syncer:
     def course_url(self, course: Course, page: str = "outline") -> str:
         return f"{self.config.base_url}/ultra/courses/{course.id}/{page}"
 
+    def item_url(self, course: Course, content_id: str | None = None) -> str:
+        if content_id:
+            return f"{self.config.base_url.rstrip('/')}/ultra/redirect?" + urlencode({
+                "redirectType": "nautilus", "courseId": course.id, "contentId": content_id,
+            })
+        return self.course_url(course)
+
     def course_label(self, course: Course) -> str:
         return PurePosixPath(course.rel_dir).name
 
@@ -848,6 +856,7 @@ class Syncer:
         rel_dir: str,
         report: CourseReport,
         parent_title: str = "",
+        parent_id: str = "",
     ) -> None:
         for item in sorted(items, key=lambda i: i.get("position", 0)):
             column_id = (item.get("contentHandler") or {}).get("gradeColumnId")
@@ -861,10 +870,10 @@ class Syncer:
                     report.warnings.append(tr("Could not open folder {name}: {error}").format(
                         name=repr(item.get("title")), error=exc))
                     continue
-                self.walk(course, children, sub_dir, report, item.get("title") or "")
+                self.walk(course, children, sub_dir, report, item.get("title") or "", item["id"])
             else:
                 try:
-                    self.process_item(course, item, rel_dir, report, parent_title)
+                    self.process_item(course, item, rel_dir, report, parent_title, parent_id)
                 except (ApiError, *ITEM_ERRORS) as exc:
                     report.warnings.append(tr("Skipped {name}: {error}").format(name=repr(item.get("title")), error=exc))
                 self.checkpoint()
@@ -881,7 +890,13 @@ class Syncer:
         return item.get("title") == ULTRA_BODY_TITLE and handler_id(item) == "resource/x-bb-document"
 
     def process_item(
-        self, course: Course, item: dict, rel_dir: str, report: CourseReport, parent_title: str = ""
+        self,
+        course: Course,
+        item: dict,
+        rel_dir: str,
+        report: CourseReport,
+        parent_title: str = "",
+        parent_id: str = "",
     ) -> None:
         key = f"content:{course.id}:{item['id']}"
         modified = item.get("modified")
@@ -901,21 +916,28 @@ class Syncer:
         ultra_body = self.is_ultra_body(item)
         # The hidden Ultra child stands for its parent document.
         title = (parent_title if ultra_body and parent_title else item.get("title")) or "Untitled"
+        content_id = parent_id if ultra_body and parent_id else item.get("id")
+        item_link = self.item_url(course, content_id)
         if instruction_files:
             # Keep all of the item's files and its note together. Empty assessments
             # keep their note in the containing folder and create no extra folder.
             item_dir = self.folder_path(rel_dir, title, report.warnings)
             self.migrate_item_outputs(previous_item, rel_dir, item_dir)
             rel_dir = item_dir
-        # A replaced file shows up as a new id even when "modified" stays put. Videos and
-        # audio left as links have no output but count as handled.
-        handled = set(previous_item.get("outputs", [])) | set(previous_item.get("media", []))
+        # A replaced file shows up as a new id even when "modified" stays put. Videos,
+        # audio and permanently unavailable files left as links have no output but count as handled.
+        handled = (
+            set(previous_item.get("outputs", []))
+            | set(previous_item.get("media", []))
+            | set(previous_item.get("unavailable", []))
+        )
         if set(embedded_keys) <= handled and self.state.item_unchanged(key, modified, self.present):
             return
         hid = handler_id(item)
         outputs: list[str] = []
         saved: list[str] = []
         media: list[tuple[str, str, str, int | None]] = []  # key, display, link, size when skipped for size
+        unavailable: list[tuple[str, str, str]] = []  # key, file name, Blackboard link
         # After a partial failure the files that did arrive are not downloaded again
         # while the item is unchanged.
         kept = self.kept_attachments(previous_item, modified)
@@ -940,7 +962,8 @@ class Syncer:
                     outputs.append(out_key)
                     saved.append(PurePosixPath(self.state.outputs[out_key]["path"]).name)
                     continue
-                name = sanitize_name(att.get("fileName") or att.get("name") or title, windows=self.windows)
+                att_name = att.get("fileName") or att.get("name") or title
+                name = sanitize_name(att_name, windows=self.windows)
                 url = self.client.attachment_url(course.id, item["id"], att["id"])
                 prior_size = (previous_item.get("large_files") or {}).get(out_key)
                 already_skipped = (
@@ -955,15 +978,29 @@ class Syncer:
                     if prior_size is not None:
                         report.skipped_large_files += 1
                     continue
+                already_unavailable = (
+                    modified is not None
+                    and previous_item.get("modified") == modified
+                    and out_key in previous_item.get("unavailable", [])
+                )
+                if already_unavailable:
+                    unavailable.append((out_key, att_name, item_link))
+                    continue
                 try:
                     rel = self.fetch_or_link(
-                        media, out_key, att.get("fileName") or att.get("name") or title, att.get("mimeType"),
+                        media, out_key, att_name, att.get("mimeType"),
                         self.client.url(url), join_rel(rel_dir, name), url, report,
                     )
                 except (ApiError, *ITEM_ERRORS) as exc:
-                    # Keep going so the files that did arrive are recorded and not fetched
-                    # again next run; only this attachment is retried.
-                    failure = failure or exc
+                    status = exc.status if isinstance(exc, ApiError) else None
+                    report.failed_files.append({"name": att_name, "status": status, "link": item_link})
+                    if status in UNAVAILABLE_STATUSES:
+                        unavailable.append((out_key, att_name, item_link))
+                        report.warnings.append(tr("Skipped {name}: {error}").format(name=repr(att_name), error=exc))
+                    else:
+                        # Keep going so the files that did arrive are recorded and not fetched
+                        # again next run; only this attachment is retried.
+                        failure = failure or exc
                     continue
                 if rel is None:
                     continue
@@ -976,6 +1013,7 @@ class Syncer:
                 outputs.append(out_key)
                 saved.append(PurePosixPath(self.state.outputs[out_key]["path"]).name)
                 continue
+            emb_name = embedded.name or title
             name = sanitize_name(embedded.name, windows=self.windows) if embedded.name else ""
             desired = join_rel(rel_dir, name) if name else ""
             prior_size = (previous_item.get("large_files") or {}).get(out_key)
@@ -986,11 +1024,19 @@ class Syncer:
             )
             if already_skipped:
                 media.append(
-                    (out_key, self.media_label(embedded.name or title, prior_size),
+                    (out_key, self.media_label(emb_name, prior_size),
                      self.embedded_link(embedded), prior_size)
                 )
                 if prior_size is not None:
                     report.skipped_large_files += 1
+                continue
+            already_unavailable = (
+                modified is not None
+                and previous_item.get("modified") == modified
+                and out_key in previous_item.get("unavailable", [])
+            )
+            if already_unavailable:
+                unavailable.append((out_key, emb_name, item_link))
                 continue
             replaces = next(
                 (k for k in stale if desired and (self.state.output(k) or {}).get("path") == desired),
@@ -998,11 +1044,17 @@ class Syncer:
             )
             try:
                 rel = self.fetch_or_link(
-                    media, out_key, embedded.name or title, embedded.mime, self.embedded_link(embedded),
+                    media, out_key, emb_name, embedded.mime, self.embedded_link(embedded),
                     desired, self.embedded_url(embedded), report, rel_dir, replaces=replaces,
                 )
             except (ApiError, *ITEM_ERRORS) as exc:
-                failure = failure or exc
+                status = exc.status if isinstance(exc, ApiError) else None
+                report.failed_files.append({"name": emb_name, "status": status, "link": item_link})
+                if status in UNAVAILABLE_STATUSES:
+                    unavailable.append((out_key, emb_name, item_link))
+                    report.warnings.append(tr("Skipped {name}: {error}").format(name=repr(emb_name), error=exc))
+                else:
+                    failure = failure or exc
                 continue
             if rel is None:
                 continue
@@ -1011,24 +1063,34 @@ class Syncer:
 
         media_keys = [m[0] for m in media]
         large_files = {m[0]: m[3] for m in media if m[3] is not None}
+        unavailable_keys = [u[0] for u in unavailable]
         if failure is not None:
             if not self.dry_run:
-                self.state.record_item(key, modified, outputs, title, partial=True, media=media_keys,
-                                       large_files=large_files)
+                self.state.record_item(
+                    key, modified, outputs, title, partial=True, media=media_keys,
+                    large_files=large_files, unavailable=unavailable_keys,
+                )
             raise failure
 
-        if needs_note(item, bool(media)):
+        note_links = [(name, link) for _, name, link, _size in media] + [
+            (self.unavailable_label(name), link) for _, name, link in unavailable
+        ]
+        if needs_note(item, bool(note_links)):
             note_item = {**item, "title": title} if title != item.get("title") else item
             note = render_item_note(
-                note_item, self.course_label(course), self.course_url(course), saved,
-                [(name, link) for _, name, link, _size in media],
+                note_item, self.course_label(course),
+                item_link if unavailable else self.course_url(course),
+                saved, note_links,
             )
             out_key = f"note:{course.id}:{item['id']}"
             self.write_note(out_key, join_rel(rel_dir, note_name(title, windows=self.windows)), note, report, "notes")
             outputs += [out_key, markdown_key(out_key)]
 
         if not self.dry_run:
-            self.state.record_item(key, modified, outputs, title, media=media_keys, large_files=large_files)
+            self.state.record_item(
+                key, modified, outputs, title, media=media_keys, large_files=large_files,
+                unavailable=unavailable_keys,
+            )
 
     def attachment_key(self, course: Course, item: dict, att: dict, previous_item: dict) -> str:
         """The state key of one attachment: ``attachment:<course>:<file id>``.
@@ -1039,7 +1101,11 @@ class Syncer:
         """
         plain = f"attachment:{course.id}:{att['id']}"
         own = f"attachment:{course.id}:{item['id']}:{att['id']}"
-        recorded = previous_item.get("outputs", [])
+        recorded = (
+            *previous_item.get("outputs", ()),
+            *previous_item.get("media", ()),
+            *previous_item.get("unavailable", ()),
+        )
         if plain in recorded or own in recorded:
             return plain if plain in recorded else own
         owner = self.attachment_owners().setdefault(plain, f"content:{course.id}:{item['id']}")
@@ -1117,7 +1183,11 @@ class Syncer:
             # Announcement ids live apart from content ids, so keep their file keys apart too.
             embedded_files = find_embedded_files(body_text(ann.get("body")))
             embedded_keys = [self.embedded_key(course, {"id": f"announcement:{ann['id']}"}, e) for e in embedded_files]
-            handled = set(previous_item.get("outputs", [])) | set(previous_item.get("media", []))
+            handled = (
+                set(previous_item.get("outputs", []))
+                | set(previous_item.get("media", []))
+                | set(previous_item.get("unavailable", []))
+            )
             if set(embedded_keys) <= handled and self.state.item_unchanged(key, modified, self.present):
                 continue
             title = ann.get("title") or "Announcement"
@@ -1126,6 +1196,8 @@ class Syncer:
             outputs: list[str] = []
             saved: list[str] = []
             media: list[tuple[str, str, str, int | None]] = []
+            unavailable: list[tuple[str, str, str]] = []
+            ann_link = self.course_url(course, "announcements")
             kept = self.kept_attachments(previous_item, modified)
             failure: Exception | None = None
             for embedded, file_key in zip(embedded_files, embedded_keys):
@@ -1133,6 +1205,7 @@ class Syncer:
                     outputs.append(file_key)
                     saved.append(PurePosixPath(self.state.outputs[file_key]["path"]).name)
                     continue
+                emb_name = embedded.name or title
                 file_name = sanitize_name(embedded.name, windows=self.windows) if embedded.name else ""
                 prior_size = (previous_item.get("large_files") or {}).get(file_key)
                 already_skipped = (
@@ -1142,22 +1215,36 @@ class Syncer:
                 )
                 if already_skipped:
                     media.append(
-                        (file_key, self.media_label(embedded.name or title, prior_size),
+                        (file_key, self.media_label(emb_name, prior_size),
                          self.embedded_link(embedded), prior_size)
                     )
                     if prior_size is not None:
                         report.skipped_large_files += 1
                     continue
+                already_unavailable = (
+                    modified is not None
+                    and previous_item.get("modified") == modified
+                    and file_key in previous_item.get("unavailable", [])
+                )
+                if already_unavailable:
+                    unavailable.append((file_key, emb_name, ann_link))
+                    continue
                 try:
                     rel = self.fetch_or_link(
-                        media, file_key, embedded.name or title, embedded.mime, self.embedded_link(embedded),
+                        media, file_key, emb_name, embedded.mime, self.embedded_link(embedded),
                         join_rel(folder, file_name) if file_name else "", self.embedded_url(embedded),
                         report, folder,
                     )
                 except (ApiError, *ITEM_ERRORS) as exc:
-                    # The announcement text matters more than one missing file: write the
-                    # note anyway and retry only the failed file next run.
-                    failure = failure or exc
+                    status = exc.status if isinstance(exc, ApiError) else None
+                    report.failed_files.append({"name": emb_name, "status": status, "link": ann_link})
+                    if status in UNAVAILABLE_STATUSES:
+                        unavailable.append((file_key, emb_name, ann_link))
+                        report.warnings.append(f"Could not download a file in announcement {title!r}: {exc}")
+                    else:
+                        # The announcement text matters more than one missing file: write the
+                        # note anyway and retry only the failed file next run.
+                        failure = failure or exc
                     continue
                 if rel is None:
                     continue
@@ -1165,9 +1252,11 @@ class Syncer:
                 saved.append(PurePosixPath(rel).name)
             if failure is not None:
                 report.warnings.append(f"Could not download a file in announcement {title!r}: {failure}")
+            note_links = [(name, link) for _, name, link, _size in media] + [
+                (self.unavailable_label(name), link) for _, name, link in unavailable
+            ]
             note = render_announcement_note(
-                ann, self.course_label(course), self.course_url(course, "announcements"), saved,
-                [(name, link) for _, name, link, _size in media],
+                ann, self.course_label(course), ann_link, saved, note_links,
             )
             try:
                 self.write_note(out_key, join_rel(folder, name), note, report, "announcements")
@@ -1179,6 +1268,7 @@ class Syncer:
                 self.state.record_item(
                     key, modified, outputs, title, partial=failure is not None, media=[m[0] for m in media],
                     large_files={m[0]: m[3] for m in media if m[3] is not None},
+                    unavailable=[u[0] for u in unavailable],
                 )
                 self.checkpoint()
 
@@ -1225,6 +1315,10 @@ class Syncer:
         if size is None:
             return name
         return f"{name} (this file is too large ({human_size(size)}); open it in Blackboard)"
+
+    @staticmethod
+    def unavailable_label(name: str) -> str:
+        return f"{name} (missing on Blackboard; open it in Blackboard)"
 
     def fetch_file(
         self,

@@ -50,10 +50,10 @@ from blackboard_sync.menubar.model import (
     T_SYNC_NOW,
     T_SYNCING,
     AppModel,
+    FailedFile,
     courses_text,
     files,
     login_waiting_line,
-    warnings_text,
     parse_iso,
     shorten,
 )
@@ -587,6 +587,54 @@ def home_recent_rows(available: float, fixed: float, row: float, rows: int) -> i
     return min(rows, max(min(fitting, HOME_RECENT_ROWS), HOME_RECENT_MIN_ROWS))
 
 
+OPEN_ITEM_PREFIX = "open_item:"
+
+
+def open_item_url(action: str, *base_urls: str) -> str | None:
+    """The Blackboard URL carried by an ``open_item:`` attention action, if it belongs to one of ``base_urls``."""
+    if not action.startswith(OPEN_ITEM_PREFIX):
+        return None
+    url = action.removeprefix(OPEN_ITEM_PREFIX)
+    for base in base_urls:
+        prefix = (base or "").rstrip("/") + "/"
+        if prefix != "/" and url.startswith(prefix):
+            return url
+    return None
+
+
+def _file_label(entry: FailedFile) -> str:
+    return f"{entry.course} · {entry.name}" if entry.course else entry.name
+
+
+def _failed_files_summary(entries: list[FailedFile]) -> str:
+    parts = [_file_label(entry) for entry in entries[:2]]
+    extra = len(entries) - 2
+    if extra > 0:
+        parts.append(tr("+{k} more").format(k=extra))
+    return ", ".join(parts)
+
+
+def _unavailable_attention(entries: list[FailedFile]) -> AttentionItem:
+    count = len(entries)
+    title = ntr("{n} file is missing on Blackboard", "{n} files are missing on Blackboard", count).format(n=count)
+    if count == 1:
+        item = entries[0]
+        detail = tr(
+            "{file}: Blackboard has no file behind this link. Open it in Blackboard or ask your instructor."
+        ).format(file=_file_label(item))
+        if item.link:
+            return AttentionItem(title, detail, f"{OPEN_ITEM_PREFIX}{item.link}", tr("Open in Blackboard"))
+        return AttentionItem(title, detail)
+    return AttentionItem(title, _failed_files_summary(entries))
+
+
+def _transient_attention(entries: list[FailedFile]) -> AttentionItem:
+    count = len(entries)
+    title = ntr("{n} file could not be downloaded", "{n} files could not be downloaded", count).format(n=count)
+    detail = tr("{files}. The next sync tries again.").format(files=_failed_files_summary(entries))
+    return AttentionItem(title, detail)
+
+
 def attention_items(model: AppModel) -> tuple[AttentionItem, ...]:
     """What needs the student, most pressing first; empty is "Her şey yolunda!". (A pause is shown on Home's card.)"""
     if is_first_run(model):
@@ -612,9 +660,15 @@ def attention_items(model: AppModel) -> tuple[AttentionItem, ...]:
         if last.unreadable_courses:
             items.append(AttentionItem(tr("Could not read {courses}").format(courses=courses_text(last.unreadable_courses)),
                                        tr("Blackboard did not return the content; the next sync tries again.")))
-        elif last.warning_count:
-            items.append(AttentionItem(warnings_text(last.warning_count).capitalize(),
-                                       tr("Some files could not be downloaded; the next sync tries again.")))
+        unavailable = [entry for entry in last.failed_files if entry.unavailable]
+        transient = [entry for entry in last.failed_files if not entry.unavailable]
+        if unavailable:
+            items.append(_unavailable_attention(unavailable))
+        if transient:
+            items.append(_transient_attention(transient))
+        if last.warnings or (not last.unreadable_courses and not last.failed_files and last.warning_count):
+            detail = shorten(last.warnings[0], 140) if last.warnings else ""
+            items.append(AttentionItem(tr("Something went wrong during the last sync"), detail))
     if model.note and model.busy is None:
         items.append(AttentionItem(tr("Note"), model.note, warning=False))
     return tuple(items)

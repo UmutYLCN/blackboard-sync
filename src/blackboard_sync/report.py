@@ -6,6 +6,9 @@ from dataclasses import asdict, dataclass, field
 
 from blackboard_sync.i18n import tr
 
+# HTTP statuses on a file download that retrying will not fix until the item changes.
+UNAVAILABLE_STATUSES = frozenset({403, 404, 410})
+
 
 @dataclass
 class CourseReport:
@@ -20,6 +23,7 @@ class CourseReport:
     updated_announcements: list[str] = field(default_factory=list)
     skipped_large_files: int = 0
     warnings: list[str] = field(default_factory=list)
+    failed_files: list[dict] = field(default_factory=list)  # [{name, status, link}]
     content_error: str = ""  # why the course's content could not be read at all
 
     @property

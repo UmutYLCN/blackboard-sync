@@ -1021,6 +1021,18 @@ def test_tray_settings_item_opens_the_main_window_on_genel(tmp_path, monkeypatch
     assert opened == [GENERAL]
 
 
+def test_tray_open_item_opens_only_school_urls(tmp_path, monkeypatch):
+    from blackboard_sync.windows import app as windows_app
+
+    app, _workers = update_app(tmp_path, monkeypatch)
+    opened = []
+    monkeypatch.setattr(windows_app.webbrowser, 'open', opened.append)
+    good = f"{app.settings.base_url.rstrip('/')}/ultra/redirect?redirectType=nautilus&courseId=_1_1&contentId=_2_1"
+    app.dispatch(f"open_item:{good}")
+    app.dispatch("open_item:https://evil.example/phish")
+    assert opened == [good]
+
+
 def test_explicit_start_shows_the_window_and_login_start_stays_in_the_tray(tmp_path):
     def run(show_window, configured):
         app = make_app(tmp_path)

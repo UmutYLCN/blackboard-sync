@@ -60,8 +60,19 @@ def test_announcement_without_files_keeps_the_same_note(config, client, fake_bb)
 
 
 def test_failed_announcement_download_keeps_the_note_and_retries_only_that_file(config, client, fake_bb):
+    from .conftest import FakeResponse
+
     add_announcement(fake_bb, f"<p>Rooms are attached.</p>{file_link()}")
     del fake_bb.files[FILE_URL]
+    real_get = fake_bb.get
+
+    def get(url, **kw):
+        if FILE_URL in url and FILE_URL not in fake_bb.files:
+            fake_bb.calls.append(FILE_URL)
+            return FakeResponse(503, url, content=b"Service Unavailable")
+        return real_get(url, **kw)
+
+    fake_bb.get = get
     report = sync(config, client)
 
     assert any("Exam rooms" in w for w in warnings(report))

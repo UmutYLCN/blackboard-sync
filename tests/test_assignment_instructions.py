@@ -130,14 +130,25 @@ def test_body_and_instructions_are_deduplicated(config, client, fake_bb):
 
 @pytest.mark.parametrize("bad_first", [False, True])
 def test_partial_failure_downloads_other_files_and_retries_only_failed_instruction(config, client, fake_bb, bad_first):
+    from .conftest import FakeResponse
+
     bad = file_link("906_1", "later.pdf")
+    bad_url = "/bbcswebdav/pid-700-dt-asiobject-rid-906_1/xid-906_1"
+    real_get = fake_bb.get
+
+    def get(url, **kw):
+        if bad_url in url and bad_url not in fake_bb.files:
+            fake_bb.calls.append(bad_url)
+            return FakeResponse(503, url, content=b"Service Unavailable")
+        return real_get(url, **kw)
+
+    fake_bb.get = get
     add_assessment(fake_bb, bad + file_link() if bad_first else file_link() + bad)
     first = sync(config, client)
     assert warnings(first)
     assert (config.root / CSE / "Assignment 1" / "homework.docx").exists()
     state = State.load(config.state_file)
     assert state.items["content:_13004_1:_instructions_1"]["partial"]
-    bad_url = "/bbcswebdav/pid-700-dt-asiobject-rid-906_1/xid-906_1"
     fake_bb.calls.clear()
     sync(config, client)
     assert bad_url in fake_bb.calls and fake_bb.downloads() == []

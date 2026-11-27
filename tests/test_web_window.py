@@ -302,6 +302,17 @@ def test_clicks_act_only_on_ids_the_page_was_given():
                       ("deadline", "https://bb.example/p"), ("announcement", "k1"), ("action", "update")]
 
 
+def test_attention_open_item_passes_only_drawn_link():
+    link = "https://bb.example/ultra/redirect?redirectType=nautilus&courseId=_1_1&contentId=_2_1"
+    action = f"open_item:{link}"
+    item = main.AttentionItem("1 file is missing on Blackboard", "PHY101 · a.pdf", action, "Open in Blackboard")
+    window, host, events = make_window()
+    window.update_status(status(attention=(item,)))
+    window.run_attention(action)
+    window.run_attention("open_item:https://evil.example/phish")
+    assert events == [("action", action)]
+
+
 def test_actions_map_to_the_tray_app():
     window, host, events = make_window()
     for name in ("sync", "pause", "folder", "update", "home_action"):
