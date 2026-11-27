@@ -74,7 +74,6 @@ from AppKit import (
     NSWindow,
     NSWindowStyleMaskClosable,
     NSWindowStyleMaskMiniaturizable,
-    NSWindowStyleMaskResizable,
     NSWindowStyleMaskTitled,
     NSWorkspace,
 )
@@ -108,14 +107,11 @@ from blackboard_sync.menubar.main_window_model import (
     STATE_SYNCED,
     T_ACTIVITY_EMPTY,
     T_AI_TITLE,
-    T_ALL_GOOD,
-    T_ALL_GOOD_DETAIL,
     T_HOME_CALENDAR,
     T_HOME_ANNOUNCEMENTS,
     T_NAME,
     T_NAV_ACTIVITY,
     T_NAV_GENERAL,
-    T_NEEDS_ATTENTION,
     T_NEW,
     T_NOTEBOOKLM,
     T_NOTEBOOKLM_OPEN,
@@ -158,7 +154,6 @@ from blackboard_sync.menubar.settings_form import (
     CONTROL_SWITCH,
     INTERVAL_OPTIONS,
     LANGUAGE_OPTIONS,
-    MIN_WINDOW_HEIGHT,
     T_AUTOSTART,
     T_CANCEL,
     T_CHOOSE_FOLDER,
@@ -442,9 +437,6 @@ class _Target(NSObject):
 
     def showCalendar_(self, _sender):
         self.owner.select(CALENDAR)
-
-    def attention_(self, sender):
-        self.owner.run_attention(int(sender.tag()))
 
     def openHomeDeadline_(self, sender):
         self.owner.on_deadline(self.owner.home_deadline_targets[int(sender.tag())])
@@ -824,15 +816,13 @@ class MainWindow:
         self._drawn_recent = None
         self._drawn_announcements = None
         self._drawn_announcement_colors = None
-        self._drawn_attention = None
         self._drawn_courses = None
         self.course_ids: list[str] = []
         self.target = _Target.alloc().init()
         self.target.owner = self
         self.window = _EditableWindow.alloc().initWithContentRect_styleMask_backing_defer_(
             NSMakeRect(0, 0, WIDTH, HEIGHT),
-            NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
-            | NSWindowStyleMaskResizable,
+            NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable,
             NSBackingStoreBuffered,
             False,
         )
@@ -923,12 +913,8 @@ class MainWindow:
             icon.setImage_(NSImage.imageWithSystemSymbolName_accessibilityDescription_(NAV_SYMBOLS[section], None))
             view.addSubview_(icon)
             title = _label("", 13)
-            title.setFrame_(NSMakeRect(46, y + 7, SIDEBAR - 46 - 50, 18))
+            title.setFrame_(NSMakeRect(46, y + 7, SIDEBAR - 46 - 16, 18))
             view.addSubview_(title)
-            count = _label("", _small(), secondary=True)
-            count.setAlignment_(NSTextAlignmentRight)
-            count.setFrame_(NSMakeRect(SIDEBAR - 58, y + 8, 34, 16))
-            view.addSubview_(count)
             # One transparent button over the row takes the click.
             button = NSButton.buttonWithTitle_target_action_("", self.target, "nav:")
             button.setBordered_(False)
@@ -936,7 +922,7 @@ class MainWindow:
             button.setTag_(index)
             button.setFrame_(NSMakeRect(10, y, SIDEBAR - 20, 32))
             view.addSubview_(button)
-            self.nav_items[section] = (highlight, icon, title, count, button)
+            self.nav_items[section] = (highlight, icon, title, button)
             y += 36
         self.nav_items[ACTIVITY][2].setStringValue_(T_NAV_ACTIVITY)
         self.nav_items[ANNOUNCEMENTS][2].setStringValue_(announcements.T_TAB)
@@ -945,7 +931,7 @@ class MainWindow:
         self.sidebar_view = view
 
     def _build_topbar(self, root) -> None:
-        """Duraklat / Devam et, Ayarlar and the account: round buttons at the top right of every page."""
+        """Duraklat / Devam et, Ayarlar and the account: round buttons at the right of every page's title."""
         self.topbar = []
         x = WIDTH - PAD - CTRL
         # The account (initials) only shows who is signed in; Ayarlar has Sign in / Sign out.
@@ -963,6 +949,16 @@ class MainWindow:
         root.addSubview_(self.pause_button)
         self.topbar = [self.avatar, self.gear_button, self.pause_button]
 
+    def _place_topbar(self, visible: str) -> None:
+        """Keep the buttons in the title's row: Home scrolls its title away, and them with it."""
+        home = visible == OVERVIEW
+        parent = self.overview_scroll.documentView() if home else self.window.contentView()
+        right = (PAGE if home else WIDTH) - PAD - CTRL
+        for index, view in enumerate(self.topbar):
+            if view.superview() != parent:
+                parent.addSubview_(view)
+            view.setFrameOrigin_((right - index * (CTRL + 8), CTRL_Y))
+
     def _round_button(self, symbol: str, action: str, x: float):
         button = NSButton.buttonWithTitle_target_action_("", self.target, action)
         button.setBordered_(False)
@@ -971,17 +967,6 @@ class MainWindow:
         button.setContentTintColor_(NSColor.secondaryLabelColor())
         button.setFrame_(NSMakeRect(x, CTRL_Y, CTRL, CTRL))
         return button
-
-    def show_calendar_settings(self):
-        self.show(GENERAL)
-        row = self.settings_rows["google_calendar"].title
-        point = row.convertPoint_toView_((0, 0), self.form_scroll.documentView())
-        self.form_scroll.documentView().scrollPoint_(point)
-
-    def run_attention(self, index: int) -> None:
-        items = self.status.attention
-        if 0 <= index < len(items) and items[index].action:
-            self.on_action(items[index].action)
 
     def _header(self, page, title: str):
         label = _label(title, 22, bold=True)
@@ -1400,11 +1385,10 @@ class MainWindow:
         return y + 4 + PILL_H + 18
 
     def _draw_home_notifications(self) -> float:
-        """Home's Announcements card: what needs attention, then the newest announcements."""
-        items = self.status.attention[:HOME_ANNOUNCEMENT_ROWS]
-        rows = tuple(self.on_announcements()[:max(HOME_ANNOUNCEMENT_ROWS - len(items), 0)])
+        """Home's Announcements card: the newest announcements."""
+        rows = tuple(self.on_announcements()[:HOME_ANNOUNCEMENT_ROWS])
         colors = tuple(course_color_index(self.status.course_colors, row.course_code) for row in rows)
-        key = ("announcements", items, rows, colors)
+        key = ("announcements", rows, colors)
         if key == getattr(self, "_drawn_home_notifications", None):
             return self._home_heights[0]
         self._drawn_home_notifications = key
@@ -1414,21 +1398,11 @@ class MainWindow:
             view.removeFromSuperview()
         self._card_heading(body, T_HOME_ANNOUNCEMENTS)
         y = 46
-        if not items and not rows:
-            icon = NSImageView.alloc().initWithFrame_(NSMakeRect(18, y + 2, 30, 30))
-            icon.setImage_(_symbol_image("checkmark.circle", 24))
-            icon.setContentTintColor_(NSColor.systemGreenColor())
-            body.addSubview_(icon)
-            title = _label(T_ALL_GOOD, 13, bold=True)
-            title.setFrame_(NSMakeRect(56, y + 1, RIGHT_W - 74, 17))
-            body.addSubview_(title)
-            detail, height = _wrapping(T_ALL_GOOD_DETAIL, RIGHT_W - 74, _small(), secondary=True)
-            detail.setFrame_(NSMakeRect(56, y + 20, RIGHT_W - 74, height))
-            body.addSubview_(detail)
-            return max(y + max(36, 22 + height) + 12, 120)
-        for index, item in enumerate(items):
-            self._attention_row(body, y, item, index, RIGHT_W, compact=True)
-            y += HOME_ROW
+        if not rows:
+            empty, height = _wrapping(announcements.T_EMPTY, RIGHT_W - 36, _small(), secondary=True)
+            empty.setFrame_(NSMakeRect(18, y, RIGHT_W - 36, height))
+            body.addSubview_(empty)
+            return max(y + height + 18, 120)
         for index, (row, color) in enumerate(zip(rows, colors)):
             title = _label(row.title, 12, bold=True)
             title.setFrame_(NSMakeRect(18, y, RIGHT_W - 36, 17))
@@ -1446,38 +1420,6 @@ class MainWindow:
             body.addSubview_(button)
             y += HOME_ROW - 8
         return max(self._card_footer(body, y + 2, T_VIEW_ALL, "showAnnouncements:"), 120)
-
-    def _attention_row(self, body, y: float, item, index: int, width: float, compact: bool) -> None:
-        tint = NSColor.systemOrangeColor() if item.warning else NSColor.secondaryLabelColor()
-        dot = _pill(NSMakeRect(18, y + 5, 8, 8), tint)
-        body.addSubview_(dot)
-        button_width = 0
-        if item.action:
-            button = NSButton.buttonWithTitle_target_action_(item.action_title, self.target, "attention:")
-            button.setTag_(index)
-            button_width = max(button.fittingSize().width + 12, 70) if not compact else 0
-            if not compact:
-                button.setFrame_(NSMakeRect(width - 20 - button_width, y, button_width, 28))
-                body.addSubview_(button)
-        text_width = width - 32 - 18 - (button_width + 8 if button_width else 0)
-        title = _label(item.title, 12, bold=True)
-        title.setFrame_(NSMakeRect(34, y, text_width, 17))
-        title.setToolTip_(item.title)
-        body.addSubview_(title)
-        detail, height = _wrapping(item.detail, text_width, _small(), secondary=True)
-        height = min(height, 32 if compact else 64)
-        detail.setFrame_(NSMakeRect(34, y + 18, text_width, height))
-        detail.setToolTip_(item.detail)
-        body.addSubview_(detail)
-        if compact and item.action:
-            # On Home the whole row acts, so the card needs no button column.
-            action = NSButton.buttonWithTitle_target_action_("", self.target, "attention:")
-            action.setBordered_(False)
-            action.setTransparent_(True)
-            action.setTag_(index)
-            action.setFrame_(NSMakeRect(0, y - 4, width, HOME_ROW))
-            action.setToolTip_(item.action_title)
-            body.addSubview_(action)
 
     def _draw_home_calendar(self) -> float:
         """Home's small calendar: the next due dates, a click opens the note or Blackboard."""
@@ -1981,7 +1923,7 @@ class MainWindow:
     def fit_to_screen(self, screen=None) -> None:
         """Open at the size that shows everything, but never taller than ``screen`` allows.
 
-        Only the height can change by hand; the window keeps its width.
+        The student cannot resize it; what does not fit scrolls inside the page.
         """
         screen = screen or self.window.screen() or NSScreen.mainScreen()
         if screen is None:
@@ -1990,8 +1932,6 @@ class MainWindow:
         frame = self.window.frameRectForContentRect_(NSMakeRect(0, 0, WIDTH, HEIGHT))
         chrome = frame.size.height - HEIGHT
         height = window_height(HEIGHT, chrome, visible.size.height)
-        self.window.setContentMinSize_((WIDTH, min(MIN_WINDOW_HEIGHT, height) - chrome))
-        self.window.setContentMaxSize_((WIDTH, 100_000))
         self.window.setContentSize_((WIDTH, height - chrome))
         self.window.center()
         # center() leans towards the top; keep the whole window above the Dock.
@@ -2036,9 +1976,10 @@ class MainWindow:
                 self.recent_seen.hide()
         for name, page in self.pages.items():
             page.setHidden_(name != visible)
+        self._place_topbar(visible)
         # Return signs in on Başlangıç; a hidden button must not take the key elsewhere.
         self.start_button.setKeyEquivalent_("\r" if visible == "start" else "")
-        for name, (highlight, icon, title, _count, button) in self.nav_items.items():
+        for name, (highlight, icon, title, button) in self.nav_items.items():
             selected = name == section
             highlight.setTransparent_(not selected)
             title.setFont_(NSFont.boldSystemFontOfSize_(13) if selected else NSFont.systemFontOfSize_(13))
@@ -2144,7 +2085,7 @@ class MainWindow:
         first_run_changed = status.first_run != self.status.first_run
         self.status = status
         self.nav_items[OVERVIEW][2].setStringValue_(status.overview_title)
-        self.nav_items[OVERVIEW][4].setAccessibilityLabel_(status.overview_title)
+        self.nav_items[OVERVIEW][3].setAccessibilityLabel_(status.overview_title)
         if first_run_changed:
             self._show_section()
         banner = status.update_banner
@@ -2197,8 +2138,6 @@ class MainWindow:
                                   .colorWithAlphaComponent_(0.18))
         self.avatar.setToolTip_(card.title)
         self.avatar_text.setAccessibilityLabel_(card.title)
-        count = len(status.attention)
-        self.nav_items[ANNOUNCEMENTS][3].setStringValue_(str(count) if count else "")
         # Genel
         form = status.form
         self._refresh_terminal_popup(form)
@@ -2322,26 +2261,12 @@ class MainWindow:
             self.on_seen()
     def refresh_announcements(self) -> None:
         rows = self.on_announcements()
-        attention = self.status.attention
         colors = tuple(course_color_index(self.status.course_colors, row.course_code) for row in rows)
-        if (rows == self._drawn_announcements and colors == self._drawn_announcement_colors
-                and attention == self._drawn_attention):
+        if rows == self._drawn_announcements and colors == self._drawn_announcement_colors:
             return
-        self._drawn_announcements, self._drawn_announcement_colors, self._drawn_attention = rows, colors, attention
+        self._drawn_announcements, self._drawn_announcement_colors = rows, colors
         document = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, INNER, 1))
         y = 0
-        # Drive's notifications on top: what needs the student (sign in again, an update, a failed sync).
-        if attention:
-            heading = _label(T_NEEDS_ATTENTION, 15, bold=True)
-            heading.setFrame_(NSMakeRect(4, y, INNER - 8, 22))
-            document.addSubview_(heading)
-            y += 32
-            for index, item in enumerate(attention):
-                card = _card(NSMakeRect(0, y, INNER, 74), warning=item.warning)
-                document.addSubview_(card)
-                self._attention_row(card.contentView(), 16, item, index, INNER, compact=False)
-                y += 74 + 12
-            y += 8
         if not rows:
             empty, height = _wrapping(announcements.T_EMPTY, INNER - 40, secondary=True)
             empty.setFrame_(NSMakeRect(20, y + 16, INNER - 40, height))

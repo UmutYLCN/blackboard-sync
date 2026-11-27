@@ -396,44 +396,6 @@ def test_cross_run_partial_cleared_when_server_returns_404(config, client, fake_
     assert state.items["content:_13004_1:_c11_1"]["unavailable"] == ["attachment:_13004_1:_a11_1"]
 
 
-@pytest.mark.parametrize("language, title, detail", [
-    (
-        "en",
-        "Your internet connection seems unstable",
-        "Downloads were interrupted several times. Interrupted files resume automatically when the connection steadies.",
-    ),
-    (
-        "tr",
-        "İnternet bağlantınız dengesiz görünüyor",
-        "İndirmeler birkaç kez kesintiye uğradı. Bağlantı düzeldiğinde yarım kalan dosyalar kaldığı yerden kendiliğinden devam eder.",
-    ),
-])
-def test_unstable_network_attention_item_en_and_tr(monkeypatch, tmp_path, language, title, detail):
-    monkeypatch.setattr(i18n, "_language", language)
-    now = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
-    outcome = RunOutcome.from_report({
-        "status": "ok",
-        "finished_at": now.isoformat(),
-        "unstable_network": True,
-        "warnings": [],
-        "courses": [],
-    })
-    assert outcome.unstable_network is True
-    model = AppModel(
-        dest=tmp_path,
-        now=now,
-        last=outcome,
-        session={"user": {"displayName": "Ada"}, "saved_at": int(now.timestamp())},
-    )
-    (item,) = main_window_model.attention_items(model)
-    assert item.title == title
-    assert item.detail == detail
-    assert item.warning is True
-    # WebView2 state passes it straight through with no new UI surface needed.
-    web = webui_state.attention_items((item,))
-    assert web == [{"id": "", "title": title, "detail": detail, "action_title": "", "warning": True}]
-
-
 # ---------------------------------------------------------------------------
 # 3. 255-byte cap for multi-byte Turkish/Arabic names & no mass renames
 # ---------------------------------------------------------------------------

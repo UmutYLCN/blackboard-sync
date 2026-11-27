@@ -4,16 +4,16 @@
 def configure_main_window(window) -> None:
     from AppKit import (
         NSNormalWindowLevel,
-        NSWindowCollectionBehaviorFullScreenPrimary,
+        NSWindowCollectionBehaviorFullScreenNone,
         NSWindowCollectionBehaviorManaged,
     )
 
     window.setLevel_(NSNormalWindowLevel)
     # A normal app window belongs to one Space and participates in Mission
-    # Control. FullScreenPrimary opts out of joining other apps' full-screen
+    # Control. It never goes full screen, and stays out of other apps' full-screen
     # Spaces; don't add auxiliary, all-Spaces or move-to-active-Space flags.
     window.setCollectionBehavior_(
-        NSWindowCollectionBehaviorManaged | NSWindowCollectionBehaviorFullScreenPrimary
+        NSWindowCollectionBehaviorManaged | NSWindowCollectionBehaviorFullScreenNone
     )
 
 

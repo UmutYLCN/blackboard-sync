@@ -13,14 +13,13 @@ with the sections below it: **Get started** until you first sign in, then **Home
 and **Sign out** are under **Settings → Account**.
 
 - **Home** is a summary: the sync state (**Up to date**, **Syncing…**, **Paused**, **Sign-in needed**;
-  an animation of files flying into a folder while a sync runs), the latest downloads, what needs your
-  attention with the newest announcements, and the upcoming due dates. On a Mac and on Windows, a
+  an animation of files flying into a folder while a sync runs), the latest downloads, the newest
+  announcements, and the upcoming due dates. On a Mac and on Windows, a
   **NotebookLM** card sits under the sync state (see [NotebookLM](#notebooklm-mac-and-windows)),
   followed by the **AI study session** card (see [AI study session](#ai-study-session-mac-and-windows)).
 - **Sync activity** lists every file, note and announcement a sync brought, newest first, with its
   size and status; click a row to open the file in its own app.
-- **Announcements** shows what needs your attention at the top (session expired, an update, a sync that
-  did not finish, warnings) and all course announcements below.
+- **Announcements** shows all course announcements.
 
 The **Pause** button stops a running sync right away, and no automatic sync runs until you press
 **Resume** (the same button, now a play symbol), as in Google Drive. The pause is kept across restarts.

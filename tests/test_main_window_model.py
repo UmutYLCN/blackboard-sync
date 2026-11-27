@@ -572,11 +572,6 @@ def test_a_failed_first_connection_says_why():
     assert card.warning and card.action == "notebooklm_connect" and card.detail == "No browser"
 
 
-def test_notebooklm_failures_stay_on_the_card():
-    model = notebooklm_model(connected=True, error=True, message="boom")
-    assert not [item for item in main_window_model.attention_items(model) if "boom" in item.detail]
-
-
 def test_pause_stops_the_notebooklm_button_too():
     model = notebooklm_model(connected=True)
     model.pause()
@@ -656,136 +651,6 @@ def test_home_gives_up_file_rows_in_a_short_window(available, rows, shown):
 ITEM_LINK = "https://blackboard.istun.edu.tr/ultra/redirect?redirectType=nautilus&courseId=_13199_1&contentId=_153329_1"
 
 
-@pytest.mark.parametrize("language, title, detail, button", [
-    (
-        "en",
-        "1 file is missing on Blackboard",
-        "PHY101 · W10_Quiz_CH6.pdf: Blackboard has no file behind this link. Open it in Blackboard or ask your instructor.",
-        "Open in Blackboard",
-    ),
-    (
-        "tr",
-        "1 dosya Blackboard'da yok",
-        "PHY101 · W10_Quiz_CH6.pdf: Blackboard'da bu bağlantının arkasında dosya yok. Blackboard'da açın ya da hocanıza sorun.",
-        "Blackboard'da aç",
-    ),
-])
-@pytest.mark.parametrize("status", [404, 410, 403])
-def test_attention_unavailable_single_file_en_and_tr(monkeypatch, language, title, detail, button, status):
-    monkeypatch.setattr(i18n, "_language", language)
-    model = synced()
-    model.last = RunOutcome(
-        "ok",
-        finished_at=FINISHED,
-        warning_count=1,
-        failed_files=[FailedFile("PHY101", "W10_Quiz_CH6.pdf", status, ITEM_LINK)],
-    )
-    (item,) = main_window_model.attention_items(model)
-    assert item.title == title
-    assert item.detail == detail
-    assert item.action == f"open_item:{ITEM_LINK}"
-    assert item.action_title == button
-    assert item.warning is True
-
-
-@pytest.mark.parametrize("language, files_in, title, detail", [
-    (
-        "en",
-        [FailedFile("PHY101", "W10_Quiz_CH6.pdf", 404, ITEM_LINK), FailedFile("CSE301", "lab2.pdf", 410, ITEM_LINK)],
-        "2 files are missing on Blackboard",
-        "PHY101 · W10_Quiz_CH6.pdf, CSE301 · lab2.pdf",
-    ),
-    (
-        "en",
-        [
-            FailedFile("PHY101", "W10_Quiz_CH6.pdf", 404, ITEM_LINK),
-            FailedFile("CSE301", "lab2.pdf", 410, ITEM_LINK),
-            FailedFile("MTH201", "notes.pdf", 403, ITEM_LINK),
-            FailedFile("MTH201", "extra.pdf", 404, ITEM_LINK),
-        ],
-        "4 files are missing on Blackboard",
-        "PHY101 · W10_Quiz_CH6.pdf, CSE301 · lab2.pdf, +2 more",
-    ),
-    (
-        "tr",
-        [
-            FailedFile("PHY101", "W10_Quiz_CH6.pdf", 404, ITEM_LINK),
-            FailedFile("CSE301", "lab2.pdf", 410, ITEM_LINK),
-            FailedFile("MTH201", "notes.pdf", 403, ITEM_LINK),
-        ],
-        "3 dosya Blackboard'da yok",
-        "PHY101 · W10_Quiz_CH6.pdf, CSE301 · lab2.pdf, +1 daha",
-    ),
-])
-def test_attention_unavailable_several_files_en_and_tr(monkeypatch, language, files_in, title, detail):
-    monkeypatch.setattr(i18n, "_language", language)
-    model = synced()
-    model.last = RunOutcome("ok", finished_at=FINISHED, warning_count=len(files_in), failed_files=files_in)
-    (item,) = main_window_model.attention_items(model)
-    assert item.title == title
-    assert item.detail == detail
-    assert item.action == "" and item.action_title == ""
-
-
-@pytest.mark.parametrize("language, files_in, title, detail", [
-    (
-        "en",
-        [FailedFile("PHY101", "hw1.pdf", 500, ITEM_LINK)],
-        "1 file could not be downloaded",
-        "PHY101 · hw1.pdf. The next sync tries again.",
-    ),
-    (
-        "en",
-        [
-            FailedFile("PHY101", "hw1.pdf", 503, ITEM_LINK),
-            FailedFile("CSE301", "slides.pdf", None, ITEM_LINK),
-            FailedFile("MTH201", "notes.pdf", 500, ITEM_LINK),
-        ],
-        "3 files could not be downloaded",
-        "PHY101 · hw1.pdf, CSE301 · slides.pdf, +1 more. The next sync tries again.",
-    ),
-    (
-        "tr",
-        [FailedFile("PHY101", "ad", None, ITEM_LINK)],
-        "1 dosya indirilemedi",
-        "PHY101 · ad. Sonraki eşitleme yeniden dener.",
-    ),
-    (
-        "tr",
-        [
-            FailedFile("PHY101", "a.pdf", 500, ITEM_LINK),
-            FailedFile("CSE301", "b.pdf", 502, ITEM_LINK),
-            FailedFile("MTH201", "c.pdf", None, ITEM_LINK),
-        ],
-        "3 dosya indirilemedi",
-        "PHY101 · a.pdf, CSE301 · b.pdf, +1 daha. Sonraki eşitleme yeniden dener.",
-    ),
-])
-def test_attention_transient_failed_files_en_and_tr(monkeypatch, language, files_in, title, detail):
-    monkeypatch.setattr(i18n, "_language", language)
-    model = synced()
-    model.last = RunOutcome("ok", finished_at=FINISHED, warning_count=len(files_in), failed_files=files_in)
-    (item,) = main_window_model.attention_items(model)
-    assert item.title == title
-    assert item.detail == detail
-    assert item.action == ""
-
-
-@pytest.mark.parametrize("language, title", [
-    ("en", "Something went wrong during the last sync"),
-    ("tr", "Son eşitlemede bir sorun çıktı"),
-])
-def test_attention_non_file_warning_en_and_tr(monkeypatch, language, title):
-    monkeypatch.setattr(i18n, "_language", language)
-    long_warning = "Could not read term _99_1; " + ("x" * 200)
-    model = synced()
-    model.last = RunOutcome("ok", finished_at=FINISHED, warning_count=1, warnings=[long_warning])
-    (item,) = main_window_model.attention_items(model)
-    assert item.title == title
-    assert item.detail.startswith("Could not read term _99_1;")
-    assert len(item.detail) == 140 and item.detail.endswith("…")
-
-
 def test_from_report_carries_failed_files_without_duplicating_generic_warning():
     report_data = {
         "status": "ok",
@@ -804,16 +669,6 @@ def test_from_report_carries_failed_files_without_duplicating_generic_warning():
     outcome = RunOutcome.from_report(report_data)
     assert outcome.failed_files == [FailedFile("PHY101", "W10_Quiz_CH6.pdf", 404, ITEM_LINK)]
     assert outcome.warnings == []
-    model = synced()
-    model.last = outcome
-    items = main_window_model.attention_items(model)
-    assert len(items) == 1 and items[0].title == "1 file is missing on Blackboard"
-
-
-def test_open_item_url_accepts_only_school_urls():
-    assert main_window_model.open_item_url(f"open_item:{ITEM_LINK}", "https://blackboard.istun.edu.tr") == ITEM_LINK
-    assert main_window_model.open_item_url("open_item:https://evil.example/x", "https://blackboard.istun.edu.tr") is None
-    assert main_window_model.open_item_url("login", "https://blackboard.istun.edu.tr") is None
 
 
 # -- AI study session card on Home -----------------------------------------------------------------
@@ -999,3 +854,22 @@ def test_a_launch_that_works_remembers_the_tool():
     model.ai_launching = True
     model.finish_ai_launch(ai_launcher.LaunchResult(None, ai_launcher.TOOLS["gemini"]))
     assert (model.ai_cli, model.ai_launching, model.ai_result) == ("gemini", False, None)
+
+
+@pytest.mark.parametrize("outcome, line", [
+    ({}, ""),
+    ({"failed_files": [FailedFile("PHY101", "a.pdf", 404, "")], "warning_count": 1},
+     "1 file could not be downloaded"),
+    ({"failed_files": [FailedFile("PHY101", "a.pdf", None, ""), FailedFile("PHY101", "b.pdf", None, "")],
+      "unreadable_courses": 1, "unstable_network": True},
+     "2 files could not be downloaded · 1 course could not be read"),
+    ({"unstable_network": True, "warning_count": 2}, "Your internet connection seems unstable"),
+    ({"warning_count": 2}, "Something went wrong during the last sync"),
+])
+def test_the_status_card_says_what_a_sync_could_not_do(outcome, line):
+    model = synced()
+    model.last = RunOutcome("ok", finished_at=FINISHED, **outcome)
+    status = main_status(model, NOW)
+    assert (status.account.message, status.account.warning) == (line, False)
+    model.begin("sync")  # a running sync starts over
+    assert main_status(model, NOW).account.message == ""

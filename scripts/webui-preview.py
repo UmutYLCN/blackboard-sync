@@ -105,9 +105,7 @@ def fixtures(now: datetime) -> dict[str, dict]:
                                form=replace(form, account=main.T_EXPIRED, account_warning=True, account_title=tr("Sign in"),
                                             account_action="login"),
                                home=main.HomeState(main.STATE_ATTENTION, main.T_STATE_TITLES[main.STATE_ATTENTION],
-                                                   account.detail, "login", tr("Sign in")),
-                               attention=(main.AttentionItem(main.T_EXPIRED, tr("Sign in to get new files."), "login",
-                                                             tr("Sign in")),)), announcements, page),
+                                                   account.detail, "login", tr("Sign in"))), announcements, page),
         "error": (replace(synced, account=replace(account, message=tr("Sync did not finish: {error}").format(
                               error="Blackboard did not answer in time."), warning=True),
                           home=main.HomeState(main.STATE_ERROR, main.T_STATE_TITLES[main.STATE_ERROR],
@@ -169,9 +167,7 @@ def fixtures(now: datetime) -> dict[str, dict]:
                       for title, course, when in past)
     titled = deadlines.DeadlinePage(tuple(replace(day, title=deadlines.day_title(day.day, today)) for day in page.days)
                                     + past_days, "")
-    full = replace(synced, activity=activity, attention=(main.AttentionItem(
-        tr("Blackboard Sync {version} is ready").format(version="1.7.0"), main.T_UPDATE_INTRO, "update", main.T_UPDATE,
-        warning=False),))
+    full = replace(synced, activity=activity)
     settings_form = replace(form, uninstall_enabled=True, notebooklm_connected=True,
                             ai_terminals=frozenset(("windows_terminal", "powershell", "cmd")),
                             calendar=CalendarStatus(connected=True, last_sync="2026-10-18T12:05:00+00:00"))

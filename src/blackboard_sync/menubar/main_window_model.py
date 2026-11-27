@@ -15,9 +15,7 @@ right (Duraklat / Devam et, Ayarlar and the account). The sidebar switches betwe
 - Dersler: one checkbox per current course; an unticked course is not synced
   and stays out of view (``courses``). The folder mirrors Blackboard.
 - Takvim: cached grade-column due dates, grouped by local day (``deadlines``).
-- Announcements: what needs attention (sign in again, an update, a failed sync) above all
-  synced current-term announcements (``announcements``); Drive's notifications page and
-  Duyurular in one.
+- Announcements: all synced current-term announcements (``announcements``).
 - Ayarlar (the gear, not in the sidebar): the settings form (``settings_form``). Its
   Vazgeç/Kaydet bar appears only once something was changed, and saving keeps the window open.
 
@@ -52,8 +50,6 @@ from blackboard_sync.menubar.model import (
     T_SYNC_NOW,
     T_SYNCING,
     AppModel,
-    FailedFile,
-    courses_text,
     files,
     login_waiting_line,
     parse_iso,
@@ -132,11 +128,8 @@ T_HOME_RECENT = tr("Recent downloads")
 T_HOME_ANNOUNCEMENTS = announcements.T_TAB
 T_HOME_CALENDAR = tr("Upcoming deadlines")
 T_OPEN_CALENDAR = tr("Open calendar")
-T_ALL_GOOD = tr("You're all caught up!")
-T_ALL_GOOD_DETAIL = tr("Things that need your attention will show up here.")
 T_NO_DEADLINES = tr("No upcoming deadlines.")
 T_ACTIVITY_EMPTY = tr("Nothing downloaded yet.")
-T_NEEDS_ATTENTION = tr("Needs your attention")
 T_NAME, T_SIZE, T_STATUS = tr("Name"), tr("File size"), tr("Status")
 T_PAUSE_SHORT = tr("Pause")
 SESSION_NOTE_FOR = timedelta(hours=2)  # how long Home's card mentions a background sign-in
@@ -463,17 +456,6 @@ class ActivityRow:
     color: int | None = None
 
 
-@dataclass(frozen=True)
-class AttentionItem:
-    """Something Notifications lists above the history; ``action`` is a window action."""
-
-    title: str
-    detail: str
-    action: str = ""
-    action_title: str = ""
-    warning: bool = True
-
-
 def format_size(size: int | None) -> str:
     """Drive's style: "14 KB", "1.2 MB"; "—" when there is no size."""
     if size is None:
@@ -528,7 +510,6 @@ class MainStatus:
     pause_title: str = T_PAUSE  # the button at the top right
     pause_enabled: bool = False
     activity: tuple[ActivityRow, ...] = ()
-    attention: tuple[AttentionItem, ...] = ()
     # The Home page's own header (the sidebar keeps ``overview_title``): a greeting and one line
     # about the next due dates; the plain title and no line without them.
     home_heading: str = ""
@@ -553,6 +534,24 @@ def is_first_run(model: AppModel) -> bool:
     return not model.configured or (name is None and not expired and model.last is None and not model.recent)
 
 
+def sync_problem_line(last: RunOutcome) -> str:
+    """What a finished sync could not do, as one line for Home's status card; "" when nothing."""
+    parts = []
+    if last.failed_files:
+        count = len(last.failed_files)
+        parts.append(ntr("{n} file could not be downloaded", "{n} files could not be downloaded",
+                         count).format(n=count))
+    if last.unreadable_courses:
+        count = last.unreadable_courses
+        parts.append(ntr("{n} course could not be read", "{n} courses could not be read", count).format(n=count))
+    # A bad connection or an unnamed warning only gets the line when there is nothing more exact to say.
+    if not parts and last.unstable_network:
+        parts.append(tr("Your internet connection seems unstable"))
+    if not parts and (last.warnings or last.warning_count):
+        parts.append(tr("Something went wrong during the last sync"))
+    return " · ".join(parts)
+
+
 def account_card(model: AppModel, now: datetime) -> AccountCard:
     name, expired = model.account()
     idle = model.busy is None and model.updates.busy != "download"
@@ -560,6 +559,8 @@ def account_card(model: AppModel, now: datetime) -> AccountCard:
     warning = False
     if not message and model.last is not None and model.last.status == "error" and model.busy is None:
         message, warning = shorten(tr("Sync did not finish: {error}").format(error=model.last.message), 120), True
+    elif not message and model.last is not None and model.last.status == "ok" and model.busy is None:
+        message = sync_problem_line(model.last)
     if model.busy == "login":
         return AccountCard("…", T_WAITING, login_waiting_line(model.login_method), message=message)
     if name is None:
@@ -716,98 +717,6 @@ def home_recent_rows(available: float, fixed: float, row: float, rows: int) -> i
     return min(rows, max(min(fitting, HOME_RECENT_ROWS), HOME_RECENT_MIN_ROWS))
 
 
-OPEN_ITEM_PREFIX = "open_item:"
-
-
-def open_item_url(action: str, *base_urls: str) -> str | None:
-    """The Blackboard URL carried by an ``open_item:`` attention action, if it belongs to one of ``base_urls``."""
-    if not action.startswith(OPEN_ITEM_PREFIX):
-        return None
-    url = action.removeprefix(OPEN_ITEM_PREFIX)
-    for base in base_urls:
-        prefix = (base or "").rstrip("/") + "/"
-        if prefix != "/" and url.startswith(prefix):
-            return url
-    return None
-
-
-def _file_label(entry: FailedFile) -> str:
-    return f"{entry.course} · {entry.name}" if entry.course else entry.name
-
-
-def _failed_files_summary(entries: list[FailedFile]) -> str:
-    parts = [_file_label(entry) for entry in entries[:2]]
-    extra = len(entries) - 2
-    if extra > 0:
-        parts.append(tr("+{k} more").format(k=extra))
-    return ", ".join(parts)
-
-
-def _unavailable_attention(entries: list[FailedFile]) -> AttentionItem:
-    count = len(entries)
-    title = ntr("{n} file is missing on Blackboard", "{n} files are missing on Blackboard", count).format(n=count)
-    if count == 1:
-        item = entries[0]
-        detail = tr(
-            "{file}: Blackboard has no file behind this link. Open it in Blackboard or ask your instructor."
-        ).format(file=_file_label(item))
-        if item.link:
-            return AttentionItem(title, detail, f"{OPEN_ITEM_PREFIX}{item.link}", tr("Open in Blackboard"))
-        return AttentionItem(title, detail)
-    return AttentionItem(title, _failed_files_summary(entries))
-
-
-def _transient_attention(entries: list[FailedFile]) -> AttentionItem:
-    count = len(entries)
-    title = ntr("{n} file could not be downloaded", "{n} files could not be downloaded", count).format(n=count)
-    detail = tr("{files}. The next sync tries again.").format(files=_failed_files_summary(entries))
-    return AttentionItem(title, detail)
-
-
-def attention_items(model: AppModel) -> tuple[AttentionItem, ...]:
-    """What needs the student, most pressing first; empty is "Her şey yolunda!". (A pause is shown on Home's card.)"""
-    if is_first_run(model):
-        return ()
-    items: list[AttentionItem] = []
-    if model.calendar.needs_reconnect:
-        items.append(AttentionItem(tr("Google Calendar needs to be reconnected"),
-                                   tr("Open Settings to reconnect your calendar."), "calendar_settings", tr("Reconnect")))
-    elif model.calendar.connected and model.calendar.last_error:
-        items.append(AttentionItem(tr("Google Calendar error"), model.calendar.last_error,
-                                   "calendar_settings", tr("Settings")))
-    name, expired = model.account()
-    if name is None and model.busy != "login":
-        items.append(AttentionItem(T_EXPIRED if expired else T_SIGNED_OUT,
-                                   tr("Sign in to get new files."), "login", T_LOGIN))
-    banner = update_banner(model)
-    if banner is not None:
-        items.append(AttentionItem(banner.title, T_UPDATE_INTRO, "update", banner.button_title, warning=False))
-    last = model.last
-    if last is not None and last.status == "error" and last.message:
-        items.append(AttentionItem(T_STATE_TITLES[STATE_ERROR], shorten(last.message, 160)))
-    elif last is not None and last.status == "ok":
-        if last.unreadable_courses:
-            items.append(AttentionItem(tr("Could not read {courses}").format(courses=courses_text(last.unreadable_courses)),
-                                       tr("Blackboard did not return the content; the next sync tries again.")))
-        unavailable = [entry for entry in last.failed_files if entry.unavailable]
-        transient = [entry for entry in last.failed_files if not entry.unavailable]
-        if unavailable:
-            items.append(_unavailable_attention(unavailable))
-        if transient:
-            items.append(_transient_attention(transient))
-        if last.unstable_network:
-            items.append(AttentionItem(
-                tr("Your internet connection seems unstable"),
-                tr("Downloads were interrupted several times. Interrupted files resume automatically when the connection steadies."),
-            ))
-        if last.warnings or (not last.unreadable_courses and not last.failed_files and not last.unstable_network and last.warning_count):
-            detail = shorten(last.warnings[0], 140) if last.warnings else ""
-            items.append(AttentionItem(tr("Something went wrong during the last sync"), detail))
-    if model.note and model.busy is None:
-        items.append(AttentionItem(tr("Note"), model.note, warning=False))
-    return tuple(items)
-
-
 def activity_rows(model: AppModel, now: datetime) -> tuple[ActivityRow, ...]:
     course_titles = {fold_course_key(c.code): course_name_without_code(c.name, c.code)
                      for c in model.courses if c.code}
@@ -879,7 +788,6 @@ def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.Deadli
         pause_title=T_RESUME if model.paused else T_PAUSE,
         pause_enabled=model.configured and not is_first_run(model),
         activity=activity_rows(model, now),
-        attention=attention_items(model),
         home_heading=heading,
         home_subtitle=subtitle,
         notebooklm=notebooklm_card(model, now),

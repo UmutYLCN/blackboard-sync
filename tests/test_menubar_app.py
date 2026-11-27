@@ -259,7 +259,6 @@ def test_sidebar_switches_sections_and_baslangic_becomes_home(tmp_path):
         assert titles == ['Get started', 'Sync activity', 'Announcements', 'Courses']
         assert list(window.nav_items) == [OVERVIEW, ACTIVITY, ANNOUNCEMENTS, COURSES, CALENDAR]
         assert GENERAL not in window.nav_items  # Ayarlar is the gear at the top right
-        assert str(window.nav_items[COURSES][3].stringValue()) == ''
         assert visible_page(window) == 'start' and window.section == OVERVIEW
         assert str(window.start_button.title()) == 'Sign in'
         assert str(window.start_button.keyEquivalent()) == '\r'  # Return signs in
@@ -267,7 +266,7 @@ def test_sidebar_switches_sections_and_baslangic_becomes_home(tmp_path):
         window.target.gear_(None)
         assert visible_page(window) == GENERAL and window.section == GENERAL
         assert str(window.start_button.keyEquivalent()) == ''  # not from a hidden section
-        window.target.nav_(window.nav_items[COURSES][4])
+        window.target.nav_(window.nav_items[COURSES][3])
         assert visible_page(window) == COURSES
 
         # Signed in: the first section becomes Home, on its own page.
@@ -277,13 +276,22 @@ def test_sidebar_switches_sections_and_baslangic_becomes_home(tmp_path):
         window.select(OVERVIEW)
         assert visible_page(window) == OVERVIEW
         assert str(window.nav_items[OVERVIEW][2].stringValue()) == 'Home'
-        window.target.nav_(window.nav_items[ACTIVITY][4])
+        window.target.nav_(window.nav_items[ACTIVITY][3])
         assert visible_page(window) == ACTIVITY
-        window.target.nav_(window.nav_items[ANNOUNCEMENTS][4])
+        window.target.nav_(window.nav_items[ANNOUNCEMENTS][3])
         assert visible_page(window) == ANNOUNCEMENTS
         window.select(OVERVIEW)
         # Duraklat / Devam et, Ayarlar and the account sit at the top right, the status in Home's card.
         assert not any(view.isHidden() for view in window.topbar)
+        # On Home they scroll away with the title; elsewhere the title and they stay put.
+        document = window.overview_scroll.documentView()
+        assert all(view.superview() == document for view in window.topbar)
+        on_home = [document.convertPoint_toView_(view.frame().origin, window.window.contentView())
+                   for view in window.topbar]
+        window.select(ACTIVITY)
+        assert all(view.superview() == window.window.contentView() for view in window.topbar)
+        assert [view.frame().origin for view in window.topbar] == on_home
+        window.select(OVERVIEW)
         assert str(window.avatar_text.stringValue()) == 'AS'
         assert str(window.state_title.stringValue()) == 'Up to date'
         assert str(window.state_detail.stringValue()).startswith('Last synced: today ')
@@ -323,7 +331,7 @@ def test_home_buttons_recent_files_and_sign_in(tmp_path):
         window.target.showActivity_(None)
         assert window.section == 'activity'
         window.select('overview')
-        # Expired: the card says so and offers signing in; Announcements lists it on top too.
+        # Expired: the card says so and offers signing in; Announcements stays free of it.
         model.session = None
         model.session_expired = True
         window.update_status(main_status(model, NOW))
@@ -331,9 +339,6 @@ def test_home_buttons_recent_files_and_sign_in(tmp_path):
         assert not window.home_action.isHidden() and str(window.home_action.title()) == 'Sign in'
         assert not window.sync_button.isEnabled()
         window.target.homeAction_(None)
-        assert actions[-1] == 'login'
-        assert [item.title for item in window.status.attention] == ['Session expired']
-        window.target.attention_(type('B', (), {'tag': lambda self: 0})())
         assert actions[-1] == 'login'
     finally:
         window.window.close()
@@ -450,7 +455,7 @@ def test_sync_activity_lists_files_with_size_and_status(tmp_path):
         window.window.close()
 
 
-def test_announcements_page_puts_what_needs_attention_above_the_announcements(tmp_path):
+def test_home_and_the_announcements_page_list_the_announcements(tmp_path):
     from blackboard_sync.announcements import AnnouncementRow
     from blackboard_sync.menubar.main_window_model import ANNOUNCEMENTS, main_status
 
@@ -461,17 +466,15 @@ def test_announcements_page_puts_what_needs_attention_above_the_announcements(tm
         signed_in(model)
         window.update_status(main_status(model, NOW))
         window.select(ANNOUNCEMENTS)
-        assert str(window.nav_items[ANNOUNCEMENTS][3].stringValue()) == ''
         # Home's card lists the newest announcement; a click opens it.
         assert window.home_announcements == rows
         window.target.openHomeAnnouncement_(type('B', (), {'tag': lambda self: 0})())
         assert opened == [rows[0]]
-        model.session = None
+        # Nothing but announcements, whatever else is wrong: one card per announcement.
+        model.session, model.note = None, 'Check the folder'
         window.update_status(main_status(model, NOW))
-        assert str(window.nav_items[ANNOUNCEMENTS][3].stringValue()) == '1'
-        texts = [str(v.stringValue()) for v in window.announcements_scroll.documentView().subviews()
-                 if hasattr(v, 'stringValue')]
-        assert texts[0] == 'Needs your attention'
+        assert window.home_announcements == rows
+        assert len(window.announcements_scroll.documentView().subviews()) == len(rows)
         window.target.showAnnouncements_(None)
         assert window.section == ANNOUNCEMENTS
     finally:
@@ -902,11 +905,10 @@ def test_dersler_lists_courses_with_a_checkbox_and_saves_a_change(tmp_path):
         texts = [str(v.stringValue()) for v in document.subviews() if hasattr(v, 'stringValue')]
         assert 'CSE301 Algorithms' in texts and 'T · syncing' in texts
         boxes = [v for v in document.subviews() if hasattr(v, 'action') and str(v.action() or '') == 'courseToggled:']
-        assert [int(b.state()) for b in boxes] == [1, 1] and str(window.nav_items[COURSES][3].stringValue()) == ''
+        assert [int(b.state()) for b in boxes] == [1, 1]
         boxes[1].setState_(0)
         window.target.courseToggled_(boxes[1])
         assert toggles == [('_2_1', False)]
-        assert str(window.nav_items[COURSES][3].stringValue()) == ''
         texts = [str(v.stringValue()) for v in window.courses_scroll.documentView().subviews()
                  if hasattr(v, 'stringValue')]
         assert 'T · not syncing' in texts  # drawn again with the new choice
@@ -1083,7 +1085,8 @@ def test_settings_sections_and_uninstall_button(tmp_path):
 
 def test_main_window_fits_a_short_screen_and_scrolls_with_the_bar_in_view(tmp_path):
     from types import SimpleNamespace
-    from AppKit import NSScrollView, NSWindowStyleMaskMiniaturizable, NSWindowStyleMaskResizable
+    from AppKit import (NSScrollView, NSWindowStyleMaskMiniaturizable, NSWindowStyleMaskResizable,
+                        NSWindowZoomButton)
     from Foundation import NSMakeRect
     from blackboard_sync.menubar.main_window import HEIGHT, WIDTH
     from blackboard_sync.menubar.main_window_model import GENERAL
@@ -1096,7 +1099,9 @@ def test_main_window_fits_a_short_screen_and_scrolls_with_the_bar_in_view(tmp_pa
 
     try:
         mask = window.window.styleMask()
-        assert mask & NSWindowStyleMaskResizable and mask & NSWindowStyleMaskMiniaturizable
+        # A fixed size: it minimizes, but neither resizes nor goes full screen.
+        assert mask & NSWindowStyleMaskMiniaturizable and not mask & NSWindowStyleMaskResizable
+        assert not window.window.standardWindowButton_(NSWindowZoomButton).isEnabled()
         assert str(window.window.title()) == 'Blackboard Sync'
         assert isinstance(window.form_scroll, NSScrollView)
         window.select(GENERAL)
@@ -1111,8 +1116,7 @@ def test_main_window_fits_a_short_screen_and_scrolls_with_the_bar_in_view(tmp_pa
         bar = window.button_bar.frame()
         assert bar.origin.y + bar.size.height == page  # at the bottom, in view
         assert window.form_scroll.frame().origin.y + window.form_scroll.frame().size.height == bar.origin.y
-        minimum = window.window.contentMinSize()
-        assert minimum.width == window.window.contentMaxSize().width == WIDTH
+        assert window.window.contentView().frame().size.width == WIDTH
         # A big screen opens at the full size.
         window.fit_to_screen(screen(1400))
         assert window.window.contentView().frame().size.height == HEIGHT

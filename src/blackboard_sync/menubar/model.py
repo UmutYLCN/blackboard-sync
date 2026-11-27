@@ -396,10 +396,6 @@ def files(count: int) -> str:
     return ntr("{n} file", "{n} files", count).format(n=count)
 
 
-def courses_text(count: int) -> str:
-    return ntr("{n} course", "{n} courses", count).format(n=count)
-
-
 def warnings_text(count: int) -> str:
     return ntr("{n} warning", "{n} warnings", count).format(n=count)
 

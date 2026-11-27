@@ -64,8 +64,7 @@ def texts() -> dict[str, str]:
         "recent_empty": T_RECENT_EMPTY,
         "announcements": main.T_HOME_ANNOUNCEMENTS,
         "upcoming": main.T_HOME_CALENDAR,
-        "all_good": main.T_ALL_GOOD,
-        "all_good_detail": main.T_ALL_GOOD_DETAIL,
+        "announcements_empty": announcements.T_EMPTY,
         "new": main.T_NEW,
         "update_intro": main.T_UPDATE_INTRO,
         "unsaved": main.T_UNSAVED,
@@ -75,7 +74,7 @@ def texts() -> dict[str, str]:
 
 
 def nav(status: main.MainStatus) -> list[dict]:
-    """The sidebar, top to bottom; a count beside Announcements (attention) only."""
+    """The sidebar, top to bottom."""
     titles = {
         main.OVERVIEW: status.overview_title,
         main.ACTIVITY: main.T_NAV_ACTIVITY,
@@ -83,8 +82,7 @@ def nav(status: main.MainStatus) -> list[dict]:
         main.COURSES: main.T_NAV_COURSES,
         main.CALENDAR: deadlines.T_TAB,
     }
-    badges = {main.ANNOUNCEMENTS: str(len(status.attention)) if status.attention else ""}
-    return [{"id": section, "title": titles[section], "icon": NAV_ICONS[section], "badge": badges.get(section, "")}
+    return [{"id": section, "title": titles[section], "icon": NAV_ICONS[section]}
             for section in main.NAV_SECTIONS]
 
 
@@ -130,20 +128,13 @@ def recent(rows: tuple[main.RecentRow, ...]) -> list[dict]:
             for row in rows[:main.HOME_RECENT_ROWS]]
 
 
-def attention_items(items) -> list[dict]:
-    return [{"id": item.action, "title": item.title, "detail": item.detail,
-             "action_title": item.action_title, "warning": item.warning} for item in items]
-
-
-def home_announcements(status: main.MainStatus, rows) -> tuple[list[dict], list[dict]]:
-    """(what needs attention, the newest announcements): three rows at most, attention first."""
-    items = status.attention[:main.HOME_ANNOUNCEMENT_ROWS]
-    rows = tuple(rows)[:max(main.HOME_ANNOUNCEMENT_ROWS - len(items), 0)]
-    return attention_items(items), [
+def home_announcements(status: main.MainStatus, rows) -> list[dict]:
+    """The newest announcements, as many as Home lists."""
+    return [
         {"id": row.key, "title": row.title, "detail": row.detail, "when": row.date, "course_code": row.course_code,
          "course_title": main.course_name_without_code(row.course, row.course_code),
          "color": main.course_color_index(status.course_colors, row.course_code)}
-        for row in rows
+        for row in tuple(rows)[:main.HOME_ANNOUNCEMENT_ROWS]
     ]
 
 
@@ -194,7 +185,7 @@ def ai_card(card: main.AiCard) -> dict:
 def home(status: main.MainStatus, announcement_rows, deadline_page: deadlines.DeadlinePage, today: date) -> dict:
     """Home: the greeting, the status card with the last files, Announcements and the next due dates."""
     state = status.home
-    attention, rows = home_announcements(status, announcement_rows)
+    rows = home_announcements(status, announcement_rows)
     upcoming, upcoming_message = home_deadlines(status, deadline_page, today)
     return {
         "heading": status.home_heading or status.overview_title,
@@ -211,7 +202,6 @@ def home(status: main.MainStatus, announcement_rows, deadline_page: deadlines.De
         "recent_count": main.recent_count(status.recent),
         "notebooklm": notebooklm_card(status.notebooklm),
         "ai": ai_card(status.ai),
-        "attention": attention,
         "announcements": rows,
         "deadlines": upcoming,
         "deadlines_message": upcoming_message,
@@ -255,11 +245,9 @@ def activity(status: main.MainStatus) -> dict:
 
 
 def announcements_page(status: main.MainStatus, rows) -> dict:
-    """Announcements: what needs attention, then every synced announcement, newest first."""
+    """Announcements: every synced announcement, newest first."""
     return {
         "hint": announcements.T_HINT,
-        "attention_title": main.T_NEEDS_ATTENTION,
-        "attention": attention_items(status.attention),
         "rows": [{"id": row.key, "title": row.title, "detail": row.detail, "preview": row.preview,
                   "when": row.date, "course_code": row.course_code,
                   "course_title": main.course_name_without_code(row.course, row.course_code),
@@ -437,8 +425,6 @@ def ids(state: dict) -> dict[str, set[str]]:
                          | {row["id"] for row in state["announcements"]["rows"]}),
         "deadline": ({row["id"] for row in home_state["deadlines"]}
                      | {row["id"] for day in state["calendar"]["days"] for row in day["rows"]}),
-        "attention": ({item["id"] for item in home_state["attention"] if item["id"]}
-                      | {item["id"] for item in state["announcements"]["attention"] if item["id"]}),
         "course": {row["id"] for row in state["courses"]["rows"]},
         # The card's own buttons, while it shows them and they work.
         "notebooklm": ({card["button"]["id"]} if card["button"] and card["button"]["enabled"] else set())
