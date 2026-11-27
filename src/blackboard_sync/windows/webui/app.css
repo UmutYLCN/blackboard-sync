@@ -1,6 +1,8 @@
 /* Blackboard Sync main window (WebView2).
    Every color is light-dark(light, dark): "System" follows Windows (color-scheme: light dark),
-   Settings → Theme pins one (data-theme on <html>). */
+   Settings → Theme pins one (data-theme on <html>).
+   Right-to-left languages set dir="rtl" on <html>: sides are logical (padding-inline,
+   inset-inline, text-align: start) so the layout mirrors; see "right to left" at the end. */
 
 :root {
   color-scheme: light dark;
@@ -133,7 +135,7 @@ button, input, select { font: inherit; color: inherit; }
   border-radius: 999px;
   background: transparent;
   color: var(--text-2);
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 .nav-item:hover { background: var(--surface-press); }
@@ -141,7 +143,7 @@ button, input, select { font: inherit; color: inherit; }
 .nav-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
-.topbar { display: flex; align-items: flex-start; gap: 16px; padding: 22px 28px 18px 16px; }
+.topbar { display: flex; align-items: flex-start; gap: 16px; padding-block: 22px 18px; padding-inline: 16px 28px; }
 .heading { flex: 1; min-width: 0; }
 .heading h1 {
   margin: 0;
@@ -175,7 +177,7 @@ button, input, select { font: inherit; color: inherit; }
 .avatar {
   width: 36px;
   height: 36px;
-  margin-left: 6px;
+  margin-inline-start: 6px;
   border: 0;
   border-radius: 50%;
   background: var(--tonal);
@@ -193,7 +195,8 @@ button, input, select { font: inherit; color: inherit; }
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 28px 28px 16px;
+  padding-block: 0 28px;
+  padding-inline: 16px 28px;
   scrollbar-gutter: stable;
 }
 
@@ -269,7 +272,7 @@ button, input, select { font: inherit; color: inherit; }
   padding: 0;
   border: 0;
   background: transparent;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 .row-main:focus-visible { outline-offset: 4px; border-radius: 8px; }
@@ -401,7 +404,8 @@ button, input, select { font: inherit; color: inherit; }
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 16px 18px 16px 20px;
+  padding-block: 16px;
+  padding-inline: 20px 18px;
   border-radius: var(--radius-card);
   background: var(--tonal);
   color: var(--on-tonal);
@@ -459,7 +463,7 @@ button, input, select { font: inherit; color: inherit; }
 .nlm-detail, .nlm-secondary { color: var(--muted); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nlm-warning-counts, .nlm-notice { color: var(--caution); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nlm-bar { position: relative; height: 6px; margin-top: 10px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
-.nlm-bar > span { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 3px; background: var(--accent); transition: width 0.3s ease-out; }
+.nlm-bar > span { position: absolute; inset-block: 0; inset-inline: 0 auto; width: 0; border-radius: 3px; background: var(--accent); transition: width 0.3s ease-out; }
 .nlm-bar.moving > span { width: 35%; transition: none; animation: slide 1.4s ease-in-out infinite; }
 .nlm-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
@@ -530,7 +534,7 @@ button, input, select { font: inherit; color: inherit; }
   font-size: 12.5px;
   font-weight: 600;
 }
-.table-head > :nth-child(2), .table-row .size { text-align: right; }
+.table-head > :nth-child(2), .table-row .size { text-align: end; }
 .table-row { padding: 6px 10px; margin: 0 -10px; width: calc(100% + 20px); border-radius: var(--radius-row); }
 .table-row:hover, .table-row:focus-within { background: var(--surface-hover); }
 .table-row .size { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -576,7 +580,7 @@ button, input, select { font: inherit; color: inherit; }
   content: "";
   position: absolute;
   top: 4px;
-  left: 4px;
+  inset-inline-start: 4px;
   width: 16px;
   height: 16px;
   border-radius: 50%;
@@ -644,14 +648,14 @@ button, input, select { font: inherit; color: inherit; }
 .input { flex: 1; width: 100%; }
 .input:focus, .select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
 .input.invalid { border-color: var(--warning); }
-.select { padding-right: 8px; cursor: pointer; }
+.select { padding-inline-end: 8px; cursor: pointer; }
 .select:disabled { opacity: 0.5; cursor: default; }
 
 .school-field { position: relative; display: flex; }
 .school-list {
   position: absolute;
   top: calc(100% + 4px);
-  right: 0;
+  inset-inline-end: 0;
   z-index: 5;
   width: max(100%, 360px);
   max-height: 260px;
@@ -663,7 +667,7 @@ button, input, select { font: inherit; color: inherit; }
   outline: 1px solid var(--outline);
   outline-offset: -1px;
 }
-.school-option { padding: 7px 10px; border-radius: 8px; cursor: pointer; text-align: left; }
+.school-option { padding: 7px 10px; border-radius: 8px; cursor: pointer; text-align: start; }
 .school-option:hover { background: var(--surface-hover); }
 .school-option[aria-selected="true"] { background: var(--tonal); color: var(--on-tonal); }
 
@@ -693,7 +697,8 @@ button, input, select { font: inherit; color: inherit; }
   align-items: center;
   gap: 12px;
   margin: 18px -4px 0;
-  padding: 12px 12px 12px 18px;
+  padding-block: 12px;
+  padding-inline: 18px 12px;
   border-radius: 16px;
   background: var(--surface);
   box-shadow: var(--shadow-2);
@@ -728,7 +733,7 @@ button, input, select { font: inherit; color: inherit; }
   border: 0;
   border-radius: 10px;
   background: transparent;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 .menu-item:hover { background: var(--surface-hover); }
@@ -761,6 +766,28 @@ button, input, select { font: inherit; color: inherit; }
 .dialog-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; flex-wrap: wrap; }
 
 .placeholder { color: var(--muted); padding: 40px 0; text-align: center; }
+
+/* -- right to left (Arabic) -------------------------------------------------------- */
+
+/* Arrows that point along the reading direction turn round (icon() marks them). */
+[dir="rtl"] .icon.mirror { transform: scaleX(-1); }
+[dir="rtl"] .switch:checked::after { transform: translateX(-20px); }
+[dir="rtl"] .nlm-bar.moving > span { animation-name: slide-rtl; }
+@keyframes slide-rtl { from { transform: translateX(100%); } to { transform: translateX(-290%); } }
+/* Names Blackboard gives (files, courses, announcements) may be in either script: each is laid
+   out by its own first letter but stays on the reading side. Codes, sizes, times, paths and
+   addresses read left to right. */
+[dir="rtl"] .row-title, [dir="rtl"] .announcement .title, [dir="rtl"] .dialog-choices .check span {
+  unicode-bidi: plaintext;
+  text-align: right;
+}
+[dir="rtl"] .course-badge, [dir="rtl"] .table-row .size, [dir="rtl"] .deadline .time,
+[dir="rtl"] .dialog-detail { direction: ltr; unicode-bidi: isolate; }
+[dir="rtl"] .input.ltr { direction: ltr; text-align: left; }
+[dir="rtl"] .table-row .size { text-align: left; } /* its own direction is left to right; it lines up with the head */
+[dir="rtl"] .row-detail.parts { display: flex; gap: 4px; }
+[dir="rtl"] .detail-part { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[dir="rtl"] .detail-dot, [dir="rtl"] .detail-part.whole { flex: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

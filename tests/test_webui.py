@@ -299,6 +299,20 @@ def test_document_is_self_contained_and_every_script_and_style_carries_the_nonce
     assert "https://" not in html
 
 
+def test_arabic_mirrors_the_page():
+    assert '<html lang="ar" dir="rtl"' in webui_page.document(nonce="n", lang="ar")
+    for code in ("en", "tr", "es", "fr", "de"):
+        assert f'<html lang="{code}" dir="ltr"' in webui_page.document(nonce="n", lang=code)
+    css = (webui_page.ASSETS / "app.css").read_text(encoding="utf-8")
+    # Sides are logical so dir="rtl" mirrors them; outside the right-to-left rules only the
+    # symmetric folder scene places things by a percentage of the width.
+    rules = css.split("/* -- right to left")[0]
+    physical = re.findall(r"text-align: (?:left|right)|(?:margin|padding|inset)-(?:left|right)"
+                          r"|(?<![\w-])(?:left|right): (?!\d+%)", rules)
+    assert physical == []
+    assert '[dir="rtl"] .icon.mirror' in css and "MIRRORED_ICONS" in APP_JS
+
+
 def test_every_icon_the_page_draws_is_in_the_sprite():
     sprite = webui_page.icon_sprite()
     names = set(re.findall(r'icon\("([a-z_-]+)"', APP_JS))

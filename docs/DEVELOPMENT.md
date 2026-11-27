@@ -296,9 +296,13 @@ are, in order, Account, Sync, Folder, Updates and a red Danger zone:
   automatic sync; the menu says "automatic sync off" and no notifications
   arrive until you choose **Sync now**). There is deliberately no
   shorter choice: an idle sync is a few hundred requests to the school.
-  Below it, **Language**: English (default) or Türkçe. The choice is saved in
-  `settings.json` and read when the app starts (`i18n.py`; the Turkish texts are in
-  `locale_tr.py`), so saving a new one offers to restart the app right away.
+  Below it, **Language**: English (default), Türkçe, Español, Français, Deutsch or
+  العربية. The choice is saved in `settings.json` and read when the app starts
+  (`i18n.py`; each language's texts are in its own `locale_<code>.py`, loaded only
+  for the chosen language), so saving a new one offers to restart the app right away.
+  Arabic reads right to left: the Windows page sets `dir="rtl"` (`app.css` uses logical
+  sides), the macOS window mirrors its frame layout (`menubar/rtl_layout.py`) and the Tk
+  fallback right-aligns its labels.
 - **Updates** — **Check for updates automatically**, ticked by default,
   **Check now** and the version number (see [Updates](#updates)).
 - **Danger zone** — **Uninstall app…**, which asks first and removes the app and its data
@@ -1160,7 +1164,7 @@ How it is put together:
 To see the page without Windows, render invented states in Chromium:
 
 ```sh
-PYTHONPATH=src python scripts/webui-preview.py --out /tmp/webui [--lang tr] [--font Inter.woff2]
+PYTHONPATH=src python scripts/webui-preview.py --out /tmp/webui [--lang tr|es|fr|de|ar] [--font Inter.woff2]
 ```
 
 It writes an HTML file per state and screenshots in light and dark at 1024×720 and

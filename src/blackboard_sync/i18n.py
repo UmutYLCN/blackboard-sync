@@ -1,7 +1,8 @@
-"""The app's languages: English, the text written in the code, and Turkish.
+"""The app's languages: English, the text written in the code, and the others in ``LANGUAGES``.
 
 Every text a student reads goes through ``tr`` (or ``ntr`` when it counts
-something); Turkish comes from the catalog in ``locale_tr``. The language is the
+something); each other language comes from its own catalog, ``locale_<code>``
+(``locale_tr``, ``locale_es``, ...), loaded only for the chosen language. The language is the
 ``language`` saved in ``settings.json``. It is read once, the first time a text
 is needed, so the text constants of every module are already in that language;
 a new choice applies when the app starts again.
@@ -11,6 +12,7 @@ a new choice applies when the app starts again.
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 from pathlib import Path
@@ -18,14 +20,27 @@ from typing import Mapping
 
 ENGLISH = "en"
 TURKISH = "tr"
+SPANISH = "es"
+FRENCH = "fr"
+GERMAN = "de"
+ARABIC = "ar"
 # (code, the language's name in itself); the order of the Settings menu.
-LANGUAGES = ((ENGLISH, "English"), (TURKISH, "Türkçe"))
+LANGUAGES = (
+    (ENGLISH, "English"),
+    (TURKISH, "Türkçe"),
+    (SPANISH, "Español"),
+    (FRENCH, "Français"),
+    (GERMAN, "Deutsch"),
+    (ARABIC, "العربية"),
+)
+# Languages written right to left: their windows mirror the layout.
+RTL_LANGUAGES = frozenset({ARABIC})
 DEFAULT_LANGUAGE = ENGLISH
 LANGUAGE_ENV = "BBSYNC_LANGUAGE"
 SETTINGS_FILE = "settings.json"  # settings.SETTINGS_FILE; settings itself needs tr
 
 _language: str | None = None
-_catalog: dict[str, str] | None = None
+_catalogs: dict[str, dict[str, str]] = {}
 
 
 def normalize_language(value: object) -> str:
@@ -66,14 +81,23 @@ def set_language(code: str) -> None:
     _language = normalize_language(code)
 
 
-def catalog() -> dict[str, str]:
-    """English text -> Turkish text."""
-    global _catalog
-    if _catalog is None:
-        from blackboard_sync.locale_tr import CATALOG
+def is_rtl(code: str | None = None) -> bool:
+    """Whether ``code`` (default: the app's language) is written right to left."""
+    return normalize_language(language() if code is None else code) in RTL_LANGUAGES
 
-        _catalog = CATALOG
-    return _catalog
+
+def catalog(code: str | None = None) -> dict[str, str]:
+    """English text -> text in ``code`` (default: the app's language); English has none.
+
+    Only the catalog of a language that is asked for is imported.
+    """
+    code = normalize_language(language() if code is None else code)
+    if code == ENGLISH:
+        return {}
+    if code not in _catalogs:
+        module = importlib.import_module(f"blackboard_sync.locale_{code}")
+        _catalogs[code] = module.CATALOG
+    return _catalogs[code]
 
 
 def tr(text: str) -> str:
@@ -86,6 +110,7 @@ def tr(text: str) -> str:
 def ntr(one: str, many: str, count: int) -> str:
     """``one`` or ``many`` by ``count``, in the app's language ("1 file", "2 files").
 
-    Turkish keeps the noun singular after a number, so both map to the same text.
+    Turkish keeps the noun singular after a number, so both map to the same text; a
+    language with more plural forms (Arabic) uses, for "many", the form its counts read best in.
     """
     return tr(one if count == 1 else many)

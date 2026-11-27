@@ -267,6 +267,7 @@ CATALOG = {
     "Good morning": "Günaydın",
     "Good afternoon": "İyi günler",
     "Good evening": "İyi akşamlar",
+    "{greeting}, {name}": "{greeting}, {name}",
     "No deadlines this week": "Bu hafta teslim tarihi yok",
     "{n} deadline this week": "Bu hafta {n} teslim tarihi",
     "{n} deadlines this week": "Bu hafta {n} teslim tarihi",

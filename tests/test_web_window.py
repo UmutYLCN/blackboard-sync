@@ -393,7 +393,7 @@ GOOD_FORM = {"base_url": "https://bb.example", "dest": "C:/Users/u/Documents", "
 
 
 @pytest.mark.parametrize("change", [
-    {"autostart": "yes"}, {"sync_interval_minutes": 5}, {"sync_interval_minutes": True}, {"language": "de"},
+    {"autostart": "yes"}, {"sync_interval_minutes": 5}, {"sync_interval_minutes": True}, {"language": "pt"},
     {"base_url": None}, {"dest": "x" * 5000}, {"check_updates": 1}, {"auto_relogin": "on"}, {"notebooklm_auto": None},
     {"ai_terminal": "warp"}, {"ai_terminal": 123},
 ])

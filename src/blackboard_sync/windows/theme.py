@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from blackboard_sync.i18n import is_rtl
 from blackboard_sync.menubar.main_window_model import COURSE_PALETTE
 
 LIGHT = {
@@ -74,6 +75,8 @@ def apply_theme(root):
     style.configure(".", font=("Segoe UI", 10))
     style.configure("TFrame", background=colors["window"])
     style.configure("TLabel", background=colors["window"], foreground=colors["text"])
+    if is_rtl():  # Arabic: a label's lines end on the right (main_window.right_justify places them)
+        style.configure("TLabel", anchor="e", justify="right")
     style.configure("Muted.TLabel", foreground=colors["muted"])
     style.configure("TLabelframe", background=colors["surface"], bordercolor=colors["border"],
                      borderwidth=1, relief="solid")

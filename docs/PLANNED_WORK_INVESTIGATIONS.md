@@ -248,7 +248,7 @@ Start with **A**, built from the Saudi table above plus the owner's list, and ve
 
 ### Risks and open points
 
-- **Arabic interface.** The app offers English and Turkish only. Many Saudi students may need Arabic text and right-to-left layout in the school search and in Settings. This is a separate, larger task.
+- **Arabic interface.** Done: Arabic is one of the app's languages, with a right-to-left layout.
 - **Term names.** [src/blackboard_sync/sync.py](../src/blackboard_sync/sync.py) has Turkish season rules for folder names (`TURKISH_SEASONS`, `ACADEMIC_TERM`). Saudi terms may use Arabic names or Hijri years, which can change folder names and which term counts as current. Test with a real account before announcing Saudi support.
 - **Single sign-on.** Saudi universities may use their own identity provider. The sign-in window handles school single sign-on, but a real Saudi account has not been tried.
 - **Hosts change.** Jazan has two possible hosts and KAU lists another one. Keep the verification date in the data and re-check it on a schedule.

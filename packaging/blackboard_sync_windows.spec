@@ -39,7 +39,12 @@ a = Analysis(
         "pystray._win32",
         "playwright.sync_api",
         "blackboard_sync.inapp_windows",
-        "blackboard_sync.locale_tr",  # Turkish, loaded once the language is known
+        # Each language's catalog, imported by name once the language is known.
+        "blackboard_sync.locale_tr",
+        "blackboard_sync.locale_es",
+        "blackboard_sync.locale_fr",
+        "blackboard_sync.locale_de",
+        "blackboard_sync.locale_ar",
         "blackboard_sync.notebooklm.gateway",  # imported only when a run starts
         "webview.platforms.winforms",
         "webview.platforms.edgechromium",

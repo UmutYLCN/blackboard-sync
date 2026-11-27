@@ -827,8 +827,8 @@ def test_genel_bar_appears_only_after_a_change_and_saving_keeps_the_window_open(
         window.target.cancel_(None)  # Vazgeç: back to what is saved
         assert window.button_bar.isHidden() and window.values().sync_interval_minutes == 60
 
-        # Language: English and Türkçe, each named in itself; picking one is an edit like any other.
-        assert [str(t) for t in window.language_popup.itemTitles()] == ['English', 'Türkçe']
+        # Language: every language, each named in itself; picking one is an edit like any other.
+        assert [str(t) for t in window.language_popup.itemTitles()] == ['English', 'Türkçe', 'Español', 'Français', 'Deutsch', 'العربية']
         assert window.values().language == 'en'
         window.language_popup.selectItemWithTitle_('Türkçe')
         window.target.changed_(window.language_popup)

@@ -19,7 +19,7 @@ from blackboard_sync import (ai_launcher, announcements, courses, deadlines, run
 from . import package
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
-from blackboard_sync.i18n import tr
+from blackboard_sync.i18n import is_rtl, tr
 from blackboard_sync.menubar.model import T_RECENT_EMPTY
 from blackboard_sync.windows.pill_button import PillButton
 from blackboard_sync.windows.school_search import SchoolSearch
@@ -107,6 +107,19 @@ def scrolling(canvas, inner):
     child = canvas.create_window((0, 0), window=inner, anchor="nw")
     inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
     canvas.bind("<Configure>", lambda e: canvas.itemconfigure(child, width=e.width))
+
+
+def right_justify(widget) -> None:
+    """Arabic reads right to left: each label in a grid moves to the right side of its cell.
+
+    The ttk style ends a label's lines on the right (theme.apply_theme); this places the labels.
+    """
+    for child in widget.winfo_children():
+        if child.winfo_class() == "TLabel":
+            sticky = str((child.grid_info() or {}).get("sticky", ""))
+            if "w" in sticky and "e" not in sticky:
+                child.grid_configure(sticky=sticky.replace("w", "e"))
+        right_justify(child)
 
 
 def wheel_steps(delta):
@@ -272,6 +285,8 @@ class MainWindow:
         self.update_status(status)
         self.set_values(values)
         self._show_section()
+        if is_rtl():
+            right_justify(window)
 
     # -- layout --------------------------------------------------------------
     def _build_sidebar(self, window):

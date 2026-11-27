@@ -685,7 +685,7 @@ def test_windows_settings_are_sections_of_rows(monkeypatch, tmp_path):
     for key, variable in (('autostart', window.autostart), ('check_updates', window.check_updates)):
         assert window.settings_rows[key].control.options['variable'] is variable
     assert window.interval_dropdown.options['textvariable'] is window.interval
-    assert window.language_dropdown.options['values'] == ['English', 'Türkçe']
+    assert window.language_dropdown.options['values'] == ['English', 'Türkçe', 'Español', 'Français', 'Deutsch', 'العربية']
     assert window.ai_terminal_dropdown.options['textvariable'] is window.ai_terminal
     assert window.ai_terminal_dropdown.options['state'] == 'disabled'
     model.ai_terminal = 'windows_terminal'
@@ -856,7 +856,7 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     window.window.bindings['<Escape>'](None)  # Vazgeç
     assert window.button_bar.removed and window.interval.get() == 'Every hour'
     # Language: English and Türkçe, each named in itself; picking one is an edit like any other.
-    assert window.language_dropdown.options['values'] == ['English', 'Türkçe']
+    assert window.language_dropdown.options['values'] == ['English', 'Türkçe', 'Español', 'Français', 'Deutsch', 'العربية']
     assert window.values().language == 'en'
     window.language.set('Türkçe')
     assert not window.button_bar.removed and window.values().language == 'tr'
@@ -1513,3 +1513,29 @@ def test_windows_home_badges_show_course_title_and_truncate_long_titles(monkeypa
     assert 'wraplength' not in dl_labels[0].options
     assert '… · ' in dl_labels[1].options['text']
     assert 'wraplength' not in dl_labels[1].options
+
+
+def test_arabic_labels_sit_on_the_right_of_their_cells():
+    from blackboard_sync.windows.main_window import right_justify
+
+    class Widget:
+        def __init__(self, kind, sticky=None, *children):
+            self.kind, self.sticky, self.children = kind, sticky, list(children)
+
+        def winfo_children(self):
+            return self.children
+
+        def winfo_class(self):
+            return self.kind
+
+        def grid_info(self):
+            return {} if self.sticky is None else {"sticky": self.sticky}
+
+        def grid_configure(self, sticky):
+            self.sticky = sticky
+
+    title, filled, packed, field = (Widget("TLabel", "w"), Widget("TLabel", "ew"), Widget("TLabel"),
+                                    Widget("TEntry", "w"))
+    nested = Widget("TLabel", "nw")
+    right_justify(Widget("Toplevel", None, title, filled, packed, field, Widget("TFrame", "nsew", nested)))
+    assert (title.sticky, filled.sticky, packed.sticky, field.sticky, nested.sticky) == ("e", "ew", None, "w", "ne")
