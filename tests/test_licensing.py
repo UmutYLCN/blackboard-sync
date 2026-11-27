@@ -176,14 +176,31 @@ def test_distribution_selects_full_for_direct_and_store_for_packaged_msix():
     assert isinstance(msix_provider, WindowsStoreProvider) and msix_provider.managed
 
 
-def test_mac_app_store_seam_uses_grace_until_storekit_lands():
+def test_mac_app_store_distribution_is_free_and_packaged_cannot_downgrade(tmp_path, monkeypatch):
     provider = default_provider(platform="darwin", env={"BBSYNC_DISTRIBUTION": "mas"}, packaged=False, now=NOW)
-    assert isinstance(provider, MacAppStoreUnavailableProvider) and provider.managed
+    assert isinstance(provider, AlwaysFullProvider) and not provider.managed
     state = provider.get_state(NOW)
-    assert state.kind == LicenseKind.UNKNOWN and state.allows_sync(NOW)
-    result = provider.purchase(now=NOW)
-    assert result.outcome == PurchaseOutcome.UNAVAILABLE
-    assert "not available" in result.message
+    assert state == LicenseState(LicenseKind.FULL) and state.allows_sync(NOW)
+
+    # App Sandbox container environment forces "mas" even if BBSYNC_DISTRIBUTION="direct".
+    assert current_distribution(
+        platform="darwin",
+        env={"APP_SANDBOX_CONTAINER_ID": licensing.MAS_BUNDLE_ID, "BBSYNC_DISTRIBUTION": "direct"},
+    ) == licensing.DIST_MAC_APP_STORE
+
+    # Frozen MAS bundle marker also forces "mas" when launched directly from Finder or SMAppService.
+    marker = tmp_path / licensing.MAS_MARKER_REL
+    marker.parent.mkdir(parents=True)
+    marker.write_text("mas\n", encoding="utf-8")
+    monkeypatch.setattr(licensing.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(licensing.sys, "_MEIPASS", str(tmp_path), raising=False)
+    assert licensing.is_mas_packaged(platform="darwin", env={})
+    assert current_distribution(platform="darwin", env={"BBSYNC_DISTRIBUTION": "direct"}) == licensing.DIST_MAC_APP_STORE
+
+    # MacAppStoreUnavailableProvider remains callable as an inert stub.
+    stub = MacAppStoreUnavailableProvider()
+    assert stub.get_state(NOW).allows_sync(NOW)
+    assert stub.purchase(now=NOW).outcome == PurchaseOutcome.UNAVAILABLE
 
 
 def test_license_simulation_supports_trial_expired_and_offline():

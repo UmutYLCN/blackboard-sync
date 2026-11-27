@@ -12,7 +12,7 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from blackboard_sync import runtime, signout
+from blackboard_sync import licensing, runtime, signout
 from blackboard_sync.windows import package
 from blackboard_sync.config import Config
 from blackboard_sync.errors import AlreadyRunning, BlackboardSyncError
@@ -32,6 +32,7 @@ MESSAGE = (
 )
 BUSY = tr("Wait for the sync or the folder move to finish before uninstalling.")
 STORE_REMOVAL = tr("You can uninstall Blackboard Sync from Windows Settings → Apps.")
+MAS_STORE_REMOVAL = tr("You can uninstall Blackboard Sync from Launchpad or the Applications folder.")
 
 
 def trash(path: Path) -> None:
@@ -70,6 +71,8 @@ def app_bundle(executable: Path | None = None) -> Path | None:
 def remove_app() -> list[str]:
     if package.is_packaged():
         return [STORE_REMOVAL]
+    if licensing.is_mas():
+        return [MAS_STORE_REMOVAL]
     if not runtime.is_frozen():
         # A source checkout has no installed app bundle/uninstaller.
         return []
@@ -181,6 +184,8 @@ def uninstall(config: Config, delete_course_files: bool = False, *,
     """
     if package.is_packaged():
         return [STORE_REMOVAL]
+    if licensing.is_mas():
+        return [MAS_STORE_REMOVAL]
     data = config.data_dir.resolve()
     dest = config.dest.resolve()
     if data == data.parent or data == Path.home().resolve() or data == dest or data in dest.parents:

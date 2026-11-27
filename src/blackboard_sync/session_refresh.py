@@ -36,6 +36,7 @@ from urllib.parse import urlsplit
 
 import requests
 
+from blackboard_sync import demo, licensing
 from blackboard_sync.api import BlackboardClient
 from blackboard_sync.config import Config
 from blackboard_sync.errors import AlreadyRunning, BlackboardSyncError, LoginRequired
@@ -334,6 +335,30 @@ def _wait_for_session(
     return TIMED_OUT, None, []
 
 
+def _silent_sign_in_inapp(
+    config: Config,
+    timeout: float,
+    check_user: Callable[[str, list[dict]], dict | None],
+    *,
+    stillness_timeout: float = STILLNESS_TIMEOUT,
+    clock: Callable[[], float] = time.monotonic,
+    inapp_silent: Callable[..., tuple[str, dict | None, list[dict]]] | None = None,
+) -> str:
+    if inapp_silent is None:
+        from blackboard_sync.inapp_macos import silent_sign_in as inapp_silent
+
+    reason, user, cookies = inapp_silent(
+        config.base_url,
+        timeout,
+        check_user,
+        stillness_timeout=stillness_timeout,
+        clock=clock,
+    )
+    if reason == REFRESHED and user is not None:
+        save_session(config.session_file, config.base_url, cookies, user)
+    return reason
+
+
 def silent_sign_in(
     config: Config,
     timeout: float = SILENT_TIMEOUT,
@@ -344,11 +369,33 @@ def silent_sign_in(
     platform: str | None = None,
     clock: Callable[[], float] = time.monotonic,
     stillness_timeout: float = STILLNESS_TIMEOUT,
+    inapp_silent: Callable[..., tuple[str, dict | None, list[dict]]] | None = None,
 ) -> RefreshResult:
     """Try to sign in again with no window; never raises for an expected failure."""
     started = clock()
+    if demo.is_demo_url(config.base_url):
+        return RefreshResult(REFRESHED, 0.0)
     if not _session_saved(config):
         return RefreshResult(NOT_SIGNED_IN)
+    if licensing.is_mas(platform=platform):
+        try:
+            with run_lock(config.lock_file), profile_lock(config):
+                reason = _silent_sign_in_inapp(
+                    config,
+                    timeout,
+                    check_user,
+                    stillness_timeout=stillness_timeout,
+                    clock=clock,
+                    inapp_silent=inapp_silent,
+                )
+        except AlreadyRunning:
+            return RefreshResult(LOCKED)
+        except ProfileBusy:
+            return RefreshResult(PROFILE_BUSY)
+        except Exception as exc:
+            log.info("background WKWebView sign-in: %s", type(exc).__name__)
+            return RefreshResult(FAILED)
+        return RefreshResult(reason, clock() - started)
     if not config.profile_dir.is_dir():
         return RefreshResult(NOT_SIGNED_IN)
     app = discover_browser("auto", app_dirs, platform=platform)
@@ -415,6 +462,8 @@ def _sign_in_with_profile(
 
 def keep_alive(config: Config) -> KeepAlive:
     """One light request with the saved session; cookies it rotates are saved."""
+    if demo.is_demo_url(config.base_url):
+        return KeepAlive(ALIVE)
     try:
         with run_lock(config.lock_file):
             session_data = load_session(config.session_file, config.base_url)

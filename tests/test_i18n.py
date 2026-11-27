@@ -65,7 +65,7 @@ def test_catalog_has_no_unused_entries(code):
     assert set(catalog_of(code)) - set(source_texts()) == set()
 
 
-@pytest.mark.parametrize("spec", ["blackboard_sync.spec", "blackboard_sync_windows.spec"])
+@pytest.mark.parametrize("spec", ["blackboard_sync.spec", "blackboard_sync_mas.spec", "blackboard_sync_windows.spec"])
 def test_frozen_apps_bundle_every_catalog(spec):
     """The catalogs are imported by name, which PyInstaller cannot see; the specs list them."""
     text = (ROOT / "packaging" / spec).read_text(encoding="utf-8")

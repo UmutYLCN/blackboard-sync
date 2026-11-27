@@ -10,6 +10,7 @@ illustration is drawn by ``sync_scene_view.py``.
 
 from __future__ import annotations
 
+import os
 import sys
 from functools import lru_cache, wraps
 from math import ceil
@@ -79,7 +80,7 @@ from AppKit import (
 )
 from Foundation import NSURL, NSMakeRect, NSObject, NSTimer, NSRunLoop, NSRunLoopCommonModes
 
-from blackboard_sync import ai_launcher, courses, deadlines, schools, term_confirm
+from blackboard_sync import ai_launcher, courses, deadlines, licensing, schools, term_confirm
 from blackboard_sync.menubar.main_window_model import (
     ACTIVITY,
     AI_ATTENTION,
@@ -90,6 +91,7 @@ from blackboard_sync.menubar.main_window_model import (
     COURSES,
     CALENDAR,
     COURSE_PALETTE,
+    DEMO_ACTION,
     GENERAL,
     HOME_DEADLINE_ROWS,
     HOME_ANNOUNCEMENT_ROWS,
@@ -103,6 +105,7 @@ from blackboard_sync.menubar.main_window_model import (
     STATE_SYNCED,
     T_ACTIVITY_EMPTY,
     T_AI_TITLE,
+    T_CHOOSE_FOLDER_PLACEHOLDER,
     T_HOME_CALENDAR,
     T_HOME_ANNOUNCEMENTS,
     T_NAME,
@@ -117,6 +120,7 @@ from blackboard_sync.menubar.main_window_model import (
     T_SHOW_IN_FOLDER,
     T_SIZE,
     T_STATUS,
+    T_TRY_DEMO,
     T_VIEW_ALL,
     T_NAV_COURSES,
     T_OPEN_FOLDER,
@@ -179,6 +183,7 @@ from blackboard_sync.menubar.school_picker import SchoolPicker
 from blackboard_sync.menubar import rtl_layout
 from blackboard_sync.menubar.presentation import configure_main_window, present_main_window
 from blackboard_sync.settings import AI_CLIS, AI_CODEX, display_path
+from blackboard_sync.system import real_user_home
 
 # The window keeps its width; only the height follows the screen and the student.
 WIDTH = 960
@@ -516,6 +521,9 @@ class _Target(NSObject):
 
     def start_(self, _sender):
         self.owner.submit(login=self.owner.status.start_login)
+
+    def tryDemo_(self, _sender):
+        self.owner.try_demo()
 
     def openAnnouncement_(self, sender):
         rows = self.owner._drawn_announcements or ()
@@ -855,6 +863,13 @@ class MainWindow:
         self.error = ""
         self._terminal_choices: tuple[tuple[str, str], ...] = ()
         self._terminal_dirty = False
+        self._picked_folders: dict[str, object] = {}
+        # Optional Settings controls omitted in Mac App Store (mas) builds.
+        self.check_updates = None
+        self.notebooklm_switch = None
+        self.terminal_popup = None
+        self.ai_resume_switch = None
+        self.uninstall_button = None
         self._drawn_recent = None
         self._drawn_announcements = None
         self._drawn_announcement_colors = None
@@ -1090,6 +1105,10 @@ class MainWindow:
         content.addSubview_(choose)
         self.start_dest = NSTextField.textFieldWithString_("")
         self.start_dest.setDelegate_(self.target)
+        if licensing.is_mas():
+            self.start_dest.setEditable_(False)
+            self.start_dest.setSelectable_(True)
+            self.start_dest.setPlaceholderString_(T_CHOOSE_FOLDER_PLACEHOLDER)
         self.start_dest.setFrame_(NSMakeRect(20, y, inner - choose_width - 8, FIELD_HEIGHT))
         content.addSubview_(self.start_dest)
         y += FIELD_HEIGHT + 6
@@ -1106,6 +1125,13 @@ class MainWindow:
         _primary(self.start_button)
         content.addSubview_(self.start_button)
         y += BUTTON_HEIGHT + 8
+        self.demo_button = NSButton.buttonWithTitle_target_action_(T_TRY_DEMO, self.target, "tryDemo:")
+        self.demo_button.setFrame_(NSMakeRect(18, y, inner + 4, BUTTON_HEIGHT))
+        content.addSubview_(self.demo_button)
+        if licensing.is_mas():
+            y += BUTTON_HEIGHT + 8
+        else:
+            self.demo_button.setHidden_(True)
         self.start_message, _ = _wrapping("", inner, _small(), secondary=True)
         self.start_message.setFrame_(NSMakeRect(20, y, inner, 32))
         content.addSubview_(self.start_message)
@@ -1527,15 +1553,24 @@ class MainWindow:
         if status.update_banner is not None:
             self.overview_update_banner[0].setFrame_(NSMakeRect(PAD, top, INNER, UPDATE_BANNER_HEIGHT))
             top += UPDATE_BANNER_HEIGHT + GAP
-        # The NotebookLM card is laid out first: the files give way to it in a short window.
-        notebooklm_height = self._layout_notebooklm_card()
+        # The NotebookLM card is laid out first when shown: the files give way to it in a short window.
+        if status.shows_notebooklm:
+            self.notebooklm_card.setHidden_(False)
+            notebooklm_height = self._layout_notebooklm_card()
+            notebooklm_space = notebooklm_height + GAP
+        else:
+            self.notebooklm_card.setHidden_(True)
+            self._notebooklm_height = 0
+            notebooklm_height = 0
+            notebooklm_space = 0
         ai_height = self._layout_ai_card()
-        height = self._layout_status_card(self.pages[OVERVIEW].frame().size.height - top - GAP - notebooklm_height - PAD)
+        height = self._layout_status_card(self.pages[OVERVIEW].frame().size.height - top - notebooklm_space - PAD)
         self.status_card.setFrame_(NSMakeRect(PAD, top, LEFT_W, height))
         self.status_card.contentView().setFrame_(NSMakeRect(0, 0, LEFT_W, height))
-        self._place_notebooklm_card(top + height + GAP)
-        self._place_ai_card(top + height + GAP + notebooklm_height + GAP)
-        left_bottom = top + height + GAP + notebooklm_height + GAP + ai_height
+        if status.shows_notebooklm:
+            self._place_notebooklm_card(top + height + GAP)
+        self._place_ai_card(top + height + GAP + notebooklm_space)
+        left_bottom = top + height + GAP + notebooklm_space + ai_height
         notify_height = self._draw_home_notifications()
         calendar_height = self._draw_home_calendar()
         self._home_heights = (notify_height, calendar_height)
@@ -1557,7 +1592,8 @@ class MainWindow:
 
     def _fitting_rows(self) -> int:
         available = self.pages[OVERVIEW].frame().size.height - self.status_card.frame().origin.y
-        return home_recent_rows(available - GAP - self._notebooklm_height - PAD, self._status_fixed, ROW_HEIGHT,
+        notebooklm_space = (self._notebooklm_height + GAP) if self.status.shows_notebooklm else 0
+        return home_recent_rows(available - notebooklm_space - PAD, self._status_fixed, ROW_HEIGHT,
                                 len(self.status.recent))
 
     def _layout_status_card(self, available: float) -> float:
@@ -1600,7 +1636,7 @@ class MainWindow:
                 view.start()
             else:
                 view.stop()
-        if self.status.notebooklm.running and self.state.open and self.state.section == OVERVIEW:
+        if self.status.shows_notebooklm and self.status.notebooklm.running and self.state.open and self.state.section == OVERVIEW:
             self.notebooklm_scene.start()
         else:
             self.notebooklm_scene.stop()
@@ -1671,9 +1707,14 @@ class MainWindow:
         self.form_scroll, view = _scroll(NSMakeRect(0, HEADER - 8, PAGE, HEIGHT - HEADER + 8), 1)
         page.addSubview_(self.form_scroll)
         self.settings_rows = {}
+        mas = licensing.is_mas()
         y = 8
-        for section in settings_sections(notebooklm=True, auto_relogin=True):
+        for section in settings_sections(notebooklm=not mas, auto_relogin=True, mas=mas):
             y = self._build_section(view, section, y)
+        if mas:
+            self.dest_field.setEditable_(False)
+            self.dest_field.setSelectable_(True)
+            self.dest_field.setPlaceholderString_(T_CHOOSE_FOLDER_PLACEHOLDER)
         y += PAD - SECTION_GAP
         view.setFrame_(NSMakeRect(0, 0, PAGE, y))
         self.form_height = y
@@ -1858,6 +1899,10 @@ class MainWindow:
             switch.setFrameSize_(switch.fittingSize())
             return switch
         button = NSButton.buttonWithTitle_target_action_(row.button, self.target, ROW_ACTIONS[row.key])
+        if row.key == "update" and not row.button:
+            button.setHidden_(True)
+            button.setFrameSize_((0, 0))
+            return button
         width = ROW_BUTTON_WIDTH.get(row.key, max(button.fittingSize().width + 24, 90))
         button.setFrameSize_((width, BUTTON_HEIGHT))
         if row.destructive:
@@ -2057,7 +2102,7 @@ class MainWindow:
             self.refresh_announcements()
 
     def values(self) -> FormValues:
-        if not self._terminal_dirty or not self._terminal_choices:
+        if self.terminal_popup is None or not self._terminal_dirty or not self._terminal_choices:
             ai_terminal = self.saved.ai_terminal
         else:
             index = int(self.terminal_popup.indexOfSelectedItem())
@@ -2072,15 +2117,25 @@ class MainWindow:
             base_url=str(self.url_field.stringValue()),
             dest=str(self.dest_field.stringValue()),
             autostart=bool(self.autostart.state()),
-            check_updates=bool(self.check_updates.state()),
+            check_updates=(
+                bool(self.check_updates.state()) if self.check_updates is not None else self.saved.check_updates
+            ),
             sync_interval_minutes=next(
                 (m for m, title in INTERVAL_OPTIONS if title == str(self.interval_popup.titleOfSelectedItem())), 60
             ),
             language=language_code(str(self.language_popup.titleOfSelectedItem())),
             auto_relogin=bool(self.auto_relogin.state()),
-            notebooklm_auto=bool(self.notebooklm_switch.state()),
+            notebooklm_auto=(
+                bool(self.notebooklm_switch.state())
+                if self.notebooklm_switch is not None
+                else self.saved.notebooklm_auto
+            ),
             ai_terminal=ai_terminal,
-            ai_resume=bool(self.ai_resume_switch.state()),
+            ai_resume=(
+                bool(self.ai_resume_switch.state())
+                if self.ai_resume_switch is not None
+                else self.saved.ai_resume
+            ),
         )
 
     @_mirrored
@@ -2095,13 +2150,16 @@ class MainWindow:
             field.setStringValue_(values.dest)
         for box in (self.autostart, self.start_autostart):
             box.setState_(1 if values.autostart else 0)
-        self.check_updates.setState_(1 if values.check_updates else 0)
+        if self.check_updates is not None:
+            self.check_updates.setState_(1 if values.check_updates else 0)
         self.auto_relogin.setState_(1 if values.auto_relogin else 0)
         self.interval_popup.selectItemWithTitle_(interval_title(values.sync_interval_minutes))
         self.language_popup.selectItemWithTitle_(language_title(values.language))
-        self.notebooklm_switch.setState_(1 if values.notebooklm_auto else 0)
+        if self.notebooklm_switch is not None:
+            self.notebooklm_switch.setState_(1 if values.notebooklm_auto else 0)
         self._refresh_terminal_popup(self.status.form)
-        self.ai_resume_switch.setState_(1 if values.ai_resume else 0)
+        if self.ai_resume_switch is not None:
+            self.ai_resume_switch.setState_(1 if values.ai_resume else 0)
         self.show_error("")
 
     @_mirrored
@@ -2171,6 +2229,8 @@ class MainWindow:
         # Başlangıç
         self.start_button.setTitle_(status.start_title)
         self.start_button.setEnabled_(status.start_enabled)
+        self.demo_button.setHidden_(not status.shows_demo)
+        self.demo_button.setEnabled_(status.start_enabled)
         self._draw_start_message()
         # Home
         self.overview_title.setStringValue_(status.home_heading or status.overview_title)
@@ -2210,15 +2270,18 @@ class MainWindow:
         form = status.form
         self._refresh_terminal_popup(form)
         for key, state in row_states(form).items():
-            if not key.startswith("google_calendar"):
+            if not key.startswith("google_calendar") and key in self.settings_rows:
                 self._apply_row_state(key, state)
         self._update_google_calendar(form)
-        self._apply_row_state("notebooklm_disconnect", notebooklm_disconnect_state(form))
+        if "notebooklm_disconnect" in self.settings_rows:
+            self._apply_row_state("notebooklm_disconnect", notebooklm_disconnect_state(form))
         self._animate()
         self.refresh_announcements()
 
     def _refresh_terminal_popup(self, form) -> None:
         popup = self.terminal_popup
+        if popup is None:
+            return
         choices = ai_terminal_choices(form.ai_terminals, self.saved.ai_terminal)
         current_key = ""
         if self._terminal_dirty and self._terminal_choices:
@@ -2430,6 +2493,12 @@ class MainWindow:
     @_mirrored
     def submit(self, login: bool) -> None:
         """Save the form (Kaydet, or before signing in); the window stays open either way."""
+        if (
+            licensing.is_mas()
+            and str(self.url_field.stringValue()).strip()
+            and not str(self.dest_field.stringValue()).strip()
+        ):
+            self.choose_folder()
         error = self.on_submit(self.values(), login)
         if error is None:
             self.set_values(self.on_values())
@@ -2443,7 +2512,20 @@ class MainWindow:
         self.window.makeFirstResponder_(target)
 
     @_mirrored
-    def choose_folder(self, sender=None) -> None:
+    def try_demo(self) -> None:
+        """Start the offline Demo Mode after ensuring the user explicitly chose a download folder."""
+        if licensing.is_mas() and not str(self.dest_field.stringValue()).strip():
+            if not self.choose_folder():
+                self.show_error(tr("Choose the folder to save the files in."))
+                return
+        self.on_action(DEMO_ACTION)
+
+    def picked_folder_url(self, dest: Path) -> object | None:
+        """Return the ``NSOpenPanel`` ``NSURL`` for ``dest`` when picked in this session."""
+        return self._picked_folders.get(os.path.normpath(str(dest)))
+
+    @_mirrored
+    def choose_folder(self, sender=None) -> bool:
         panel = NSOpenPanel.openPanel()
         panel.setCanChooseDirectories_(True)
         panel.setCanChooseFiles_(False)
@@ -2451,13 +2533,26 @@ class MainWindow:
         panel.setAllowsMultipleSelection_(False)
         panel.setPrompt_(T_CHOOSE_FOLDER_PROMPT)
         panel.setMessage_(T_CHOOSE_FOLDER_MESSAGE)
-        start = Path(str(self.dest_field.stringValue()).strip() or "~").expanduser()
+        raw_dest = str(self.dest_field.stringValue()).strip()
+        if raw_dest:
+            start = Path(raw_dest).expanduser()
+        else:
+            real_home = real_user_home()
+            docs = real_home / "Documents"
+            start = docs if docs.is_dir() else real_home
         while not start.is_dir() and start != start.parent:
             start = start.parent
         panel.setDirectoryURL_(NSURL.fileURLWithPath_(str(start)))
         if panel.runModal() == NSModalResponseOK and panel.URL() is not None:
-            self.dest_field.setStringValue_(display_path(Path(panel.URL().path())))
+            chosen_url = panel.URL()
+            chosen_path = Path(os.path.normpath(str(chosen_url.path())))
+            self._picked_folders[str(chosen_path)] = chosen_url
+            shown = display_path(chosen_path)
+            for field in (self.dest_field, self.start_dest):
+                field.setStringValue_(shown)
             self.changed(self.dest_field)
+            return True
+        return False
 
     def close(self) -> None:
         self.window.close()  # windowWillClose_ reports it

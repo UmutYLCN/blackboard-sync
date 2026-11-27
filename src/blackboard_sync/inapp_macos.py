@@ -13,11 +13,14 @@ from __future__ import annotations
 import queue
 import signal
 import threading
+import time
+from urllib.parse import urlsplit
 
 import objc
 from AppKit import (
     NSApplication,
     NSApplicationActivateIgnoringOtherApps,
+    NSApplicationActivationPolicyAccessory,
     NSApplicationActivationPolicyRegular,
     NSBackingStoreBuffered,
     NSEvent,
@@ -40,11 +43,50 @@ from blackboard_sync.inapp import (
     WINDOW_SIZE,
     WINDOW_TITLE,
     Outcome,
+    blackboard_cookies,
     cookies_from_nshttpcookies,
     watch_for_session,
 )
+from blackboard_sync.session import cookie_matches_host, host_of
 
 COOKIE_READ_SECONDS = 10
+SILENT_POLL_SECONDS = 1.0
+
+# Read-only DOM check used by WKWebView silent refresh: detects visible sign-in inputs or
+# account pickers without ever reading, modifying, or submitting any field values.
+_SILENT_STATE_JS = """
+(() => {
+  const vis = (el) => {
+    if (!el) return false;
+    const s = getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  const sels = [
+    "input[type=password]",
+    "input[type=email]",
+    "input[type=text][name*='user' i]",
+    "input[type=text][name*='login' i]",
+    "input[type=text][name*='email' i]",
+    "input[type=text][id*='user' i]",
+    "input[type=text][id*='login' i]",
+    "input[type=text][id*='email' i]",
+    "input[name*='otp' i]",
+    "input[name*='code' i]",
+    "input[id*='otp' i]",
+    "input[id*='code' i]",
+    "input[autocomplete*='one-time-code' i]",
+    "[data-testid*='account' i]",
+    "[id*='account-list' i]",
+    "[class*='account-tile' i]",
+    "[class*='account-item' i]",
+    "div[role='listbox']"
+  ];
+  const wants = sels.some((q) => Array.from(document.querySelectorAll(q)).some(vis));
+  return [String(location.href || ''), String(document.title || ''), Boolean(wants)];
+})()
+"""
 
 
 class SignInWindowDelegate(NSObject):
@@ -192,3 +234,146 @@ def sign_in(url, base_url, timeout, check_user, profile_dir) -> tuple[dict, list
     finally:
         signal.signal(signal.SIGINT, previous)
     return outcome.result()
+
+
+def _is_login_url(url: str, base_url: str) -> bool:
+    host = (urlsplit(url).hostname or "").lower()
+    bb_host = host_of(base_url).lower()
+    if host not in ("", "about", bb_host):
+        return True
+    lowered = url.lower()
+    return any(marker in lowered for marker in ("/webapps/login", "/auth-saml", "/webapps/bb-auth-provider"))
+
+
+def silent_sign_in(
+    base_url: str,
+    timeout: float,
+    check_user,
+    stillness_timeout: float = 6.0,
+    clock=time.monotonic,
+) -> tuple[str, dict | None, list[dict]]:
+    """Refresh the Blackboard session silently using an offscreen WKWebView and its persistent cookie store.
+
+    Used by Mac App Store (``mas``) builds in place of headless external Chromium + Playwright CDP.
+    Shows no window and no Dock icon: Blackboard cookies are cleared first so stale cookies are not
+    re-saved, while the school's SSO cookies in ``WKWebsiteDataStore.defaultDataStore()`` remain intact.
+    """
+    app = NSApplication.sharedApplication()
+    if not app.isRunning():
+        app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+
+    closed = threading.Event()
+    delegate = SignInWindowDelegate.alloc().initWithClosed_(closed)
+    config = WKWebViewConfiguration.alloc().init()
+    config.setWebsiteDataStore_(WKWebsiteDataStore.defaultDataStore())
+    web_view = WKWebView.alloc().initWithFrame_configuration_(NSMakeRect(0, 0, 800, 600), config)
+    web_view.setUIDelegate_(delegate)
+    store = config.websiteDataStore().httpCookieStore()
+    bb_host = host_of(base_url)
+
+    def clear_blackboard_cookies_and_load() -> None:
+        def on_cookies(all_cookies) -> None:
+            to_delete = [
+                c for c in (all_cookies or [])
+                if cookie_matches_host(str(c.domain() or bb_host), bb_host)
+            ]
+            if not to_delete:
+                web_view.loadRequest_(NSURLRequest.requestWithURL_(NSURL.URLWithString_(base_url + "/")))
+                return
+            remaining = [len(to_delete)]
+
+            def after_delete() -> None:
+                remaining[0] -= 1
+                if remaining[0] <= 0:
+                    web_view.loadRequest_(NSURLRequest.requestWithURL_(NSURL.URLWithString_(base_url + "/")))
+
+            for cookie in to_delete:
+                store.deleteCookie_completionHandler_(cookie, after_delete)
+
+        store.getAllCookies_(on_cookies)
+
+    def fetch_cookies() -> list[dict]:
+        answer: queue.Queue = queue.Queue()
+        AppHelper.callAfter(
+            lambda: store.getAllCookies_(lambda cookies: answer.put(cookies_from_nshttpcookies(cookies)))
+        )
+        try:
+            return answer.get(timeout=COOKIE_READ_SECONDS)
+        except queue.Empty:
+            return []
+
+    def inspect_page() -> tuple[str, str, bool]:
+        answer: queue.Queue = queue.Queue()
+
+        def evaluate() -> None:
+            def on_js(result, _error) -> None:
+                if result is not None and len(result) == 3:
+                    answer.put((str(result[0] or ""), str(result[1] or ""), bool(result[2])))
+                else:
+                    current_url = str(web_view.URL().absoluteString() if web_view.URL() else "")
+                    answer.put((current_url, str(web_view.title() or ""), False))
+
+            web_view.evaluateJavaScript_completionHandler_(_SILENT_STATE_JS, on_js)
+
+        AppHelper.callAfter(evaluate)
+        try:
+            return answer.get(timeout=5.0)
+        except queue.Empty:
+            return "", "", False
+
+    result_box: list[tuple[str, dict | None, list[dict]]] = []
+
+    def poll_worker() -> None:
+        reason, found_user, found_cookies = "timeout", None, []
+        try:
+            deadline = clock() + timeout
+            last_snap = None
+            snap_since = clock()
+            # Give initial cookie deletion + request start a brief moment.
+            closed.wait(0.4)
+            while clock() < deadline and not closed.is_set():
+                cookies = blackboard_cookies(fetch_cookies(), base_url)
+                user = check_user(base_url, cookies) if cookies else None
+                if user:
+                    reason, found_user, found_cookies = "refreshed", user, cookies
+                    return
+                url_str, title_str, wants_student = inspect_page()
+                now = clock()
+                snap = (url_str, title_str)
+                if url_str and snap != last_snap:
+                    last_snap = snap
+                    snap_since = now
+                elif last_snap is not None and (now - snap_since) >= stillness_timeout:
+                    reason = "sso-needs-interaction"
+                    return
+                if wants_student:
+                    reason = "sso-needs-interaction"
+                    return
+                if "/webapps/login" in url_str.lower() and (now - snap_since) >= 2.0:
+                    reason = "sso-needs-interaction"
+                    return
+                closed.wait(SILENT_POLL_SECONDS)
+            url_str, _, _ = inspect_page()
+            if _is_login_url(url_str, base_url):
+                reason = "sso-needs-interaction"
+        finally:
+            result_box.append((reason, found_user, found_cookies))
+            AppHelper.callAfter(finish)
+
+    def finish() -> None:
+        closed.set()
+        web_view.stopLoading()
+        stop_event_loop()
+
+    def interrupted(*_args) -> None:
+        closed.set()
+        AppHelper.callAfter(finish)
+
+    AppHelper.callAfter(clear_blackboard_cookies_and_load)
+    threading.Thread(target=poll_worker, daemon=True).start()
+    previous = signal.signal(signal.SIGINT, interrupted)
+    try:
+        app.run()
+    finally:
+        signal.signal(signal.SIGINT, previous)
+    return result_box[0] if result_box else ("error", None, [])

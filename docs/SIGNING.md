@@ -9,7 +9,8 @@ Developer ID is for.
 
 Nothing changes until the secrets below exist: without them every release is
 built exactly as before (ad-hoc signed `.dmg`). Windows signing is separate
-work.
+work; for the sandboxed Mac App Store `.pkg` build see
+[MAC_APP_STORE.md](MAC_APP_STORE.md).
 
 ## What the release workflow does
 

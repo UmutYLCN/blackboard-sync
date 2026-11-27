@@ -14,7 +14,7 @@ from pathlib import Path
 
 import requests
 
-from blackboard_sync import __version__, relocate
+from blackboard_sync import __version__, demo, macos_bookmarks, relocate
 from blackboard_sync.api import BlackboardClient
 from blackboard_sync.config import Config
 from blackboard_sync.errors import (
@@ -133,6 +133,8 @@ def make_config(args: argparse.Namespace) -> Config:
 
 
 def open_client(config: Config) -> tuple[BlackboardClient, dict]:
+    if demo.is_demo_url(config.base_url):
+        return demo.open_demo_client()
     session_data = load_session(config.session_file, config.base_url)
     return BlackboardClient(config.base_url, http_session(session_data)), session_data
 
@@ -164,23 +166,25 @@ def cmd_refresh_session(args, config: Config) -> int:
 
 
 def cmd_check(args, config: Config) -> int:
-    client, session_data = open_client(config)
-    try:
-        me = client.me()
-        print(tr("Session OK: signed in as {name}.").format(name=me.get("userName") or me.get("id")))
-        # The recorded files decide the folders, as in a real sync; nothing is written.
-        syncer = Syncer(client, config, State.load(config.state_file, backup=False), dry_run=True)
-        warnings: list[str] = []
-        terms, courses = syncer.discover(me["id"], args.all_terms, args.course, warnings=warnings)
-        print(tr("Term(s): {terms}").format(terms=", ".join(t.name for t in terms) or tr("none found")))
-        for course in courses:
-            print(f"  {config.root / course.rel_dir}")
-        for warning in warnings:
-            print(f"  ! {warning}")
-        refresh_saved_cookies(config.session_file, session_data, client.http)
-        return EXIT_OK
-    finally:
-        client.close()
+    with macos_bookmarks.scoped_folder_access(config.data_dir, require=False):
+        client, session_data = open_client(config)
+        try:
+            me = client.me()
+            print(tr("Session OK: signed in as {name}.").format(name=me.get("userName") or me.get("id")))
+            # The recorded files decide the folders, as in a real sync; nothing is written.
+            syncer = Syncer(client, config, State.load(config.state_file, backup=False), dry_run=True)
+            warnings: list[str] = []
+            terms, courses = syncer.discover(me["id"], args.all_terms, args.course, warnings=warnings)
+            print(tr("Term(s): {terms}").format(terms=", ".join(t.name for t in terms) or tr("none found")))
+            for course in courses:
+                print(f"  {config.root / course.rel_dir}")
+            for warning in warnings:
+                print(f"  ! {warning}")
+            if not demo.is_demo_url(config.base_url):
+                refresh_saved_cookies(config.session_file, session_data, client.http)
+            return EXIT_OK
+        finally:
+            client.close()
 
 
 @contextmanager
@@ -208,7 +212,9 @@ def cmd_sync(args, config: Config) -> int:
     migrated = None
     try:
         config.ensure_data_dir()
-        with _exit_on_sigterm(), run_lock(config.lock_file):
+        with _exit_on_sigterm(), run_lock(config.lock_file), macos_bookmarks.scoped_folder_access(
+            config.data_dir, require=not args.dry_run
+        ):
             if not args.dry_run:
                 # Before anything is downloaded, so files an older version put
                 # straight into the chosen folder are not fetched again.
@@ -227,7 +233,8 @@ def cmd_sync(args, config: Config) -> int:
                 )
             finally:
                 try:
-                    refresh_saved_cookies(config.session_file, session_data, client.http)
+                    if not demo.is_demo_url(config.base_url):
+                        refresh_saved_cookies(config.session_file, session_data, client.http)
                 finally:
                     client.close()
     except LoginRequired as exc:

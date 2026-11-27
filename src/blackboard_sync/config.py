@@ -46,7 +46,7 @@ class Config:
         decides which saved settings are read.
         """
         env = os.environ if env is None else env
-        data_dir = Path(data_dir or env.get("BBSYNC_DATA_DIR") or DEFAULT_DATA_DIR).expanduser()
+        data_dir = Path(data_dir or env.get("BBSYNC_DATA_DIR") or default_data_dir(env=env)).expanduser()
         saved = load_settings(data_dir)
         return cls(
             base_url=env.get("BBSYNC_BASE_URL") or (saved.base_url if saved else DEFAULT_BASE_URL),

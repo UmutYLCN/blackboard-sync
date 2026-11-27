@@ -20,7 +20,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable
 
-from blackboard_sync import __version__, ai_launcher, term_confirm
+from blackboard_sync import __version__, ai_launcher, licensing, term_confirm
 from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
 from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.inapp import INAPP
@@ -1272,7 +1272,7 @@ class AppModel:
 
     def finish_ai_launch(self, result: ai_launcher.LaunchResult) -> None:
         self.ai_launching = False
-        self.ai_result = None if result.ok else result
+        self.ai_result = result if (not result.ok or result.copied_command) else None
         if result.ok and result.tool is not None:
             self.ai_cli = result.tool.key
 
@@ -1287,17 +1287,18 @@ class AppModel:
 
     def menu(self, now: datetime) -> MenuModel:
         expired_license = self.license_expired(now)
+        mas = licensing.is_mas()
         menu = MenuModel(
             status_lines=self.status_lines(now),
             sync_title=T_SYNCING if self.busy == "sync" else T_SYNC_NOW,
-            sync_enabled=self.busy is None and not self.paused and not expired_license,
+            sync_enabled=self.busy is None and not self.paused and not expired_license and (not mas or self.configured),
             recent=unique_labels([(f"{(parse_iso(item.at) or now).astimezone():%d.%m %H:%M} · {item.label}", item.path)
                                   for item in self.visible_recent()]),
         )
         name, expired = self.account()
         if name is None:
             title = T_LOGGING_IN if self.busy == "login" else T_EXPIRED if expired else T_LOGIN
-            top = [MenuEntry(title, "login", enabled=self.busy is None, warning=expired)]
+            top = [MenuEntry(title, "login", enabled=self.busy is None and (not mas or self.configured), warning=expired)]
         else:
             top = []
         course_items = []
@@ -1307,7 +1308,7 @@ class AppModel:
             if count:
                 label += " " + tr("({n} new)").format(n=count)
             course_items.append((label, course.folder))
-        update = self.updates.menu_entry()
+        update = None if mas else self.updates.menu_entry()
         sync = MenuEntry(menu.sync_title, "sync", enabled=menu.sync_enabled)
         pause = MenuEntry(T_RESUME if self.paused else T_PAUSE, "pause", enabled=self.configured and not expired_license)
         status = [MenuEntry(line, enabled=False) for line in menu.status_lines]
@@ -1315,9 +1316,15 @@ class AppModel:
         head = ([*top, sync, pause, *status, MenuEntry()] if self.sync_interval is None
                 else [*top, *status, MenuEntry(), sync, pause])
         ai_tool = ai_launcher.preferred_tool(self.ai_cli, self.ai_installed)
-        ai_entry = ([MenuEntry(tr("Open {name} in {term}").format(name=ai_tool.name, term=self.current_ai_term()),
-                               "ai_open", enabled=not self.ai_launching)]
-                    if ai_tool is not None else [])
+        if ai_tool is not None and (not mas or self.configured):
+            ai_label = (
+                tr("Copy {name} command for {term}").format(name=ai_tool.name, term=self.current_ai_term())
+                if mas
+                else tr("Open {name} in {term}").format(name=ai_tool.name, term=self.current_ai_term())
+            )
+            ai_entry = [MenuEntry(ai_label, "ai_open", enabled=not self.ai_launching)]
+        else:
+            ai_entry = []
         menu.entries = [
             *head,
             MenuEntry(tr("Courses"), children=[MenuEntry(label, "open", value=path) for label, path in unique_labels(course_items)] or [MenuEntry(tr("No courses yet"), enabled=False)]),

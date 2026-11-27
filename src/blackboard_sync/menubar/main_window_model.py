@@ -37,7 +37,7 @@ from datetime import datetime, timedelta, tzinfo
 from hashlib import sha1
 from pathlib import Path, PurePosixPath
 
-from blackboard_sync import __version__, ai_launcher, announcements, courses, deadlines, updater
+from blackboard_sync import __version__, ai_launcher, announcements, courses, deadlines, licensing, updater
 from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.licensing import LicenseKind
 from blackboard_sync.menubar.model import (
@@ -87,6 +87,9 @@ START_STEPS = (
      tr("Every hour by default. You can change how often in Settings.")),
 )
 T_START_FORM = tr("Let's get started")
+T_TRY_DEMO = tr("Try the demo")
+T_CHOOSE_FOLDER_PLACEHOLDER = tr("Choose a folder…")
+DEMO_ACTION = "try_demo"
 
 
 def reopen_hint(where: str) -> str:
@@ -596,6 +599,8 @@ class MainStatus:
     ai: AiCard = AiCard(AI_OFF, T_AI_LOOKING)
     course_colors: Mapping[str, int] = field(default_factory=dict)
     license: LicenseCard | None = None
+    shows_demo: bool = False
+    shows_notebooklm: bool = True
 
     @property
     def overview_title(self) -> str:
@@ -709,6 +714,12 @@ def notebooklm_warning_counts(status: NotebookLMStatus) -> str:
 
 def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
     """Not connected, signing in, running, needing the student, or idle with the last run's result."""
+    if licensing.is_mas():
+        return NotebookLMCard(
+            NOTEBOOKLM_OFF,
+            tr("Gemini Notebook sign-in is not available in the Mac App Store version."),
+            enabled=False,
+        )
     status, busy = model.notebooklm, model.notebooklm_busy
     connect = {"action": "notebooklm_connect", "action_title": T_NOTEBOOKLM_CONNECT}
     sync = {"action": "notebooklm_sync", "action_title": T_NOTEBOOKLM_SYNC, "enabled": not model.paused,
@@ -746,13 +757,22 @@ def ai_card(model: AppModel, sync_title: str | None = None, sync_enabled: bool =
     """The installed AI tools to open the term folder with, launching, how to install one when
     there is none, or why the last click did not open a terminal."""
     title = tr("AI study session")
+    mas = licensing.is_mas()
     installed = model.ai_installed
-    if installed is None:
+    if installed is None and not mas:
         return AiCard(AI_OFF, tr("Looking for AI tools…"), title=title)
+    if mas and installed is None:
+        installed = frozenset(ai_launcher.AI_CLIS)
     install = {"action": "ai_install", "action_title": tr("How to install"),
                "secondary_action": "ai_detect", "secondary_title": tr("Try again")}
-    tools = tuple(AiButton(key, tr("Open in {name}").format(name=tool.name), key == model.ai_cli)
-                  for key, tool in ai_launcher.TOOLS.items() if key in installed)
+    tools = tuple(
+        AiButton(
+            key,
+            (tr("Copy command for {name}") if mas else tr("Open in {name}")).format(name=tool.name),
+            key == model.ai_cli,
+        )
+        for key, tool in ai_launcher.TOOLS.items() if key in installed
+    )
     if not tools:
         return AiCard(AI_ATTENTION,
                       tr("No AI tool is installed. Install Claude Code, Gemini CLI, Codex or Antigravity, then try again."),
@@ -782,6 +802,12 @@ def ai_card(model: AppModel, sync_title: str | None = None, sync_enabled: bool =
         detail = (tr("Could not open a terminal: {error}").format(error=error) if error
                   else tr("Could not open a terminal."))
         return AiCard(AI_ATTENTION, detail, **shown)
+    if mas:
+        if result is not None and result.ok and result.copied_command and result.tool is not None:
+            detail = tr("Copied terminal command for {name} — paste it into Terminal.").format(name=result.tool.name)
+        else:
+            detail = tr("Click a tool to copy the terminal command for {term}.").format(term=term)
+        return AiCard(AI_READY, detail, **shown)
     if model.ai_resume:
         detail = tr("Click a tool to open {term}, continuing your last session there.").format(term=term)
     else:
@@ -851,6 +877,7 @@ def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.Deadli
     heading, subtitle = home_header(name, T_NAV_START if first_run else T_NAV_OVERVIEW, deadlines_page, now, zone)
     sync_title = T_SYNCING if model.busy == "sync" else T_SYNC_NOW
     sync_enabled = idle and model.configured and name is not None and not model.paused and not expired_license
+    mas = licensing.is_mas()
     return MainStatus(
         first_run=first_run,
         account=account_card(model, now),
@@ -876,6 +903,8 @@ def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.Deadli
         ai=ai_card(model, sync_title=sync_title, sync_enabled=sync_enabled),
         course_colors=model.course_colors.copy(),
         license=license_card(model, now),
+        shows_demo=bool(first_run and idle and mas),
+        shows_notebooklm=not mas,
     )
 
 
