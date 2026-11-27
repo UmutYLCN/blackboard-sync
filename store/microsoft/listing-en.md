@@ -1,167 +1,63 @@
-# Store listing: English (en-US)
-
-The English listing. The package declares `en-US` and `tr-TR`; the app supports
-English and Turkish in Settings. Limits as in `listing-tr.md`.
+# Microsoft Store listing (en-us) · English
 
 ## Product name
 
-`blackboard-sync` (the reserved Store name).
+```text
+blackboard-sync
+```
 
 ## Short description
 
-Limit 1,000; only the first 270 are shown in some views. 163 characters.
-
 ```text
-Downloads the course files, announcements and notes from your school's Blackboard to your PC in the background, organised by term and course. Free, with its source code publicly visible on GitHub.
+Automatically sync Blackboard course files to your PC. Find your school in a directory of 193 verified institutions and open an AI study session from Home.
 ```
 
 ## Description
 
-Limit 10,000, plain text, no URLs.
-
 ```text
-Downloads your Blackboard course content to your computer automatically, so you no longer have to open the site and download files one by one.
+Automatically download Blackboard course files to your PC, organised by term and course. The built-in directory covers 193 institutions with verified Blackboard Learn addresses, including 34 in the UK, 34 in the US and 27 in Saudi Arabia. Start typing your school’s name, abbreviation or domain to see suggestions. If it isn’t listed, enter its Blackboard address and sign in with your school account.
 
-blackboard-sync is an independent project, not affiliated with Anthology Inc. or Blackboard. “Blackboard” is a trademark of its owner, not of this app.
+Open the AI study session card on Home to launch an installed assistant in the folder for your current term: Claude Code, Gemini CLI, Codex or Antigravity. You can also connect Gemini Notebook (NotebookLM) to export supported course files to a separate notebook for each course. The optional export uses an unofficial connection to Google that may stop working if Google changes the service.
 
-HOW IT WORKS
-1. Pick your school by name, abbreviation or web domain (or enter its Blackboard address) and choose the folder for your files.
-2. Sign in on your school's own sign-in page. The first sync starts right after.
-3. Your files stay up to date: by default the app checks Blackboard every hour.
+See assignment deadlines and course announcements in one window. Colour-coded course badges make it easier to tell which course a deadline, announcement or recent download belongs to. Optionally sync deadlines to a dedicated Google Calendar.
 
-SUPPORTED SCHOOLS (190+ VERIFIED UNIVERSITIES)
-The built-in directory covers 193 schools across 41 countries and is verified periodically against Blackboard Learn's live system check. Any other Blackboard Learn school works too by entering its address.
-• Europe (61): United Kingdom (34 — Edinburgh, Imperial College London, Sheffield, Bristol, Southampton, Leeds Beckett, UEA, York and more), Spain (9 — Seville, Navarra, UEM, Alcala, CEU San Pablo and more), Turkey (6 — Istinye, MEF, Fenerbahce, Okan, Maltepe, ISTUN), Italy (3 — Bocconi, Cattolica, San Raffaele), Belgium (2 — KU Leuven, Antwerp), Ireland (2 — Trinity College Dublin, ATU Donegal), Austria (Salzburg), Netherlands (NHL Stenden), Norway (NTNU), Portugal (Minho), Sweden (Halmstad).
-• Americas (62): United States (34 — Boston University, Syracuse, UConn, Alabama, Miami, South Carolina, UIC, Drexel, GWU and more), Mexico (5 — UVM, UDEM, CETYS and more), Peru (5 — UPC, Lima, Pacifico and more), Canada (4 — Humber, Seneca, Centennial, Georgian), Chile (3), Argentina (2), Brazil (2), Dominican Republic (2), Ecuador (2), Puerto Rico (2), El Salvador (UTEC).
-• Middle East & Africa (48): Saudi Arabia (27 — KSU, KFUPM, KAU, KAUST, SEU, UQU and more), South Africa (8 — Pretoria, Free State, CPUT and more), United Arab Emirates (5 — Khalifa, AUS, Abu Dhabi, Sharjah, BUiD), Lebanon (2), Bahrain, Cyprus, Egypt, Kenya, Qatar, Tunisia.
-• Asia-Pacific (22): Australia (10 — UQ, Curtin, UWA, Western Sydney, JCU and more), Singapore (3 — NTU, SUTD, SingHealth), Hong Kong (2 — CUHK, PolyU), Philippines (2), China (CUHK-Shenzhen), India (Shiv Nadar), Japan (Osaka), Malaysia (Sunway), New Zealand (Otago).
+Choose which courses sync and keep downloads running from the Windows notification area after closing the window. Choose a light or dark theme, or follow Windows.
 
-WHAT IT DOWNLOADS
-• The files in your courses and the attachments in assignment instructions.
-• Announcements, links and pages, as readable Markdown notes.
-• Files and notes that change on Blackboard are updated too, and a Windows notification tells you when something new arrives.
+Available in English, Türkçe, Español, Français, Deutsch and العربية.
 
-ORGANISED FOLDERS
-Files are saved in a University folder inside the folder you choose, by term and course as on Blackboard, keeping your school's own term names. The app syncs your current term, and a course folder is created only once it has a file. At a new school where the current term is not clear, the app first shows the courses it found so you can confirm them before anything is downloaded. The default folder is Documents\University. If you change the folder later, you can move the downloaded files, download them again, or only get new files.
-
-OVERVIEW
-The main window lists your latest downloads; open any of them with a click. "Sync now" checks right away and "Open folder" takes you to the University folder. Closing the window keeps the app running from its icon next to the clock.
-
-CALENDAR AND ANNOUNCEMENTS
-See upcoming assignment due dates and course announcements in the app. Optionally connect Google Calendar from Settings to keep due dates in a separate Blackboard Deadlines calendar. Other calendars stay private.
-
-NOTEBOOKLM
-Optionally connect NotebookLM from the card on the Home page. After each sync, your downloaded course files and PDF notes are added to one notebook per course, so you can chat with your sources, create study guides and study faster. Sync NotebookLM adds files on demand and Open NotebookLM opens your notebooks. A file that is already in a notebook is never added twice. NotebookLM is reached through an unofficial connection to Google that may stop working if Google changes NotebookLM. Your Google session stays on your computer, Disconnect in Settings removes it, and your course files go to your own Google account.
-
-STAYS SIGNED IN
-While the app runs, it keeps your Blackboard session alive and, when it expires, signs in again quietly through your school's single sign-on. If your school asks for a password or a two-factor code, nothing is filled in and you get the usual Sign in notification. You can turn this off in Settings.
-
-DELETED FILES
-Pick files you downloaded and later removed from the folder, and download them again. Files you dismiss are not suggested again.
-
-SETTINGS
-• Automatic sync: every 30 minutes, every hour, every 3 hours, or manual only.
-• Start when the computer starts: the app starts in the background without opening its window. You can also turn this off in Task Manager under Startup apps.
-• Updates are installed through the Microsoft Store.
-• Light, dark or system appearance; English and Turkish interface options.
-
-PRIVACY
-• You type your password only on your school's own sign-in page; the app never sees or stores it.
-• Your sign-in session, settings and download records stay on your computer.
-• The app connects to Blackboard and its sign-in/file redirects, plus Google only if you enable optional Calendar or NotebookLM sync.
-• No analytics, ads or usage tracking, and no account to create.
-
-REQUIREMENTS
-• A Blackboard Learn account at your school.
-• English and Turkish interface options.
-
-Free. The source code is publicly visible on GitHub (all rights reserved).
-```
-
-## What's new in this version
-
-Limit 1,500. Update from the published Store version 1.5.1 to 1.7.1 (1.6.2 added the redesigned interface, themes, due dates, announcements and Google Calendar):
-
-```text
-Version 1.7 brings NotebookLM: connect it from the new card on Home, and after each sync your course files are added to one notebook per course, without adding a file twice. The app also signs in again quietly when your Blackboard session expires. It now syncs your current term, keeps your school's own term names, and at a new school asks you to confirm the courses before the first download. The school list grew to 193 periodically verified schools across 41 countries, empty course folders are no longer created, and the past-terms section is gone. Plus the redesigned interface, light/dark/system themes, due dates, announcements and Google Calendar from 1.6. Updates continue through the Microsoft Store.
+blackboard-sync is an independent app and is not affiliated with Anthology Inc. or Blackboard.
 ```
 
 ## Product features
 
-Up to 20, 200 characters each, no bullets.
-
 ```text
-Downloads new course files in the background
-Also downloads attachments in assignment instructions
-Saves announcements, links and pages as Markdown notes
-A tidy University folder, by term and course
-A Windows notification when new files arrive
-Upcoming due dates and course announcements in the app
-Optional Google Calendar connection from Settings
-Light, dark and system themes; English and Turkish interface options
-Automatic sync every 30 minutes, every hour, every 3 hours, or manual only
-Deleted: pick files you removed and download them again
-NotebookLM: course files go to one notebook per course after each sync
-Never adds a file to a notebook twice
-Stays signed in: quiet re-sign-in through your school's single sign-on
-Syncs your current term and asks you to confirm courses at a new school
-Can start in the background when the computer starts
-Never sees your password; your session stays on your computer
-No analytics, ads or usage tracking
-Free, with source code visible on GitHub
-Built-in directory of 190+ periodically verified universities
+Automatic Blackboard course downloads, organised by term and course
+Search 193 verified institutions by name, abbreviation or domain
+Start an AI study session with Claude Code, Gemini CLI, Codex or Antigravity
+Optional Gemini Notebook (NotebookLM) export by course
+Upcoming deadlines and optional Google Calendar sync
+Course announcements and colour-coded course badges
+Background sync from the Windows notification area
+Light, dark and system themes. Six interface languages.
 ```
 
-## Screenshot captions
-
-200 characters each, one per screenshot, in this order. The same text lives in
-`screenshots/src/shots.js`. The Turkish listing uses the images in `screenshots/`, the English
-listing the English images in `screenshots/en/` (same file names, English titles and app text).
-
-| Image | Caption |
-| --- | --- |
-| `01-tek-tek.png` | Still downloading Blackboard files one by one? Blackboard Sync automatically downloads your course files to your computer in the background. |
-| `02-genel-bakis.png` | Home: new course files download in the background. Recent downloads, announcements and upcoming due dates at a glance. |
-| `03-teslim-tarihleri.png` | Calendar: upcoming due dates, day by day. A notification comes 24 hours and 1 hour before each one is due. |
-| `04-google-takvim.png` | Connect Google Calendar in Settings: due dates stay up to date in a separate Blackboard Deadlines calendar. Your other calendars stay private. |
-| `05-duyurular.png` | Announcements: every course’s Blackboard announcements in one list, newest first. Open any of them in one click. |
-| `06-dersler.png` | Courses: see this term’s courses and untick the ones you don’t want. Unticked courses are not synced; downloaded files are not deleted. |
-| `07-koyu-tema.png` | Dark theme: the app follows your Windows theme, or stays light or dark from Settings. |
-| `08-baslangic.png` | Getting started: enter your school's Blackboard address, choose a save folder and whether to start with your computer, then sign in. |
-| `09-tepsi-menusu.png` | The app keeps working from the system tray after you close its window. Check the last sync, sync again, or access your courses and recent downloads. |
-| `10-notebooklm.png` | NotebookLM: Downloaded course files sync automatically to one notebook per course. Chat with your sources, create study guides, and study faster. |
-
-## Trailer title
-
-```text
-blackboard-sync: your Blackboard course files, on your PC automatically
-```
-
-## Search terms (Keywords)
-
-Up to 7 terms, 40 characters each, at most 21 unique words in all. 7 terms, 8 unique words.
+## Search terms
 
 ```text
 Blackboard
 Blackboard Learn
 course files
 university
-download
+downloads
 sync
 student
 ```
 
 ## Copyright and trademark info
 
-Limit 200. 184 characters.
-
 ```text
-© 2026 Umut Yalçın. All rights reserved. blackboard-sync is an independent project, not affiliated with Anthology Inc. or Blackboard. “Blackboard” is a trademark of its owner, not of this app.
+© 2026 Umut Yalçın. All rights reserved. Blackboard is a trademark of its owner.
 ```
-
-## Additional license terms
-
-Leave empty (see `listing-tr.md`).
 
 ## Developed by
 
@@ -169,10 +65,16 @@ Leave empty (see `listing-tr.md`).
 Umut Yalçın
 ```
 
-## Optional Google Calendar privacy
+## Screenshot captions
 
-Connect from Settings to enable automatic deadline updates to a dedicated Blackboard Deadlines calendar. Google receives event titles, course names, due times and Blackboard links. Tokens are stored in Windows Credential Manager; mapping and status stay in the private app data folder. Disconnect in Settings to revoke access and clear local Calendar data, optionally deleting the dedicated calendar too. Keeping the calendar retains only its non-secret ID for reconnection. Access can also be revoked at https://myaccount.google.com/connections. Google API use follows the Google API Services User Data Policy, including Limited Use.
-
-## Optional NotebookLM privacy
-
-Connect from the NotebookLM card on Home to add your downloaded course files and PDF notes to NotebookLM after each sync. You sign in on Google's own page in a browser window; the app never sees your password. The files go to your own Google account. The Google session and the sign-in browser's data stay on this computer; Disconnect in Settings deletes them, and your notebooks stay in NotebookLM. NotebookLM is reached through an unofficial connection that may stop working if Google changes NotebookLM.
+| Image | Caption |
+| --- | --- |
+| `01-home.png` | Home brings together recent downloads, the AI study session card and Gemini Notebook. |
+| `02-school-search.png` | Search a directory of 193 verified institutions by name, abbreviation or domain. |
+| `03-calendar.png` | View upcoming Blackboard deadlines and their colour-coded courses in one calendar. |
+| `04-google-calendar.png` | Connect Google Calendar in Settings to sync due dates to a dedicated calendar. |
+| `05-announcements.png` | Read the latest Blackboard announcements across your courses. |
+| `06-courses.png` | See your current courses and choose which ones to download. |
+| `07-languages.png` | Switch between English, Türkçe, Español, Français, Deutsch and العربية. |
+| `08-dark-theme.png` | Choose light or dark mode, or follow your Windows theme. |
+| `09-tray.png` | Check your last sync and reach recent downloads from the Windows notification area. |
