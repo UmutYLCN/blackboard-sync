@@ -411,9 +411,8 @@ class NotebookLMProgress:
 AI_OFF, AI_READY, AI_LAUNCHING, AI_ATTENTION = "off", "ready", "launching", "attention"
 T_AI_TITLE = tr("AI study session")
 T_AI_LOOKING = tr("Looking for AI tools…")
-T_AI_TERMINAL = tr("Terminal")
-# What the card's tool buttons and its terminal picker ask for: the prefix, then the key.
-AI_OPEN_PREFIX, AI_TERMINAL_PREFIX = "ai_open:", "ai_terminal:"
+# What the card's tool buttons ask for: the prefix, then the key.
+AI_OPEN_PREFIX = "ai_open:"
 
 
 @dataclass(frozen=True)
@@ -443,10 +442,7 @@ class AiCard:
     secondary_enabled: bool = True
     title: str = T_AI_TITLE
     tools: tuple[AiButton, ...] = ()  # the installed tools
-    tools_enabled: bool = True  # False while a terminal is opening: the buttons and the picker
-    terminals: tuple[tuple[str, str], ...] = ()  # (key, name) of the installed terminals
-    terminal: str = ""  # the one a click opens
-    note: str = ""  # the chosen terminal is gone, and which one is used instead
+    tools_enabled: bool = True  # False while a terminal is opening
 
     @property
     def warning(self) -> bool:
@@ -664,21 +660,6 @@ def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
                           warning_counts=notebooklm_warning_counts(status), **sync)
 
 
-def _ai_terminals(model: AppModel) -> dict:
-    """The card's terminal picker and the note about a chosen terminal that is gone."""
-    if model.ai_terminals is None:
-        return {}
-    used = ai_launcher.resolve_terminal(model.ai_terminal, model.ai_terminals)
-    shown = tuple((key, terminal.name) for key, terminal in ai_launcher.TERMINALS.items()
-                  if key in model.ai_terminals or key == used)
-    chosen = ai_launcher.TERMINALS.get(model.ai_terminal)
-    note = ""
-    if chosen is not None and chosen.key != used:
-        note = tr("{name} wasn't found. Using {default} instead.").format(
-            name=chosen.name, default=ai_launcher.TERMINALS[used].name)
-    return {"terminals": shown, "terminal": used, "note": note}
-
-
 def ai_card(model: AppModel, sync_title: str | None = None, sync_enabled: bool = True) -> AiCard:
     """The installed AI tools to open the term folder with, launching, how to install one when
     there is none, or why the last click did not open a terminal."""
@@ -692,9 +673,9 @@ def ai_card(model: AppModel, sync_title: str | None = None, sync_enabled: bool =
                   for key, tool in ai_launcher.TOOLS.items() if key in installed)
     if not tools:
         return AiCard(AI_ATTENTION,
-                      tr("No AI tool is installed. Install Claude Code, Gemini CLI or Codex, then try again."),
+                      tr("No AI tool is installed. Install Claude Code, Gemini CLI, Codex or Antigravity, then try again."),
                       title=title, **install)
-    shown = {"title": title, "tools": tools, **_ai_terminals(model)}
+    shown = {"title": title, "tools": tools}
     if model.ai_launching:
         return AiCard(AI_LAUNCHING, tr("Opening…"), tools_enabled=False, **shown)
     term = model.current_ai_term()

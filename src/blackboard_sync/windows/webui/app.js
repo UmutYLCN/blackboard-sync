@@ -435,19 +435,12 @@
       h("div", { class: "card-footer" }, pill(state.text.open_calendar, "tonal", () => navigate("calendar"))));
   }
 
-  // A button per installed AI tool, and beside them the terminal it opens in.
+  // A button per installed AI tool.
   function aiTools(data) {
-    const tools = data.tools.map((tool) => h("button", {
+    return h("div", { class: "ai-tools" }, data.tools.map((tool) => h("button", {
       class: tool.current ? "ai-tool current" : "ai-tool", type: "button", "aria-label": tool.title, title: tool.title,
       disabled: !tool.enabled, "data-key": `ai-tool-${tool.key}`, onclick: () => call("action", tool.id),
-    }, h("span", { class: `ai-logo ${tool.key}`, "aria-hidden": "true" })));
-    const picker = data.terminals.length ? h("select", {
-      class: "select", "aria-label": data.terminal_label, title: data.terminal_label, disabled: !data.terminal_enabled,
-      "data-key": "select-ai-terminal",
-      onchange: (event) => call("action", data.terminals[event.target.selectedIndex].id),
-    }, data.terminals.map((terminal) => h("option", { selected: terminal.id === data.terminal ? true : null },
-      terminal.title))) : null;
-    return h("div", { class: "ai-tools" }, tools, picker);
+    }, h("span", { class: `ai-logo ${tool.key}`, "aria-hidden": "true" }))));
   }
 
   function aiCard(data) {
@@ -460,7 +453,6 @@
       h("div", { class: "ai-text" },
         h("h2", { class: "ai-title", text: data.title }),
         h("p", { class: data.warning ? "ai-detail warning" : "ai-detail", text: data.detail, title: data.detail }),
-        data.note ? h("p", { class: "ai-note", text: data.note }) : null,
         data.tools.length ? aiTools(data) : null,
         buttons.length ? h("footer", { class: "ai-buttons" }, buttons) : null));
   }
@@ -639,10 +631,11 @@
       let current;
       let onchange;
       if (row.field) {
-        current = edits[row.field];
+        current = row.choices.some((choice) => choice.value === edits[row.field]) ? edits[row.field] : row.selected;
         onchange = (event) => {
           const choice = row.choices[event.target.selectedIndex];
-          edits[row.field] = choice.value;
+          const savedValue = state.settings.values[row.field];
+          edits[row.field] = savedValue === "" && row.selected && choice.value === row.selected ? "" : choice.value;
           drawSaveBar();
         };
       } else {

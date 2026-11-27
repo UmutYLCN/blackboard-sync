@@ -645,9 +645,10 @@ CATALOG = {
         "Bir araca tıklayın: {term} yeni bir oturumla açılır.",
     "Looking for AI tools…": "Yapay zekâ araçları aranıyor…",
     "Terminal": "Terminal",
+    "The terminal app that opens for AI tools.": "Yapay zekâ araçlarının açılacağı terminal uygulaması.",
     "Command Prompt": "Komut İstemi",
-    "No AI tool is installed. Install Claude Code, Gemini CLI or Codex, then try again.":
-        "Kurulu bir yapay zekâ aracı yok. Claude Code, Gemini CLI veya Codex'i kurup yeniden deneyin.",
+    "No AI tool is installed. Install Claude Code, Gemini CLI, Codex or Antigravity, then try again.":
+        "Kurulu bir yapay zekâ aracı yok. Claude Code, Gemini CLI, Codex veya Antigravity'yi kurup yeniden deneyin.",
     "{name} wasn't found. Using {default} instead.": "{name} bulunamadı. Onun yerine {default} kullanılıyor.",
     "Open in {name}": "{name} ile aç",
     "Opening…": "Açılıyor…",

@@ -245,8 +245,9 @@ def test_tray_app_ai_card_and_menu_actions(app, monkeypatch, tmp_path):
     app.dispatch("ai_detect")
     assert app.model.ai_installed == {"gemini", "codex"} and app.model.ai_terminals == {"powershell", "cmd"}
 
-    app.dispatch("ai_terminal:cmd")
-    app.dispatch("ai_terminal:iterm")  # not a terminal this app knows: ignored
+    monkeypatch.setattr(module.autostart, "set_enabled", lambda enabled: None)
+    values = form.initial_values(app.settings, app.settings, autostart=False)
+    assert app.settings_submitted(replace(values, ai_terminal="cmd"), False) is None
     assert app.settings.ai_terminal == app.model.ai_terminal == "cmd"
     assert load_settings(app.config.data_dir).ai_terminal == "cmd"
 
@@ -580,8 +581,11 @@ def test_the_preview_draws_every_card_state(monkeypatch):
     assert idle["warning-counts"] == "2 held back"
     assert idle["button"]["id"] == "notebooklm_sync" and idle["open"]
     ai = states["up-to-date"]["home"]["ai"]
-    assert [tool["key"] for tool in ai["tools"]] == ["claude", "gemini", "codex"] and ai["terminals"]
-    assert states["ai-terminal-gone"]["home"]["ai"]["note"]
+    assert [tool["key"] for tool in ai["tools"]] == ["claude", "gemini", "codex", "agy"]
+    assert "terminals" not in ai
+    settings_rows = {row["key"]: row for section in states["settings"]["settings"]["sections"]
+                     for row in section["rows"]}
+    assert settings_rows["ai_terminal"]["selected"] == "windows_terminal"
     assert states["ai-none"]["home"]["ai"]["tools"] == [] and states["ai-none"]["home"]["ai"]["button"]
 
 

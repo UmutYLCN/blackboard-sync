@@ -88,7 +88,6 @@ from blackboard_sync.menubar.main_window_model import (
     AI_OFF,
     AI_OPEN_PREFIX,
     AI_READY,
-    AI_TERMINAL_PREFIX,
     COURSES,
     CALENDAR,
     COURSE_PALETTE,
@@ -108,7 +107,6 @@ from blackboard_sync.menubar.main_window_model import (
     STATE_PAUSED,
     STATE_SYNCED,
     T_ACTIVITY_EMPTY,
-    T_AI_TERMINAL,
     T_AI_TITLE,
     T_ALL_GOOD,
     T_ALL_GOOD_DETAIL,
@@ -174,6 +172,7 @@ from blackboard_sync.menubar.settings_form import (
     T_URL_PLACEHOLDER,
     FormValues,
     RowState,
+    ai_terminal_choices,
     dest_change_message,
     interval_title,
     language_code,
@@ -211,7 +210,7 @@ ROW_MIN = 56
 SECTION_GAP = 26
 CONTROL_GAP = 16  # between a row's text and its control
 FIELD_WIDTH, FIELD_WITH_BUTTON = 300, 230
-POPUP_WIDTH = {"interval": 190, "language": 160}
+POPUP_WIDTH = {"interval": 190, "language": 160, "ai_terminal": 190}
 AVATAR = 34  # the sidebar's account card
 SCENE_HEIGHT = 84  # the small illustration in Home's status card while a sync runs
 UPDATE_BANNER_HEIGHT = 86
@@ -408,12 +407,6 @@ class _Target(NSObject):
 
     def aiTool_(self, sender):
         self.owner.on_action(AI_OPEN_PREFIX + AI_CLIS[int(sender.tag())])
-
-    def aiTerminal_(self, sender):
-        terminals = self.owner.status.ai.terminals
-        index = int(sender.indexOfSelectedItem())
-        if 0 <= index < len(terminals):
-            self.owner.on_action(AI_TERMINAL_PREFIX + terminals[index][0])
 
     def aiAction_(self, _sender):
         if self.owner.status.ai.action:
@@ -658,6 +651,7 @@ ROW_ATTRIBUTES = {
     "dest": ("dest_field", None, None),
     "notebooklm_auto": ("notebooklm_switch", None, None),
     "notebooklm_disconnect": (None, None, None),
+    "ai_terminal": ("terminal_popup", None, None),
     "ai_resume": ("ai_resume_switch", None, None),
     "check_updates": ("check_updates", None, None),
     "update": ("update_button", "version_label", None),
@@ -669,7 +663,7 @@ ROW_ACTIONS = {"google_calendar": "googleCalendar:", "google_calendar_sync": "go
                "notebooklm_disconnect": "notebooklmDisconnect:"}
 ROW_BUTTON_WIDTH = {"google_calendar": 210, "account": ACTION_WIDTH, "update": ACTION_WIDTH}
 # Rows whose description changes while the app runs keep room for two lines.
-LIVE_DETAIL_LINES = {"google_calendar": 3}
+LIVE_DETAIL_LINES = {"google_calendar": 3, "ai_terminal": 2}
 
 
 def _pill(frame, color):
@@ -825,6 +819,8 @@ class MainWindow:
         self.status = status
         self.saved = values
         self.error = ""
+        self._terminal_choices: tuple[tuple[str, str], ...] = ()
+        self._terminal_dirty = False
         self._drawn_recent = None
         self._drawn_announcements = None
         self._drawn_announcement_colors = None
@@ -1263,7 +1259,7 @@ class MainWindow:
 
     def _build_ai_card(self, page) -> None:
         """Under the NotebookLM card: a button per installed AI tool, which opens the current term folder
-        with it, and beside them the terminal it opens in."""
+        with it."""
         self.ai_card = _card(NSMakeRect(PAD, HEADER, LEFT_W, NOTEBOOKLM_BASE))
         content = self.ai_card.contentView()
         self.ai_icon = NSImageView.alloc().initWithFrame_(NSMakeRect(22, 18, ICON_SIZE, ICON_SIZE))
@@ -1273,19 +1269,9 @@ class MainWindow:
         content.addSubview_(self.ai_title)
         self.ai_detail, _ = _wrapping("", LEFT_W - NOTEBOOKLM_TEXT_X - 20, 13, secondary=True)
         content.addSubview_(self.ai_detail)
-        self.ai_note, _ = _wrapping("", LEFT_W - NOTEBOOKLM_TEXT_X - 20, _small())
-        self.ai_note.setTextColor_(NSColor.systemOrangeColor())
-        content.addSubview_(self.ai_note)
         self.ai_tools = {key: _logo_button(key, self.target, tag) for tag, key in enumerate(AI_CLIS)}
         for button in self.ai_tools.values():
             content.addSubview_(button)
-        self.ai_terminal = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(0, 0, 150, 25), False)
-        self.ai_terminal.setTarget_(self.target)
-        self.ai_terminal.setAction_("aiTerminal:")
-        self.ai_terminal.setAccessibilityLabel_(T_AI_TERMINAL)
-        self.ai_terminal.setToolTip_(T_AI_TERMINAL)
-        content.addSubview_(self.ai_terminal)
-        self._ai_terminal_names = []
         self.ai_button = _pill_view("", self.target, "aiAction:", 0, 0)
         content.addSubview_(self.ai_button)
         self.ai_secondary = _pill_view("", self.target, "aiSecondary:", 0, 0)
@@ -1305,15 +1291,14 @@ class MainWindow:
         self.ai_title.setFrame_(NSMakeRect(x, 16, text, 24))
         self.ai_detail.setTextColor_(NSColor.systemOrangeColor() if card.warning else NSColor.secondaryLabelColor())
         y = 46
-        for label, value in ((self.ai_detail, card.detail), (self.ai_note, card.note)):
-            label.setStringValue_(value)
-            label.setToolTip_(value or None)
-            label.setHidden_(not value)
-            if value:
-                label.setPreferredMaxLayoutWidth_(text)
-                height = max(label.fittingSize().height, 17)
-                label.setFrame_(NSMakeRect(x, y, text, height))
-                y += height + 4
+        self.ai_detail.setStringValue_(card.detail)
+        self.ai_detail.setToolTip_(card.detail or None)
+        self.ai_detail.setHidden_(not card.detail)
+        if card.detail:
+            self.ai_detail.setPreferredMaxLayoutWidth_(text)
+            height = max(self.ai_detail.fittingSize().height, 17)
+            self.ai_detail.setFrame_(NSMakeRect(x, y, text, height))
+            y += height + 4
         y = self._layout_ai_tools(card, x, y)
         button, secondary = self.ai_button, self.ai_secondary
         button.setHidden_(not card.action)
@@ -1337,7 +1322,7 @@ class MainWindow:
         return self._ai_height
 
     def _layout_ai_tools(self, card, x: float, y: float) -> float:
-        """The row of tool buttons and the terminal picker from ``y``; returns where it ends."""
+        """The row of tool buttons from ``y``; returns where it ends."""
         shown = {tool.key: tool for tool in card.tools}
         top, left = y + 4, x
         for key, button in self.ai_tools.items():
@@ -1352,19 +1337,6 @@ class MainWindow:
             button.setNeedsDisplay_(True)
             button.setFrame_(NSMakeRect(left, top, AI_TOOL_SIZE, AI_TOOL_SIZE))
             left += AI_TOOL_SIZE + 8
-        popup = self.ai_terminal
-        popup.setHidden_(not (shown and card.terminals))
-        if shown and card.terminals:
-            names = [name for _, name in card.terminals]
-            if names != self._ai_terminal_names:  # rebuilding would close a menu that is open
-                popup.removeAllItems()
-                popup.addItemsWithTitles_(names)
-                self._ai_terminal_names = names
-            popup.selectItemAtIndex_([key for key, _ in card.terminals].index(card.terminal))
-            popup.setEnabled_(card.tools_enabled)
-            size = popup.fittingSize()
-            popup.setFrame_(NSMakeRect(left + 4, top + (AI_TOOL_SIZE - size.height) / 2,
-                                       min(size.width, LEFT_W - 20 - left - 4), size.height))
         return top + AI_TOOL_SIZE + 2 if shown else y
 
     def _place_ai_card(self, top: float) -> None:
@@ -1878,8 +1850,8 @@ class MainWindow:
                       "language": [name for _, name in LANGUAGE_OPTIONS]}.get(row.key)
             if titles:
                 popup.addItemsWithTitles_(titles)
-                popup.setTarget_(self.target)
-                popup.setAction_("changed:")
+            popup.setTarget_(self.target)
+            popup.setAction_("changed:")
             return popup
         if row.control == CONTROL_SWITCH:
             switch = NSSwitch.alloc().initWithFrame_(NSMakeRect(0, 0, 40, 22))
@@ -2082,6 +2054,17 @@ class MainWindow:
             self.refresh_announcements()
 
     def values(self) -> FormValues:
+        if not self._terminal_dirty or not self._terminal_choices:
+            ai_terminal = self.saved.ai_terminal
+        else:
+            index = int(self.terminal_popup.indexOfSelectedItem())
+            picked = (self._terminal_choices[index][0]
+                      if 0 <= index < len(self._terminal_choices) else self.saved.ai_terminal)
+            detected = self.status.form.ai_terminals
+            if self.saved.ai_terminal == "" and detected and picked == ai_launcher.system_terminal(detected):
+                ai_terminal = ""
+            else:
+                ai_terminal = picked
         return FormValues(
             base_url=str(self.url_field.stringValue()),
             dest=str(self.dest_field.stringValue()),
@@ -2093,12 +2076,14 @@ class MainWindow:
             language=language_code(str(self.language_popup.titleOfSelectedItem())),
             auto_relogin=bool(self.auto_relogin.state()),
             notebooklm_auto=bool(self.notebooklm_switch.state()),
+            ai_terminal=ai_terminal,
             ai_resume=bool(self.ai_resume_switch.state()),
         )
 
     def set_values(self, values: FormValues) -> None:
         """Show ``values`` as what is saved: the bar goes away."""
         self.saved = values
+        self._terminal_dirty = False
         for field in (self.url_field, self.start_url):
             field.setStringValue_(values.base_url)
         for field in (self.dest_field, self.start_dest):
@@ -2110,11 +2095,14 @@ class MainWindow:
         self.interval_popup.selectItemWithTitle_(interval_title(values.sync_interval_minutes))
         self.language_popup.selectItemWithTitle_(language_title(values.language))
         self.notebooklm_switch.setState_(1 if values.notebooklm_auto else 0)
+        self._refresh_terminal_popup(self.status.form)
         self.ai_resume_switch.setState_(1 if values.ai_resume else 0)
         self.show_error("")
 
     def changed(self, control) -> None:
         """A field was edited: keep its twin on the other section in step, then the bar."""
+        if control is self.terminal_popup:
+            self._terminal_dirty = True
         other = self.mirrors.get(control)
         if other is not None:
             if isinstance(control, NSTextField):
@@ -2213,6 +2201,7 @@ class MainWindow:
         self.nav_items[ANNOUNCEMENTS][3].setStringValue_(str(count) if count else "")
         # Genel
         form = status.form
+        self._refresh_terminal_popup(form)
         for key, state in row_states(form).items():
             if not key.startswith("google_calendar"):
                 self._apply_row_state(key, state)
@@ -2220,6 +2209,26 @@ class MainWindow:
         self._apply_row_state("notebooklm_disconnect", notebooklm_disconnect_state(form))
         self._animate()
         self.refresh_announcements()
+
+    def _refresh_terminal_popup(self, form) -> None:
+        popup = self.terminal_popup
+        choices = ai_terminal_choices(form.ai_terminals, self.saved.ai_terminal)
+        current_key = ""
+        if self._terminal_dirty and self._terminal_choices:
+            index = int(popup.indexOfSelectedItem())
+            if 0 <= index < len(self._terminal_choices):
+                current_key = self._terminal_choices[index][0]
+        if choices != self._terminal_choices:
+            popup.removeAllItems()
+            if choices:
+                popup.addItemsWithTitles_([name for _, name in choices])
+            self._terminal_choices = choices
+        if choices:
+            keys = [key for key, _ in choices]
+            target = (current_key if self._terminal_dirty and current_key in keys
+                      else ai_launcher.resolve_terminal(self.saved.ai_terminal, form.ai_terminals))
+            if target in keys:
+                popup.selectItemAtIndex_(keys.index(target))
 
     def _draw_recent(self) -> None:
         rows = self.status.recent

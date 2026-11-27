@@ -136,9 +136,9 @@ def test_macos_asks_the_login_shell_and_takes_only_real_programs(tmp_path):
     claude = program(tmp_path / "bin" / "claude")
     run = ShellAnswer(f"{claude}\ncodex\nalias gemini='npx gemini'\n/nowhere/gemini\n")
     found = ai.detect("darwin", env={"SHELL": "/bin/zsh"}, home=tmp_path / "home", run=run, dirs=LOCAL_DIRS)
-    assert found == {"claude": claude, "gemini": None, "codex": None}
+    assert found == {"claude": claude, "gemini": None, "codex": None, "agy": None}
     argv, kwargs = run.calls[0]
-    assert argv == ["/bin/zsh", "-lic", "command -v claude gemini codex"]
+    assert argv == ["/bin/zsh", "-lic", "command -v claude gemini codex agy"]
     assert kwargs["timeout"] == ai.SHELL_TIMEOUT and kwargs["stdin"] == subprocess.DEVNULL
 
 
@@ -147,12 +147,14 @@ def test_macos_looks_in_the_install_folders_for_what_the_shell_did_not_name(tmp_
     home = tmp_path / "home"
     # The shell wraps codex in a function, so it prints a name: the install folder has it.
     codex = program(home / ".local" / "bin" / "codex")
+    agy = program(home / ".local" / "bin" / "agy")
     program(home / ".nvm" / "versions" / "node" / "v9.0.0" / "bin" / "gemini")
     gemini = program(home / ".nvm" / "versions" / "node" / "v22.11.0" / "bin" / "gemini")
     (home / ".claude" / "local").mkdir(parents=True)
     (home / ".claude" / "local" / "claude").write_text("not executable", encoding="utf-8")
     found = ai.detect("darwin", env={"SHELL": "/bin/zsh"}, home=home, run=ShellAnswer("codex\n"), dirs=LOCAL_DIRS)
     assert found["codex"] == codex
+    assert found["agy"] == agy
     assert found["gemini"] == gemini  # the newest Node version
     assert found["claude"] is None
 
@@ -161,10 +163,11 @@ def test_macos_looks_in_the_install_folders_for_what_the_shell_did_not_name(tmp_
 def test_a_shell_that_hangs_or_is_missing_still_finds_the_install_folders(tmp_path):
     home = tmp_path / "home"
     claude = program(home / ".local" / "bin" / "claude")
+    agy = program(home / ".local" / "bin" / "agy")
     for error in (subprocess.TimeoutExpired("zsh", 3), FileNotFoundError("zsh")):
         found = ai.detect("darwin", env={"SHELL": "/bin/zsh"}, home=home, run=ShellAnswer(error=error),
                           dirs=LOCAL_DIRS)
-        assert found["claude"] == claude
+        assert found["claude"] == claude and found["agy"] == agy
     # A relative or missing SHELL falls back to zsh.
     run = ShellAnswer()
     ai.detect("darwin", env={"SHELL": "zsh"}, home=home, run=run, dirs=LOCAL_DIRS)
@@ -172,13 +175,16 @@ def test_a_shell_that_hangs_or_is_missing_still_finds_the_install_folders(tmp_pa
 
 
 def test_windows_searches_path_with_pathext_and_the_installers_folders(tmp_path):
-    profile, appdata = tmp_path / "Users" / "Öğrenci", tmp_path / "Roaming"
+    profile, appdata, localappdata = tmp_path / "Users" / "Öğrenci", tmp_path / "Roaming", tmp_path / "Local"
     claude = program(profile / ".local" / "bin" / "claude.exe")
     gemini = program(appdata / "npm" / "gemini.cmd")
     other = program(tmp_path / "tools" / "codex.bat")
+    agy = program(localappdata / "agy" / "bin" / "agy.exe")
     env = {"PATH": f'"{tmp_path / "empty"}";{tmp_path / "tools"}', "PATHEXT": ".COM;.EXE;.BAT;.CMD",
-           "USERPROFILE": str(profile), "APPDATA": str(appdata)}
-    assert ai.detect("win32", env=env, home=tmp_path) == {"claude": claude, "gemini": gemini, "codex": other}
+           "USERPROFILE": str(profile), "APPDATA": str(appdata), "LOCALAPPDATA": str(localappdata)}
+    assert ai.detect("win32", env=env, home=tmp_path) == {
+        "claude": claude, "gemini": gemini, "codex": other, "agy": agy,
+    }
     # A PATHEXT without .BAT does not run codex.bat.
     assert ai.detect("win32", env={**env, "PATHEXT": ".EXE;.CMD"}, home=tmp_path)["codex"] is None
 
@@ -330,6 +336,9 @@ def test_each_tool_resumes_with_its_own_verified_arguments():
     assert ai.TOOLS["claude"].resume == ("--continue",)
     assert ai.TOOLS["gemini"].resume == ("--resume", "latest")
     assert ai.TOOLS["codex"].resume == ("resume", "--last")
+    assert ai.TOOLS["agy"].resume == ("--continue",)
+    assert ai.TOOLS["agy"].name == "Antigravity"
+    assert ai.TOOLS["agy"].install_url == "https://antigravity.google/docs/getting-started?tab=cli"
     assert all(tool.fresh == () for tool in ai.TOOLS.values())
 
 
@@ -611,7 +620,7 @@ def test_macos_opens_the_chosen_terminal_while_it_is_there(tmp_path, chosen, use
 def test_launch_looks_for_the_tool_again_each_time(tmp_path):
     config = make_config(tmp_path, {"_1_1": course(GUZ)})
     seen = []
-    tools = ai.Detector(lambda: seen.append(1) or {"claude": None, "gemini": None, "codex": None})
+    tools = ai.Detector(lambda: seen.append(1) or {"claude": None, "gemini": None, "codex": None, "agy": None})
     ai.launch("claude", True, config, tools)
     ai.launch("claude", True, config, tools)
     assert len(seen) == 2

@@ -82,7 +82,7 @@ def fixtures(now: datetime) -> dict[str, dict]:
     account = main.AccountCard("UY", "UMUT YALÇIN", tr("Last synced: {time}").format(time=tr("today {time}").format(time="18:14")))
     ai = AppModel(Path("."), now)
     ai.ai_cli, ai.ai_term = "claude", "2026-2027 Güz"
-    ai.ai_installed = frozenset(("claude", "gemini", "codex"))
+    ai.ai_installed = frozenset(("claude", "gemini", "codex", "agy"))
     ai.ai_terminals = frozenset(("windows_terminal", "powershell", "cmd"))
     synced = main.MainStatus(
         ai=main.ai_card(ai),
@@ -138,8 +138,6 @@ def fixtures(now: datetime) -> dict[str, dict]:
                        tr("Blackboard Sync {version} is ready").format(version="1.7.0"), main.T_UPDATE, True)),
                    announcements, page),
     }
-    ai.ai_terminals, ai.ai_terminal = frozenset(("powershell", "cmd")), "windows_terminal"
-    states["ai-terminal-gone"] = (replace(synced, ai=main.ai_card(ai)), announcements, page)
     ai.ai_installed = frozenset()
     states["ai-none"] = (replace(synced, ai=main.ai_card(ai)), announcements, page)
     from blackboard_sync import uninstall
@@ -175,6 +173,7 @@ def fixtures(now: datetime) -> dict[str, dict]:
         tr("Blackboard Sync {version} is ready").format(version="1.7.0"), main.T_UPDATE_INTRO, "update", main.T_UPDATE,
         warning=False),))
     settings_form = replace(form, uninstall_enabled=True, notebooklm_connected=True,
+                            ai_terminals=frozenset(("windows_terminal", "powershell", "cmd")),
                             calendar=CalendarStatus(connected=True, last_sync="2026-10-18T12:05:00+00:00"))
     for name, section, current, extra in (
         ("activity", main.ACTIVITY, full, {}),

@@ -415,13 +415,18 @@ def settings_rows(data):
 def test_settings_page_rows_follow_the_model():
     from blackboard_sync.gcal import CalendarStatus
 
-    connected = replace(FORM, calendar=CalendarStatus(connected=True, last_sync="2026-10-18T12:05:00+00:00"))
+    connected = replace(FORM, calendar=CalendarStatus(connected=True, last_sync="2026-10-18T12:05:00+00:00"),
+                        ai_terminals=frozenset(("powershell", "cmd")), ai_terminal="windows_terminal")
     data = webui_state.window_state(status(form=connected), main.GENERAL, main.GENERAL, theme="dark")
     keys = [section["key"] for section in data["settings"]["sections"]]
     assert keys[:4] == ["account", "sync", "appearance", "calendar"] and keys[-1] == "danger"
     rows = settings_rows(data)
     assert rows["theme"]["choices"] == [{"value": "system", "title": "System"}, {"value": "light", "title": "Light"},
                                         {"value": "dark", "title": "Dark"}]
+    assert rows["ai_terminal"]["choices"] == [{"value": "powershell", "title": "PowerShell"},
+                                              {"value": "cmd", "title": "Command Prompt"}]
+    assert rows["ai_terminal"]["selected"] == "powershell"
+    assert rows["ai_terminal"]["detail"] == "Windows Terminal wasn't found. Using PowerShell instead."
     assert data["settings"]["theme"] == "dark" and data["theme"] == "dark"
     assert rows["interval"]["field"] == "sync_interval_minutes" and rows["interval"]["choices"][1]["value"] == 60
     calendar = rows["google_calendar"]
@@ -535,11 +540,8 @@ def test_ai_card_payload_and_ids_follow_every_state():
     assert card["tools"] == [
         {"id": "ai_open:claude", "key": "claude", "title": "Open in Claude Code", "current": False, "enabled": True},
         {"id": "ai_open:codex", "key": "codex", "title": "Open in Codex", "current": True, "enabled": True}]
-    assert card["terminals"] == [{"id": "ai_terminal:powershell", "title": "PowerShell"},
-                                 {"id": "ai_terminal:cmd", "title": "Command Prompt"}]
-    assert (card["terminal"], card["terminal_label"], card["note"]) == ("ai_terminal:cmd", "Terminal", "")
-    assert webui_state.ids(ready)["ai"] == {"ai_open:claude", "ai_open:codex", "ai_terminal:powershell",
-                                            "ai_terminal:cmd"}
+    assert "terminals" not in card and "terminal" not in card and "note" not in card
+    assert webui_state.ids(ready)["ai"] == {"ai_open:claude", "ai_open:codex"}
 
     model.finish_ai_detection(frozenset(), model.ai_terminals)
     missing = state(status(ai=main.ai_card(model)))
@@ -551,7 +553,7 @@ def test_ai_card_payload_and_ids_follow_every_state():
     model.finish_ai_detection(frozenset({"claude"}), model.ai_terminals)
     model.ai_launching = True
     launching = state(status(ai=main.ai_card(model)))
-    assert not launching["home"]["ai"]["tools"][0]["enabled"] and not launching["home"]["ai"]["terminal_enabled"]
+    assert not launching["home"]["ai"]["tools"][0]["enabled"]
     assert webui_state.ids(launching)["ai"] == set()
 
     model.ai_launching = False
@@ -565,7 +567,7 @@ def test_ai_card_payload_and_ids_follow_every_state():
 
 def test_the_page_carries_every_tools_logo_and_the_dark_one_follows_the_theme():
     html = webui_page.document(nonce="n")
-    for key in ("claude", "gemini", "codex"):
+    for key in ("claude", "gemini", "codex", "agy"):
         assert f".ai-logo.{key} {{ background-image: url(data:image/png;base64," in html
     assert ':root[data-theme="dark"] .ai-logo.codex {' in html
     assert ':root:not([data-theme="light"]) .ai-logo.codex {' in html

@@ -1,8 +1,8 @@
 """Open the current term's folder in a terminal and start the AI tool the student clicked.
 
 Home's AI study session card shows one button per installed tool (Claude Code, Gemini CLI,
-Codex) and the installed terminals to open it in (``Settings.ai_terminal``). Settings → AI
-assistant says whether the tool continues its last session in the folder
+Codex, Antigravity). Settings → AI assistant chooses which terminal opens
+(``Settings.ai_terminal``) and whether the tool continues its last session in the folder
 (``Settings.ai_resume``). The card and the menu bar / tray item call ``launch``, which answers
 with a ``LaunchResult``: the terminal opened, or why not (``Failure``). Everything else here
 is plain logic, testable without a GUI or a terminal:
@@ -51,6 +51,7 @@ from typing import Callable, Collection, Mapping
 from blackboard_sync.config import Config
 from blackboard_sync.i18n import tr
 from blackboard_sync.settings import (
+    AI_AGY,
     AI_CLAUDE,
     AI_CLIS,
     AI_CODEX,
@@ -77,11 +78,13 @@ class AiTool:
 # "--last  Continue the most recent session without showing the picker"; the picker filters by the
 # current folder ("--all ... disables cwd filtering"). Gemini CLI v0.71.1,
 # packages/cli/src/config/config.ts: "-r, --resume  Resume a previous session. Use "latest" for most
-# recent"; its sessions are per project folder.
+# recent"; its sessions are per project folder. Verified 2026-11-27: ``agy --help``:
+# "-c  Short alias for --continue", "--continue  Continue the most recent conversation".
 TOOLS = {tool.key: tool for tool in (
     AiTool(AI_CLAUDE, "Claude Code", ("--continue",), "https://code.claude.com/docs/en/setup"),
     AiTool(AI_GEMINI, "Gemini CLI", ("--resume", "latest"), "https://github.com/google-gemini/gemini-cli"),
     AiTool(AI_CODEX, "Codex", ("resume", "--last"), "https://github.com/openai/codex"),
+    AiTool(AI_AGY, "Antigravity", ("--continue",), "https://antigravity.google/docs/getting-started?tab=cli"),
 )}
 assert tuple(TOOLS) == AI_CLIS
 
@@ -291,6 +294,8 @@ def _windows_dirs(env: Mapping[str, str], home: Path) -> list[str]:
     dirs.append(str(Path(profile) / ".local" / "bin"))  # Claude Code's installer
     if env.get("APPDATA"):
         dirs.append(str(Path(env["APPDATA"]) / "npm"))  # npm's global shims (gemini.cmd, codex.cmd)
+    if env.get("LOCALAPPDATA"):
+        dirs.append(str(Path(env["LOCALAPPDATA"]) / "agy" / "bin"))  # Antigravity's installer
     return dirs
 
 

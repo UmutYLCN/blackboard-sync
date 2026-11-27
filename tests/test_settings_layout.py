@@ -62,7 +62,7 @@ def test_the_rows_of_each_section():
         SECTION_ACCOUNT: ["base_url", "account"],
         SECTION_SYNC: ["interval", "autostart", "language"],
         SECTION_CALENDAR: ["google_calendar", "google_calendar_sync", "google_calendar_disconnect"],
-        SECTION_AI: ["ai_resume"],
+        SECTION_AI: ["ai_terminal", "ai_resume"],
         SECTION_FOLDER: ["dest"],
         SECTION_UPDATES: ["check_updates", "update"],
         SECTION_DANGER: ["uninstall"],
@@ -82,7 +82,7 @@ def test_controls_match_what_they_edit():
     assert by_field["base_url"].control == CONTROL_FIELD and by_field["dest"].control == CONTROL_FIELD
     assert by_field["dest"].button == "Choose…"  # the folder picker beside the path
     assert by_field["autostart"].control == by_field["check_updates"].control == CONTROL_SWITCH
-    assert by_field["sync_interval_minutes"].control == by_field["language"].control == CONTROL_POPUP
+    assert by_field["sync_interval_minutes"].control == by_field["language"].control == by_field["ai_terminal"].control == CONTROL_POPUP
     assert by_field["ai_resume"].control == CONTROL_SWITCH
     # What acts at once (or only chooses) has no field, so Save and Cancel never touch it.
     immediate = {row.key: row.control for row in all_rows() if not row.field}
@@ -105,6 +105,29 @@ def test_the_uninstall_row_is_the_only_destructive_one_and_it_is_last():
     assert settings_sections()[-1].key == SECTION_DANGER
     row = SECTIONS[SECTION_DANGER].rows[0]
     assert (row.title, row.detail, row.button) == ("Uninstall Blackboard Sync", uninstall.MESSAGE, "Uninstall app…")
+
+
+def test_ai_assistant_terminal_row_sits_above_resume_and_follows_detected_terminals(monkeypatch):
+    from blackboard_sync import i18n
+
+    rows = SECTIONS[SECTION_AI].rows
+    assert [row.key for row in rows] == ["ai_terminal", "ai_resume"]
+    assert rows[0].control == CONTROL_POPUP and rows[0].field == "ai_terminal"
+    assert (rows[0].title, rows[0].detail) == ("Terminal", "The terminal app that opens for AI tools.")
+
+    assert f.ai_terminal_choices(None) == ()
+    assert f.ai_terminal_state(None, "") == f.RowState(enabled=False)
+    assert f.ai_terminal_choices(frozenset({"terminal", "kitty"})) == (("terminal", "Terminal"), ("kitty", "kitty"))
+    assert f.ai_terminal_state(frozenset({"terminal", "kitty"}), "ghostty") == f.RowState(
+        detail="Ghostty wasn't found. Using Terminal instead.", enabled=True,
+    )
+
+    monkeypatch.setattr(i18n, "_language", "tr")
+    assert i18n.tr(rows[0].title) == "Terminal"
+    assert i18n.tr(rows[0].detail) == "Yapay zekâ araçlarının açılacağı terminal uygulaması."
+    assert f.ai_terminal_state(frozenset({"terminal", "kitty"}), "ghostty").detail == (
+        "Ghostty bulunamadı. Onun yerine Terminal kullanılıyor."
+    )
 
 
 def test_the_folder_note_and_the_hint_say_what_they_said_before():

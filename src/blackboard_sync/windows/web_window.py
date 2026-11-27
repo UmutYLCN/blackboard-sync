@@ -43,8 +43,7 @@ STATE_WAIT = 20.0  # seconds a page's request for a new state waits before it as
 QUIT_GRACE = 10.0  # seconds pywebview's loop gets to end after Quit before the process ends anyway
 # What the page may ask the window to do (``Bridge.action``, ``Bridge.setting``).
 NOTEBOOKLM_ACTIONS = ("notebooklm_connect", "notebooklm_sync", "notebooklm_open")
-AI_ACTIONS = ("ai_install", "ai_detect", *(main.AI_OPEN_PREFIX + key for key in AI_CLIS),
-              *(main.AI_TERMINAL_PREFIX + key for key in AI_TERMINALS))
+AI_ACTIONS = ("ai_install", "ai_detect", *(main.AI_OPEN_PREFIX + key for key in AI_CLIS))
 ACTIONS = ("sync", "pause", "folder", "update", "home_action", "account", *NOTEBOOKLM_ACTIONS, *AI_ACTIONS)
 SETTING_BUTTONS = ("account", "update", "uninstall", "google_calendar", "google_calendar_sync",
                    "google_calendar_disconnect", "notebooklm_disconnect")
@@ -97,6 +96,7 @@ def form_values(data) -> form.FormValues | None:
     base_url, dest = data.get("base_url"), data.get("dest")
     interval, code = data.get("sync_interval_minutes"), data.get("language")
     switches = tuple(data.get(key) for key in ("autostart", "check_updates", "auto_relogin", "notebooklm_auto"))
+    ai_terminal = data.get("ai_terminal", "")
     ai_resume = data.get("ai_resume", True)
     if not (isinstance(base_url, str) and len(base_url) <= 2048 and isinstance(dest, str) and len(dest) <= MAX_ID):
         return None
@@ -104,11 +104,13 @@ def form_values(data) -> form.FormValues | None:
         return None
     if interval not in INTERVALS or code not in LANGUAGE_CODES:
         return None
+    if not isinstance(ai_terminal, str) or (ai_terminal and ai_terminal not in AI_TERMINALS):
+        return None
     if not isinstance(ai_resume, bool):
         return None
     autostart, check_updates, auto_relogin, notebooklm_auto = switches
     return form.FormValues(base_url, dest, autostart, check_updates, interval, code, auto_relogin, notebooklm_auto,
-                           ai_resume)
+                           ai_terminal, ai_resume)
 
 
 class Bridge:

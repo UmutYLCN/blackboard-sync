@@ -962,6 +962,7 @@ def test_settings_page_is_sections_of_rows(tmp_path):
         # The right controls for the right fields.
         assert isinstance(window.autostart, NSSwitch) and isinstance(window.check_updates, NSSwitch)
         assert isinstance(window.interval_popup, NSPopUpButton) and isinstance(window.language_popup, NSPopUpButton)
+        assert isinstance(window.terminal_popup, NSPopUpButton)
         assert isinstance(window.url_field, NSTextField) and isinstance(window.dest_field, NSTextField)
         assert str(window.account_label.stringValue()) == 'Signed in as Ada Student'
         assert str(window.account_button.title()) == 'Sign out' and str(window.version_label.stringValue()).startswith('Version ')
@@ -969,7 +970,7 @@ def test_settings_page_is_sections_of_rows(tmp_path):
         # Every row: the control at the card's right edge, clear of the row's text.
         edge = INNER - SETTINGS_PAD
         for key in ('base_url', 'account', 'interval', 'autostart', 'language',
-                    'check_updates', 'update', 'uninstall'):
+                    'ai_terminal', 'ai_resume', 'check_updates', 'update', 'uninstall'):
             row = window.settings_rows[key]
             frame = row.control.frame()
             assert round(frame.origin.x + frame.size.width) == edge, key
@@ -985,12 +986,15 @@ def test_settings_page_is_sections_of_rows(tmp_path):
         # Hairlines between the rows of a card, none around a single row.
         def lines(card):
             return sum(1 for v in card.subviews() if hasattr(v, 'boxType') and v.boxType() == NSBoxSeparator)
-        cards = {key: window.settings_rows[key].control.superview() for key in ('base_url', 'interval', 'dest')}
-        assert lines(cards['base_url']) == 1 and lines(cards['interval']) == 3 and lines(cards['dest']) == 0
+        cards = {key: window.settings_rows[key].control.superview()
+                 for key in ('base_url', 'interval', 'ai_terminal', 'dest')}
+        assert lines(cards['base_url']) == 1 and lines(cards['interval']) == 3 and lines(cards['ai_terminal']) == 1
+        assert lines(cards['dest']) == 0
 
         # Accessibility: controls are named after their rows.
         assert str(window.autostart.accessibilityLabel()) == 'Start when the computer starts'
         assert str(window.interval_popup.accessibilityLabel()) == 'Automatic sync'
+        assert str(window.terminal_popup.accessibilityLabel()) == 'Terminal'
         assert str(window.check_updates.accessibilityLabel()) == 'Check for updates automatically'
         assert str(window.url_field.accessibilityLabel()) == "Your school's Blackboard address"
         assert 'Danger zone' in by_text and str(window.uninstall_button.attributedTitle().string()) == 'Uninstall app…'
@@ -1293,36 +1297,43 @@ def test_macos_home_ai_card_sits_under_notebooklm_and_routes_every_state(tmp_pat
         assert ai.origin.y == nlm.origin.y + nlm.size.height + GAP
         assert str(window.ai_title.stringValue()) == 'AI study session'
         assert str(window.ai_detail.stringValue()) == 'Looking for AI tools…'
-        assert shown() == [] and window.ai_terminal.isHidden() and window.ai_button.isHidden()
+        assert shown() == [] and window.ai_button.isHidden()
+        assert not hasattr(window, 'ai_terminal') and not hasattr(window, 'ai_note')
+        assert not window.terminal_popup.isEnabled()
 
-        # Ready: a logo button per installed tool, and the terminal picker beside them.
+        # Ready: a logo button per installed tool on Home; the terminal picker lives in Settings.
         model.ai_term, model.ai_cli = '2026-2027 Güz', 'codex'
-        model.finish_ai_detection(frozenset({'claude', 'codex'}), frozenset({'terminal', 'iterm2', 'kitty'}))
+        model.finish_ai_detection(frozenset({'claude', 'codex', 'agy'}), frozenset({'terminal', 'iterm2', 'kitty'}))
         window.update_status(main_status(model, NOW))
-        assert shown() == ['claude', 'codex'] and window.ai_button.isHidden() and window.ai_secondary.isHidden()
+        assert shown() == ['claude', 'codex', 'agy'] and window.ai_button.isHidden() and window.ai_secondary.isHidden()
         assert '2026-2027 Güz' in str(window.ai_detail.stringValue())
-        claude, codex = window.ai_tools['claude'], window.ai_tools['codex']
-        for button, label in ((claude, 'Open in Claude Code'), (codex, 'Open in Codex')):
+        claude, codex, agy = window.ai_tools['claude'], window.ai_tools['codex'], window.ai_tools['agy']
+        for button, label in ((claude, 'Open in Claude Code'), (codex, 'Open in Codex'), (agy, 'Open in Antigravity')):
             assert str(button.accessibilityLabel()) == str(button.toolTip()) == label
             assert button.image() is not None and button.isEnabled()
         assert codex.current and not claude.current and codex.image().isTemplate()
-        popup = window.ai_terminal
-        assert [str(title) for title in popup.itemTitles()] == ['Terminal', 'iTerm2', 'kitty']
-        assert str(popup.titleOfSelectedItem()) == 'Terminal' and str(popup.accessibilityLabel()) == 'Terminal'
         assert claude.frame().origin.x + claude.frame().size.width <= codex.frame().origin.x
-        assert codex.frame().origin.x + codex.frame().size.width <= popup.frame().origin.x
-        assert popup.frame().origin.x + popup.frame().size.width <= LEFT_W
+        assert codex.frame().origin.x + codex.frame().size.width <= agy.frame().origin.x
+        assert agy.frame().origin.x + agy.frame().size.width <= LEFT_W
         window.target.aiTool_(codex)
-        popup.selectItemAtIndex_(2)
-        window.target.aiTerminal_(popup)
-        assert actions == ['ai_open:codex', 'ai_terminal:kitty']
+        window.target.aiTool_(agy)
+        assert actions == ['ai_open:codex', 'ai_open:agy']
 
-        # The chosen terminal is gone: the card says which one is used.
+        # Settings → AI assistant → Terminal lists the detected terminals and defaults without dirtying the form.
+        popup = window.terminal_popup
+        assert popup.isEnabled() and [str(title) for title in popup.itemTitles()] == ['Terminal', 'iTerm2', 'kitty']
+        assert str(popup.titleOfSelectedItem()) == 'Terminal' and window.button_bar.isHidden()
+        popup.selectItemAtIndex_(2)
+        window.target.changed_(popup)
+        assert not window.button_bar.isHidden() and window.values().ai_terminal == 'kitty'
+        window.target.cancel_(None)
+        assert window.button_bar.isHidden() and window.values().ai_terminal == ''
+
+        # The chosen terminal is gone: Settings's Terminal row says which one is used.
         model.ai_terminal = 'ghostty'
         window.update_status(main_status(model, NOW))
-        assert str(window.ai_note.stringValue()) == "Ghostty wasn't found. Using Terminal instead."
-        assert not window.ai_note.isHidden()
-        assert window.ai_note.frame().origin.y + window.ai_note.frame().size.height <= claude.frame().origin.y
+        assert str(window.settings_rows['ai_terminal'].detail.stringValue()) == (
+            "Ghostty wasn't found. Using Terminal instead.")
         for name in ('NSAppearanceNameAqua', 'NSAppearanceNameDarkAqua'):
             window.window.setAppearance_(NSAppearance.appearanceNamed_(name))
             card = window.ai_card
@@ -1332,13 +1343,13 @@ def test_macos_home_ai_card_sits_under_notebooklm_and_routes_every_state(tmp_pat
 
         model.ai_launching = True
         window.update_status(main_status(model, NOW))
-        assert not claude.isEnabled() and not popup.isEnabled()
+        assert not claude.isEnabled()
         model.ai_launching = False
 
         # No tool: both "How to install" and "Try again" pills work
         model.finish_ai_detection(frozenset(), model.ai_terminals)
         window.update_status(main_status(model, NOW))
-        assert shown() == [] and popup.isHidden()
+        assert shown() == []
         assert str(window.ai_button.title()) == 'How to install' and not window.ai_secondary.isHidden()
         assert str(window.ai_secondary.title()) == 'Try again'
         window.target.aiAction_(None)
@@ -1400,10 +1411,17 @@ def test_menubar_app_wires_ai_card_actions_and_menu_item(menu_app, monkeypatch, 
     assert menu_app.model.ai_installed == {'claude', 'gemini'}
     assert 'Open Claude Code in 2026-2027 Güz' in menu_app.menu
 
-    # The picker's choice is remembered at once.
-    menu_app.window_action('ai_terminal:kitty')
-    menu_app.window_action('ai_terminal:warp')  # not a terminal this app knows: ignored
+    # Choosing a terminal in Settings saves it at once with Save.
+    from blackboard_sync.menubar import settings_form
+    from blackboard_sync.state import State
+    state = State(menu_app.config.state_file)
+    state.courses = {'_1_1': {'term': '2026-2027 Güz', 'folder': '2026-2027 Güz/CSE301'}}
+    state.dirty = True
+    state.save()
+    values = settings_form.initial_values(menu_app.settings, menu_app.settings, autostart=False)
+    assert menu_app.settings_submitted(replace(values, ai_terminal='kitty'), False) is None
     assert menu_app.settings.ai_terminal == 'kitty'
+    assert menu_app.model.ai_terminal == 'kitty'
     assert load_settings(menu_app.config.data_dir).ai_terminal == 'kitty'
 
     # A click on a tool opens it in that terminal, and the menu bar then offers it.

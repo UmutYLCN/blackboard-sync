@@ -1034,6 +1034,7 @@ class AppModel:
         dest_choice: str | None = None,
         auto_relogin: bool | None = None,
         ai_resume: bool | None = None,
+        ai_terminal: str | None = None,
     ) -> None:
         """The settings window was saved.
 
@@ -1060,6 +1061,11 @@ class AppModel:
                 self.reschedule(now or datetime.now(timezone.utc))
         if ai_resume is not None:
             self.ai_resume = ai_resume
+        if ai_terminal is not None:
+            if ai_terminal != self.ai_terminal:
+                self.ai_terminal = ai_terminal
+                if self.ai_result is not None and self.ai_result.failure == ai_launcher.Failure.TERMINAL_FAILED:
+                    self.ai_result = None
         if sync_root(dest) != self.root:
             self.pending, self.move_from = None, None
             self.ai_result = None
@@ -1221,11 +1227,6 @@ class AppModel:
         if (result is not None and result.failure == ai_launcher.Failure.CLI_MISSING and result.tool is not None
                 and installed is not None and result.tool.key in installed):
             self.ai_result = None
-
-    def choose_ai_terminal(self, key: str) -> None:
-        """The card's terminal picker: what failed in the other one is no longer news."""
-        self.ai_terminal = key
-        self.ai_result = None
 
     def finish_ai_launch(self, result: ai_launcher.LaunchResult) -> None:
         self.ai_launching = False
