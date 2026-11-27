@@ -453,24 +453,82 @@
 
   // -- Get started ------------------------------------------------------------
 
-  // The school address field offers the known schools while the student types a name.
-  function schoolList() {
-    let list = document.getElementById("school-list");
-    if (!list) {
-      list = h("datalist", { id: "school-list" });
-      document.body.append(list);
+  // The school address field and the list under it: every school while the field is empty, then
+  // only the matching ones (Python matches). Arrows and Enter or a click pick one.
+  function schoolField(input) {
+    const list = h("div", { class: "school-list", id: "school-list", role: "listbox", hidden: true });
+    let active = 0;
+    const close = () => {
+      list.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+      input.removeAttribute("aria-activedescendant");
+    };
+    const highlight = (index) => {
+      const options = [...list.children];
+      active = Math.min(Math.max(index, 0), options.length - 1);
+      options.forEach((option, at) => option.setAttribute("aria-selected", String(at === active)));
+      const option = options[active];
+      input.setAttribute("aria-activedescendant", option.id);
+      // Only the list scrolls to the highlighted school; the page under it stays put.
+      const top = option.offsetTop;
+      list.scrollTop = Math.min(top, Math.max(list.scrollTop, top + option.offsetHeight - list.clientHeight));
+    };
+    const choose = (name) => {
+      input.value = edits.base_url = name;
+      close();
+      drawSaveBar();
+    };
+    const show = (names) => {
+      if (!names.length) return close();
+      list.replaceChildren(...names.map((name, at) => h("div", {
+        class: "school-option", id: `school-option-${at}`, role: "option", text: name, onclick: () => choose(name),
+      })));
+      list.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+      highlight(0);
+    };
+    const suggest = () => {
+      const typed = input.value;
+      if (!typed.trim()) return show(state.schools || []);
+      return call("search_schools", typed).then((names) => {
+        // A slower answer for earlier text, or for a field that was left, is dropped.
+        if (input.value === typed && document.activeElement === input) show(names || []);
+      });
+    };
+    for (const [key, value] of [["role", "combobox"], ["aria-autocomplete", "list"],
+      ["aria-controls", "school-list"], ["aria-expanded", "false"], ["autocomplete", "off"]]) {
+      input.setAttribute(key, value);
     }
-    list.replaceChildren(...(state.schools || []).map((name) => h("option", { value: name })));
-    return "school-list";
+    // Coming back to a field that already holds a school's name opens nothing; typing does.
+    const reopen = () => { if (list.hidden && !(state.schools || []).includes(input.value)) suggest(); };
+    input.addEventListener("input", suggest);
+    input.addEventListener("focus", reopen);
+    input.addEventListener("click", reopen);
+    input.addEventListener("blur", close);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        if (list.hidden) suggest();
+        else highlight(active + (event.key === "ArrowDown" ? 1 : -1));
+      } else if (event.key === "Enter" && !list.hidden) {
+        event.preventDefault();
+        choose(list.children[active].textContent);
+      } else if (event.key === "Escape" && !list.hidden) {
+        event.preventDefault();
+        close();
+      }
+    });
+    list.addEventListener("mousedown", (event) => event.preventDefault()); // the field keeps the focus
+    return h("div", { class: "school-field" }, input, list);
   }
 
   function field(name, props) {
     const error = state.settings.error_field === name && state.settings.error;
-    return h("input", {
+    const input = h("input", {
       class: error ? "input invalid" : "input", type: "text", value: edits[name], "data-key": `field-${name}`,
-      spellcheck: "false", oninput: (event) => { edits[name] = event.target.value; drawSaveBar(); },
-      list: name === "base_url" ? schoolList() : null, ...props,
+      spellcheck: "false", oninput: (event) => { edits[name] = event.target.value; drawSaveBar(); }, ...props,
     });
+    return name === "base_url" ? schoolField(input) : input;
   }
 
   function chooseButton(title) {

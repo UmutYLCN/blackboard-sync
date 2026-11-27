@@ -560,9 +560,13 @@ matches a name, abbreviation, web domain or Blackboard host ignoring case, accen
 Text with a scheme (`https://…`) is an address, never a name. `settings.normalize_base_url` and the
 CLI's `--base-url` call it first, so Windows, macOS and the command line share it.
 
-- **Windows (web page and Tk window) and macOS:** the field is a combo box (`<datalist>` in the page,
-  `ttk.Combobox`, `NSComboBox`) that lists `suggestions()`: each school once, by its English name only
-  (the local-language names and abbreviations are matched when typed, never listed); any other text still
+- **Windows (web page and Tk window) and macOS:** typing in the field lists only the matching schools
+  under it (`search(text)`: part of a name is enough, closer matches first, nothing for a `https://`
+  address or unknown text); arrows and Return or a click put the school's name in the field. macOS draws
+  the list with `menubar/school_picker.py`, the web page asks the bridge's `search_schools`, the Tk
+  window uses `windows/school_search.py`. The whole list stays browsable (the combo box arrow on macOS
+  and Tk, the empty field in the web page) and holds `suggestions()`: each school once, by its English
+  name only (local-language names and abbreviations are matched, never listed). Any other text still
   works as an address.
 
 Add a school by adding a `School(...)` entry, then running

@@ -26,7 +26,7 @@ import sys
 import threading
 from datetime import datetime
 
-from blackboard_sync import deadlines, term_confirm, uninstall, updater
+from blackboard_sync import deadlines, schools, term_confirm, uninstall, updater
 from blackboard_sync.i18n import LANGUAGES, language, tr
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
@@ -174,6 +174,10 @@ class Bridge:
     def choose_folder(self):
         """The native folder picker; the chosen path goes into the form (saved and checked on Save)."""
         return self._host.choose_folder()
+
+    def search_schools(self, text):
+        """The names of the schools that match what is typed in the address field."""
+        return [school.name for school in schools.search(text)] if _text(text, 2048) else []
 
     def dialog_answer(self, ident, button=None, checked=False):
         if _text(ident) and (button is None or _text(button)):

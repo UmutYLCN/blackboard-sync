@@ -179,6 +179,7 @@ from blackboard_sync.menubar.settings_form import (
     window_height,
 )
 from blackboard_sync.menubar.sync_scene_view import SyncSceneView, reduce_motion
+from blackboard_sync.menubar.school_picker import SchoolPicker
 from blackboard_sync.menubar.presentation import configure_main_window, present_main_window
 from blackboard_sync.settings import AI_CLIS, AI_CODEX, display_path
 
@@ -366,7 +367,18 @@ def _logo_button(key: str, target, tag: int):
 
 
 class _EditableWindow(NSWindow):
+    school_picker = None  # while its list is open, Return and Escape belong to it
+
     def performKeyEquivalent_(self, event):
+        picker = self.school_picker
+        if picker is not None and picker.is_open() and event.type() == NSEventTypeKeyDown:
+            key = event.charactersIgnoringModifiers()
+            if key in ("\r", "\x03"):  # Return and Enter pick; the default button waits
+                picker.choose()
+                return True
+            if key == "\x1b":
+                picker.hide()
+                return True
         flags = event.modifierFlags() & NSEventModifierFlagDeviceIndependentFlagsMask
         if event.type() == NSEventTypeKeyDown and flags == NSEventModifierFlagCommand:
             action = EDIT_KEYS.get(event.charactersIgnoringModifiers())
@@ -514,7 +526,32 @@ class _Target(NSObject):
         self.owner.changed(sender)
 
     def controlTextDidChange_(self, notification):
-        self.owner.changed(notification.object())
+        field = notification.object()
+        self.owner.changed(field)
+        if isinstance(field, NSComboBox):
+            self.owner.school_picker.show(field)
+
+    def controlTextDidEndEditing_(self, notification):
+        if notification.object() is self.owner.school_picker.field:
+            self.owner.school_picker.hide()
+
+    def control_textView_doCommandBySelector_(self, control, _view, selector):
+        picker = self.owner.school_picker
+        if control is not picker.field:
+            return False
+        command = str(selector)
+        if command in ("moveDown:", "moveUp:"):
+            picker.move(1 if command == "moveDown:" else -1)
+        elif command == "insertNewline:":
+            picker.choose()
+        elif command == "cancelOperation:":
+            picker.hide()
+        else:
+            return False
+        return True
+
+    def comboBoxWillPopUp_(self, _notification):
+        self.owner.school_picker.hide()  # the arrow's own list of every school takes its place
 
     def comboBoxSelectionDidChange_(self, notification):
         box = notification.object()
@@ -544,11 +581,12 @@ class _Target(NSObject):
 
 
 def _school_box(placeholder: str):
-    """The school address field: typing a school's name or abbreviation offers the known schools."""
+    """The school address field: the arrow lists every known school, typing lists the matching ones
+    (``SchoolPicker``)."""
     box = NSComboBox.alloc().initWithFrame_(NSMakeRect(0, 0, FIELD_WIDTH, FIELD_HEIGHT))
     box.addItemsWithObjectValues_(schools.suggestions())
     box.setNumberOfVisibleItems_(10)
-    box.setCompletes_(True)
+    box.setCompletes_(False)  # completing the first name that starts alike would fight the typing
     box.setPlaceholderString_(placeholder)
     return box
 
@@ -820,6 +858,7 @@ class MainWindow:
         self.course_ids: list[str] = []
         self.target = _Target.alloc().init()
         self.target.owner = self
+        self.school_picker = SchoolPicker(self.changed)
         self.window = _EditableWindow.alloc().initWithContentRect_styleMask_backing_defer_(
             NSMakeRect(0, 0, WIDTH, HEIGHT),
             NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable,
@@ -827,6 +866,7 @@ class MainWindow:
             False,
         )
         self.window.setReleasedWhenClosed_(False)
+        self.window.school_picker = self.school_picker
         configure_main_window(self.window)
         self.window.setTitle_(T_WINDOW_TITLE)
         self.window.setDelegate_(self.target)
@@ -1967,6 +2007,7 @@ class MainWindow:
         return self.state.section
 
     def _show_section(self) -> None:
+        self.school_picker.hide()
         section = self.state.section
         visible = "start" if section == OVERVIEW and self.status.first_run else section
         if self.recent_seen is not None:
@@ -2023,6 +2064,7 @@ class MainWindow:
 
     def set_values(self, values: FormValues) -> None:
         """Show ``values`` as what is saved: the bar goes away."""
+        self.school_picker.hide()
         self.saved = values
         self._terminal_dirty = False
         for field in (self.url_field, self.start_url):
