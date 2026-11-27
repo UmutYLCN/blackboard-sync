@@ -337,7 +337,7 @@
   }
 
   function fillNotebooklmText(card, data) {
-    for (const key of ["detail", "counts", "notice"]) {
+    for (const key of ["detail", "secondary", "warning-counts", "notice"]) {
       const line = card.querySelector(`.nlm-${key}`);
       line.textContent = data[key];
       line.title = data[key];
@@ -364,7 +364,8 @@
       h("div", { class: "nlm-text" },
         h("div", { class: "nlm-title", text: data.title }),
         h("div", { class: "nlm-detail" }),
-        h("div", { class: "nlm-counts" }),
+        h("div", { class: "nlm-secondary" }),
+        h("div", { class: "nlm-warning-counts" }),
         h("div", { class: "nlm-notice" }),
         data.running ? h("div", { class: "nlm-bar", role: "progressbar", "aria-label": data.title, "aria-valuemin": "0", "aria-valuemax": "100" },
           h("span", {})) : null,
@@ -639,6 +640,7 @@
           section.rows.filter((row) => !row.hidden).map(settingRow),
           section.notes.map((note) => h("div", { class: "note", text: note }))),
         section.footer ? h("p", { class: "footer-note", text: section.footer }) : null,
+        section.totals ? h("p", { class: "footer-note", text: section.totals }) : null,
       ]),
       h("div", { class: "save-bar", id: "save-bar", hidden: true },
         h("span", { class: "text", id: "save-text" }),

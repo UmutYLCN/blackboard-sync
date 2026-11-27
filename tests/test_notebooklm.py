@@ -1535,7 +1535,7 @@ def test_the_gateway_reads_the_age_of_a_source_and_deletes_through_the_library()
 def test_the_card_says_what_was_held_back_and_when_it_looks_for_duplicates(tmp_path):
     model = AppModel(Settings(base_url="https://bb.example.edu", dest=tmp_path), datetime.now(timezone.utc))
     model.notebooklm = store.NotebookLMStatus(connected=True, finished_at="2026-11-06T10:00:00+00:00", held=2)
-    assert "2 held back" in main_window_model.notebooklm_card(model, datetime.now(timezone.utc)).counts
+    assert "2 held back" in main_window_model.notebooklm_card(model, datetime.now(timezone.utc)).warning_counts
     assert model.begin_notebooklm(NOTEBOOKLM_DUPLICATES)
     card = main_window_model.notebooklm_card(model, datetime.now(timezone.utc))
     assert card.running and card.detail == main_window_model.T_NOTEBOOKLM_DUPLICATES_RUNNING

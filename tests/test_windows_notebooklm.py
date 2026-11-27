@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from blackboard_sync import deadlines, session_refresh as sr, signout, system
+from blackboard_sync import deadlines, i18n, session_refresh as sr, signout, system
 from blackboard_sync.config import Config
 from blackboard_sync.login import WINDOWS_LOCK_FILE, profile_in_use
 from blackboard_sync.menubar import jobs
@@ -204,7 +204,7 @@ def test_progress_reaches_the_card(app):
     app.model.begin_notebooklm(NOTEBOOKLM_SYNC)
     app.notebooklm_event({"event": "progress", "file": "W/a.pdf", "done": 1, "total": 4, "finished": 1, "course": "CSE"})
     card = main.notebooklm_card(app.model, NOW)
-    assert card.running and card.progress == 0.25 and card.counts == "CSE" and "a.pdf" in card.detail
+    assert card.running and card.progress == 0.25 and card.secondary == "CSE" and "a.pdf" in card.detail
 
 
 def test_pause_stops_only_an_upload_run_and_quit_stops_any(app, monkeypatch):
@@ -501,6 +501,16 @@ def test_the_card_follows_every_state_and_clicks_stay_within_it(card, kind, butt
     assert (button in allowed) is enabled and ("notebooklm_open" in allowed) is opens
 
 
+def test_the_idle_card_sends_the_result_check_time_and_warnings_to_webview():
+    last_run = replace(CONNECTED, finished_at=NOW.isoformat(), skipped=29, modified=31, blocked=1,
+                       message="CSE301: source limit")
+    card = state(model_card(notebooklm=last_run))["home"]["notebooklm"]
+    assert card["detail"] == "No new files were added"
+    assert card["secondary"] == f"Last checked: {main.day_time(NOW, NOW)}"
+    assert card["warning-counts"] == "1 course blocked"
+    assert card["notice"] == last_run.message
+
+
 def test_a_run_shows_how_far_it_has_come_or_that_there_is_no_telling():
     going = model_card(notebooklm=CONNECTED, busy=NOTEBOOKLM_SYNC,
                        progress=main.NotebookLMProgress("Adding", "CSE", 0.5))
@@ -573,11 +583,26 @@ def test_a_question_that_cannot_be_undone_defaults_to_no_and_the_list_scrolls():
     assert answers == [True, False]
 
 
-def test_the_preview_draws_every_card_state():
-    source = (ROOT / "scripts" / "webui-preview.py").read_text(encoding="utf-8")
-    for name in ("notebooklm-off", "notebooklm-signing-in", "notebooklm-running", "notebooklm-idle",
-                 "notebooklm-attention", "duplicates-dialog"):
-        assert f'"{name}"' in source
+def test_the_preview_draws_every_card_state(monkeypatch):
+    monkeypatch.setattr(i18n, "_language", "en")
+    script = ROOT / "scripts" / "webui-preview.py"
+    namespace = {"__name__": "webui_preview"}
+    exec(compile(script.read_text(encoding="utf-8"), str(script), "exec"), namespace)
+    states = namespace["fixtures"](NOW)
+    kinds = {name: states[name]["home"]["notebooklm"]["kind"] for name in (
+        "notebooklm-off", "notebooklm-signing-in", "notebooklm-running", "notebooklm-idle", "notebooklm-attention")}
+    assert kinds == {"notebooklm-off": main.NOTEBOOKLM_OFF, "notebooklm-signing-in": main.NOTEBOOKLM_RUNNING,
+                     "notebooklm-running": main.NOTEBOOKLM_RUNNING, "notebooklm-idle": main.NOTEBOOKLM_IDLE,
+                     "notebooklm-attention": main.NOTEBOOKLM_ATTENTION}
+    idle = states["notebooklm-idle"]["home"]["notebooklm"]
+    assert idle["detail"] == "3 new files added to your notebooks"
+    assert idle["secondary"].startswith("Last checked: ")
+    assert idle["warning-counts"] == "2 held back"
+    assert idle["button"]["id"] == "notebooklm_sync" and idle["open"]
+    totals = next(section["totals"] for section in states["settings"]["settings"]["sections"]
+                  if section["key"] == form.SECTION_NOTEBOOKLM)
+    assert totals.startswith("2 files can't go to NotebookLM") and "1 file changed after it was added" in totals
+    assert states["duplicates-dialog"]["dialog"]["id"] == "q2"
 
 
 # -- what the core does differently on Windows ------------------------------------------------------

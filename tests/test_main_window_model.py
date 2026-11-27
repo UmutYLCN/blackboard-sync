@@ -39,7 +39,7 @@ from blackboard_sync.menubar import main_window_model
 from blackboard_sync.menubar.model import NOTEBOOKLM_CONNECT, NOTEBOOKLM_SYNC, AppModel, RecentItem, RunOutcome
 from blackboard_sync.menubar.settings_form import FormValues, window_status
 from blackboard_sync.notebooklm.store import NotebookLMStatus
-from blackboard_sync import __version__, updater
+from blackboard_sync import __version__, i18n, updater
 from blackboard_sync.menubar.model import UpdateState
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
@@ -333,18 +333,42 @@ def test_notebooklm_not_connected_offers_to_connect():
     assert card.enabled and "after each sync" in card.detail
 
 
-def test_notebooklm_idle_shows_the_last_run():
-    model = notebooklm_model(connected=True, finished_at=NOW.isoformat(), added=3, skipped=2, blocked=1, failed=1)
+@pytest.mark.parametrize("language, added, detail, checked", [
+    ("en", 0, "No new files were added", "Last checked: today"),
+    ("en", 1, "1 new file added to your notebooks", "Last checked: today"),
+    ("en", 3, "3 new files added to your notebooks", "Last checked: today"),
+    ("tr", 0, "Yeni dosya eklenmedi", "Son kontrol: bugün"),
+    ("tr", 1, "Defterlerinize 1 yeni dosya eklendi", "Son kontrol: bugün"),
+    ("tr", 3, "Defterlerinize 3 yeni dosya eklendi", "Son kontrol: bugün"),
+])
+def test_notebooklm_idle_shows_the_last_run(monkeypatch, language, added, detail, checked):
+    monkeypatch.setattr(i18n, "_language", language)
+    model = notebooklm_model(connected=True, finished_at=NOW.isoformat(), added=added, skipped=29, modified=31)
     card = main_window_model.notebooklm_card(model, NOW)
     assert card.kind == main_window_model.NOTEBOOKLM_IDLE
-    assert card.action == "notebooklm_sync" and card.action_title == "Sync NotebookLM"
-    assert card.detail.startswith("Last synced: today")
-    assert card.counts == "3 added · 2 skipped · 1 course blocked · 1 failed"
+    assert card.action == "notebooklm_sync"
+    assert card.detail == detail
+    assert card.secondary == f"{checked} {NOW.astimezone():%H:%M}"
+    assert not card.warning_counts and not card.notice
+
+
+@pytest.mark.parametrize("language, blocked, warning_counts", [
+    ("en", 1, "1 course blocked · 2 held back · 3 failed"),
+    ("en", 2, "2 courses blocked · 2 held back · 3 failed"),
+    ("tr", 2, "2 ders engellendi · 2 bekletildi · 3 başarısız"),
+])
+def test_notebooklm_idle_keeps_actionable_warnings(monkeypatch, language, blocked, warning_counts):
+    monkeypatch.setattr(i18n, "_language", language)
+    model = notebooklm_model(connected=True, finished_at=NOW.isoformat(), skipped=29, modified=31,
+                             blocked=blocked, held=2, failed=3, message="CSE301: source limit")
+    card = main_window_model.notebooklm_card(model, NOW)
+    assert card.warning_counts == warning_counts
+    assert card.notice == model.notebooklm.message
 
 
 def test_notebooklm_connected_but_never_run():
     card = main_window_model.notebooklm_card(notebooklm_model(connected=True), NOW)
-    assert card.detail == main_window_model.T_NEVER_SYNCED and not card.counts
+    assert card.detail == main_window_model.T_NEVER_SYNCED and not card.secondary
 
 
 def test_notebooklm_running_shows_progress_and_locks_the_pill():
@@ -355,7 +379,7 @@ def test_notebooklm_running_shows_progress_and_locks_the_pill():
         {"event": "progress", "done": 3, "finished": 2, "total": 12, "course": "CSE301", "file": "Week 3/a.pdf"})
     card = main_window_model.notebooklm_card(model, NOW)
     assert card.kind == main_window_model.NOTEBOOKLM_RUNNING and not card.enabled and card.running
-    assert (card.detail, card.counts) == ("Adding 3 of 12: a.pdf", "CSE301")
+    assert (card.detail, card.secondary) == ("Adding 3 of 12: a.pdf", "CSE301")
     assert card.progress == pytest.approx(2 / 12)
     assert card.open_action  # NotebookLM can be opened while files go up
 

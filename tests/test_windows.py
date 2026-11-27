@@ -442,7 +442,7 @@ def test_windows_tk_window_draws_the_notebooklm_card_and_keeps_its_settings(monk
 
     window.update_status(main.main_status(model, now))
     assert window.notebooklm_detail.options['text'] == main.T_NOTEBOOKLM_INTRO
-    assert window.notebooklm_counts.removed and window.notebooklm_bar.removed and not window.notebooklm_open.canvas.packed
+    assert window.notebooklm_secondary.removed and window.notebooklm_bar.removed and not window.notebooklm_open.canvas.packed
     window.notebooklm_button.options['command']()
     assert actions == ['notebooklm_connect']
     assert window.settings_rows['notebooklm_disconnect'].control.options['state'] == 'disabled'
@@ -452,14 +452,24 @@ def test_windows_tk_window_draws_the_notebooklm_card_and_keeps_its_settings(monk
     model.notebooklm_progress = main.NotebookLMProgress('Adding 1 of 2: a.pdf', 'CSE303', 0.5)
     window.update_status(main.main_status(model, now))
     assert not window.notebooklm_bar.removed and window.notebooklm_bar.options['value'] == 0.5
-    assert window.notebooklm_counts.options["text"] == "CSE303" and window.notebooklm_open.canvas.packed
+    assert window.notebooklm_secondary.options["text"] == "CSE303" and window.notebooklm_open.canvas.packed
     assert window.notebooklm_button.options['state'] == 'disabled'
 
     model.notebooklm_busy, model.notebooklm_progress = None, None
+    model.notebooklm = NotebookLMStatus(connected=True, finished_at=now.isoformat(), skipped=29, modified=31, failed=1)
+    window.update_status(main.main_status(model, now))
+    assert window.notebooklm_detail.options["text"] == "No new files were added"
+    assert window.notebooklm_secondary.options["text"].startswith("Last checked: ")
+    assert window.notebooklm_warning_counts.options["text"] == "1 failed"
+    assert window.notebooklm_warning_counts.options["foreground"] == "#b00020"
+    assert window.notebooklm_settings_totals.options["text"].startswith("29 files can't go to NotebookLM")
+    assert not window.notebooklm_settings_totals.removed
+
     model.notebooklm = replace(model.notebooklm, error=True, message='down')
     window.update_status(main.main_status(model, now))
     assert window.notebooklm_bar.removed and window.notebooklm_button.options['state'] == 'normal'
     assert window.notebooklm_detail.options['foreground'] == '#b00020'
+    assert window.notebooklm_settings_totals.removed
     assert window.settings_rows['notebooklm_disconnect'].control.options['state'] == 'normal'
 
 

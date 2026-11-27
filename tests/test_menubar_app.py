@@ -829,6 +829,7 @@ def test_settings_page_is_sections_of_rows(tmp_path):
     from blackboard_sync.menubar.main_window import INNER, SETTINGS_PAD
     from blackboard_sync.menubar.main_window_model import GENERAL, main_status
     from blackboard_sync.menubar.settings_form import SECTION_CALENDAR, SECTIONS, settings_sections
+    from blackboard_sync.notebooklm.store import NotebookLMStatus
 
     window, model, _ = make_window(tmp_path)
     try:
@@ -884,6 +885,22 @@ def test_settings_page_is_sections_of_rows(tmp_path):
         assert str(window.check_updates.accessibilityLabel()) == 'Check for updates automatically'
         assert str(window.url_field.accessibilityLabel()) == "Your school's Blackboard address"
         assert 'Danger zone' in by_text and str(window.uninstall_button.attributedTitle().string()) == 'Uninstall app…'
+
+        # The NotebookLM footer grows with the latest totals and collapses on disconnect.
+        original_height = window.form_height
+        model.notebooklm = NotebookLMStatus(connected=True, finished_at=NOW.isoformat(), skipped=29, modified=31)
+        window.update_status(main_status(model, NOW))
+        with_totals = {text: top for top, text in settings_texts(window)}
+        totals = ("29 files can't go to NotebookLM: their format isn't supported, or they're missing, empty "
+                  "or over 200 MB. "
+                  "31 files changed after they were added; NotebookLM keeps the version it has.")
+        assert with_totals["Disconnect NotebookLM"] < with_totals[totals] < with_totals["Folder"]
+        assert window.form_height > original_height
+        model.notebooklm = NotebookLMStatus()
+        window.update_status(main_status(model, NOW))
+        restored = {text: top for top, text in settings_texts(window)}
+        assert totals not in restored and restored["Folder"] == by_text["Folder"]
+        assert window.form_height == original_height
 
         # Both appearances draw.
         for name in ('NSAppearanceNameAqua', 'NSAppearanceNameDarkAqua'):

@@ -30,7 +30,9 @@ from blackboard_sync.menubar.model import (
     T_LOGOUT,
     AppModel,
     login_waiting_line,
+    parse_iso,
 )
+from blackboard_sync.notebooklm.store import NotebookLMStatus
 from blackboard_sync.settings import (
     AI_CLAUDE,
     AI_CLIS,
@@ -447,8 +449,29 @@ class WindowStatus:
     calendar_notice: str = ""
     notebooklm_connected: bool = False
     notebooklm_busy: bool = False
+    notebooklm_totals: str = ""
     # The AI tools found on this computer (``ai_launcher.Detector.installed``); None: not looked for yet.
     ai_installed: frozenset[str] | None = None
+
+
+def notebooklm_totals(status: NotebookLMStatus) -> str:
+    """Explain the totals from the latest completed NotebookLM check."""
+    if not status.connected or status.error or status.needs_login or parse_iso(status.finished_at) is None:
+        return ""
+    parts = []
+    if status.skipped:
+        parts.append(ntr(
+            "{n} file can't go to NotebookLM: its format isn't supported, or it's missing, empty or over 200 MB.",
+            "{n} files can't go to NotebookLM: their format isn't supported, or they're missing, empty or over 200 MB.",
+            status.skipped,
+        ).format(n=status.skipped))
+    if status.modified:
+        parts.append(ntr(
+            "{n} file changed after it was added; NotebookLM keeps the version it has.",
+            "{n} files changed after they were added; NotebookLM keeps the version it has.",
+            status.modified,
+        ).format(n=status.modified))
+    return " ".join(parts)
 
 
 def window_status(model: AppModel) -> WindowStatus:
@@ -475,6 +498,7 @@ def window_status(model: AppModel) -> WindowStatus:
         calendar=model.calendar, calendar_busy=model.calendar_busy, calendar_paused=model.paused,
         calendar_notice=model.current_calendar_notice(),
         notebooklm_connected=model.notebooklm.connected, notebooklm_busy=model.notebooklm_busy is not None,
+        notebooklm_totals=notebooklm_totals(model.notebooklm),
         ai_installed=model.ai_installed,
         account=account,
         account_warning=expired and model.busy != "login",
