@@ -73,10 +73,22 @@ def test_wait_for_devtools_port(tmp_path, monkeypatch):
         wait_for_devtools_port(tmp_path, timeout=0.3)
 
 
+class FakePage:
+    def __init__(self, context):
+        self.context = context
+        self.url = BASE_URL + "/"
+
+    def close(self):
+        self.context.pages.remove(self)
+
+    def goto(self, url, **kwargs):
+        self.url = url
+
+
 class FakeContext:
     def __init__(self, cookie_rounds, pages=1):
         self.cookie_rounds = list(cookie_rounds)
-        self.pages = ["page"] * pages
+        self.pages = [FakePage(self) for _ in range(pages)]
 
     def cookies(self, url):
         return self.cookie_rounds.pop(0) if len(self.cookie_rounds) > 1 else self.cookie_rounds[0]
@@ -88,6 +100,9 @@ class FakeCdpSession:
 
     def send(self, method):
         self.browser.sent.append(method)
+        self.browser.urls_at_close = [
+            [page.url for page in context.pages] for context in self.browser.contexts
+        ]
         self.browser.connected = False
 
 
@@ -127,7 +142,7 @@ def test_login_waits_for_sign_in_saves_cookies_and_closes_browser(config, tmp_pa
     config.profile_dir.mkdir()
     (config.profile_dir / DEVTOOLS_PORT_FILE).write_text("9999\n")  # stale, from an old run
     calls, connected_to = [], []
-    browser = FakeBrowser(FakeContext([[], COOKIES]))
+    browser = FakeBrowser(FakeContext([[], COOKIES], pages=3))
     users = iter([None, {"id": "_900_1", "userName": "student.example"}])
 
     def connect(url):
@@ -141,6 +156,7 @@ def test_login_waits_for_sign_in_saves_cookies_and_closes_browser(config, tmp_pa
     assert calls[0][0] == "/usr/bin/open"
     assert connected_to == ["http://127.0.0.1:40000"]  # the fresh port, not the stale one
     assert browser.sent == ["Browser.close"]
+    assert browser.urls_at_close == [["about:blank"]]
     saved = load_session(config.session_file, BASE_URL)
     assert [c["name"] for c in saved["cookies"]] == ["BbRouter"]
     assert_owner_only(config.session_file)
@@ -161,6 +177,7 @@ def test_login_stops_when_window_is_closed(config, tmp_path, monkeypatch):
         login(config, run=_fake_open([]), connect=lambda url: browser, platform="darwin", inapp=_no_inapp,
               check_user=check_user, out=lambda *_: None)
     assert browser.sent == ["Browser.close"]
+    assert browser.urls_at_close == [[]]
     assert not config.session_file.exists()
 
 
@@ -252,7 +269,7 @@ def test_windows_login_spawns_a_detached_browser_and_saves_the_session(config, t
     def no_run(*args, **kwargs):
         raise AssertionError("Windows must not go through `open`")
 
-    browser = FakeBrowser(FakeContext([COOKIES]))
+    browser = FakeBrowser(FakeContext([COOKIES], pages=3))
     user = login(config, run=no_run, spawn=spawn, connect=lambda url: browser, platform="win32", inapp=_no_inapp,
                  check_user=lambda base, cookies: {"id": "_900_1", "userName": "student.example"},
                  out=lambda *_: None)
@@ -261,6 +278,7 @@ def test_windows_login_spawns_a_detached_browser_and_saves_the_session(config, t
     assert argv[0] == str(edge)
     assert kwargs["creationflags"] == DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
     assert browser.sent == ["Browser.close"]
+    assert browser.urls_at_close == [["about:blank"]]
     assert load_session(config.session_file, BASE_URL)["user"]["userName"] == "student.example"
 
 

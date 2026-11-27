@@ -83,6 +83,12 @@ class FakePage:
 
     def goto(self, url, **kwargs):
         self.opened.append(url)
+        # Other navigations use the redirect destination set by the test.
+        if url == "about:blank":
+            self.url = url
+
+    def close(self):
+        self.context.pages.remove(self)
 
     def title(self):
         return self.page_title
@@ -92,9 +98,20 @@ class FakePage:
 
 
 class FakeContext:
-    def __init__(self, cookies, page):
-        self._cookies, self.pages = cookies, [page]
+    def __init__(self, cookies, *pages):
+        self._cookies = cookies
+        self.pages = []
         self.cleared = []
+        for page in pages:
+            self.add_page(page)
+
+    def add_page(self, page):
+        page.context = self
+        self.pages.append(page)
+        return page
+
+    def new_page(self):
+        return self.add_page(FakePage())
 
     def clear_cookies(self, domain=None):
         self.cleared.append(domain)
@@ -113,7 +130,11 @@ class FakeBrowser:
 
         class Session:
             def send(self, method):
+                assert method == "Browser.close"
                 browser.closed = True
+                browser.urls_at_close = [
+                    [page.url for page in context.pages] for context in browser.contexts
+                ]
 
         return Session()
 
@@ -185,7 +206,7 @@ def test_a_valid_single_sign_on_saves_new_cookies_with_no_window(rig):
 
     assert result.ok and result.reason == sr.REFRESHED
     assert [c["value"] for c in load_session(rig.config.session_file, BASE_URL)["cookies"]] == ["new"]
-    assert page.opened == [BASE_URL + "/"]
+    assert page.opened == [BASE_URL + "/", "about:blank"]
     # The old session may still work; only a new one is a refresh.
     assert context.cleared == ["blackboard.example.edu"]
     assert rig.browser.closed and not rig.process.stopped
@@ -198,6 +219,42 @@ def test_a_valid_single_sign_on_saves_new_cookies_with_no_window(rig):
     assert options["start_new_session"] is True
 
 
+def test_silent_sign_in_prunes_restored_tabs_before_navigation_and_popups_before_quitting(rig, monkeypatch):
+    page = FakePage(BASE_URL + "/ultra")
+    context = FakeContext(NEW, page, FakePage(BASE_URL), FakePage("https://login.school.edu/"))
+    pages_at_navigation = []
+    navigate = page.goto
+
+    def goto(url, **kwargs):
+        if url == BASE_URL + "/":
+            pages_at_navigation.extend(context.pages)
+        if url == "about:blank":  # Playwright learns of a popup opened during the last check only now
+            context.add_page(FakePage("https://login.school.edu/late-popup"))
+        navigate(url, **kwargs)
+
+    def check_user(base, cookies):
+        context.add_page(FakePage("https://login.school.edu/popup"))
+        return USER
+
+    monkeypatch.setattr(page, "goto", goto)
+    browser = FakeBrowser(context)
+    assert rig.run(browser, check_user=check_user).ok
+    assert pages_at_navigation == [page]
+    assert context.pages == [page]
+    assert browser.urls_at_close == [["about:blank"]]
+    assert context.cleared == ["blackboard.example.edu"]
+
+
+def test_silent_sign_in_opens_a_tab_when_nothing_was_restored(rig):
+    context = FakeContext(NEW)
+    browser = FakeBrowser(context)
+
+    assert rig.run(browser).ok
+    kept, = context.pages
+    assert kept.opened == [BASE_URL + "/", "about:blank"]
+    assert browser.urls_at_close == [["about:blank"]]
+
+
 def test_a_password_page_ends_it_at_once_and_keeps_the_old_session(rig):
     page = FakePage("https://login.school.edu/sso", password=True)
     result = rig.run(FakeBrowser(FakeContext(OLD, page)), check_user=lambda base, cookies: None, timeout=30)
@@ -205,6 +262,7 @@ def test_a_password_page_ends_it_at_once_and_keeps_the_old_session(rig):
     assert result.reason == sr.NEEDS_INTERACTION and not result.ok
     assert [c["value"] for c in load_session(rig.config.session_file, BASE_URL)["cookies"]] == ["old"]
     assert rig.browser.closed
+    assert rig.browser.urls_at_close == [["about:blank"]]
 
 
 def test_stuck_at_the_school_means_it_wants_the_student(rig):
@@ -813,6 +871,63 @@ def test_e2e_successful_auto_redirect(config, static_server, monkeypatch):
     )
     assert res.ok
     assert res.reason == sr.REFRESHED
+
+
+def test_e2e_consecutive_refreshes_do_not_pile_up_restored_tabs(config, static_server):
+    app = login_mod.discover_browser("auto")
+    if app is None or app.name in sr.NO_SILENT_START:
+        pytest.skip("no Chromium-based browser that starts without a window")
+    sync_api = pytest.importorskip("playwright.sync_api")
+
+    def bb_root(handler):
+        if "BbRouter=" in handler.headers.get("Cookie", ""):
+            return (200, {"Content-Type": "text/html"}, "<html><body>Welcome Ada</body></html>")
+        return (302, {"Location": "/sso"}, "")
+
+    def sso_page(handler):
+        return (302, {"Location": "/", "Set-Cookie": "BbRouter=expires:2000000000; Path=/"}, "")
+
+    def saved_tab(handler):
+        return (200, {"Content-Type": "text/html"}, "<html><body>A tab from an earlier session</body></html>")
+
+    base_url = static_server({"/": bb_root, "/sso": sso_page, "/saved": saved_tab})
+    config.ensure_data_dir()
+    config.profile_dir.mkdir(exist_ok=True)
+    save_session(config.session_file, base_url, OLD, USER)
+    cfg = replace(config, base_url=base_url)
+    saved_urls = [f"{base_url}/saved?tab={n}" for n in range(4)]
+    restored = []
+
+    with sync_api.sync_playwright() as pw:
+        process = subprocess.Popen(
+            [str(sr.browser_executable(app)), *sr.silent_flags(config.profile_dir)],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        try:
+            port = login_mod.wait_for_devtools_port(config.profile_dir, timeout=sr.BROWSER_START_TIMEOUT)
+            browser = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+            try:
+                for url in saved_urls:
+                    browser.contexts[0].new_page().goto(url)
+            finally:
+                login_mod._close_browser(browser)
+        finally:
+            sr._stop_browser(process)
+
+        def connect(url):
+            browser = pw.chromium.connect_over_cdp(url)
+            restored.append(sorted(page.url for page in browser.contexts[0].pages))
+            return browser
+
+        for _ in range(3):
+            res = sr.silent_sign_in(
+                cfg, timeout=10.0, stillness_timeout=3.0, connect=connect,
+                check_user=lambda base, cookies: USER if any(c.get("name") == "BbRouter" for c in cookies) else None,
+            )
+            assert res.reason == sr.REFRESHED
+
+    assert set(saved_urls) <= set(restored[0])  # the profile restores its saved tabs on relaunch
+    assert all(len(tabs) <= 1 and not set(tabs) & set(saved_urls) for tabs in restored[1:])
 
 
 def test_e2e_username_first_page_exits_fast(config, static_server):

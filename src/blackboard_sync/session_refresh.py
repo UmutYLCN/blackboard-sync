@@ -47,8 +47,10 @@ from blackboard_sync.login import (
     _close_browser,
     _connector,
     discover_browser,
+    leave_one_blank_tab,
     profile_in_use,
     profile_lock,
+    prune_tabs,
     session_user,
     wait_for_devtools_port,
 )
@@ -190,7 +192,6 @@ def silent_flags(profile_dir: Path) -> list[str]:
         "--restore-last-session",  # see the module's description
         "--no-first-run",
         "--no-default-browser-check",
-        "about:blank",
     ]
 
 
@@ -286,8 +287,10 @@ def _wait_for_session(
     if not contexts:
         return BROWSER_FAILED, None, []
     context = contexts[0]
+    page = prune_tabs(context)
+    if page is None:
+        page = context.new_page()
     context.clear_cookies(domain=host_of(base_url))
-    page = context.pages[0] if context.pages else context.new_page()
     deadline = clock() + timeout
     try:
         page.goto(base_url + "/", wait_until="commit", timeout=timeout * 1000)
@@ -404,6 +407,7 @@ def _sign_in_with_profile(
                     save_session(config.session_file, config.base_url, cookies, user)
                 return reason
             finally:
+                leave_one_blank_tab(cdp_browser)
                 _close_browser(cdp_browser)
     finally:
         _stop_browser(process)
