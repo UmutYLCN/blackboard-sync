@@ -23,7 +23,7 @@ When enforcement triggers:
 - below ``minimum`` on Microsoft Store queries and installs updates via
   ``StoreContext`` (initialized with the window handle), falling back to opening
   the Store product page (``ms-windows-store://pdp/?ProductId=9NXJCQ5JL1KB``);
-- below ``minimum`` on Mac App Store builds (seam) opens the App Store.
+- below ``minimum`` on Mac App Store builds opens ``updater.store_update_url()``.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ STATUS_UNKNOWN = "unknown"
 MS_STORE_PRODUCT_ID = "9NXJCQ5JL1KB"
 MS_STORE_URI = f"ms-windows-store://pdp/?ProductId={MS_STORE_PRODUCT_ID}"
 MS_STORE_WEB_URL = "https://apps.microsoft.com/detail/9nxjcq5jl1kb"
-MAC_APP_STORE_URL = "macappstore://showUpdatesPage"
+MAC_APP_STORE_URL = updater.MAS_UPDATES_URL
 MAC_APP_STORE_WEB_URL = "https://apps.apple.com/"
 
 # StorePackageUpdateState values (Windows.Services.Store).
@@ -389,24 +389,30 @@ def _default_macos_opener(url: str) -> None:
 
 
 def open_mac_app_store(
-    url: str = MAC_APP_STORE_URL,
+    url: str | None = None,
     fallback_url: str = MAC_APP_STORE_WEB_URL,
     opener: Callable[[str], None] | None = None,
 ) -> bool:
-    """Open the Mac App Store page (seam for ``DIST_MAC_APP_STORE`` and retired ``.dmg`` builds)."""
-    target = valid_mas_url(url) or MAC_APP_STORE_URL
+    """Open the Mac App Store page (uses ``updater.store_update_url()`` on ``mas`` builds)."""
+    default_url = updater.store_update_url() if licensing.is_mas() else MAC_APP_STORE_URL
+    target = valid_mas_url(url) or default_url
     open_fn = opener or _default_macos_opener
     try:
         open_fn(target)
         return True
     except OSError:
         log.warning("Could not open %s; falling back to %s", target, fallback_url, exc_info=True)
-    if fallback_url and fallback_url != target:
+    web_fallback = (
+        "https://" + target.removeprefix("macappstore://")
+        if fallback_url == MAC_APP_STORE_WEB_URL and target.startswith("macappstore://apps.apple.com/")
+        else fallback_url
+    )
+    if web_fallback and web_fallback != target:
         try:
-            open_fn(fallback_url)
+            open_fn(web_fallback)
             return True
         except OSError:
-            log.warning("Could not open Mac App Store fallback %s", fallback_url, exc_info=True)
+            log.warning("Could not open Mac App Store fallback %s", web_fallback, exc_info=True)
     return False
 
 

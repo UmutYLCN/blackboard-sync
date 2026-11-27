@@ -48,6 +48,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from typing import Callable, Collection, Mapping
 
+from blackboard_sync import licensing
 from blackboard_sync.config import Config
 from blackboard_sync.i18n import tr
 from blackboard_sync.settings import (
@@ -146,11 +147,12 @@ class Failure(enum.Enum):
 
 @dataclass(frozen=True)
 class LaunchResult:
-    failure: Failure | None = None  # None: the terminal opened
+    failure: Failure | None = None  # None: the terminal opened (or the command was copied in MAS)
     tool: AiTool | None = None
     folder: Path | None = None  # the term folder, once known
     error: str = ""  # what the terminal reported, for TERMINAL_FAILED
     terminal: Terminal | None = None  # the one used, once chosen
+    copied_command: str = ""  # non-empty when the command was copied to the clipboard (MAS)
 
     @property
     def ok(self) -> bool:
@@ -309,8 +311,14 @@ def _detect_windows(env: Mapping[str, str], home: Path) -> dict[str, Path | None
 def detect(platform: str | None = None, env: Mapping[str, str] | None = None, home: Path | None = None,
            run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
            dirs: Collection[str] = MACOS_DIRS) -> dict[str, Path | None]:
-    """Each tool's program, or None when it is not installed; ``dirs`` are macOS's install folders."""
+    """Each tool's program, or None when it is not installed; ``dirs`` are macOS's install folders.
+
+    In Mac App Store (``mas``) builds, App Sandbox blocks inspecting host shell PATHs and
+    launching terminals via ``osascript``; all four tools are offered as Copy-command actions.
+    """
     env = os.environ if env is None else env
+    if licensing.is_mas(platform=platform, env=env):
+        return {key: Path(key) for key in AI_CLIS}
     home = Path.home() if home is None else home
     if is_windows(platform):
         return _detect_windows(env, home)
@@ -364,6 +372,8 @@ def detect_terminals(platform: str | None = None, env: Mapping[str, str] | None 
                      app_dirs: Collection[str] = MACOS_APP_DIRS) -> dict[str, Path | None]:
     """Each of the platform's terminals: its application or program, or None when it is not there."""
     env = os.environ if env is None else env
+    if licensing.is_mas(platform=platform, env=env):
+        return {}
     home = Path.home() if home is None else home
     if is_windows(platform):
         dirs = _windows_dirs(env, home)
@@ -594,11 +604,50 @@ def _open_windows(folder: Path, program: Path, tool: AiTool, resume: bool, termi
     return error
 
 
+def copy_command_text(folder: PurePath, tool: AiTool) -> str:
+    """Shell command copied to the clipboard in Mac App Store builds (no ``osascript``)."""
+    return f"cd -- {shlex.quote(str(folder))} && {shlex.quote(tool.key)}"
+
+
+def copy_to_clipboard(text: str) -> bool:
+    """Copy ``text`` to the macOS pasteboard without spawning external processes."""
+    if sys.platform != "darwin":
+        return False
+    try:
+        from AppKit import NSPasteboard, NSPasteboardTypeString
+
+        board = NSPasteboard.generalPasteboard()
+        board.clearContents()
+        return bool(board.setString_forType_(text, NSPasteboardTypeString))
+    except Exception as exc:
+        log.warning("Could not copy AI command to pasteboard: %s", exc)
+        return False
+
+
+def copy_command(
+    ai_cli: str,
+    config: Config,
+    copy_fn: Callable[[str], bool] = copy_to_clipboard,
+) -> LaunchResult:
+    """Copy the ``cd <term folder> && <tool>`` command for Mac App Store builds."""
+    tool = TOOLS.get(ai_cli)
+    if tool is None:
+        return LaunchResult(Failure.NO_AI)
+    folder = current_term_folder(config)
+    if not folder.is_dir():
+        return LaunchResult(Failure.FOLDER_MISSING, tool, folder)
+    command = copy_command_text(folder, tool)
+    if not copy_fn(command):
+        return LaunchResult(Failure.TERMINAL_FAILED, tool, folder, error=tr("Could not copy the command."))
+    return LaunchResult(None, tool, folder, copied_command=command)
+
+
 def launch(ai_cli: str, resume: bool, config: Config, detector: Detector = DETECTOR,
            platform: str | None = None, env: Mapping[str, str] | None = None,
            run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
            spawn: Callable[..., object] = subprocess.Popen, terminal: str = "",
-           terminals: Detector = TERMINAL_DETECTOR) -> LaunchResult:
+           terminals: Detector = TERMINAL_DETECTOR,
+           copy_fn: Callable[[str], bool] = copy_to_clipboard) -> LaunchResult:
     """Open the current term's folder in a terminal with ``ai_cli`` running.
 
     ``resume`` is ``Settings.ai_resume`` and ``terminal`` ``Settings.ai_terminal`` ("" or one
@@ -606,7 +655,13 @@ def launch(ai_cli: str, resume: bool, config: Config, detector: Detector = DETEC
     it from a worker thread. Opens nothing when no known tool is asked for, the tool is not
     installed or the folder is not there; the result says which. When the terminal fails, the
     caller can open ``LaunchResult.folder`` in Finder or Explorer instead.
+
+    In Mac App Store (``mas``) builds, App Sandbox does not allow launching terminals via
+    ``osascript``: clicking a tool copies ``cd <term folder> && <tool>`` to the clipboard instead.
     """
+    env = os.environ if env is None else env
+    if licensing.is_mas(platform=platform, env=env):
+        return copy_command(ai_cli, config, copy_fn=copy_fn)
     tool = TOOLS.get(ai_cli)
     if tool is None:
         return LaunchResult(Failure.NO_AI)

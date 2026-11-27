@@ -17,14 +17,30 @@ import webbrowser
 from dataclasses import replace
 from pathlib import Path
 
-from blackboard_sync import (ai_launcher, announcements, courses, deadlines, licensing, min_version, runtime,
-                            session_refresh, signout, term_confirm, update_macos, updater, uninstall)
+from blackboard_sync import (
+    ai_launcher,
+    announcements,
+    courses,
+    deadlines,
+    demo,
+    licensing,
+    macos_bookmarks,
+    min_version,
+    runtime,
+    session_refresh,
+    signout,
+    term_confirm,
+    uninstall,
+    update_macos,
+    updater,
+)
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.i18n import tr
 from blackboard_sync.menubar import jobs, launchagent, settings_form
 from blackboard_sync.menubar.main_window_model import (
     AI_OPEN_PREFIX,
+    DEMO_ACTION,
     GENERAL,
     OVERVIEW,
     REQUIRED_UPDATE_ACTION,
@@ -46,7 +62,7 @@ from blackboard_sync.menubar.model import (
     open_target,
 )
 from blackboard_sync.notebooklm import store as notebooklm_store
-from blackboard_sync.settings import AI_CLAUDE, SettingsError, save_settings
+from blackboard_sync.settings import AI_CLAUDE, Settings, SettingsError, normalize_dest, save_settings
 from blackboard_sync.system import sync_root
 from blackboard_sync.updater import CheckResult, Release, UpdateError
 
@@ -320,7 +336,7 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
                 self.start_min_version_check()
             self.start_next()
             self.start_session_check()
-            if self.model.update_due(now):
+            if updater.enabled() and self.model.update_due(now):
                 self.start_update_check(manual=False)
             self.remind()
             self.refresh()
@@ -346,7 +362,14 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
                 self.start_sync()
 
         def start_sync(self, _sender=None, job: str = "sync") -> None:
-            if self.model.update_required or self.model.license_expired(jobs.utcnow()) or not self.model.begin(job):
+            if self.model.update_required or self.model.license_expired(jobs.utcnow()):
+                return
+            if licensing.is_mas():
+                if not self.model.configured or macos_bookmarks.activate_saved_bookmark(self.config.data_dir) is None:
+                    log.info("sync skipped: download folder not chosen yet")
+                    self.show_window(OVERVIEW)
+                    return
+            if not self.model.begin(job):
                 return
             log.info("%s started", job)
             self.refresh()
@@ -518,6 +541,8 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
 
         def _move_done(self, result) -> None:
             log.info("move finished: %s, %d moved, %d kept", result.status, result.moved, len(result.kept))
+            if result.status == "ok" and licensing.is_mas():
+                macos_bookmarks.release_except(self.settings.dest)
             for note in self.model.finish_move(result.status, result.moved, len(result.kept), result.message):
                 self.notify(note)
             self._save()
@@ -627,8 +652,8 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
                     self.model.min_version_notice = tr("Could not open the Mac App Store.")
                 self.refresh()
                 return
-            if licensing.current_distribution() == licensing.DIST_MAC_APP_STORE:
-                if not min_version.open_mac_app_store(opener=open_url):
+            if licensing.is_mas():
+                if not min_version.open_mac_app_store(url=updater.store_update_url(), opener=open_url):
                     self.model.min_version_notice = tr("Could not install the update.")
                 self.refresh()
                 return
@@ -769,7 +794,8 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
 
         def open_deadline(self, target: str) -> None:
             if target.startswith(self.config.base_url.rstrip("/") + "/"):
-                webbrowser.open(target)
+                if not demo.is_demo_url(self.config.base_url):
+                    webbrowser.open(target)
             else:
                 self.open_recent(target)
 
@@ -777,7 +803,7 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
             target = announcements.open_target(row, self.model.root)
             if isinstance(target, Path):
                 open_path(target)
-            elif target:
+            elif target and not demo.is_demo_url(target):
                 open_url(target)
 
         def toggle_autostart(self, _sender=None) -> None:
@@ -806,7 +832,10 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
         def form_values(self) -> settings_form.FormValues:
             """What the Genel form shows when nothing is edited: the saved settings."""
             saved = jobs.saved_settings(self.config)
-            return settings_form.initial_values(saved, self.settings, launchagent.is_installed())
+            has_bm = macos_bookmarks.has_bookmark(self.config.data_dir) if licensing.is_mas() else None
+            return settings_form.initial_values(
+                saved, self.settings, launchagent.is_installed(), has_folder_bookmark=has_bm
+            )
 
         @property
         def window_open(self) -> bool:
@@ -948,7 +977,80 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
                 "notebooklm_open": lambda: open_url(notebooklm_store.APP_URL),
                 "ai_detect": self.detect_ai_tools,
                 "ai_install": self.open_ai_install,
+                DEMO_ACTION: self.start_demo,
             }[action]()
+
+        def start_demo(self) -> None:
+            """Enter built-in offline Demo Mode after an explicit folder selection."""
+            if self.model.busy is not None or self.model.update_required:
+                return
+            mas = licensing.is_mas()
+            picked_url = None
+            raw_dest = str(self._window.dest_field.stringValue()).strip() if self._window is not None else ""
+            if mas and not raw_dest:
+                if self._window is None or not self._window.choose_folder():
+                    return
+                raw_dest = str(self._window.dest_field.stringValue()).strip()
+            try:
+                dest = normalize_dest(raw_dest) if raw_dest else self.settings.dest
+            except SettingsError as exc:
+                if self._window is not None:
+                    self._window.show_error(str(exc))
+                return
+            if self._window is not None:
+                picked_url = self._window.picked_folder_url(dest)
+            if mas:
+                try:
+                    dest = macos_bookmarks.save_bookmark(self.config.data_dir, dest, nsurl=picked_url)
+                    macos_bookmarks.release_except(dest)
+                except OSError as exc:
+                    log.warning("could not save folder bookmark for demo mode: %s", exc)
+                    if self._window is not None:
+                        self._window.show_error(
+                            tr("Choose the folder using “Choose…” so macOS grants access to it.")
+                        )
+                    return
+            demo_settings = Settings(
+                base_url=demo.DEMO_BASE_URL,
+                dest=dest,
+                check_updates=self.settings.check_updates,
+                sync_interval_minutes=self.settings.sync_interval_minutes,
+                language=self.settings.language,
+                theme=self.settings.theme,
+                auto_relogin=self.settings.auto_relogin,
+                notebooklm_auto=self.settings.notebooklm_auto,
+                ai_cli=self.settings.ai_cli,
+                ai_resume=self.settings.ai_resume,
+                ai_terminal=self.settings.ai_terminal,
+            )
+            try:
+                save_settings(self.config.data_dir, demo_settings)
+                demo.save_demo_session(self.config)
+            except OSError as exc:
+                log.warning("could not initialize demo mode: %s", exc)
+                if self._window is not None:
+                    self._window.show_error(tr("Could not save the settings: {error}").format(error=exc.strerror or exc))
+                return
+            self.config.base_url = demo.DEMO_BASE_URL
+            self.config.dest = dest
+            self.settings = demo_settings
+            self.model.apply_settings(
+                dest,
+                school_changed=True,
+                check_updates=demo_settings.check_updates,
+                sync_interval_minutes=demo_settings.sync_interval_minutes,
+                auto_relogin=demo_settings.auto_relogin,
+                ai_resume=demo_settings.ai_resume,
+                ai_terminal=demo_settings.ai_terminal,
+            )
+            self.model.note = ""
+            jobs.refresh_session(self.config, self.model, self.settings)
+            jobs.refresh_ai_term(self.config, self.model)
+            if self._window is not None:
+                self._window.set_values(self.form_values())
+            self._save()
+            self.refresh()
+            self.start_sync()
 
         def _window_closed(self) -> None:
             """Only the window went: the menu bar icon, timers and jobs go on; the Dock icon leaves."""
@@ -962,6 +1064,14 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
             except SettingsError as exc:
                 return str(exc), exc.field
             choice = None
+            mas = licensing.is_mas()
+            picked_url = (
+                self._window.picked_folder_url(submission.settings.dest) if self._window is not None else None
+            )
+            if mas:
+                need_new_bookmark = submission.dest_changed or not macos_bookmarks.has_bookmark(self.config.data_dir)
+                if need_new_bookmark and picked_url is None and not macos_bookmarks.is_active(submission.settings.dest):
+                    return tr("Choose the folder using “Choose…” so macOS grants access to it."), "dest"
             files = jobs.synced_file_count(self.config, self.settings.dest) if submission.dest_changed else 0
             if files:
                 # A running sync still writes into the old folder.
@@ -970,11 +1080,24 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
                 choice = self.ask_dest_choice(self.settings.dest, submission.settings.dest, files)
                 if choice is None:
                     return settings_form.T_DEST_NOT_CHANGED, "dest"
+            if mas and (submission.dest_changed or picked_url is not None or not macos_bookmarks.has_bookmark(self.config.data_dir)):
+                try:
+                    resolved_dest = macos_bookmarks.save_bookmark(
+                        self.config.data_dir, submission.settings.dest, nsurl=picked_url
+                    )
+                    submission = replace(submission, settings=replace(submission.settings, dest=resolved_dest))
+                    if choice != settings_form.DEST_MOVE:
+                        macos_bookmarks.release_except(resolved_dest)
+                except OSError as exc:
+                    log.warning("could not save security-scoped bookmark: %s", exc)
+                    return tr("Choose the folder using “Choose…” so macOS grants access to it."), "dest"
             try:
                 save_settings(self.config.data_dir, submission.settings)
             except OSError as exc:
                 log.warning("could not save the settings: %s", exc)
                 return tr("Could not save the settings: {error}").format(error=exc.strerror or exc), "dest"
+            self.config.base_url = submission.settings.base_url
+            self.config.dest = submission.settings.dest
             log.info(
                 "settings saved: %s, dest %s", submission.settings.base_url, submission.settings.dest
             )
@@ -1108,6 +1231,9 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
             try:
                 rumps.notification(note.title, None, note.message, data=note.data)
             except RuntimeError:
+                if licensing.is_mas():
+                    log.debug("Notification unavailable in sandbox: %s", note.title)
+                    return
                 # No notification center for this Python (see README); a plain
                 # notification still tells the student, without click action.
                 script = "display notification %s with title %s" % (
@@ -1165,12 +1291,31 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
                               "again to sign in. Your downloaded files are kept."),
                            ok=tr("Sign out"), cancel=tr("Cancel")) != 1:
                 return
+            was_demo = demo.is_demo_url(self.settings.base_url)
             try:
                 warnings = jobs.logout(self.config)
                 if warnings:
                     self.model.note = warnings[0]
             except OSError:
                 self.model.note = tr("Could not sign out.")
+            if was_demo:
+                for path in (
+                    self.config.state_file,
+                    self.config.last_run_file,
+                    self.config.courses_file,
+                    jobs.menubar_state_file(self.config),
+                ):
+                    path.unlink(missing_ok=True)
+                if licensing.is_mas():
+                    self.config.settings_file.unlink(missing_ok=True)
+                    self.model.configured = False
+                self.model.last = None
+                self.model.recent.clear()
+                self.model.courses.clear()
+                self.model.activity_log.clear()
+                self.model.note = ""
+                if self._window is not None:
+                    self._window.set_values(self.form_values())
             self.refresh()
 
         def _draw_icon(self, icon: Icon) -> None:
@@ -1235,17 +1380,17 @@ def main(argv: list[str] | None = None) -> int:
             request_window(config)
         return 0
     # Refresh older login items (now started with --background) without enabling
-    # autostart or restarting launchd.
-    if launchagent.is_installed():
-        try:
-            launchagent.install(jobs.log_file(config))
-        except OSError as exc:
-            log.warning("could not refresh the login item: %s", exc)
+    # autostart or restarting launchd; no-op in MAS builds (SMAppService).
+    try:
+        launchagent.refresh_if_installed(jobs.log_file(config))
+    except OSError as exc:
+        log.warning("could not refresh the login item: %s", exc)
     from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
 
     # A menu bar app: no Dock icon, no app menu until the main window opens.
     NSApplication.sharedApplication().setActivationPolicy_(NSApplicationActivationPolicyAccessory)
-    show_window = shows_window_at_launch(args.background, jobs.saved_settings(config) is not None)
+    quiet_launch = args.background or launchagent.launched_as_login_item()
+    show_window = shows_window_at_launch(quiet_launch, jobs.is_configured(config))
     app = build_app(config, show_window=show_window)
     app._lifetime_lock = lock
     log.info("menu bar app started (dest %s, window %s)", app.settings.dest, show_window)

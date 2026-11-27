@@ -34,6 +34,7 @@ from typing import IO, Callable, Mapping
 
 import requests
 
+from blackboard_sync import demo, licensing
 from blackboard_sync.api import BlackboardClient
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
@@ -205,7 +206,13 @@ def discover_browser(
     registry: Callable[[str], list[str]] | None = None,
 ) -> Path | None:
     """Locate an installed browser (an app bundle on macOS, an ``.exe`` on
-    Windows), or return None when there is none. Unknown names still raise."""
+    Windows), or return None when there is none. Unknown names still raise.
+
+    Mac App Store (``mas``) builds run sandboxed and always sign in via WKWebView.
+    """
+    if licensing.is_mas(platform=platform, env=env):
+        _browser_order(preference, platform)  # still validate explicit unknown names
+        return None
     for name in _browser_order(preference, platform):
         if is_windows(platform):
             if name not in WINDOWS_BROWSERS:
@@ -445,7 +452,14 @@ def login(
     sign-in page is up also falls back to the window.
     """
     config.ensure_data_dir()
-    app = choose_browser(browser, platform=platform)
+    if demo.is_demo_url(config.base_url):
+        user = demo.save_demo_session(config)
+        out(tr("Signed in as {name}; session saved ({n} cookies).").format(
+            name=user.get("userName") or user.get("id"), n=1
+        ))
+        return user
+    effective_browser = INAPP if licensing.is_mas(platform=platform) else browser
+    app = choose_browser(effective_browser, platform=platform)
     if app is not None:
         try:
             user, cookies = _browser_sign_in(
@@ -478,9 +492,10 @@ def choose_browser(browser: str = "auto", platform: str | None = None) -> Path |
     """The browser the sign-in uses, or None for the app's own window.
 
     ``auto`` falls back to the window when no supported browser is installed;
-    a browser asked for by name must exist.
+    a browser asked for by name must exist. Mac App Store builds always use the
+    in-app WKWebView window.
     """
-    if browser == INAPP:
+    if browser == INAPP or licensing.is_mas(platform=platform):
         return None
     try:
         return find_browser(browser, platform=platform)
@@ -562,10 +577,12 @@ def check_runtime() -> str:
     component, without opening anything; returns the web component's name.
 
     Run by CI against the packaged apps (``--check-login-runtime``) to prove the
-    bundle ships what both sign-in methods need.
+    bundle ships what both sign-in methods need. Mac App Store builds exclude
+    Playwright/Node and use WKWebView exclusively.
     """
-    with _connector(None):
-        pass
+    if not licensing.is_mas():
+        with _connector(None):
+            pass
     return inapp_check_runtime()
 
 

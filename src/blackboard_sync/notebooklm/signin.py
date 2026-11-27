@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import urlsplit
 
+from blackboard_sync import licensing
 from blackboard_sync.config import Config
 from blackboard_sync.errors import (
     NotebookLMLoginRequired,
@@ -144,6 +145,11 @@ def login(config: Config, timeout: float = SIGN_IN_TIMEOUT, run=subprocess.run, 
           connect=None, check: Callable[[Config], None] = verify, platform: str | None = None,
           on_verify: Callable[[], None] = lambda: None) -> None:
     """Sign in to Google and save the session; raises ``BlackboardSyncError`` with what went wrong."""
+    if licensing.is_mas(platform=platform):
+        raise NotebookLMSignInFailed(
+            tr("Gemini Notebook sign-in is not available in the Mac App Store version."),
+            NO_BROWSER,
+        )
     config.ensure_data_dir()
     make_private_dir(config.notebooklm_dir, platform=platform)
     try:

@@ -1,11 +1,10 @@
 """Store trial and one-time purchase licensing, kept platform-neutral above the providers.
 
 Blackboard Sync needs no account of its own: the store account (Microsoft account
-on Windows, Apple ID on the Mac App Store) tracks the free trial and the one-time
-purchase. Direct builds (the GitHub ``.dmg`` and source runs) use ``AlwaysFullProvider``;
-the MSIX-packaged Microsoft Store build uses ``WindowsStoreProvider``; the Mac App Store
-build plugs in at ``DIST_MAC_APP_STORE`` (``MacAppStoreUnavailableProvider`` until its
-StoreKit provider lands).
+on Windows) tracks the free trial and the one-time purchase. Direct builds (the
+GitHub ``.dmg`` and source runs) and the free Mac App Store build (``DIST_MAC_APP_STORE``)
+use ``AlwaysFullProvider``; the MSIX-packaged Microsoft Store build uses
+``WindowsStoreProvider``.
 
 Offline or unreachable Store checks return ``LicenseKind.UNKNOWN``, which never locks out
 a student: syncing keeps working and the app re-checks later.
@@ -17,10 +16,12 @@ import contextlib
 import logging
 import os
 import re
+import sys
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Callable, Iterator, Mapping, Protocol
 
 from blackboard_sync import system
@@ -32,6 +33,11 @@ log = logging.getLogger(__name__)
 DISTRIBUTION_ENV = "BBSYNC_DISTRIBUTION"
 SIMULATE_ENV = "BBSYNC_LICENSE_SIMULATE"
 SIMULATE_PRICE_ENV = "BBSYNC_LICENSE_PRICE"
+SANDBOX_CONTAINER_ENV = "APP_SANDBOX_CONTAINER_ID"
+MAS_BUNDLE_ID_ENV = "BBSYNC_MAS_BUNDLE_ID"
+MAS_BUNDLE_ID = "io.github.umutylcn.blackboard-sync.mas"
+# Bundled inside the frozen Mac App Store .app so Finder/SMAppService launches resolve to "mas".
+MAS_MARKER_REL = "assets/mas-distribution"
 
 DIST_DIRECT = "direct"
 DIST_MICROSOFT_STORE = "msstore"
@@ -618,6 +624,24 @@ class SimulatedLicenseProvider:
             self._on_change = None
 
 
+def is_mas_packaged(
+    platform: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> bool:
+    """True when running inside the packaged/sandboxed Mac App Store app."""
+    active_platform = platform or sys.platform
+    if active_platform != "darwin":
+        return False
+    env = os.environ if env is None else env
+    if (env.get(SANDBOX_CONTAINER_ENV) or "").strip():
+        return True
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", "")
+        if meipass and (Path(meipass) / MAS_MARKER_REL).is_file():
+            return True
+    return False
+
+
 def current_distribution(
     platform: str | None = None,
     env: Mapping[str, str] | None = None,
@@ -625,14 +649,22 @@ def current_distribution(
 ) -> str:
     """Which distribution this process runs as: ``msstore``, ``mas``, or ``direct``.
 
-    An MSIX-packaged Windows process always resolves to ``msstore`` so environment
-    variables on a student's PC cannot downgrade a Store package to ``direct``.
+    An MSIX-packaged Windows process always resolves to ``msstore`` and a packaged
+    Mac App Store process always resolves to ``mas`` so environment variables on a
+    student's computer cannot downgrade a Store package to ``direct``.
     """
     env = os.environ if env is None else env
     is_win = system.is_windows(platform)
-    is_msix = package.is_packaged() if (packaged is None and is_win) else bool(packaged)
-    if is_win and is_msix:
-        return DIST_MICROSOFT_STORE
+    if is_win:
+        is_msix = package.is_packaged() if packaged is None else bool(packaged)
+        if is_msix:
+            return DIST_MICROSOFT_STORE
+    else:
+        mas_pkg = is_mas_packaged(platform=platform, env=env) if packaged is None else (
+            bool(packaged) and (platform or sys.platform) == "darwin"
+        )
+        if mas_pkg:
+            return DIST_MAC_APP_STORE
     raw = (env.get(DISTRIBUTION_ENV) or "").strip().lower()
     if raw in (DIST_MICROSOFT_STORE, "windows-store", "msix"):
         return DIST_MICROSOFT_STORE
@@ -641,6 +673,15 @@ def current_distribution(
     if raw == DIST_DIRECT:
         return DIST_DIRECT
     return DIST_DIRECT
+
+
+def is_mas(
+    platform: str | None = None,
+    env: Mapping[str, str] | None = None,
+    packaged: bool | None = None,
+) -> bool:
+    """True when this process runs as the Mac App Store (``mas``) flavor."""
+    return current_distribution(platform=platform, env=env, packaged=packaged) == DIST_MAC_APP_STORE
 
 
 def _simulated_provider(
@@ -677,16 +718,14 @@ def default_provider(
     packaged: bool | None = None,
     now: datetime | None = None,
 ) -> LicenseProvider:
-    """Pick the license provider for this build."""
+    """Pick the license provider for this build (MAS and direct builds are free/full)."""
     env = os.environ if env is None else env
     is_win = system.is_windows(platform)
-    is_msix = package.is_packaged() if (packaged is None and is_win) else bool(packaged)
+    is_msix = package.is_packaged() if (packaged is None and is_win) else (bool(packaged) and is_win)
     simulated = _simulated_provider(env, _utcnow(now), allow_full=not is_msix)
     if simulated is not None:
         return simulated
-    dist = current_distribution(platform=platform, env=env, packaged=is_msix)
+    dist = current_distribution(platform=platform, env=env, packaged=packaged)
     if dist == DIST_MICROSOFT_STORE:
         return WindowsStoreProvider()
-    if dist == DIST_MAC_APP_STORE:
-        return MacAppStoreUnavailableProvider()
     return AlwaysFullProvider()

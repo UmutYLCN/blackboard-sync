@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from blackboard_sync import __version__, ai_launcher, uninstall
+from blackboard_sync import __version__, ai_launcher, demo, licensing, macos_bookmarks, uninstall, updater
 from blackboard_sync.gcal import CalendarStatus
 from blackboard_sync.deadlines import parse_due
 from blackboard_sync.i18n import DEFAULT_LANGUAGE, LANGUAGES, language_name, normalize_language, ntr, tr
@@ -250,20 +250,37 @@ SECTIONS = {section.key: section for section in (
 )}
 
 
+MAS_HIDDEN_SECTIONS = (SECTION_NOTEBOOKLM, SECTION_AI, SECTION_DANGER)
+MAS_HIDDEN_ROWS = ("check_updates",)
+
+
 def settings_sections(appearance: bool = False, notebooklm: bool = False,
-                      auto_relogin: bool = False) -> tuple[SettingsSection, ...]:
+                      auto_relogin: bool = False, *, mas: bool = False) -> tuple[SettingsSection, ...]:
     """The sections the page shows, in order.
 
     Appearance only where the window can change its theme, NotebookLM only where the app
-    has it, the "Automatic re-sign-in" row only where the app does that.
+    has it, the "Automatic re-sign-in" row only where the app does that. Mac App Store
+    (``mas``) builds omit sections managed by the Store or disallowed in App Sandbox.
     """
     sections = tuple(SECTIONS[key] for key in SECTION_ORDER
                      if key in SECTIONS and (appearance or key != SECTION_APPEARANCE)
-                     and (notebooklm or key != SECTION_NOTEBOOKLM))
-    if auto_relogin:
-        return sections
-    return tuple(replace(section, rows=tuple(row for row in section.rows if row.key != "auto_relogin"))
-                 for section in sections)
+                     and (notebooklm or key != SECTION_NOTEBOOKLM)
+                     and not (mas and key in MAS_HIDDEN_SECTIONS))
+    result: list[SettingsSection] = []
+    for section in sections:
+        rows = section.rows
+        footer = section.footer
+        if not auto_relogin:
+            rows = tuple(row for row in rows if row.key != "auto_relogin")
+        if mas and section.key == SECTION_UPDATES:
+            rows = tuple(
+                replace(row, button="") if row.key == "update" else row
+                for row in rows
+                if row.key not in MAS_HIDDEN_ROWS
+            )
+            footer = f"{updater.MAS_STORE_UPDATES} {uninstall.MAS_STORE_REMOVAL}"
+        result.append(replace(section, rows=rows, footer=footer))
+    return tuple(result)
 
 
 @dataclass(frozen=True)
@@ -281,6 +298,12 @@ def row_states(status: "WindowStatus") -> dict[str, RowState]:
     """The live part of the rows (who is signed in, the update button, uninstall)."""
     calendar = calendar_presentation(status.calendar, status.calendar_busy, status.calendar_paused,
                                       status.calendar_notice)
+    mas = licensing.is_mas()
+    update_row = (
+        RowState(title=status.version, button="", enabled=False)
+        if mas
+        else RowState(title=status.version, button=status.update_title, enabled=status.update_enabled)
+    )
     return {
         "google_calendar": RowState(title=calendar.title, detail=calendar.detail, button=calendar.button,
                                      enabled=calendar.enabled, warning=calendar.warning),
@@ -288,7 +311,7 @@ def row_states(status: "WindowStatus") -> dict[str, RowState]:
         "google_calendar_disconnect": RowState(enabled=calendar.disconnect_enabled),
         "account": RowState(title=status.account, button=status.account_title, enabled=status.account_enabled,
                             warning=status.account_warning),
-        "update": RowState(title=status.version, button=status.update_title, enabled=status.update_enabled),
+        "update": update_row,
         "uninstall": RowState(enabled=status.uninstall_enabled),
         "ai_terminal": ai_terminal_state(status.ai_terminals, status.ai_terminal),
     }
@@ -473,17 +496,40 @@ def window_status(model: AppModel) -> WindowStatus:
     )
 
 
-def initial_values(saved: Settings | None, current: Settings, autostart: bool) -> FormValues:
+def initial_values(
+    saved: Settings | None,
+    current: Settings,
+    autostart: bool,
+    *,
+    mas: bool | None = None,
+    has_folder_bookmark: bool | None = None,
+) -> FormValues:
     """Prefill the window with the saved settings, else what the app uses now.
 
-    On the first launch "Start when the computer starts" is ticked: the app is
-    meant to run in the background without the student thinking about it.
+    On the first launch of a direct/Windows build "Start when the computer starts"
+    is ticked. On the first launch of the Mac App Store (``mas``) build, both the
+    school and the download folder start empty so the student chooses them explicitly
+    (via ``NSOpenPanel`` for the folder), and start-at-login is opt-in per App Store
+    Review Guideline 2.4.5(iii).
     """
+    is_mas = licensing.is_mas() if mas is None else mas
     shown = saved or current
+    if is_mas and saved is None:
+        base_url = ""
+        dest = ""
+        default_autostart = autostart
+    elif is_mas:
+        base_url = demo.DEMO_SCHOOL_LABEL if demo.is_demo_url(shown.base_url) else shown.base_url
+        dest = "" if has_folder_bookmark is False else display_path(shown.dest)
+        default_autostart = autostart
+    else:
+        base_url = shown.base_url
+        dest = display_path(shown.dest)
+        default_autostart = autostart or saved is None
     return FormValues(
-        base_url=shown.base_url,
-        dest=display_path(shown.dest),
-        autostart=autostart or saved is None,
+        base_url=base_url,
+        dest=dest,
+        autostart=default_autostart,
         check_updates=shown.check_updates,
         sync_interval_minutes=shown.sync_interval_minutes,
         language=shown.language,

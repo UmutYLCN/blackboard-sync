@@ -33,11 +33,11 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Mapping
 
 import requests
 
-from blackboard_sync import __version__
+from blackboard_sync import __version__, licensing
 from blackboard_sync.i18n import tr
 from blackboard_sync.windows import package
 
@@ -66,20 +66,42 @@ class UpdateError(Exception):
 
 
 STORE_UPDATES = tr("Updates are installed through the Microsoft Store.")
+MAS_STORE_UPDATES = tr("Updates are installed through the App Store.")
+MAS_APP_ID_ENV = "BBSYNC_MAS_APP_ID"
+MAS_APP_ID = ""  # populated once the App Store Connect app record assigns a numeric Apple ID
+MAS_UPDATES_URL = "macappstore://showUpdatesPage"
+
+
+def store_updates_message(platform: str | None = None, env: Mapping[str, str] | None = None) -> str:
+    """Human-readable note explaining which Store delivers updates for this build."""
+    if licensing.is_mas(platform=platform, env=env):
+        return MAS_STORE_UPDATES
+    return STORE_UPDATES
+
+
+def store_update_url(platform: str | None = None, env: Mapping[str, str] | None = None) -> str:
+    """Target URL when a minimum-version check sends the student to update (force-update seam)."""
+    env = os.environ if env is None else env
+    if licensing.is_mas(platform=platform, env=env):
+        raw_id = (env.get(MAS_APP_ID_ENV) or MAS_APP_ID).strip().lstrip("id")
+        if raw_id.isdigit():
+            return f"macappstore://apps.apple.com/app/id{raw_id}"
+        return MAS_UPDATES_URL
+    return RELEASES_URL
 
 
 def enabled() -> bool:
-    """Only the macOS app updates itself: the Microsoft Store owns Windows updates.
+    """Only the direct macOS ``.dmg`` app updates itself; Store builds use their Store.
 
-    That covers the Store package (including stale requests) and any leftover
-    unpackaged Windows build, which no release carries an installer for anymore.
+    That covers the Microsoft Store MSIX package, the Mac App Store ``mas`` build,
+    and any leftover unpackaged Windows build.
     """
-    return sys.platform == "darwin" and not package.is_packaged()
+    return sys.platform == "darwin" and not package.is_packaged() and not licensing.is_mas()
 
 
 def _require_enabled() -> None:
     if not enabled():
-        raise UpdateError(STORE_UPDATES)
+        raise UpdateError(store_updates_message())
 
 
 @dataclass(frozen=True)

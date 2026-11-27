@@ -721,6 +721,24 @@ CATALOG = {
         "ملفاتك المحمّلة لا تزال في مجلدك.",
     "I already bought it": "اشتريته بالفعل",
 
+    # Mac App Store (App Sandbox, folder bookmark, copy-command, demo mode)
+    "Choose a folder…": "اختر مجلدًا…",
+    "Choose the folder using “Choose…” so macOS grants access to it.":
+        "اختر المجلد باستخدام “اختيار…” حتى يمنح macOS إذن الوصول إليه.",
+    "Click a tool to copy the terminal command for {term}.":
+        "انقر على أداة لنسخ أمر الطرفية الخاص بـ {term}.",
+    "Copied terminal command for {name} — paste it into Terminal.":
+        "تم نسخ أمر الطرفية لـ {name} — الصقه في الطرفية.",
+    "Copy command for {name}": "نسخ الأمر لـ {name}",
+    "Copy {name} command for {term}": "نسخ أمر {name} لـ {term}",
+    "Could not copy the command.": "تعذّر نسخ الأمر.",
+    "Gemini Notebook sign-in is not available in the Mac App Store version.":
+        "تسجيل الدخول إلى Gemini Notebook غير متاح في إصدار Mac App Store.",
+    "Try the demo": "جرّب الوضع التجريبي",
+    "Updates are installed through the App Store.": "تُثبَّت التحديثات عبر App Store.",
+    "You can uninstall Blackboard Sync from Launchpad or the Applications folder.":
+        "يمكنك إزالة تثبيت Blackboard Sync من Launchpad أو من مجلد التطبيقات.",
+
     # Minimum-version enforcement (min_version)
     "Update required": "التحديث مطلوب",
     "Update required — Update": "التحديث مطلوب — تحديث",

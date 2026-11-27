@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 log = logging.getLogger(__name__)
 
 APP_NAME = "blackboard-sync"
+MAS_BUNDLE_ID = "io.github.umutylcn.blackboard-sync.mas"
 DEST_FOLDER = "University"
 # subprocess.CREATE_NO_WINDOW exists only on Windows; keeps helper tools from
 # flashing a console window when the caller has none (the tray app).
@@ -35,6 +36,33 @@ def is_windows(platform: str | None = None) -> bool:
     return (platform or sys.platform) == "win32"
 
 
+def _is_sandbox_container_home(home: Path) -> bool:
+    """True when ``home`` is already ``.../Library/Containers/<bundle-id>/Data``."""
+    parts = home.parts
+    return len(parts) >= 4 and parts[-4] == "Library" and parts[-3] == "Containers" and parts[-1] == "Data"
+
+
+def real_user_home(home: Path | None = None) -> Path:
+    """The user's real home directory outside any macOS App Sandbox container.
+
+    Inside App Sandbox ``HOME`` points to ``~/Library/Containers/<id>/Data``;
+    ``NSOpenPanel`` runs in Powerbox outside the container, so starting it at the
+    real home (or ``Documents``) shows the user's own folders instead of the hidden container.
+    """
+    resolved = Path.home() if home is None else home
+    if not _is_sandbox_container_home(resolved):
+        return resolved
+    try:
+        import pwd
+
+        pw_dir = pwd.getpwuid(os.getuid()).pw_dir
+        if pw_dir:
+            return Path(pw_dir)
+    except Exception:
+        pass
+    return resolved.parents[3]
+
+
 def default_data_dir(
     platform: str | None = None,
     env: Mapping[str, str] | None = None,
@@ -42,8 +70,10 @@ def default_data_dir(
 ) -> Path:
     """The private folder for the session and sync state.
 
-    macOS (and anything that is not Windows): ``~/Library/Application Support/
-    blackboard-sync``, unchanged so existing sessions and state are found.
+    macOS direct: ``~/Library/Application Support/blackboard-sync``, unchanged so
+    existing sessions and state are found.
+    macOS App Store (``mas``): inside the sandbox container,
+    ``~/Library/Containers/<bundle-id>/Data/Library/Application Support/blackboard-sync``.
     Windows Setup: ``%APPDATA%\\blackboard-sync``. MSIX: the package's explicit
     ``%LOCALAPPDATA%\\Packages\\<family>\\LocalCache\\Roaming\\blackboard-sync``.
     """
@@ -60,6 +90,17 @@ def default_data_dir(
         appdata = env.get("APPDATA")
         base = Path(appdata) if appdata else home / "AppData" / "Roaming"
         return base / APP_NAME
+    from blackboard_sync import licensing
+
+    if licensing.is_mas(platform=platform, env=env):
+        if _is_sandbox_container_home(home):
+            return home / "Library" / "Application Support" / APP_NAME
+        container_id = (
+            env.get(licensing.SANDBOX_CONTAINER_ENV)
+            or env.get(licensing.MAS_BUNDLE_ID_ENV)
+            or MAS_BUNDLE_ID
+        ).strip()
+        return home / "Library" / "Containers" / container_id / "Data" / "Library" / "Application Support" / APP_NAME
     return home / "Library" / "Application Support" / APP_NAME
 
 

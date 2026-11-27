@@ -20,7 +20,18 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, IO
 
-from blackboard_sync import ai_launcher, courses, deadlines, gcal, relocate, runtime, session_refresh, signout
+from blackboard_sync import (
+    ai_launcher,
+    courses,
+    deadlines,
+    gcal,
+    licensing,
+    macos_bookmarks,
+    relocate,
+    runtime,
+    session_refresh,
+    signout,
+)
 from blackboard_sync.notebooklm import store as notebooklm_store
 from blackboard_sync.config import Config
 from blackboard_sync.errors import EXIT_ERROR, LoginRequired
@@ -473,13 +484,29 @@ def saved_settings(config: Config) -> Settings | None:
     return load_settings(config.data_dir)
 
 
+def is_configured(config: Config) -> bool:
+    """True when settings exist and, in MAS builds, the download folder bookmark is accessible."""
+    if saved_settings(config) is None:
+        return False
+    if licensing.is_mas():
+        return macos_bookmarks.activate_saved_bookmark(config.data_dir) is not None
+    return True
+
+
 def effective_settings(config: Config) -> Settings:
     """The settings the app syncs with: the saved ones, else the defaults.
 
     Saved settings win over ``BBSYNC_*`` variables here, so a choice made in
     the window is not undone by an environment the app was started with.
+    In MAS builds, a resolved security-scoped bookmark overrides ``dest`` if the
+    chosen folder was renamed or moved in Finder.
     """
-    return saved_settings(config) or Settings(base_url=config.base_url, dest=config.dest)
+    saved = saved_settings(config)
+    if saved is not None and licensing.is_mas():
+        resolved = macos_bookmarks.activate_saved_bookmark(config.data_dir)
+        if resolved is not None and resolved != saved.dest:
+            return replace(saved, dest=resolved)
+    return saved or Settings(base_url=config.base_url, dest=config.dest)
 
 
 def load_last_run(config: Config) -> RunOutcome | None:
@@ -495,9 +522,10 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
     saved = _read_json(menubar_state_file(config))
     recent, login_prompted = load_saved_state(saved)
     settings = effective_settings(config)
+    configured = is_configured(config)
     model = AppModel(
         dest=settings.dest,
-        configured=saved_settings(config) is not None,
+        configured=configured,
         now=now,
         last=last,
         recent=recent,

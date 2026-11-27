@@ -19,7 +19,8 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -r requirements.lock
       - run: python -m pip install --no-deps -e .
-      - run: python -m pytest -q
+      # A test stuck for five minutes prints every thread's stack (results are unchanged).
+      - run: python -m pytest -q -o faulthandler_timeout=300
       # Both sign-in methods can load what they need: the Playwright driver and
       # the in-app window's web component (WKWebView / WebView2).
       - run: python packaging/app_entry.py --check-login-runtime

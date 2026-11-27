@@ -203,7 +203,7 @@ def test_offline_invalid_unknown_schema_or_missing_key_never_enforces(bad_case):
     assert not result.required
 
 
-def test_dmg_retired_applies_only_to_macos_direct_and_never_to_windows_mas_or_invalid():
+def test_dmg_retired_applies_only_to_macos_direct_and_never_to_windows_mas_or_invalid(tmp_path, monkeypatch):
     retired_payload = json.dumps({
         "schema": 1,
         "minimum": {"macos": "1.7.2", "windows": "1.7.2", "mas": "1.7.2"},
@@ -222,17 +222,43 @@ def test_dmg_retired_applies_only_to_macos_direct_and_never_to_windows_mas_or_in
     )
     assert mac_explicit_direct == MinVersionResult(STATUS_DMG_RETIRED, mas_url=SAMPLE_MAS_URL)
 
-    # Mac App Store builds ignore dmg_retired completely (only governed by minimum["mas"]).
+    # Mac App Store builds ignore dmg_retired completely (only governed by minimum["mas"]),
+    # whether selected via BBSYNC_DISTRIBUTION=mas, APP_SANDBOX_CONTAINER_ID, or bundled mas-distribution marker.
     mas_ok = min_version.check("1.7.2", platform="darwin", env={"BBSYNC_DISTRIBUTION": "mas"}, get=fake_get)
-    assert mas_ok == MinVersionResult("ok", minimum="1.7.2") and not mas_ok.required
+    assert mas_ok == MinVersionResult("ok", minimum="1.7.2") and not mas_ok.required and not mas_ok.dmg_retired
     mas_old = min_version.check("1.7.1", platform="darwin", env={"BBSYNC_DISTRIBUTION": "mas"}, get=fake_get)
     assert mas_old == MinVersionResult("required", minimum="1.7.2") and not mas_old.dmg_retired
+    mas_sandbox = min_version.check(
+        "2.0.0",
+        platform="darwin",
+        env={"APP_SANDBOX_CONTAINER_ID": licensing.MAS_BUNDLE_ID, "BBSYNC_DISTRIBUTION": "direct"},
+        get=fake_get,
+    )
+    assert mas_sandbox == MinVersionResult("ok", minimum="1.7.2") and not mas_sandbox.required and not mas_sandbox.dmg_retired
 
-    # Windows (both MSIX Store and unpackaged dev runs) ignores dmg_retired completely.
-    win_store = min_version.check("1.7.2", platform="win32", packaged=True, get=fake_get)
-    assert win_store == MinVersionResult("ok", minimum="1.7.2") and not win_store.required
-    win_direct = min_version.check("1.7.2", platform="win32", env={"BBSYNC_DISTRIBUTION": "direct"}, packaged=False, get=fake_get)
-    assert win_direct == MinVersionResult("ok", minimum="1.7.2") and not win_direct.required
+    marker = tmp_path / licensing.MAS_MARKER_REL
+    marker.parent.mkdir(parents=True)
+    marker.write_text("mas\n", encoding="utf-8")
+    monkeypatch.setattr(licensing.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(licensing.sys, "_MEIPASS", str(tmp_path), raising=False)
+    mas_frozen = min_version.check("2.0.0", platform="darwin", env={"BBSYNC_DISTRIBUTION": "direct"}, get=fake_get)
+    assert mas_frozen == MinVersionResult("ok", minimum="1.7.2") and not mas_frozen.required and not mas_frozen.dmg_retired
+    monkeypatch.setattr(licensing.sys, "frozen", False, raising=False)
+    monkeypatch.delattr(licensing.sys, "_MEIPASS", raising=False)
+
+    # Windows (MSIX Store and unpackaged runs) ignores dmg_retired completely.
+    win_store = min_version.check(
+        "1.7.2", platform="win32", env={"BBSYNC_DISTRIBUTION": "direct"}, packaged=True, get=fake_get
+    )
+    assert win_store == MinVersionResult("ok", minimum="1.7.2") and not win_store.required and not win_store.dmg_retired
+    win_direct = min_version.check(
+        "1.7.2", platform="win32", env={"BBSYNC_DISTRIBUTION": "direct"}, packaged=False, get=fake_get
+    )
+    assert win_direct == MinVersionResult("ok", minimum="1.7.2") and not win_direct.required and not win_direct.dmg_retired
+    win_msstore_env = min_version.check(
+        "1.7.1", platform="win32", env={"BBSYNC_DISTRIBUTION": "msstore"}, packaged=False, get=fake_get
+    )
+    assert win_msstore_env == MinVersionResult("required", minimum="1.7.2") and not win_msstore_env.dmg_retired
 
     # Missing, false, or invalid dmg_retired / mas_url values never retire the .dmg build.
     for non_blocking in (
@@ -729,10 +755,36 @@ def test_macos_window_and_menubar_app_enforce_min_version_dmg_retired_and_mas(tm
     assert opened_urls == [SAMPLE_MAS_URL]
     assert installed == ["1.7.2"]  # update_macos was NOT called for a retired .dmg
 
-    # Mac App Store seam below minimum: clicking Update opens the Mac App Store URL.
+    # Mac App Store flavor below minimum: menu exposes REQUIRED_UPDATE_ACTION, Demo Mode is gated,
+    # and clicking Update routes through updater.store_update_url() (generic Updates page, or exact app page
+    # once MAS_APP_ID / BBSYNC_MAS_APP_ID is set, with HTTPS fallback on opener error).
     opened_urls.clear()
+    monkeypatch.setenv("BBSYNC_DISTRIBUTION", "mas")
+    monkeypatch.delenv("BBSYNC_MAS_APP_ID", raising=False)
     current_result[0] = MinVersionResult("required", minimum="1.9.0")
     menu_app.start_min_version_check()
-    monkeypatch.setenv("BBSYNC_DISTRIBUTION", "mas")
+    mas_menu = menu_app.model.menu(NOW)
+    assert any(e.action == REQUIRED_UPDATE_ACTION and e.title == "Update required — Update" for e in mas_menu.entries)
+    first_run_mas = AppModel(tmp_path, NOW, configured=False, min_version_state=MinVersionResult("required", minimum="1.9.0"))
+    first_run_mas_status = main.main_status(first_run_mas, NOW)
+    assert first_run_mas_status.shows_demo is False
+    assert first_run_mas_status.shows_notebooklm is False
+    assert first_run_mas_status.update_required is not None
+
     menu_app.window_action(REQUIRED_UPDATE_ACTION)
-    assert opened_urls == [MAC_APP_STORE_URL]
+    assert opened_urls == [updater.store_update_url()] == [MAC_APP_STORE_URL]
+
+    opened_urls.clear()
+    monkeypatch.setenv("BBSYNC_MAS_APP_ID", "6740001234")
+    menu_app.window_action(REQUIRED_UPDATE_ACTION)
+    assert opened_urls == [updater.store_update_url()] == ["macappstore://apps.apple.com/app/id6740001234"]
+
+    fallback_seen: list[str] = []
+
+    def fail_macappstore_scheme(target: str) -> None:
+        if target.startswith("macappstore://"):
+            raise OSError("scheme unavailable")
+        fallback_seen.append(target)
+
+    assert min_version.open_mac_app_store(opener=fail_macappstore_scheme) is True
+    assert fallback_seen == ["https://apps.apple.com/app/id6740001234"]

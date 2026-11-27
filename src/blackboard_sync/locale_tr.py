@@ -721,6 +721,24 @@ CATALOG = {
         "İndirdiğiniz dosyalar klasörünüzde duruyor.",
     "I already bought it": "Zaten satın aldım",
 
+    # Mac App Store (App Sandbox, folder bookmark, copy-command, demo mode)
+    "Choose a folder…": "Bir klasör seçin…",
+    "Choose the folder using “Choose…” so macOS grants access to it.":
+        "macOS'un erişim izni verebilmesi için klasörü “Seç…” düğmesiyle seçin.",
+    "Click a tool to copy the terminal command for {term}.":
+        "{term} için terminal komutunu kopyalamak üzere bir araca tıklayın.",
+    "Copied terminal command for {name} — paste it into Terminal.":
+        "{name} için terminal komutu kopyalandı — Terminal'e yapıştırın.",
+    "Copy command for {name}": "{name} komutunu kopyala",
+    "Copy {name} command for {term}": "{term} için {name} komutunu kopyala",
+    "Could not copy the command.": "Komut kopyalanamadı.",
+    "Gemini Notebook sign-in is not available in the Mac App Store version.":
+        "Gemini Notebook girişi Mac App Store sürümünde kullanılamıyor.",
+    "Try the demo": "Demoyu dene",
+    "Updates are installed through the App Store.": "Güncellemeler App Store üzerinden yüklenir.",
+    "You can uninstall Blackboard Sync from Launchpad or the Applications folder.":
+        "Blackboard Sync'i Launchpad'den veya Uygulamalar klasöründen kaldırabilirsiniz.",
+
     # Minimum-version enforcement (min_version)
     "Update required": "Güncelleme gerekli",
     "Update required — Update": "Güncelleme gerekli — Güncelle",
