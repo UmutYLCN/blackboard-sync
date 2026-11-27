@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import json
 import plistlib
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -52,7 +53,7 @@ def _clean_bookmarks():
 # -- 1. Sandbox container paths & real user home -----------------------------------------
 
 
-def test_mas_default_data_dir_uses_sandbox_container_without_double_nesting():
+def test_mas_default_data_dir_uses_sandbox_container_without_double_nesting(monkeypatch):
     regular_home = Path("/Users/student")
     # Direct macOS build stays in ~/Library/Application Support/blackboard-sync.
     assert system.default_data_dir(platform="darwin", env={}, home=regular_home) == (
@@ -99,11 +100,13 @@ def test_mas_default_data_dir_uses_sandbox_container_without_double_nesting():
         home=container_home,
     ) == container_home / "Library" / "Application Support" / "blackboard-sync"
 
-    # Config.from_env picks up the MAS container path dynamically.
+    # Config.from_env picks up the MAS container path dynamically (on a Mac: the host platform decides).
+    monkeypatch.setattr(sys, "platform", "darwin")
     cfg = Config.from_env({"BBSYNC_DISTRIBUTION": "mas"})
     assert "Containers" in cfg.data_dir.parts and cfg.data_dir.name == "blackboard-sync"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="pwd and the macOS App Sandbox exist only on POSIX")
 def test_real_user_home_escapes_sandbox_container(monkeypatch):
     regular = Path("/Users/student")
     assert system.real_user_home(regular) == regular
@@ -278,7 +281,11 @@ def test_mas_login_and_silent_refresh_never_touch_external_browsers(tmp_path, mo
     assert login_mod.choose_browser("auto") is None
     assert login_mod.choose_browser("chrome") is None
     assert login_mod.login_method_label("auto") == login_mod.INAPP
-    login_mod.check_runtime()  # succeeds without importing playwright
+    # The real web-view check loads the host's GUI backend for the rest of the test process
+    # (on Windows, pywebview and .NET: later tests could then open a window and never return).
+    monkeypatch.setattr(login_mod, "inapp_check_runtime", lambda: "WKWebView")
+    monkeypatch.setattr(login_mod, "_connector", lambda *_a: pytest.fail("MAS must not load playwright"))
+    assert login_mod.check_runtime() == "WKWebView"
 
     # Silent refresh uses in-app WKWebView and never creates a Chromium profile directory.
     cfg = Config(base_url="https://bb.example.edu", dest=tmp_path / "Docs", data_dir=tmp_path / "data")

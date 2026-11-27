@@ -419,6 +419,8 @@ def test_store_protocol_activation_shows_packaged_app(config, monkeypatch, alrea
     monkeypatch.setitem(sys.modules, "winreg", None)
     monkeypatch.setitem(sys.modules, "tkinter", SimpleNamespace(Tk=lambda: SimpleNamespace(withdraw=lambda: None)))
     monkeypatch.setattr(windows_theme, "apply_theme", lambda _root: None)
+    # Never the real WebView2 window: its GUI loop would block until someone closed it.
+    monkeypatch.setattr(module, "run_web", lambda *_a: False)
 
     class App:
         def __init__(self, config, root, show_window):
