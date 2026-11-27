@@ -61,9 +61,9 @@ def logo() -> str:
 
 
 def logo_styles() -> str:
-    """The AI tools' logos (``ai_launcher.LOGO_DIR``) as backgrounds, with the one for dark
-    backgrounds where there is one, following the same theme choice as the colors."""
-    rules = []
+    """The logos in ``ai_launcher.LOGO_DIR`` as backgrounds: the notebook card's, and the AI tools'
+    with the one for dark backgrounds where there is one, following the same theme choice as the colors."""
+    rules = [f".nlm-logo {{ background-image: url({_png_data(ai_launcher.NOTEBOOK_LOGO)}); }}"]
     for key in ai_launcher.TOOLS:
         light, dark = ai_launcher.logo_path(key), ai_launcher.logo_path(key, dark=True)
         rules.append(f".ai-logo.{key} {{ background-image: url({_png_data(light)}); }}")

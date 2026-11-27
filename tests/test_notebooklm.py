@@ -1166,7 +1166,7 @@ def test_a_held_file_is_reported_and_nothing_goes_up(config):
     result = run(config, gateway)
 
     assert not gateway.added and len(result.held) == 1
-    assert result.notice() == "1 file may already be in NotebookLM, so it was not added."
+    assert result.notice() == "1 file may already be in Gemini Notebook, so it was not added."
     assert store.status(config).held == 1
     assert "CSE301 Database/Week 2/notes.pdf" in result.last_run()["held_files"][0]
 

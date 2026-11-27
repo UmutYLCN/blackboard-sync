@@ -548,3 +548,10 @@ def test_the_page_carries_every_tools_logo_and_the_dark_one_follows_the_theme():
     assert ':root[data-theme="dark"] .ai-logo.codex {' in html
     assert ':root:not([data-theme="light"]) .ai-logo.codex {' in html
     assert ".ai-logo.claude" in html and ':root[data-theme="dark"] .ai-logo.claude' not in html
+
+
+def test_the_notebook_card_is_gemini_notebook_with_its_logo():
+    assert state()["home"]["notebooklm"]["title"] == "Gemini Notebook"
+    styles = webui_page.logo_styles()
+    assert ".nlm-logo { background-image: url(data:image/png;base64," in styles
+    assert 'if (data.kind === "attention") return icon("warning-fill"' in APP_JS and "nlm-logo" in APP_JS

@@ -12,3 +12,10 @@ This project's license does not cover them.
 | `codex-dark.png` | OpenAI, for dark backgrounds | `resources/blossom-white.svg` in the same extension |
 | `gemini.png` | Gemini (Google) | the `logo_gemini_2026` image in the Gemini app for macOS |
 | `agy.png` | Antigravity (Google) | `resources/app/out/media/antigravity-gradient-logo.svg` in "Antigravity IDE" 2.8.0 |
+
+## Gemini Notebook
+
+`gemini-notebook.png` is the mark beside the title of Home's notebook card: Gemini Notebook (Google),
+formerly NotebookLM. It is cut out of a picture of Google's "Gemini Notebook" header with the dark
+background made transparent, at the picture's own size (40 x 29), not redrawn or recolored. Replace it
+with a larger official file when one is at hand. The same trademark note as above applies.
