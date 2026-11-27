@@ -9,11 +9,15 @@ from pathlib import Path
 
 import pytest
 
-from blackboard_sync import deadlines
+from blackboard_sync import announcements, deadlines
 from blackboard_sync.announcements import AnnouncementRow
+from blackboard_sync.config import Config
 from blackboard_sync.courses import CourseRow
+from blackboard_sync.menubar import jobs
 from blackboard_sync.menubar import main_window_model as main
+from blackboard_sync.menubar.model import AppModel, RecentItem
 from blackboard_sync.menubar.settings_form import WindowStatus
+from blackboard_sync.state import State
 from blackboard_sync.windows import webui_page, webui_state
 
 APP_JS = (webui_page.ASSETS / "app.js").read_text(encoding="utf-8")
@@ -85,6 +89,118 @@ def test_window_state_is_plain_json_with_home_and_sidebar():
     assert [row["id"] for row in home["deadlines"]] == ["Term/CSE301/Proposal.pdf", "https://bb.example/report"]
     # The initials are only a badge: the menu behind them is gone (Settings has Sign out).
     assert data["chrome"]["account"] == {"initials": "UY", "name": "UMUT YALÇIN", "warning": False}
+
+
+@pytest.mark.parametrize("has_course_metadata", [True, False])
+def test_home_payload_carries_one_course_color_for_files_announcements_and_deadlines(tmp_path, has_course_metadata):
+    config = Config(data_dir=tmp_path, dest=tmp_path / "dest")
+    cache = State.load(config.state_file)
+    if has_course_metadata:
+        cache.courses = {"first": {"code": "MTH201"}}
+    label = "Mathematics" if has_course_metadata else "MTH201 Mathematics"
+    cache.current_courses = ["first"]
+    cache.announcements["a"] = {
+        "course_id": "first", "course": label, "title": "Exam",
+        "date": NOW.isoformat(), "preview": "", "source_path": "/announcement/a", "output_key": "a",
+    }
+    cache.deadline_courses["first"] = {"name": label, "items": [
+        {"title": "Homework", "due": (NOW + timedelta(days=1)).isoformat(), "url": "https://bb.example/homework"},
+    ]}
+    cache.dirty = True
+    cache.save()
+    model = AppModel(config.dest, NOW, recent=[RecentItem("Term/MTH201/file.pdf", "MTH201", NOW.isoformat())])
+    current = jobs.window_status(config, model, NOW, config.dest)
+    rows = announcements.load_rows(config)
+    page = deadlines.calendar_page(cache, config.root, NOW)
+    home = state(current, rows, page)["home"]
+
+    for section in ("recent", "announcements", "deadlines"):
+        row, = home[section]
+        assert row["course_code"] == "MTH201"
+        assert row["color"] == current.course_colors["mth201"]
+        assert row["when"] and row["when"] in row["detail"]
+    assert home["announcements"][0]["course_title"] == "Mathematics"
+    assert home["deadlines"][0]["course_title"] == "Mathematics"
+    assert label in home["announcements"][0]["detail"]
+    assert label in home["deadlines"][0]["detail"]
+
+
+def test_home_announcements_and_deadlines_keep_course_title_visible_beside_badge():
+    due = datetime(2026, 10, 18, 20, 59, tzinfo=timezone.utc)
+    long_course = "PHY101 Physics I (Mechatronics - CENG - Chemical Engineering)"
+    ann_rows = (
+        AnnouncementRow("a1", "CSE301 Database Management", "Exercise 2", "22.11", "", "", "", "CSE301"),
+        AnnouncementRow("a2", long_course, "Lab note", "22.11", "", "", "", "PHY101"),
+        AnnouncementRow("a3", "MTH201", "Code only", "22.11", "", "", "", "MTH201"),
+    )
+    dl_rows = (
+        deadlines.DeadlineRow("Proposal", "CSE301 Database Management", due, "https://bb.example/p", "CSE301"),
+        deadlines.DeadlineRow("Report", long_course, due + timedelta(days=2), "https://bb.example/r", "PHY101"),
+    )
+    page = deadlines.DeadlinePage((deadlines.DeadlineDay(due.date(), "", False, dl_rows),), "")
+    recent_rows = (main.RecentRow("notes.pdf", "CSE301 · today 12:36", "Term/CSE301/notes.pdf", "PDF",
+                                  "2026-10-18T09:36:00Z", False, "CSE301", "today 12:36", 0),)
+    current = status(recent=recent_rows, course_colors={"cse301": 0, "phy101": 1, "mth201": 2})
+    data = state(current, ann_rows, page)
+
+    assert [row["course_title"] for row in data["home"]["announcements"]] == [
+        "Database Management", "Physics I (Mechatronics - CENG - Chemical Engineering)", "",
+    ]
+    assert [row["course_title"] for row in data["home"]["deadlines"]] == [
+        "Database Management", "Physics I (Mechatronics - CENG - Chemical Engineering)",
+    ]
+    assert "row-course-title" in APP_JS and "row-course-when" in APP_JS
+    app_css = (webui_page.ASSETS / "app.css").read_text(encoding="utf-8")
+    assert ".row-course-meta" in app_css and ".row-course-title" in app_css and ".row-course-when" in app_css
+
+    sync_api = pytest.importorskip("playwright.sync_api")
+    script = Path(__file__).resolve().parents[1] / "scripts" / "webui-preview.py"
+    namespace = {"__name__": "webui_preview"}
+    exec(compile(script.read_text(encoding="utf-8"), str(script), "exec"), namespace)
+    try:
+        with sync_api.sync_playwright() as playwright:
+            browser = playwright.chromium.launch(executable_path=namespace["chromium"]())
+            browser_page = browser.new_page(viewport={"width": 1024, "height": 720})
+            browser_page.set_content(webui_page.document(
+                extra_script="window.__PREVIEW_STATE__ = " + json.dumps(data) + ";"))
+            cards = browser_page.locator(".home .column:nth-of-type(2) .card")
+            # Announcements: badge + course title + · date; code-only row skips duplicate title.
+            ann_courses = cards.nth(0).locator(".row-course")
+            assert ann_courses.nth(0).locator(".course-badge").text_content() == "CSE301"
+            assert ann_courses.nth(0).locator(".row-course-title").text_content() == "Database Management"
+            assert ann_courses.nth(0).locator(".row-course-when").text_content() == "· 22.11"
+            assert ann_courses.nth(0).get_attribute("title") == "CSE301 Database Management · 22.11"
+            assert ann_courses.nth(2).locator(".row-course-title").count() == 0
+            assert ann_courses.nth(2).locator(".row-detail").text_content() == "22.11"
+            # Long title truncates with ellipsis on one line while keeping the date visible.
+            long_title = ann_courses.nth(1).locator(".row-course-title")
+            metrics = long_title.evaluate("""el => {
+                const style = getComputedStyle(el);
+                return {
+                    whiteSpace: style.whiteSpace,
+                    textOverflow: style.textOverflow,
+                    overflow: style.overflow,
+                    scrollWidth: el.scrollWidth,
+                    clientWidth: el.clientWidth,
+                    height: el.getBoundingClientRect().height,
+                };
+            }""")
+            assert metrics["whiteSpace"] == "nowrap" and metrics["textOverflow"] == "ellipsis"
+            assert metrics["overflow"] == "hidden"
+            assert metrics["scrollWidth"] > metrics["clientWidth"]
+            assert metrics["height"] < 28  # single line, never wraps
+            assert ann_courses.nth(1).locator(".row-course-when").evaluate("el => el.getBoundingClientRect().width > 0")
+            # Deadlines: badge + course title + · date, keeping tooltip & aria-label.
+            dl_courses = cards.nth(1).locator(".row-course")
+            assert dl_courses.nth(0).locator(".course-badge").text_content() == "CSE301"
+            assert dl_courses.nth(0).locator(".row-course-title").text_content() == "Database Management"
+            assert dl_courses.nth(0).locator(".row-course-when").text_content().startswith("· ")
+            assert "CSE301 Database Management" in cards.nth(1).locator(".row-main").nth(0).get_attribute("aria-label")
+            browser.close()
+    except sync_api.Error as exc:
+        if "Executable doesn't exist" in str(exc) or "browserType.launch" in str(exc):
+            pytest.skip(f"no Chromium: {exc}")
+        raise
 
 
 def test_home_button_follows_the_state():

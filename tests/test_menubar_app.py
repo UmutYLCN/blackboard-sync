@@ -311,7 +311,9 @@ def test_home_buttons_recent_files_and_sign_in(tmp_path):
         assert str(window.recent_count.stringValue()) == '2 files'
         buttons = [v for v in window.recent_scroll.documentView().subviews()
                    if hasattr(v, 'action') and v.action() == 'openRecent:']
-        assert [b.toolTip() for b in buttons] == ['Homework1.docx', 'week1.pdf']
+        expected = [f'{row.name} · {row.detail}' for row in window.status.recent]
+        assert [b.toolTip() for b in buttons] == expected
+        assert [b.accessibilityLabel() for b in buttons] == expected
         window.target.openRecent_(buttons[1])
         assert opened == ['T/CSE301/week1.pdf']
         window.target.sync_(None)
@@ -472,6 +474,66 @@ def test_announcements_page_puts_what_needs_attention_above_the_announcements(tm
         assert texts[0] == 'Needs your attention'
         window.target.showAnnouncements_(None)
         assert window.section == ANNOUNCEMENTS
+    finally:
+        window.window.close()
+
+
+def test_home_announcements_and_deadlines_show_course_title_beside_badge(tmp_path):
+    from datetime import timedelta
+    from AppKit import NSBox, NSLineBreakByTruncatingTail, NSTextField
+    from blackboard_sync import deadlines
+    from blackboard_sync.announcements import AnnouncementRow
+    from blackboard_sync.menubar.main_window import RIGHT_W
+    from blackboard_sync.menubar.main_window_model import main_status
+
+    rows = (
+        AnnouncementRow('a1', 'CSE301 Databases', 'Exam', '22.11', '', '', '', 'CSE301'),
+        AnnouncementRow(
+            'a2', 'PHY101 Physics I (Mechatronics - CENG - Chemical Engineering)', 'Lab', '22.11', '', '', '', 'PHY101'),
+        AnnouncementRow('a3', 'MTH201', 'Note', '22.11', '', '', '', 'MTH201'),
+    )
+    due = NOW + timedelta(minutes=30)
+    dl_row = deadlines.DeadlineRow('Proposal', 'CSE301 Databases', due, 'https://bb.example/p', 'CSE301')
+    page = deadlines.DeadlinePage((deadlines.DeadlineDay(due.date(), 'x', False, (dl_row,)),), '')
+    window, model, _ = make_window(tmp_path, on_announcements=lambda: rows, on_deadlines=lambda: page)
+    try:
+        signed_in(model)
+        status = main_status(model, NOW, page, current_course_codes=('CSE301', 'PHY101', 'MTH201'))
+        window.update_status(status)
+
+        def badges_and_labels(body):
+            badges = [str(sub.stringValue()) for view in body.subviews() if isinstance(view, NSBox)
+                      for sub in view.contentView().subviews() if isinstance(sub, NSTextField)]
+            labels = [view for view in body.subviews() if isinstance(view, NSTextField)]
+            return badges, labels
+
+        ann_badges, ann_labels = badges_and_labels(window.notify_body)
+        assert ann_badges == ['CSE301', 'PHY101', 'MTH201']
+        ann_texts = [str(label.stringValue()) for label in ann_labels]
+        assert 'Databases · 22.11' in ann_texts
+        assert 'Physics I (Mechatronics - CENG - Chemical Engineering)' in ann_texts
+        assert '· 22.11' in ann_texts
+        assert '22.11' in ann_texts  # code-only course does not repeat the badge
+        long_field = next(label for label in ann_labels
+                          if str(label.stringValue()).startswith('Physics I'))
+        when_field = next(label for label in ann_labels if str(label.stringValue()) == '· 22.11')
+        assert long_field.lineBreakMode() == NSLineBreakByTruncatingTail
+        assert long_field.frame().size.height == 15
+        assert when_field.frame().origin.x + when_field.frame().size.width <= RIGHT_W - 18 + 1
+
+        ann_buttons = [v for v in window.notify_body.subviews()
+                       if hasattr(v, 'action') and v.action() == 'openHomeAnnouncement:']
+        assert ann_buttons[0].toolTip() == 'CSE301 Databases · 22.11'
+        assert ann_buttons[0].accessibilityLabel() == 'Exam · CSE301 Databases · 22.11'
+
+        dl_badges, dl_labels = badges_and_labels(window.calendar_body)
+        assert dl_badges == ['CSE301']
+        dl_texts = [str(label.stringValue()) for label in dl_labels]
+        assert any(text.startswith('Databases · ') for text in dl_texts)
+        dl_buttons = [v for v in window.calendar_body.subviews()
+                      if hasattr(v, 'action') and v.action() == 'openHomeDeadline:']
+        assert 'CSE301 Databases' in dl_buttons[0].toolTip()
+        assert 'Proposal · ' in dl_buttons[0].accessibilityLabel()
     finally:
         window.window.close()
 

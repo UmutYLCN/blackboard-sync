@@ -28,13 +28,13 @@ def reduce_motion():
     return False
 
 
-def background_of(widget):
-    """The ttk theme's background inside a ``LabelFrame`` as "#rrggbb" (SystemButtonFace on Windows)."""
+def background_of(widget, style_name="TLabelframe"):
+    """The ttk theme's background for the given style, as "#rrggbb"."""
     try:
         from tkinter import ttk
 
         style = ttk.Style(widget)
-        name = style.lookup("TLabelframe", "background") or style.lookup("TFrame", "background") or "SystemButtonFace"
+        name = style.lookup(style_name, "background") or style.lookup("TFrame", "background") or "SystemButtonFace"
         red, green, blue = widget.winfo_rgb(name)
         return f"#{red // 256:02x}{green // 256:02x}{blue // 256:02x}"
     except Exception:  # unknown colour, or no display

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from blackboard_sync.menubar.main_window_model import COURSE_PALETTE
+
 LIGHT = {
     "window": "#f3f5f8",
     "surface": "#ffffff",
@@ -29,6 +31,12 @@ DARK = {
     "accent_soft": "#2b3a50",
     "danger": "#ff8585",
 }
+
+
+def course_badge_colors(index: int, *, light: bool) -> tuple[str, str]:
+    """Return the background and ink for a course badge in the active theme."""
+    day, night = COURSE_PALETTE[index]
+    return day if light else night
 
 
 def apps_use_light_theme(value: int | None) -> bool:

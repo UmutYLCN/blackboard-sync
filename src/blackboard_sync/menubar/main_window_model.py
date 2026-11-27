@@ -32,8 +32,11 @@ follow Google Drive's. Every text goes through ``i18n.tr`` (English or Turkish).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import Counter
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, tzinfo
+from hashlib import sha1
 from pathlib import Path, PurePosixPath
 
 from blackboard_sync import __version__, announcements, courses, deadlines, updater
@@ -59,6 +62,7 @@ from blackboard_sync.menubar.model import (
 )
 from blackboard_sync.menubar.settings_form import T_SAVE, FormValues, WindowStatus, window_status
 from blackboard_sync.notebooklm.store import NotebookLMStatus
+from blackboard_sync.paths import course_code_and_title, fold_course_key
 
 OVERVIEW, GENERAL, COURSES, CALENDAR, ANNOUNCEMENTS = "overview", "general", "courses", "calendar", "announcements"
 ACTIVITY = "activity"
@@ -270,6 +274,75 @@ class RecentRow:
     kind: str  # "PDF", "DOCX", ... (empty without an extension)
     at: str = ""  # download version, for the visibility tracker
     is_new: bool = False
+    course_code: str = ""
+    when: str = ""
+    color: int | None = None
+
+
+# Indexed by the persisted course color. Keep the WebView2 CSS tokens in the same order.
+# Each entry is ((light fill, light ink), (dark fill, dark ink)).
+COURSE_PALETTE = (
+    (("#e3edfd", "#1a56c4"), ("#1d2b42", "#9cc0ff")),
+    (("#e3f4e8", "#137333"), ("#1b3224", "#7fd69a")),
+    (("#feefe0", "#9a4a00"), ("#3a2b1c", "#ffb871")),
+    (("#f0eefa", "#5b4bb7"), ("#2a2640", "#c2b8ff")),
+    (("#fdecf6", "#a02a6e"), ("#3a2232", "#ff9fd3")),
+    (("#e0f4f4", "#00696b"), ("#16302f", "#7fd8d4")),
+    (("#fde8e7", "#b3261e"), ("#3a2224", "#ff9e97")),
+    (("#f4f1dc", "#625200"), ("#33301a", "#e3cf6b")),
+)
+
+
+def load_course_colors(data: object) -> dict[str, int]:
+    if not isinstance(data, dict):
+        return {}
+    return {key: index for key, index in data.items()
+            if isinstance(key, str) and key and type(index) is int and 0 <= index < len(COURSE_PALETTE)}
+
+
+def course_color_index(colors: Mapping[str, int], code: str) -> int | None:
+    return colors.get(fold_course_key(code))
+
+
+def course_name_without_code(course: str, code: str) -> str:
+    """Course title for a row that already shows ``code`` as a badge."""
+    text = " ".join((course or "").split())
+    if not text or not code:
+        return text
+    code_key = fold_course_key(code)
+    parsed_code, parsed_title = course_code_and_title("", text)
+    if parsed_code != "Course" and fold_course_key(parsed_code) == code_key:
+        if parsed_title == text or fold_course_key(parsed_title) == code_key:
+            return ""
+        return parsed_title
+    if fold_course_key(text) == code_key:
+        return ""
+    if text.casefold().startswith(code.casefold()):
+        rest = text[len(code):]
+        if not rest or rest[0] in " -_:|":
+            rest = rest.strip(" -_:|")
+            return "" if fold_course_key(rest) == code_key else rest
+    return text
+
+
+def assign_course_colors(model: AppModel, current_codes: Iterable[str], other_codes: Iterable[str]) -> None:
+    """Seed current courses in order, and keep prior assignments even after a course leaves."""
+    current = dict.fromkeys(filter(None, map(fold_course_key, current_codes)))
+    other = dict.fromkeys(filter(None, map(fold_course_key, other_codes)))
+    colors = model.course_colors
+    active = current or other
+    usage = Counter(colors[key] for key in active if key in colors)
+    size = len(COURSE_PALETTE)
+    for key in (*current, *other):
+        if key in colors:
+            continue
+        # Start at a stable offset when several colors are equally available.
+        start = int(sha1(key.encode("utf-8"), usedforsecurity=False).hexdigest(), 16) % size
+        index = min(((start + offset) % size for offset in range(size)), key=usage.__getitem__)
+        colors[key] = index
+        if key in active:
+            usage[index] += 1
+        model.course_colors_dirty = True
 
 
 @dataclass(frozen=True)
@@ -418,6 +491,7 @@ class MainStatus:
     home_heading: str = ""
     home_subtitle: str = ""
     notebooklm: NotebookLMCard = NotebookLMCard(NOTEBOOKLM_OFF, T_NOTEBOOKLM_INTRO)
+    course_colors: Mapping[str, int] = field(default_factory=dict)
 
     @property
     def overview_title(self) -> str:
@@ -639,15 +713,18 @@ def recent_rows(model: AppModel, now: datetime) -> tuple[RecentRow, ...]:
     rows = []
     for item in model.visible_recent():
         name = PurePosixPath(item.path).name
-        when = parse_iso(item.at)
-        detail = f"{item.course} · {day_time(when, now)}" if when else item.course
+        at = parse_iso(item.at)
+        when = day_time(at, now) if at else ""
+        detail = " · ".join(filter(None, (item.course, when)))
         rows.append(RecentRow(name, detail, item.path, Path(name).suffix[1:].upper()[:4], item.at,
-                              model.recent_seen.is_new(item.path, item.at, now)))
+                              model.recent_seen.is_new(item.path, item.at, now), item.course, when,
+                              course_color_index(model.course_colors, item.course)))
     return tuple(rows)
 
 
 def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.DeadlinePage | None = None,
-                zone: tzinfo | None = None) -> MainStatus:
+                zone: tzinfo | None = None, *, current_course_codes: Iterable[str] = ()) -> MainStatus:
+    assign_course_colors(model, current_course_codes, (item.course for item in model.visible_recent()))
     name, _expired = model.account()
     idle = model.busy is None and model.updates.busy != "download"
     if model.busy == "login":
@@ -680,6 +757,7 @@ def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.Deadli
         home_heading=heading,
         home_subtitle=subtitle,
         notebooklm=notebooklm_card(model, now),
+        course_colors=model.course_colors.copy(),
     )
 
 

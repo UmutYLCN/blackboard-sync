@@ -126,7 +126,8 @@ def home_button(status: main.MainStatus) -> dict | None:
 
 def recent(rows: tuple[main.RecentRow, ...]) -> list[dict]:
     return [{"id": row.path, "name": row.name, "detail": row.detail, "kind": file_kind(row.kind),
-             "extension": row.kind, "new": row.is_new}
+             "extension": row.kind, "new": row.is_new,
+             "course_code": row.course_code, "when": row.when, "color": row.color}
             for row in rows[:main.HOME_RECENT_ROWS]]
 
 
@@ -139,15 +140,24 @@ def home_announcements(status: main.MainStatus, rows) -> tuple[list[dict], list[
     """(what needs attention, the newest announcements): three rows at most, attention first."""
     items = status.attention[:main.HOME_ANNOUNCEMENT_ROWS]
     rows = tuple(rows)[:max(main.HOME_ANNOUNCEMENT_ROWS - len(items), 0)]
-    return attention_items(items), [{"id": row.key, "title": row.title, "detail": row.detail} for row in rows]
+    return attention_items(items), [
+        {"id": row.key, "title": row.title, "detail": row.detail, "when": row.date, "course_code": row.course_code,
+         "course_title": main.course_name_without_code(row.course, row.course_code),
+         "color": main.course_color_index(status.course_colors, row.course_code)}
+        for row in rows
+    ]
 
 
-def home_deadlines(page: deadlines.DeadlinePage, today: date) -> tuple[list[dict], str]:
+def home_deadlines(status: main.MainStatus, page: deadlines.DeadlinePage, today: date) -> tuple[list[dict], str]:
     """(the next due dates, the line shown without any)."""
-    rows = deadlines.upcoming_rows(page, main.HOME_DEADLINE_ROWS)
-    return ([{"id": row.target, "title": row.title, "detail": f"{deadlines.when_text(row, today)} · {row.course}"}
-             for row in rows],
-            "" if rows else page.message or main.T_NO_DEADLINES)
+    rows = []
+    for row in deadlines.upcoming_rows(page, main.HOME_DEADLINE_ROWS):
+        when = deadlines.when_text(row, today)
+        rows.append({"id": row.target, "title": row.title, "detail": f"{when} · {row.course}",
+                     "when": when, "course_code": row.course_code,
+                     "course_title": main.course_name_without_code(row.course, row.course_code),
+                     "color": main.course_color_index(status.course_colors, row.course_code)})
+    return rows, "" if rows else page.message or main.T_NO_DEADLINES
 
 
 def notebooklm_card(card: main.NotebookLMCard) -> dict:
@@ -171,7 +181,7 @@ def home(status: main.MainStatus, announcement_rows, deadline_page: deadlines.De
     """Home: the greeting, the status card with the last files, Announcements and the next due dates."""
     state = status.home
     attention, rows = home_announcements(status, announcement_rows)
-    upcoming, upcoming_message = home_deadlines(deadline_page, today)
+    upcoming, upcoming_message = home_deadlines(status, deadline_page, today)
     return {
         "heading": status.home_heading or status.overview_title,
         "subtitle": status.home_subtitle,
