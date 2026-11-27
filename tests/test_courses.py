@@ -3,12 +3,14 @@
 import json
 from datetime import datetime, timezone
 
+import pytest
+
 from blackboard_sync import courses
 from blackboard_sync.deadlines import calendar_page
 from blackboard_sync.menubar import jobs
 from blackboard_sync.menubar.model import AppModel
 from blackboard_sync.state import State
-from tests.test_old_terms import add_membership, archive  # noqa: F401
+from tests.test_old_terms import CURRENT, MEMBERS, add_membership, add_term, archive, freeze  # noqa: F401
 from tests.test_sync import CSE, SYLLABUS, files_under, sync
 
 CSE_ID = "_13004_1"  # CSE303 Algorithm Analysis
@@ -72,19 +74,22 @@ def test_a_course_that_appears_later_syncs_by_default(config, client, fake_bb):
     assert sorted(c.code for c in report.courses) == ["COE305", "CSE303"]
 
 
-def test_unticking_while_a_sync_runs_skips_the_courses_still_to_come(config, client, fake_bb, monkeypatch):
+def test_unticking_while_a_sync_runs_skips_the_courses_still_to_come(config, client, archive, monkeypatch):
     from blackboard_sync import sync as sync_mod
 
+    add_term(archive, "_year_1", "2026-2027", like="_50_1")
+    add_membership(archive, "_14100_1", "_year_1", name="Senior Project", code="CSE499-1")
     real = sync_mod.Syncer.sync_course
 
     def sync_course(self, course):
         if course.code == "COE305":  # the first course, by code
-            untick(config, "_13010_1")
+            untick(config, "_13010_1", "_14100_1")
         return real(self, course)
 
     monkeypatch.setattr(sync_mod.Syncer, "sync_course", sync_course)
     report = sync(config, client)
     assert [c.code for c in report.courses] == ["COE305", "CSE303"]
+    assert report.terms == [CURRENT]
 
 
 def test_an_unreadable_choice_file_syncs_every_course(config, client):
@@ -111,6 +116,30 @@ def test_filtered_and_dry_runs_leave_the_course_list_alone(config, client):
     sync(config, client, course_filters=["CSE303"])
     sync(config, client, dry_run=True)
     assert State.load(config.state_file).courses == listed
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_first_filtered_sync_uses_the_full_current_roster(config, client, archive, dry_run):
+    add_membership(archive, "_14000_1", None, name="Orientation", code="PDR01")
+    report = sync(config, client, course_filters=["PDR01"], dry_run=dry_run)
+    assert report.courses == [] and report.terms == []
+    assert report.warnings == []
+    assert not any("/courses/_14000_1/" in call for call in archive.calls)
+
+
+@pytest.mark.parametrize("options", [{"course_filters": ["PDR01"]}, {"all_terms": True}])
+def test_cached_and_frozen_terms_do_not_keep_a_termless_course_off(config, client, archive, options):
+    add_membership(archive, "_14000_1", None, name="Orientation", code="PDR01")
+    sync(config, client)
+    freeze(config)
+    for path, page in archive.routes.items():
+        if path.startswith(MEMBERS):
+            for member in page["results"]:
+                if member["course"].get("termId") == "_50_1":
+                    member["availability"] = {"available": "No"}
+    report = sync(config, client, **options)
+    assert "PDR01" in [course.code for course in report.courses]
+    assert (config.root / "No term/PDR01 Orientation/first.pdf").is_file()
 
 
 def test_the_calendar_hides_an_unticked_course_at_once(config, client, fake_bb):
@@ -258,10 +287,19 @@ def test_the_courses_without_a_term_come_last_with_a_hint_only_beside_termed_cou
 
 
 def test_calendar_and_announcements_leave_out_a_default_off_course(config):
+    from blackboard_sync import announcements, deadlines
+
     state = State(config.state_file)
     state.courses = dict(MIXED)
-    state.dirty = True
+    state.record_current_courses(list(MIXED))
+    for course_id, course in MIXED.items():
+        code = course["code"]
+        state.deadline_courses[course_id] = {"name": code, "items": [
+            {"id": "exam", "title": f"{code} exam", "due": "2026-10-13T12:00:00Z", "url": config.base_url}]}
+        key = f"announcement:{course_id}:news"
+        state.record_announcement(key, announcements.metadata(
+            {"title": f"{code} news"}, course_id, code, f"/courses/{course_id}/announcements", key))
     state.save()
-    from blackboard_sync import announcements, deadlines
-    assert deadlines.load_calendar(config, config.dest).days == ()
-    assert announcements.load_rows(config) == ()
+    calendar = deadlines.load_calendar(config, config.dest)
+    assert [row.title for day in calendar.days for row in day.rows] == ["CSE303 exam"]
+    assert [row.title for row in announcements.load_rows(config)] == ["CSE303 news"]

@@ -613,7 +613,7 @@ class Syncer:
         candidates = [t for t in all_found
                       if not (set(t.ids) & set(self.state.past_terms) and not in_date_range(t, now))]
         current = choose_current_terms(candidates, now)
-        self.current_course_ids = [c.id for t in current for c in t.courses]
+        self.current_courses = [c for t in current for c in t.courses]
         selected = all_found if all_terms else current
 
         recorded = self.recorded_course_dirs()
@@ -1519,40 +1519,34 @@ def run_sync(
         now=now,
         warnings=report.warnings,
     )
-    # Terms an older version archived (``state.past_terms``) are left out by ``discover``.
-    report.terms = [t.name for t in terms]
     card = term_confirm.proposal(config.base_url, terms, courses) if ask else None
     if card is not None:
         # Nothing is written: no file, no state.json, so the next sync asks again until confirmed.
         log.info("First sync at %s: the term is not clear (%s); asking first", card["school"],
                  ", ".join(card["reasons"]))
         report.status, report.confirm, report.message = "confirm", card, term_confirm.T_WAITING
+        report.terms = [t.name for t in terms]
         report.finished_at = _now_iso()
         return report
     everything = not all_terms and not course_filters
     # Dersler lists every current course, the unticked ones too. "termless" is stored, so nothing
     # compares the English folder name "No term" (courses.default_off).
     found = {c.id: {"code": c.code, "title": course_code_and_title(c.course_id, c.name)[1],
-                    "term": c.term_name, "folder": c.rel_dir, "termless": not c.term_id} for c in courses}
+                    "term": c.term_name, "folder": c.rel_dir, "termless": not c.term_id} for c in syncer.current_courses}
     if everything and not dry_run and found != state.courses:
         state.courses = found
         state.dirty = True
-    # What the last normal sync found, plus these courses: a termless course is off by default
-    # only when a termed one is current (a filtered or dry run knows only part of them).
-    known = found if everything else {**state.courses, **found}
-    disabled = effective_disabled(config, known)
+    disabled = effective_disabled(config, found)
     discovered = bool(courses)
     courses = [c for c in courses if c.id not in disabled]
-    synced_ids = {c.id for c in courses}
-    # The terms of the courses this sync takes, not ones with only unticked or filtered-out courses.
-    report.terms = [t.name for t in terms if any(c.id in synced_ids for c in t.courses)]
     if everything and not dry_run:
-        active = {key: value for key, value in state.deadline_courses.items() if key in synced_ids}
+        selected_ids = {c.id for c in courses}
+        active = {key: value for key, value in state.deadline_courses.items() if key in selected_ids}
         if active != state.deadline_courses:
             state.deadline_courses = active
             state.dirty = True
     if not dry_run:
-        state.record_current_courses(syncer.current_course_ids)
+        state.record_current_courses(list(found))
     for course in courses:
         syncer.migrate_course_folder(course, report.warnings)
     if not dry_run:
@@ -1564,13 +1558,15 @@ def run_sync(
         report.message = tr("No courses found on Blackboard, so the current term could not be determined. "
                             "Your courses will be synced as soon as Blackboard lists them.")
         report.warnings.append(report.message)
+    synced_ids = set()
     try:
         for course in courses:
-            if course.id in effective_disabled(config, known):
+            if course.id in effective_disabled(config, found):
                 log.info("Skipping %s: unticked in Dersler", course.rel_dir)
                 continue
             log.info("Syncing %s", course.rel_dir)
             report.courses.append(syncer.sync_course(course))
+            synced_ids.add(course.id)
             syncer.checkpoint_now()  # keep progress even if a later course fails
     finally:
         syncer.checkpoint_now()
@@ -1580,4 +1576,5 @@ def run_sync(
                 "files downloaded in this run may be fetched again next time."
             )
         report.finished_at = _now_iso()
+    report.terms = [t.name for t in terms if any(c.id in synced_ids for c in t.courses)]
     return report
