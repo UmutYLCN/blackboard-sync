@@ -25,6 +25,7 @@ from blackboard_sync.menubar import jobs, settings_form
 from blackboard_sync.menubar.main_window_model import (
     GENERAL,
     OPEN_ITEM_PREFIX,
+    OVERVIEW,
     duplicates_text,
     duplicates_title,
     notebooklm_progress,
@@ -563,11 +564,11 @@ class TrayApp:
             menu.entries = [entry for entry in menu.entries if entry.action not in UPDATE_ACTIONS]
         if menu != self.drawn:
             self.icon.menu = render_menu(menu.entries,
-                                        lambda action, value: self.post(self.dispatch, action, value),
+                                        lambda action, value: self.post(self.dispatch, action, value, True),
                                         pystray.Menu, pystray.MenuItem)
             self.drawn = menu
 
-    def dispatch(self, action, value=""):
+    def dispatch(self, action, value="", from_menu=False):
         if self.uninstalling:
             return
         if action in ("sync", "login"):
@@ -581,8 +582,14 @@ class TrayApp:
             return
         elif action == "pause":
             self.toggle_pause()
-        elif action in ("settings", "calendar_settings"):
+        elif action in ("settings", "calendar_settings", "ai_settings"):
             self.show_window(GENERAL)
+        elif action == "ai_open":
+            self.start_ai_launch(from_menu=from_menu)
+            return
+        elif action == "ai_install":
+            self.open_ai_install()
+            return
         elif action == "calendar_connect":
             self.start_calendar("connect")
         elif action == "calendar_sync":
@@ -779,7 +786,49 @@ class TrayApp:
     def ai_detected(self):
         self.ai_detecting = False
         self.model.ai_installed = ai_launcher.DETECTOR.installed()
+        if (self.model.ai_result is not None
+                and self.model.ai_result.failure == ai_launcher.Failure.CLI_MISSING
+                and self.model.ai_installed is not None
+                and self.model.ai_cli in self.model.ai_installed):
+            self.model.ai_result = None
         self.refresh()
+
+    def open_ai_install(self):
+        tool = ((self.model.ai_result.tool if self.model.ai_result is not None else None)
+                or ai_launcher.TOOLS.get(self.settings.ai_cli))
+        if tool is not None:
+            webbrowser.open(tool.install_url)
+
+    def start_ai_launch(self, from_menu=False):
+        if self.model.ai_launching:
+            return
+        self.model.ai_launching = True
+        self.model.ai_result = None
+        self.refresh()
+        ai_cli, ai_resume = self.settings.ai_cli, self.settings.ai_resume
+        launch_config = replace(self.config, dest=self.settings.dest)
+
+        def worker():
+            result = jobs.run_ai_launch_guarded(ai_cli, ai_resume, launch_config)
+            self.post(self.ai_launched, result, from_menu)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def ai_launched(self, result, from_menu=False):
+        self.model.ai_launching = False
+        installed = ai_launcher.DETECTOR.installed()
+        if installed is not None:
+            self.model.ai_installed = installed
+        self.model.ai_result = None if result.ok else result
+        if (result.failure == ai_launcher.Failure.TERMINAL_FAILED
+                and result.folder is not None and result.folder.is_dir()):
+            try:
+                os.startfile(str(result.folder))
+            except OSError:
+                log.warning("Could not open the folder after terminal launch failed: %s", result.folder)
+        self.refresh()
+        if from_menu and not result.ok:
+            self.show_window(OVERVIEW)
 
     def course_toggled(self, course_id, enabled):
         """A Dersler checkbox: save the choice; a course ticked again syncs right away."""
@@ -838,7 +887,10 @@ class TrayApp:
             self.settings.sync_interval_minutes,
             dest_choice=choice,
             auto_relogin=self.settings.auto_relogin,
+            ai_cli=self.settings.ai_cli,
+            ai_resume=self.settings.ai_resume,
         )
+        jobs.refresh_ai_term(self.config, self.model)
         self.save()
         self.start_next()  # a move goes before signing in to a new school
         if submission.needs_login(login):

@@ -19,6 +19,12 @@
     attention: "warning-fill",
     error: "error-fill",
   };
+  const AI_ICONS = {
+    off: "terminal",
+    ready: "terminal",
+    launching: "terminal",
+    attention: "warning-fill",
+  };
   const FILE_ICONS = {
     pdf: "picture_as_pdf",
     slides: "slideshow",
@@ -430,11 +436,24 @@
       h("div", { class: "card-footer" }, pill(state.text.open_calendar, "tonal", () => navigate("calendar"))));
   }
 
+  function aiCard(data) {
+    const buttons = [
+      data.button ? pill(data.button.title, "gray", () => call("action", data.button.id), { disabled: !data.button.enabled }) : null,
+      data.secondary ? pill(data.secondary.title, "gray", () => call("action", data.secondary.id), { disabled: !data.secondary.enabled }) : null,
+    ].filter(Boolean);
+    return h("article", { class: data.warning ? "card ai-card warning" : "card ai-card", id: "ai-card" },
+      icon(AI_ICONS[data.kind] || AI_ICONS.off, `ai-icon ${data.kind}`),
+      h("div", { class: "ai-text" },
+        h("h2", { class: "ai-title", text: data.title }),
+        h("p", { class: data.warning ? "ai-detail warning" : "ai-detail", text: data.detail, title: data.detail }),
+        buttons.length ? h("footer", { class: "ai-buttons" }, buttons) : null));
+  }
+
   function homePage() {
     const home = state.home;
     return h("div", { class: "home" },
       banner(),
-      h("div", { class: "column" }, statusCard(home), h("div", { id: "notebooklm" })),
+      h("div", { class: "column" }, statusCard(home), h("div", { id: "notebooklm" }), home.ai ? aiCard(home.ai) : null),
       h("div", { class: "column" }, announcementsCard(home), deadlinesCard(home)));
   }
 

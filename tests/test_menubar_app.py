@@ -1241,3 +1241,110 @@ def test_pause_stops_a_running_sync_and_resume_syncs_again(menu_app, monkeypatch
     menu_app.toggle_pause()  # a running sync is ended
     assert menu_app.model.paused and stopped == [True]
 
+
+def test_macos_home_ai_card_sits_under_notebooklm_and_routes_every_state(tmp_path):
+    from blackboard_sync import ai_launcher
+    from blackboard_sync.menubar.main_window import GAP
+    from blackboard_sync.menubar.main_window_model import main_status
+
+    actions = []
+    window, model, _ = make_window(tmp_path, on_action=actions.append)
+    try:
+        signed_in(model)
+        window.update_status(main_status(model, NOW))
+        nlm = window.notebooklm_card.frame()
+        ai = window.ai_card.frame()
+        assert ai.origin.y == nlm.origin.y + nlm.size.height + GAP
+        assert str(window.ai_title.stringValue()) == 'AI study session'
+        assert str(window.ai_detail.stringValue()) == 'Choose Claude, Gemini or Codex in Settings.'
+        assert str(window.ai_button.title()) == 'Choose' and window.ai_secondary.isHidden()
+        window.target.aiAction_(None)
+        assert actions == ['ai_settings']
+
+        # Ready state
+        model.apply_settings(tmp_path, school_changed=False, ai_cli='claude', ai_resume=True)
+        model.ai_term = '2026-2027 Güz'
+        model.ai_installed = frozenset({'claude'})
+        window.update_status(main_status(model, NOW))
+        assert str(window.ai_button.title()) == 'Open in Claude Code' and window.ai_button.isEnabled()
+        assert '2026-2027 Güz' in str(window.ai_detail.stringValue())
+        window.target.aiAction_(None)
+        assert actions[-1] == 'ai_open'
+
+        # CLI missing: both "How to install" and "Try again" pills work
+        model.ai_installed = frozenset()
+        window.update_status(main_status(model, NOW))
+        assert str(window.ai_button.title()) == 'How to install' and not window.ai_secondary.isHidden()
+        assert str(window.ai_secondary.title()) == 'Try again'
+        window.target.aiAction_(None)
+        window.target.aiSecondary_(None)
+        assert actions[-2:] == ['ai_install', 'ai_open']
+
+        # Folder missing: offers Sync now
+        model.ai_installed = frozenset({'claude'})
+        model.ai_result = ai_launcher.LaunchResult(
+            ai_launcher.Failure.FOLDER_MISSING, ai_launcher.TOOLS['claude'], tmp_path / 'University' / '2026-2027 Güz',
+        )
+        window.update_status(main_status(model, NOW))
+        assert str(window.ai_button.title()) == 'Sync now' and window.ai_secondary.isHidden()
+        window.target.aiAction_(None)
+        assert actions[-1] == 'sync'
+    finally:
+        window.window.close()
+
+
+def test_menubar_app_wires_ai_card_actions_and_menu_item(menu_app, monkeypatch, tmp_path):
+    from dataclasses import replace
+    from blackboard_sync import ai_launcher
+    from blackboard_sync.menubar import app, jobs
+    from blackboard_sync.menubar.main_window_model import OVERVIEW
+
+    opened_urls, opened_paths, launched = [], [], []
+    monkeypatch.setattr(app, 'open_url', opened_urls.append)
+    monkeypatch.setattr(app, 'open_path', opened_paths.append)
+
+    class ImmediateThread:
+        def __init__(self, target, daemon=None):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(app.threading, 'Thread', ImmediateThread)
+    monkeypatch.setattr('PyObjCTools.AppHelper.callAfter', lambda fn, *args: fn(*args))
+
+    term_dir = tmp_path / 'dest' / 'University' / '2026-2027 Güz'
+    term_dir.mkdir(parents=True)
+    menu_app.settings = replace(menu_app.settings, dest=tmp_path / 'dest', ai_cli='claude', ai_resume=True)
+    menu_app.model.apply_settings(tmp_path / 'dest', school_changed=False, ai_cli='claude', ai_resume=True)
+    menu_app.model.ai_term = '2026-2027 Güz'
+
+    # Menu bar includes "Open Claude Code in 2026-2027 Güz".
+    menu_app.refresh()
+    assert 'Open Claude Code in 2026-2027 Güz' in menu_app.menu
+
+    # How to install opens vendor docs.
+    menu_app.window_action('ai_install')
+    assert opened_urls == [ai_launcher.TOOLS['claude'].install_url]
+
+    # Terminal failure falls back to opening the folder in Finder and shows Home when triggered from menu.
+    def fake_launch(ai_cli, resume, config):
+        launched.append((ai_cli, resume, config.dest))
+        return ai_launcher.LaunchResult(
+            ai_launcher.Failure.TERMINAL_FAILED, ai_launcher.TOOLS['claude'], term_dir, 'Terminal failed',
+        )
+
+    monkeypatch.setattr(jobs, 'run_ai_launch_guarded', fake_launch)
+    monkeypatch.setattr(menu_app, 'detect_ai_tools', lambda: None)
+    menu_app.start_ai_launch(from_menu=True)
+    assert launched == [('claude', True, tmp_path / 'dest')]
+    assert opened_paths == [term_dir]
+    assert menu_app.model.ai_result.failure == ai_launcher.Failure.TERMINAL_FAILED
+    assert menu_app.windows and menu_app.windows[0].shown[-1] == OVERVIEW
+
+    # Re-detecting the tool clears a CLI_MISSING error.
+    menu_app.model.ai_result = ai_launcher.LaunchResult(ai_launcher.Failure.CLI_MISSING, ai_launcher.TOOLS['claude'])
+    monkeypatch.setattr(ai_launcher.DETECTOR, 'installed', lambda: frozenset({'claude'}))
+    menu_app._ai_detected()
+    assert menu_app.model.ai_result is None
+

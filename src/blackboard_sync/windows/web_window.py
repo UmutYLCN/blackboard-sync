@@ -43,7 +43,8 @@ STATE_WAIT = 20.0  # seconds a page's request for a new state waits before it as
 QUIT_GRACE = 10.0  # seconds pywebview's loop gets to end after Quit before the process ends anyway
 # What the page may ask the window to do (``Bridge.action``, ``Bridge.setting``).
 NOTEBOOKLM_ACTIONS = ("notebooklm_connect", "notebooklm_sync", "notebooklm_open")
-ACTIONS = ("sync", "pause", "folder", "update", "home_action", "account", *NOTEBOOKLM_ACTIONS)
+AI_ACTIONS = ("ai_open", "ai_settings", "ai_install")
+ACTIONS = ("sync", "pause", "folder", "update", "home_action", "account", *NOTEBOOKLM_ACTIONS, *AI_ACTIONS)
 SETTING_BUTTONS = ("account", "update", "uninstall", "google_calendar", "google_calendar_sync",
                    "google_calendar_disconnect", "notebooklm_duplicates", "notebooklm_disconnect")
 BUTTON_ACTIONS = {"google_calendar": "calendar_connect", "google_calendar_sync": "calendar_sync",
@@ -550,6 +551,9 @@ class WebMainWindow:
                 self.on_action(status.home.action)
         elif name in NOTEBOOKLM_ACTIONS:
             if name in self._ids.get("notebooklm", ()):
+                self.on_action(name)
+        elif name in AI_ACTIONS:
+            if name in self._ids.get("ai", ()):
                 self.on_action(name)
         elif name == "update":
             self.on_action(status.form.update_action)

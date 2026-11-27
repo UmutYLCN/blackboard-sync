@@ -792,3 +792,126 @@ def test_open_item_url_accepts_only_school_urls():
     assert main_window_model.open_item_url(f"open_item:{ITEM_LINK}", "https://blackboard.istun.edu.tr") == ITEM_LINK
     assert main_window_model.open_item_url("open_item:https://evil.example/x", "https://blackboard.istun.edu.tr") is None
     assert main_window_model.open_item_url("login", "https://blackboard.istun.edu.tr") is None
+
+
+# -- AI study session card on Home -----------------------------------------------------------------
+
+@pytest.mark.parametrize("language, title, detail, button", [
+    ("en", "AI study session", "Choose Claude, Gemini or Codex in Settings.", "Choose"),
+    ("tr", "Yapay zekâ ile çalış", "Ayarlar'dan Claude, Gemini veya Codex'i seçin.", "Seç"),
+])
+def test_ai_card_when_no_ai_is_chosen(monkeypatch, language, title, detail, button):
+    monkeypatch.setattr(i18n, "_language", language)
+    card = main_window_model.ai_card(synced())
+    assert card.kind == main_window_model.AI_OFF
+    assert not card.warning and card.enabled
+    assert (card.title, card.detail) == (title, detail)
+    assert (card.action, card.action_title) == ("ai_settings", button)
+    assert not card.secondary_action
+
+
+@pytest.mark.parametrize("language, resume, detail, button", [
+    ("en", True, "Opens 2026-2027 Güz in Claude Code, continuing your last session there.", "Open in Claude Code"),
+    ("en", False, "Opens 2026-2027 Güz in Claude Code, starting a new session.", "Open in Claude Code"),
+    ("tr", True, "2026-2027 Güz klasörünü Claude Code ile açar, oradaki son oturumdan devam eder.", "Claude Code ile aç"),
+    ("tr", False, "2026-2027 Güz klasörünü Claude Code ile açar, yeni bir oturum başlatır.", "Claude Code ile aç"),
+])
+def test_ai_card_ready_names_the_term_and_tool(monkeypatch, language, resume, detail, button):
+    monkeypatch.setattr(i18n, "_language", language)
+    model = synced(ai_cli="claude", ai_resume=resume)
+    model.ai_term = "2026-2027 Güz"
+    model.ai_installed = frozenset({"claude"})
+    card = main_window_model.ai_card(model)
+    assert card.kind == main_window_model.AI_READY and not card.warning and card.enabled
+    assert card.detail == detail
+    assert (card.action, card.action_title) == ("ai_open", button)
+    assert not card.secondary_action
+
+
+def test_ai_card_falls_back_to_university_folder_before_first_sync():
+    model = synced(ai_cli="codex", ai_resume=True)
+    card = main_window_model.ai_card(model)
+    assert card.kind == main_window_model.AI_READY
+    assert card.detail == "Opens University in Codex, continuing your last session there."
+    assert card.action_title == "Open in Codex"
+
+
+@pytest.mark.parametrize("language, button", [("en", "Opening…"), ("tr", "Açılıyor…")])
+def test_ai_card_disables_button_while_launching(monkeypatch, language, button):
+    monkeypatch.setattr(i18n, "_language", language)
+    model = synced(ai_cli="gemini")
+    model.ai_term = "2026-2027 Güz"
+    model.ai_launching = True
+    card = main_window_model.ai_card(model)
+    assert card.kind == main_window_model.AI_LAUNCHING and not card.enabled and not card.warning
+    assert (card.action, card.action_title) == ("ai_open", button)
+
+
+@pytest.mark.parametrize("via", ["installed", "result"])
+@pytest.mark.parametrize("language, detail, primary, secondary", [
+    ("en", "Gemini CLI is not installed. Install it, then try again.", "How to install", "Try again"),
+    ("tr", "Gemini CLI kurulu değil. Kurup yeniden deneyin.", "Nasıl kurulur", "Yeniden dene"),
+])
+def test_ai_card_when_cli_is_missing(monkeypatch, via, language, detail, primary, secondary):
+    from blackboard_sync import ai_launcher
+
+    monkeypatch.setattr(i18n, "_language", language)
+    model = synced(ai_cli="gemini")
+    if via == "installed":
+        model.ai_installed = frozenset({"claude"})
+    else:
+        model.ai_result = ai_launcher.LaunchResult(ai_launcher.Failure.CLI_MISSING, ai_launcher.TOOLS["gemini"])
+    card = main_window_model.ai_card(model)
+    assert card.kind == main_window_model.AI_ATTENTION and card.warning
+    assert card.detail == detail
+    assert (card.action, card.action_title) == ("ai_install", primary)
+    assert (card.secondary_action, card.secondary_title) == ("ai_open", secondary)
+
+
+@pytest.mark.parametrize("language, detail", [
+    ("en", "The 2026-2027 Güz folder isn't there yet. Sync first."),
+    ("tr", "2026-2027 Güz klasörü henüz yok. Önce eşitleyin."),
+])
+def test_ai_card_when_folder_is_missing_offers_sync_and_clears_after_sync(monkeypatch, language, detail):
+    from blackboard_sync import ai_launcher
+
+    monkeypatch.setattr(i18n, "_language", language)
+    model = synced(ai_cli="claude")
+    model.ai_installed = frozenset({"claude"})
+    model.ai_result = ai_launcher.LaunchResult(
+        ai_launcher.Failure.FOLDER_MISSING, ai_launcher.TOOLS["claude"], DEST / "University" / "2026-2027 Güz",
+    )
+    card = main_window_model.ai_card(model)
+    assert card.kind == main_window_model.AI_ATTENTION and card.warning
+    assert card.detail == detail
+    assert (card.action, card.action_title) == ("sync", i18n.tr("Sync now"))
+
+    # A successful sync clears the missing-folder warning.
+    model.finish_sync(RunOutcome("ok", finished_at=NOW), NOW)
+    assert model.ai_result is None
+    assert main_window_model.ai_card(model).kind == main_window_model.AI_READY
+
+
+@pytest.mark.parametrize("language, error, expected", [
+    ("en", "Unable to find Terminal", "Could not open a terminal: Unable to find Terminal"),
+    ("en", "", "Could not open a terminal."),
+    ("tr", "Terminal yok", "Terminal açılamadı: Terminal yok"),
+    ("tr", "", "Terminal açılamadı."),
+])
+def test_ai_card_shows_terminal_failure_and_keeps_open_pill(monkeypatch, language, error, expected):
+    from blackboard_sync import ai_launcher
+
+    monkeypatch.setattr(i18n, "_language", language)
+    model = synced(ai_cli="codex")
+    model.ai_installed = frozenset({"codex"})
+    model.ai_result = ai_launcher.LaunchResult(
+        ai_launcher.Failure.TERMINAL_FAILED, ai_launcher.TOOLS["codex"], DEST / "University" / "2026-2027 Güz", error,
+    )
+    card = main_window_model.ai_card(model)
+    assert card.kind == main_window_model.AI_ATTENTION and card.warning
+    assert card.detail == expected
+    assert card.action == "ai_open" and card.enabled
+
+    # Switching the chosen tool clears the old tool's failure.
+    model.apply_settings(DEST, school_changed=False, ai_cli="claude")
+    assert model.ai_result is None

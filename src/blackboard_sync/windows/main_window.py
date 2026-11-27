@@ -363,6 +363,7 @@ class MainWindow:
         status = ttk.LabelFrame(left, padding=(14, 12))
         status.pack(fill="x")
         self._build_notebooklm_card(left)
+        self._build_ai_card(left)
         status.columnconfigure(1, weight=1)
         self.state_icon = ttk.Label(status, font=("Segoe UI", 20), width=2, anchor="center")
         self.state_icon.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 10))
@@ -452,6 +453,35 @@ class MainWindow:
         self.notebooklm_open.pack_forget()
         if card.open_action:
             self.notebooklm_open.pack(side="left", padx=(8, 0))
+
+    def _build_ai_card(self, parent):
+        """Under the NotebookLM card: the same AI study session card as macOS and WebView2, in plain Tk."""
+        from tkinter import ttk
+
+        card = ttk.LabelFrame(parent, text=main.T_AI_TITLE, padding=(14, 8))
+        card.pack(fill="x", pady=(12, 0))
+        card.columnconfigure(0, weight=1)
+        self.ai_card_frame = card
+        self.ai_detail = ttk.Label(card, foreground=MUTED, wraplength=NOTEBOOKLM_WRAP)
+        self.ai_detail.grid(row=0, column=0, sticky="w")
+        buttons = ttk.Frame(card)
+        buttons.grid(row=1, column=0, sticky="w", pady=(8, 0))
+        self.ai_button = PillButton(buttons, command=lambda: self.status.ai.action and self.on_action(self.status.ai.action))
+        self.ai_button.pack(side="left")
+        self.ai_secondary = PillButton(
+            buttons, command=lambda: self.status.ai.secondary_action and self.on_action(self.status.ai.secondary_action))
+        self.ai_secondary.pack(side="left", padx=(8, 0))
+
+    def _draw_ai_card(self):
+        card = self.status.ai
+        self.ai_card_frame.configure(text=card.title)
+        self.ai_detail.configure(text=card.detail, foreground=WARNING if card.warning else MUTED)
+        self.ai_button.configure(text=card.action_title, state="normal" if card.enabled else "disabled")
+        self.ai_secondary.pack_forget()
+        if card.secondary_action:
+            self.ai_secondary.configure(text=card.secondary_title,
+                                        state="normal" if card.secondary_enabled else "disabled")
+            self.ai_secondary.pack(side="left", padx=(8, 0))
 
     def _draw_home_cards(self):
         """Home's Announcements (what needs attention, then the newest) and Yaklaşan teslimler cards."""
@@ -970,6 +1000,7 @@ class MainWindow:
         self._animate()
         self._draw_recent()
         self._draw_notebooklm_card()
+        self._draw_ai_card()
         self._draw_home_cards()
         self.refresh_calendar()
         self.refresh_activity()

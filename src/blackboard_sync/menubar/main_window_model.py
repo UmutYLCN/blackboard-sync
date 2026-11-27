@@ -39,7 +39,7 @@ from datetime import datetime, timedelta, tzinfo
 from hashlib import sha1
 from pathlib import Path, PurePosixPath
 
-from blackboard_sync import __version__, announcements, courses, deadlines, updater
+from blackboard_sync import __version__, ai_launcher, announcements, courses, deadlines, updater
 from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
@@ -409,6 +409,35 @@ class NotebookLMProgress:
     fraction: float | None = None
 
 
+# The AI study session card's states (under NotebookLM on Home).
+AI_OFF, AI_READY, AI_LAUNCHING, AI_ATTENTION = "off", "ready", "launching", "attention"
+T_AI_TITLE = tr("AI study session")
+T_AI_NO_CHOICE = tr("Choose Claude, Gemini or Codex in Settings.")
+T_AI_CHOOSE = tr("Choose")
+T_AI_HOW_TO_INSTALL = tr("How to install")
+T_AI_TRY_AGAIN = tr("Try again")
+T_AI_OPENING = tr("Opening…")
+
+
+@dataclass(frozen=True)
+class AiCard:
+    """The card under Home's NotebookLM card: opens the current term's folder with the chosen AI tool."""
+
+    kind: str  # one of the AI_* values
+    detail: str
+    action: str = ""  # "ai_open" | "ai_settings" | "ai_install" | "sync"
+    action_title: str = ""
+    enabled: bool = True
+    secondary_action: str = ""
+    secondary_title: str = ""
+    secondary_enabled: bool = True
+    title: str = T_AI_TITLE
+
+    @property
+    def warning(self) -> bool:
+        return self.kind == AI_ATTENTION
+
+
 @dataclass(frozen=True)
 class ActivityRow:
     name: str
@@ -491,6 +520,7 @@ class MainStatus:
     home_heading: str = ""
     home_subtitle: str = ""
     notebooklm: NotebookLMCard = NotebookLMCard(NOTEBOOKLM_OFF, T_NOTEBOOKLM_INTRO)
+    ai: AiCard = AiCard(AI_OFF, T_AI_NO_CHOICE, action="ai_settings", action_title=T_AI_CHOOSE)
     course_colors: Mapping[str, int] = field(default_factory=dict)
 
     @property
@@ -616,6 +646,55 @@ def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
     checked = tr("Last checked: {time}").format(time=day_time(finished, now))
     return NotebookLMCard(NOTEBOOKLM_IDLE, detail, secondary=checked, notice=status.message,
                           warning_counts=notebooklm_warning_counts(status), **sync)
+
+
+def ai_card(model: AppModel, sync_title: str | None = None, sync_enabled: bool = True) -> AiCard:
+    """No AI chosen, ready to open, launching, or explaining why the last launch did not open a terminal."""
+    title = tr("AI study session")
+    tool = ai_launcher.TOOLS.get(model.ai_cli)
+    if tool is None:
+        return AiCard(AI_OFF, tr("Choose Claude, Gemini or Codex in Settings."), action="ai_settings",
+                      action_title=tr("Choose"), title=title)
+    term = model.current_ai_term()
+    if model.ai_resume:
+        ready_detail = tr("Opens {term} in {name}, continuing your last session there.").format(term=term, name=tool.name)
+    else:
+        ready_detail = tr("Opens {term} in {name}, starting a new session.").format(term=term, name=tool.name)
+    open_title = tr("Open in {name}").format(name=tool.name)
+    if model.ai_launching:
+        return AiCard(AI_LAUNCHING, ready_detail, action="ai_open", action_title=tr("Opening…"), enabled=False,
+                      title=title)
+    result = model.ai_result
+    if result is not None and result.tool is not None and result.tool.key != tool.key:
+        result = None
+    cli_missing = ((result is not None and result.failure == ai_launcher.Failure.CLI_MISSING)
+                   or (model.ai_installed is not None and tool.key not in model.ai_installed))
+    if cli_missing:
+        return AiCard(
+            AI_ATTENTION,
+            tr("{name} is not installed. Install it, then try again.").format(name=tool.name),
+            action="ai_install",
+            action_title=tr("How to install"),
+            secondary_action="ai_open",
+            secondary_title=tr("Try again"),
+            title=title,
+        )
+    if result is not None and result.failure == ai_launcher.Failure.FOLDER_MISSING:
+        folder_name = (result.folder.name or str(result.folder)) if result.folder is not None else term
+        return AiCard(
+            AI_ATTENTION,
+            tr("The {term} folder isn't there yet. Sync first.").format(term=folder_name),
+            action="sync",
+            action_title=tr("Sync now") if sync_title is None else sync_title,
+            enabled=sync_enabled,
+            title=title,
+        )
+    if result is not None and result.failure == ai_launcher.Failure.TERMINAL_FAILED:
+        error = shorten(result.error, 140) if result.error else ""
+        detail = (tr("Could not open a terminal: {error}").format(error=error) if error
+                  else tr("Could not open a terminal."))
+        return AiCard(AI_ATTENTION, detail, action="ai_open", action_title=open_title, title=title)
+    return AiCard(AI_READY, ready_detail, action="ai_open", action_title=open_title, title=title)
 
 
 def duplicates_title(report: dict) -> str:
@@ -788,11 +867,13 @@ def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.Deadli
     scene, scene_line = sync_scene(model)
     first_run = is_first_run(model)
     heading, subtitle = home_header(name, T_NAV_START if first_run else T_NAV_OVERVIEW, deadlines_page, now, zone)
+    sync_title = T_SYNCING if model.busy == "sync" else T_SYNC_NOW
+    sync_enabled = idle and model.configured and name is not None and not model.paused
     return MainStatus(
         first_run=first_run,
         account=account_card(model, now),
-        sync_title=T_SYNCING if model.busy == "sync" else T_SYNC_NOW,
-        sync_enabled=idle and model.configured and name is not None and not model.paused,
+        sync_title=sync_title,
+        sync_enabled=sync_enabled,
         recent=recent_rows(model, now),
         form=window_status(model),
         start_title=T_LOGGING_IN if model.busy == "login" else T_LOGIN if name is None else T_SAVE,
@@ -811,6 +892,7 @@ def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.Deadli
         home_heading=heading,
         home_subtitle=subtitle,
         notebooklm=notebooklm_card(model, now),
+        ai=ai_card(model, sync_title=sync_title, sync_enabled=sync_enabled),
         course_colors=model.course_colors.copy(),
     )
 

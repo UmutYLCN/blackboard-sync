@@ -15,7 +15,8 @@ and **Sign out** are under **Settings → Account**.
 - **Home** is a summary: the sync state (**Up to date**, **Syncing…**, **Paused**, **Sign-in needed**;
   an animation of files flying into a folder while a sync runs), the latest downloads, what needs your
   attention with the newest announcements, and the upcoming due dates. On a Mac and on Windows, a
-  **NotebookLM** card sits under the sync state (see [NotebookLM](#notebooklm-mac-and-windows)).
+  **NotebookLM** card sits under the sync state (see [NotebookLM](#notebooklm-mac-and-windows)),
+  followed by the **AI study session** card (see [AI study session](#ai-study-session-mac-and-windows)).
 - **Sync activity** lists every file, note and announcement a sync brought, newest first, with its
   size and status; click a row to open the file in its own app.
 - **Announcements** shows what needs your attention at the top (session expired, an update, a sync that
@@ -306,6 +307,21 @@ blackboard-sync notebooklm disconnect
 
 Each prints one JSON line per step. `status` shows only the connection and the last run's counts; the
 session is never printed.
+
+## AI study session (Mac and Windows)
+
+Open your current term's folder in a terminal with your chosen AI CLI already running, continuing the
+last session in that folder when possible.
+
+- **Choose a tool.** In **Settings → AI assistant**, pick **Claude Code**, **Gemini CLI** or **Codex**
+  under **Open with** (the menu shows which ones are installed on your computer). Leave **Continue my
+  last session in this folder** on to resume where you left off, or turn it off to start fresh each time.
+- **Launch from Home or the menu bar / tray.** On **Home**, press **Open in {AI}** on the **AI study
+  session** card under NotebookLM, or choose **Open {AI} in {term}** in the menu bar / tray menu.
+- **What runs.** The app opens Terminal on macOS (or Windows Terminal / PowerShell on Windows) in your
+  current term's folder and starts the chosen CLI. If resuming fails immediately because there is no
+  earlier session in that folder, it starts a new session instead. The AI tool runs with your own
+  account and its own rules.
 
 
 ## Version 1.6.0

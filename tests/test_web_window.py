@@ -561,3 +561,29 @@ def test_bridge_answers_a_list_of_choices_with_its_text_ids_only():
     bridge.dialog_answer("q2", "uninstall", True)
     bridge.dialog_answer("q3", "uninstall", "yes")
     assert answers == [("q1", "confirm", ["_1_1"]), ("q2", "uninstall", True), ("q3", "uninstall", False)]
+
+
+def test_ai_card_actions_are_allowed_only_when_drawn_and_enabled():
+    from blackboard_sync import ai_launcher
+
+    window, _host, events = make_window()
+    # Default state is AI_OFF ("Choose" -> ai_settings).
+    window.run_action("ai_open")
+    window.run_action("ai_install")
+    assert events == []
+    window.run_action("ai_settings")
+    assert events == [("action", "ai_settings")]
+
+    model = AppModel(Path("/tmp/dest"), datetime(2026, 10, 18, tzinfo=timezone.utc), ai_cli="claude")
+    model.ai_installed = frozenset()
+    window.update_status(status(ai=main.ai_card(model)))
+    window.run_action("ai_settings")
+    window.run_action("ai_install")
+    window.run_action("ai_open")
+    assert events[-2:] == [("action", "ai_install"), ("action", "ai_open")]
+
+    model.ai_installed = frozenset({"claude"})
+    model.ai_result = ai_launcher.LaunchResult(ai_launcher.Failure.FOLDER_MISSING, ai_launcher.TOOLS["claude"])
+    window.update_status(status(ai=main.ai_card(model)))
+    window.run_action("ai_open")
+    assert len(events) == 3  # only "sync" is offered now

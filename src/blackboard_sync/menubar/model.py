@@ -20,7 +20,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable
 
-from blackboard_sync import __version__, term_confirm
+from blackboard_sync import __version__, ai_launcher, term_confirm
 from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
 from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.inapp import INAPP
@@ -708,6 +708,8 @@ class AppModel:
         sync_interval_minutes: int = DEFAULT_SYNC_INTERVAL_MINUTES,
         recent_seen: RecentSeen | None = None,
         auto_relogin: bool = True,
+        ai_cli: str = "",
+        ai_resume: bool = True,
     ):
         self.dest = dest  # the folder the student chose; the files are in ``root``
         self.session = session
@@ -737,6 +739,11 @@ class AppModel:
         self.notebooklm_again = False  # a sync finished during a run: look again once it ends
         # The AI tools found on this computer (``ai_launcher.Detector.installed``); None: not looked for yet.
         self.ai_installed: frozenset[str] | None = None
+        self.ai_cli = ai_cli
+        self.ai_resume = ai_resume
+        self.ai_term = ""  # current term folder name ("2026-2027 Güz"), or root.name before the first sync
+        self.ai_launching = False
+        self.ai_result: ai_launcher.LaunchResult | None = None
         self.busy: str | None = None  # "sync" | "login" | "move" | ...
         # A job asked for by a destination change, started as soon as the slot is free:
         # MOVE_JOB (from ``move_from``) or "sync" (download into the new folder).
@@ -959,6 +966,8 @@ class AppModel:
             self.session_care.checked_at = now  # a sync keeps the session alive as well
             self.courses = outcome.courses
             self.remember(outcome)
+            if self.ai_result is not None and self.ai_result.failure == ai_launcher.Failure.FOLDER_MISSING:
+                self.ai_result = None
             self.next_run_at = self.schedule(now, self.sync_interval)
             notification = changes_notification(outcome, self.root)
             if notification:
@@ -1019,6 +1028,8 @@ class AppModel:
         now: datetime | None = None,
         dest_choice: str | None = None,
         auto_relogin: bool | None = None,
+        ai_cli: str | None = None,
+        ai_resume: bool | None = None,
     ) -> None:
         """The settings window was saved.
 
@@ -1043,8 +1054,16 @@ class AppModel:
             if interval != self.sync_interval:
                 self.sync_interval = interval
                 self.reschedule(now or datetime.now(timezone.utc))
+        if ai_cli is not None:
+            if ai_cli != self.ai_cli:
+                self.ai_result = None
+            self.ai_cli = ai_cli
+        if ai_resume is not None:
+            self.ai_resume = ai_resume
         if sync_root(dest) != self.root:
             self.pending, self.move_from = None, None
+            self.ai_result = None
+            self.ai_term = ""
             if dest_choice == DEST_MOVE:
                 self.pending, self.move_from = MOVE_JOB, self.dest
             else:
@@ -1195,6 +1214,15 @@ class AppModel:
             lines.append(self.note)
         return lines
 
+    def current_ai_term(self) -> str:
+        """Current term folder's name for the AI card and menu item; the University folder before the first sync."""
+        if self.ai_term:
+            return self.ai_term
+        if self.courses:
+            entries = {str(index): {"folder": course.folder} for index, course in enumerate(self.courses)}
+            return ai_launcher.term_folder(self.root, entries).name or str(self.root)
+        return self.root.name or str(self.root)
+
     def menu(self, now: datetime) -> MenuModel:
         menu = MenuModel(
             status_lines=self.status_lines(now),
@@ -1223,11 +1251,16 @@ class AppModel:
         # Nothing syncs by itself in manual mode, so the button comes first.
         head = ([*top, sync, pause, *status, MenuEntry()] if self.sync_interval is None
                 else [*top, *status, MenuEntry(), sync, pause])
+        ai_tool = ai_launcher.TOOLS.get(self.ai_cli)
+        ai_entry = ([MenuEntry(tr("Open {name} in {term}").format(name=ai_tool.name, term=self.current_ai_term()),
+                               "ai_open", enabled=not self.ai_launching)]
+                    if ai_tool is not None else [])
         menu.entries = [
             *head,
             MenuEntry(tr("Courses"), children=[MenuEntry(label, "open", value=path) for label, path in unique_labels(course_items)] or [MenuEntry(tr("No courses yet"), enabled=False)]),
             MenuEntry(T_RECENT, children=[MenuEntry(label, "open", value=path) for label, path in menu.recent] or [MenuEntry(T_RECENT_EMPTY, enabled=False)]),
             MenuEntry(open_folder_title(self.root), "folder"),
+            *ai_entry,
             MenuEntry(),
             *([update] if update else []),
             MenuEntry(T_SETTINGS, "settings"),

@@ -473,6 +473,50 @@ def test_windows_tk_window_draws_the_notebooklm_card_and_keeps_its_settings(monk
     assert window.settings_rows['notebooklm_disconnect'].control.options['state'] == 'normal'
 
 
+def test_windows_tk_window_draws_the_ai_card_in_every_state(monkeypatch, tmp_path):
+    from blackboard_sync import ai_launcher
+    from blackboard_sync.menubar import main_window_model as main
+    from blackboard_sync.windows.main_window import MainWindow
+
+    fake_tk(monkeypatch, tmp_path)
+    now = datetime.now(timezone.utc)
+    model = AppModel(tmp_path, now, configured=True, session={'saved_at': now.timestamp(), 'user': {'displayName': 'Ada'}})
+    actions = []
+    saved = FormValues('https://school.edu', str(tmp_path), True)
+    window = MainWindow(None, saved, main.main_status(model, now), lambda *a: None, actions.append, lambda: None)
+
+    assert window.ai_detail.options['text'] == 'Choose Claude, Gemini or Codex in Settings.'
+    assert window.ai_button.options['text'] == 'Choose' and not window.ai_secondary.canvas.packed
+    window.ai_button.options['command']()
+    assert actions == ['ai_settings']
+
+    model.apply_settings(tmp_path, school_changed=False, ai_cli='codex', ai_resume=True)
+    model.ai_term = '2026-2027 Güz'
+    model.ai_installed = frozenset({'codex'})
+    window.update_status(main.main_status(model, now))
+    assert window.ai_button.options['text'] == 'Open in Codex' and not window.ai_secondary.canvas.packed
+    window.ai_button.options['command']()
+    assert actions[-1] == 'ai_open'
+
+    model.ai_installed = frozenset()
+    window.update_status(main.main_status(model, now))
+    assert window.ai_detail.options['foreground'] == '#b00020'
+    assert window.ai_button.options['text'] == 'How to install' and window.ai_secondary.canvas.packed
+    assert window.ai_secondary.options['text'] == 'Try again'
+    window.ai_button.options['command']()
+    window.ai_secondary.options['command']()
+    assert actions[-2:] == ['ai_install', 'ai_open']
+
+    model.ai_installed = frozenset({'codex'})
+    model.ai_result = ai_launcher.LaunchResult(
+        ai_launcher.Failure.FOLDER_MISSING, ai_launcher.TOOLS['codex'], tmp_path / 'University' / '2026-2027 Güz',
+    )
+    window.update_status(main.main_status(model, now))
+    assert window.ai_button.options['text'] == 'Sync now' and not window.ai_secondary.canvas.packed
+    window.ai_button.options['command']()
+    assert actions[-1] == 'sync'
+
+
 def test_windows_home_header_and_pill_buttons(monkeypatch, tmp_path):
     from datetime import timedelta
     from blackboard_sync import deadlines
