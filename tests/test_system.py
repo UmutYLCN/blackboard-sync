@@ -99,3 +99,57 @@ def test_set_hidden_is_a_noop_off_windows(tmp_path):
     f.write_bytes(b"x")
     system.set_hidden(f, True, platform="darwin")
     assert f.read_bytes() == b"x"
+
+
+def test_mark_of_the_web_writes_zone_identifier_only_on_windows(tmp_path):
+    import io
+
+    target = tmp_path / "syllabus.pdf"
+    target.write_bytes(b"%PDF")
+    writes = []
+
+    class FakeStream(io.StringIO):
+        def __init__(self, path):
+            super().__init__()
+            self._path = path
+
+        def __exit__(self, *args):
+            writes.append((self._path, self.getvalue()))
+            super().__exit__(*args)
+
+    def opener(path, mode="r", **kwargs):
+        return FakeStream(path)
+
+    # Off Windows: no-op (no macOS quarantine either).
+    assert system.mark_of_the_web(target, "https://bb.example.edu/file.pdf", platform="darwin", opener=opener) is False
+    assert writes == []
+
+    # On Windows: writes ZoneId=3 and clean HostUrl without signed query tokens.
+    url = "https://user:pass@bb.example.edu/bbcswebdav/xid-1_1?t=SECRET&s=SIG#frag"
+    assert system.mark_of_the_web(target, url, platform="win32", opener=opener) is True
+    assert len(writes) == 1
+    stream_path, payload = writes[0]
+    assert stream_path == f"{target}:Zone.Identifier"
+    assert payload == "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://bb.example.edu/bbcswebdav/xid-1_1\r\n"
+    assert "SECRET" not in payload and "pass" not in payload
+
+
+def test_mark_of_the_web_is_best_effort_on_oserror(tmp_path):
+    target = tmp_path / "syllabus.pdf"
+    target.write_bytes(b"%PDF")
+
+    def failing(*args, **kwargs):
+        raise PermissionError("non-NTFS filesystem")
+
+    assert system.mark_of_the_web(target, "https://bb.example.edu/f.pdf", platform="win32", opener=failing) is False
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="real Windows NTFS alternate data stream")
+def test_mark_of_the_web_on_real_windows(tmp_path):
+    target = tmp_path / "lecture.pdf"
+    target.write_bytes(b"%PDF")
+    assert system.mark_of_the_web(target, "https://bb.example.edu/lecture.pdf?token=secret") is True
+    content = open(f"{target}:Zone.Identifier", encoding="utf-8").read()
+    assert "[ZoneTransfer]" in content and "ZoneId=3" in content
+    assert "HostUrl=https://bb.example.edu/lecture.pdf" in content
+    assert "token=secret" not in content

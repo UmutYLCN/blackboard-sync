@@ -740,7 +740,12 @@ def attention_items(model: AppModel) -> tuple[AttentionItem, ...]:
             items.append(_unavailable_attention(unavailable))
         if transient:
             items.append(_transient_attention(transient))
-        if last.warnings or (not last.unreadable_courses and not last.failed_files and last.warning_count):
+        if last.unstable_network:
+            items.append(AttentionItem(
+                tr("Your internet connection seems unstable"),
+                tr("Downloads were interrupted several times. Interrupted files resume automatically when the connection steadies."),
+            ))
+        if last.warnings or (not last.unreadable_courses and not last.failed_files and not last.unstable_network and last.warning_count):
             detail = shorten(last.warnings[0], 140) if last.warnings else ""
             items.append(AttentionItem(tr("Something went wrong during the last sync"), detail))
     if model.note and model.busy is None:

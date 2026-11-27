@@ -172,19 +172,22 @@ def cmd_refresh_session(args, config: Config) -> int:
 
 def cmd_check(args, config: Config) -> int:
     client, session_data = open_client(config)
-    me = client.me()
-    print(tr("Session OK: signed in as {name}.").format(name=me.get("userName") or me.get("id")))
-    # The recorded files decide the folders, as in a real sync; nothing is written.
-    syncer = Syncer(client, config, State.load(config.state_file, backup=False), dry_run=True)
-    warnings: list[str] = []
-    terms, courses = syncer.discover(me["id"], args.all_terms, args.course, warnings=warnings)
-    print(tr("Term(s): {terms}").format(terms=", ".join(t.name for t in terms) or tr("none found")))
-    for course in courses:
-        print(f"  {config.root / course.rel_dir}")
-    for warning in warnings:
-        print(f"  ! {warning}")
-    refresh_saved_cookies(config.session_file, session_data, client.http)
-    return EXIT_OK
+    try:
+        me = client.me()
+        print(tr("Session OK: signed in as {name}.").format(name=me.get("userName") or me.get("id")))
+        # The recorded files decide the folders, as in a real sync; nothing is written.
+        syncer = Syncer(client, config, State.load(config.state_file, backup=False), dry_run=True)
+        warnings: list[str] = []
+        terms, courses = syncer.discover(me["id"], args.all_terms, args.course, warnings=warnings)
+        print(tr("Term(s): {terms}").format(terms=", ".join(t.name for t in terms) or tr("none found")))
+        for course in courses:
+            print(f"  {config.root / course.rel_dir}")
+        for warning in warnings:
+            print(f"  ! {warning}")
+        refresh_saved_cookies(config.session_file, session_data, client.http)
+        return EXIT_OK
+    finally:
+        client.close()
 
 
 @contextmanager
@@ -230,7 +233,10 @@ def cmd_sync(args, config: Config) -> int:
                     user_id=(session_data.get("user") or {}).get("id"),
                 )
             finally:
-                refresh_saved_cookies(config.session_file, session_data, client.http)
+                try:
+                    refresh_saved_cookies(config.session_file, session_data, client.http)
+                finally:
+                    client.close()
     except LoginRequired as exc:
         report.status, report.message = "login_required", str(exc)
     except AlreadyRunning as exc:

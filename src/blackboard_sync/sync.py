@@ -13,13 +13,14 @@ from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
 from typing import Container
 from urllib.parse import urlencode
 
 import requests
 
-from blackboard_sync.api import PARTIAL_PREFIX, PARTIAL_SUFFIX, BlackboardClient, is_media
+from blackboard_sync.api import PARTIAL_PREFIX, PARTIAL_SUFFIX, BlackboardClient, PartialTransfer, is_media
 from blackboard_sync.announcements import metadata as announcement_metadata
 from blackboard_sync.config import Config
 from blackboard_sync.deadlines import column_deadline
@@ -35,13 +36,16 @@ from blackboard_sync.notes import (
     render_item_note,
 )
 from blackboard_sync.paths import (
+    append_suffix,
     course_code_and_title,
     course_folder_name,
+    ensure_extension,
     fit_windows_folder,
     fit_windows_path,
     fold_course_key,
     join_rel,
     legacy_course_folder_name,
+    legacy_macos_name,
     markdown_twin,
     note_name,
     numbered_variant,
@@ -49,7 +53,7 @@ from blackboard_sync.paths import (
 )
 from blackboard_sync.report import UNAVAILABLE_STATUSES, CourseReport, SyncReport
 from blackboard_sync.state import State, intact, untouched
-from blackboard_sync.system import is_windows, set_hidden, try_lock
+from blackboard_sync.system import is_windows, mark_of_the_web, set_hidden, try_lock
 
 log = logging.getLogger(__name__)
 
@@ -122,6 +126,7 @@ class Course:
     legacy_rel_dir: str = ""
     # The course this one is the merged (cross-listed) parent of, for this student.
     child_id: str | None = None
+    modified: str | None = None
 
 
 @dataclass
@@ -150,6 +155,34 @@ def parse_time(value: str | None) -> datetime | None:
     except ValueError:
         return None
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _parse_http_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = parsedate_to_datetime(value)
+    except (TypeError, ValueError, IndexError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _apply_mtime(path: Path, when: datetime | None, *, only_if_dir: bool = False) -> None:
+    """Set ``path``'s modification time to ``when``; best effort, never raises."""
+    if when is None:
+        return
+    try:
+        ts = when.timestamp()
+        if ts <= 0:
+            return
+        if only_if_dir:
+            if not path.is_dir():
+                return
+            if abs(path.stat().st_mtime - ts) < 1:
+                return
+        os.utime(path, (ts, ts))
+    except (OSError, OverflowError, ValueError) as exc:
+        log.debug("Could not set modification time on %s: %s", path, exc)
 
 
 def term_dates(term: dict | None) -> tuple[datetime | None, datetime | None]:
@@ -445,20 +478,32 @@ def run_lock(path: Path):
 # 60 second read timeout, so one untouched for this long belongs to a run that was
 # killed. Used only when the run lock is not held; under the lock every one is leftover.
 STALE_PARTIAL_AGE = timedelta(minutes=10)
+# Tracked resumable partial files older than this are pruned on sync start.
+RESUMABLE_PARTIAL_MAX_AGE = timedelta(days=7)
+# This many download interruptions in one run triggers the unstable-network attention item.
+UNSTABLE_NETWORK_DROPS = 3
 
 
-def remove_stale_partials(dest: Path, now: float | None = None, max_age: timedelta = STALE_PARTIAL_AGE) -> int:
+def remove_stale_partials(
+    dest: Path,
+    now: float | None = None,
+    max_age: timedelta = STALE_PARTIAL_AGE,
+    keep: Container[Path] = (),
+) -> int:
     """Delete leftover ``.bbsync-*.partial`` files under *dest*; returns how many went.
 
     Under the run lock no other sync is writing, so every one is leftover: pass
     ``max_age=timedelta(0)``. Without the lock the age check keeps a concurrent
     run's live temp file safe. With no age at all the clock is not consulted: on
     Windows a file written a moment ago can carry a time just after ``time.time()``.
+    Files in ``keep`` are tracked resumable partial downloads kept for Range resume.
     """
     cutoff = (time.time() if now is None else now) - max_age.total_seconds()
     every = max_age <= timedelta(0)
     removed = 0
     for path in dest.rglob(f"{PARTIAL_PREFIX}*{PARTIAL_SUFFIX}"):
+        if path in keep:
+            continue
         try:
             if path.is_file() and not path.is_symlink() and (every or path.stat().st_mtime <= cutoff):
                 path.unlink()
@@ -468,6 +513,24 @@ def remove_stale_partials(dest: Path, now: float | None = None, max_age: timedel
     if removed:
         log.info("Removed %d leftover partial download(s)", removed)
     return removed
+
+
+def _prune_old_tracked_partials(state: State, dest: Path, now: float | None = None) -> None:
+    """Drop tracked resumable partial entries that are missing on disk or expired."""
+    cutoff = (time.time() if now is None else now) - RESUMABLE_PARTIAL_MAX_AGE.total_seconds()
+    for key, entry in list(state.partials.items()):
+        rel = entry.get("path") if isinstance(entry, dict) else None
+        if not isinstance(rel, str) or not rel:
+            state.clear_partial(key)
+            continue
+        path = dest / rel
+        try:
+            st = path.stat()
+            if not path.is_file() or st.st_size <= 0 or st.st_mtime <= cutoff:
+                path.unlink(missing_ok=True)
+                state.clear_partial(key)
+        except OSError:
+            state.clear_partial(key)
 
 
 class _OnDisk:
@@ -498,6 +561,7 @@ class Syncer:
         self.windows = is_windows() if windows is None else windows
         self.deadline_content_ids: dict[str, str] = {}
         self._placed = False  # a file was put on disk since the last save (``save_placed``)
+        self.network_drops = 0
         state.use_school(config.base_url)
 
     def checkpoint(self) -> None:
@@ -602,6 +666,7 @@ class Syncer:
                     code=code,
                     created=course.get("created"),
                     child_id=membership.get("childCourseId"),
+                    modified=course.get("modified") or course.get("created"),
                 )
             )
 
@@ -685,14 +750,14 @@ class Syncer:
         for term in sorted((t for t in terms if not t.folder), key=lambda t: (term_age(t), t.id or ""), reverse=True):
             folder = sanitize_name(term.name, windows=self.windows)
             if folder.casefold() in taken:
-                folder = sanitize_name(f"{term.name} ({term.id or NO_TERM})", windows=self.windows)
+                folder = append_suffix(term.name, term.id or NO_TERM, windows=self.windows)
             taken.add(folder.casefold())
             term.folder = folder
 
     def unique_folder(self, course: Course, folder_name, used: set[str]) -> str:
         folder = folder_name(course.course_id, course.name, windows=self.windows)
         if folder.casefold() in used:
-            folder = sanitize_name(f"{folder} ({course.course_id or course.id})", windows=self.windows)
+            folder = append_suffix(folder, course.course_id or course.id, windows=self.windows)
         used.add(folder.casefold())
         return folder
 
@@ -744,7 +809,13 @@ class Syncer:
         """
         name = sanitize_name(title, windows=self.windows)
         if not self.windows:
-            return join_rel(rel_dir, name)
+            desired = join_rel(rel_dir, name)
+            legacy = legacy_macos_name(title)
+            if legacy != name:
+                legacy_rel = join_rel(rel_dir, legacy)
+                if not (self.dest / desired).exists() and (self.dest / legacy_rel).is_dir():
+                    return legacy_rel
+            return desired
         fitted = join_rel(rel_dir, fit_windows_folder(self.dest, rel_dir, name))
         used = self.move_folder(join_rel(rel_dir, name), fitted, warnings)
         if not self.dry_run:
@@ -827,6 +898,8 @@ class Syncer:
             self.sync_announcements(course, report)
         except ITEM_ERRORS as exc:
             report.warnings.append(tr("Could not sync announcements: {error}").format(error=exc))
+        if not self.dry_run:
+            _apply_mtime(self.dest / course.rel_dir, parse_time(course.modified), only_if_dir=True)
         return report
 
     def sync_deadlines(self, course: Course, report: CourseReport) -> None:
@@ -871,6 +944,12 @@ class Syncer:
                         name=repr(item.get("title")), error=exc))
                     continue
                 self.walk(course, children, sub_dir, report, item.get("title") or "", item["id"])
+                if not self.dry_run:
+                    _apply_mtime(
+                        self.dest / sub_dir,
+                        parse_time(item.get("modified") or item.get("created")),
+                        only_if_dir=True,
+                    )
             else:
                 try:
                     self.process_item(course, item, rel_dir, report, parent_title, parent_id)
@@ -900,6 +979,7 @@ class Syncer:
     ) -> None:
         key = f"content:{course.id}:{item['id']}"
         modified = item.get("modified")
+        item_mtime = modified or item.get("created")
         # Bodies come fresh with every listing, so the signed file URLs in them are
         # still valid for the downloads below.
         # Ultra assignments and tests expose instructor instructions in the public
@@ -990,6 +1070,7 @@ class Syncer:
                     rel = self.fetch_or_link(
                         media, out_key, att_name, att.get("mimeType"),
                         self.client.url(url), join_rel(rel_dir, name), url, report,
+                        modified=item_mtime,
                     )
                 except (ApiError, *ITEM_ERRORS) as exc:
                     status = exc.status if isinstance(exc, ApiError) else None
@@ -1046,6 +1127,7 @@ class Syncer:
                 rel = self.fetch_or_link(
                     media, out_key, emb_name, embedded.mime, self.embedded_link(embedded),
                     desired, self.embedded_url(embedded), report, rel_dir, replaces=replaces,
+                    modified=item_mtime,
                 )
             except (ApiError, *ITEM_ERRORS) as exc:
                 status = exc.status if isinstance(exc, ApiError) else None
@@ -1083,8 +1165,14 @@ class Syncer:
                 saved, note_links,
             )
             out_key = f"note:{course.id}:{item['id']}"
-            self.write_note(out_key, join_rel(rel_dir, note_name(title, windows=self.windows)), note, report, "notes")
+            self.write_note(
+                out_key, join_rel(rel_dir, note_name(title, windows=self.windows)), note, report, "notes",
+                modified=item_mtime,
+            )
             outputs += [out_key, markdown_key(out_key)]
+
+        if instruction_files and not self.dry_run:
+            _apply_mtime(self.dest / rel_dir, parse_time(item_mtime), only_if_dir=True)
 
         if not self.dry_run:
             self.state.record_item(
@@ -1166,9 +1254,14 @@ class Syncer:
             report.warnings.append(f"Could not read announcements: {exc}")
             return
         folder = join_rel(course.rel_dir, sanitize_name(self.config.announcements_folder, windows=self.windows))
+        newest_ann: datetime | None = None
         for ann in announcements:
             if ann.get("draft"):
                 continue
+            ann_mtime = ann.get("modified") or ann.get("created")
+            parsed_ann_mtime = parse_time(ann_mtime)
+            if parsed_ann_mtime and (newest_ann is None or parsed_ann_mtime > newest_ann):
+                newest_ann = parsed_ann_mtime
             key = f"announcement:{course.id}:{ann['id']}"
             out_key = f"announcement-note:{course.id}:{ann['id']}"
             # Backfill older states even when the note itself is unchanged.
@@ -1233,7 +1326,7 @@ class Syncer:
                     rel = self.fetch_or_link(
                         media, file_key, emb_name, embedded.mime, self.embedded_link(embedded),
                         join_rel(folder, file_name) if file_name else "", self.embedded_url(embedded),
-                        report, folder,
+                        report, folder, modified=ann_mtime,
                     )
                 except (ApiError, *ITEM_ERRORS) as exc:
                     status = exc.status if isinstance(exc, ApiError) else None
@@ -1259,7 +1352,7 @@ class Syncer:
                 ann, self.course_label(course), ann_link, saved, note_links,
             )
             try:
-                self.write_note(out_key, join_rel(folder, name), note, report, "announcements")
+                self.write_note(out_key, join_rel(folder, name), note, report, "announcements", modified=ann_mtime)
             except OSError as exc:
                 report.warnings.append(f"Skipped announcement {title!r}: {exc}")
                 continue
@@ -1271,6 +1364,8 @@ class Syncer:
                     unavailable=[u[0] for u in unavailable],
                 )
                 self.checkpoint()
+        if not self.dry_run and newest_ann is not None:
+            _apply_mtime(self.dest / folder, newest_ann, only_if_dir=True)
 
     # -- writing files -------------------------------------------------
     def fetch_or_link(
@@ -1285,6 +1380,7 @@ class Syncer:
         report: CourseReport,
         fallback_dir: str = "",
         replaces: str | None = None,
+        modified: str | None = None,
     ) -> str | None:
         """``fetch_file``, except that a video or audio file is never downloaded.
 
@@ -1296,7 +1392,10 @@ class Syncer:
         try:
             if self.state.output(out_key) is None and is_media(mime, name, PurePosixPath(desired_rel).name):
                 raise SkippedMedia(url, name, mime or "")
-            return self.fetch_file(out_key, desired_rel, url, report, fallback_dir, replaces=replaces)
+            return self.fetch_file(
+                out_key, desired_rel, url, report, fallback_dir,
+                replaces=replaces, mime=mime, modified=modified,
+            )
         except SkippedMedia as skipped:
             previous = self.state.output(out_key)
             if previous:
@@ -1328,6 +1427,8 @@ class Syncer:
         report: CourseReport,
         fallback_dir: str = "",
         replaces: str | None = None,
+        mime: str | None = None,
+        modified: str | None = None,
     ) -> str:
         """Download one file unless it is already mirrored; return its local path."""
         if replaces and not self.dry_run and self.state.output(out_key) is None:
@@ -1338,7 +1439,11 @@ class Syncer:
                 if not self.present(out_key):
                     report.new_files.append(previous["path"])
                 return previous["path"]
-            rel = desired_rel or join_rel(fallback_dir, out_key.rsplit(":", 1)[-1])
+            if desired_rel:
+                p = PurePosixPath(desired_rel)
+                rel = str(p.with_name(ensure_extension(p.name, mime, windows=self.windows)))
+            else:
+                rel = join_rel(fallback_dir, out_key.rsplit(":", 1)[-1])
             report.new_files.append(rel)
             return rel
         target_dir = self.staging_dir(self.dest / (PurePosixPath(desired_rel).parent if desired_rel else fallback_dir))
@@ -1347,14 +1452,100 @@ class Syncer:
         if previous and (previous.get("etag") or previous.get("last_modified")) and self.present(out_key):
             # A copy that is gone or broken is fetched in full; the server must not just confirm it.
             known = previous
-        download = self.client.download(url, target_dir, expected_name=expected, known=known)
+
+        resume: PartialTransfer | None = None
+        recorded_partial = self.state.partial(out_key)
+        if recorded_partial is not None:
+            partial_rel = recorded_partial.get("path")
+            partial_path = (self.dest / partial_rel) if isinstance(partial_rel, str) and partial_rel else None
+            same_modified = (
+                (modified is not None and recorded_partial.get("modified") == modified)
+                or (modified is None and recorded_partial.get("modified") is None
+                    and bool(recorded_partial.get("etag") or recorded_partial.get("last_modified")))
+            )
+            if partial_path is not None and same_modified and partial_path.is_file():
+                resume = PartialTransfer(
+                    path=partial_path,
+                    size=recorded_partial.get("size"),
+                    etag=recorded_partial.get("etag"),
+                    last_modified=recorded_partial.get("last_modified"),
+                    filename=recorded_partial.get("filename"),
+                    content_type=str(recorded_partial.get("content_type") or ""),
+                )
+            else:
+                if partial_path is not None:
+                    partial_path.unlink(missing_ok=True)
+                self.state.clear_partial(out_key)
+
+        dropped_in_call = False
+
+        def on_drop() -> None:
+            nonlocal dropped_in_call
+            dropped_in_call = True
+            self.network_drops += 1
+
+        def on_partial(partial: PartialTransfer) -> None:
+            try:
+                rel_partial = partial.path.relative_to(self.dest).as_posix()
+            except ValueError:
+                partial.path.unlink(missing_ok=True)
+                return
+            self.state.record_partial(
+                out_key,
+                rel_partial,
+                modified,
+                size=partial.size,
+                etag=partial.etag,
+                last_modified=partial.last_modified,
+                filename=partial.filename,
+                content_type=partial.content_type,
+            )
+            self.checkpoint_now()
+
+        try:
+            download = self.client.download(
+                url,
+                target_dir,
+                expected_name=expected,
+                known=known,
+                resume=resume,
+                on_drop=on_drop,
+                on_partial=on_partial,
+            )
+        except requests.RequestException:
+            if not dropped_in_call:
+                self.network_drops += 1
+            raise
+        except ApiError as exc:
+            if exc.status in UNAVAILABLE_STATUSES:
+                self.state.clear_partial(out_key)
+            raise
+        except SkippedMedia:
+            self.state.clear_partial(out_key)
+            raise
+
+        self.state.clear_partial(out_key)
         if download.unchanged:
             return previous["path"]
         try:
             if not desired_rel:
-                name = sanitize_name(download.filename or out_key.rsplit(":", 1)[-1], windows=self.windows)
-                desired_rel = join_rel(fallback_dir, name)
-            outcome, rel = self.place(out_key, desired_rel, download.path, download.sha256, download.size)
+                base = sanitize_name(download.filename or out_key.rsplit(":", 1)[-1], windows=self.windows)
+                base = ensure_extension(
+                    base, download.content_type, mime, fallback_name=download.filename, windows=self.windows
+                )
+                desired_rel = join_rel(fallback_dir, base)
+            else:
+                p = PurePosixPath(desired_rel)
+                with_ext = ensure_extension(
+                    p.name, download.content_type, mime, fallback_name=download.filename, windows=self.windows
+                )
+                desired_rel = str(p.with_name(with_ext))
+            file_mtime = parse_time(modified) or _parse_http_time(download.last_modified)
+            full_url = self.client.url(url) if "://" not in url else url
+            outcome, rel = self.place(
+                out_key, desired_rel, download.path, download.sha256, download.size,
+                mtime=file_mtime, source_url=full_url,
+            )
             self.state.set_validators(out_key, download.etag, download.last_modified)
         finally:
             if download.path.exists():
@@ -1367,7 +1558,13 @@ class Syncer:
         return rel
 
     def write_note(
-        self, out_key: str, desired_rel: str, text: str, report: CourseReport, kind: str
+        self,
+        out_key: str,
+        desired_rel: str,
+        text: str,
+        report: CourseReport,
+        kind: str,
+        modified: str | None = None,
     ) -> str:
         """Save a note as a PDF and a hidden Markdown copy beside it; return the PDF's path.
 
@@ -1379,8 +1576,11 @@ class Syncer:
         md_key = markdown_key(out_key)
         if not self.dry_run:
             self.hide_legacy_note(out_key, md_key)
-        rel = self.write_output(out_key, desired_rel, lambda: render_pdf(text), report, kind)
-        self.write_output(md_key, markdown_twin(rel), lambda: text.encode("utf-8"), None, kind, hidden=True)
+        note_mtime = parse_time(modified)
+        rel = self.write_output(out_key, desired_rel, lambda: render_pdf(text), report, kind, mtime=note_mtime)
+        self.write_output(
+            md_key, markdown_twin(rel), lambda: text.encode("utf-8"), None, kind, hidden=True, mtime=note_mtime
+        )
         self.save_placed()
         return rel
 
@@ -1414,6 +1614,7 @@ class Syncer:
         report: CourseReport | None,
         kind: str,
         hidden: bool = False,
+        mtime: datetime | None = None,
     ) -> str:
         """Write generated content (``render()`` gives its bytes) as ``out_key``; return its path.
 
@@ -1440,7 +1641,8 @@ class Syncer:
         tmp_path = Path(tmp)
         try:
             outcome, rel = self.place(
-                out_key, desired_rel, tmp_path, sha, len(data), replace_in_place=True, hidden=hidden
+                out_key, desired_rel, tmp_path, sha, len(data),
+                replace_in_place=True, hidden=hidden, mtime=mtime,
             )
         finally:
             if tmp_path.exists():
@@ -1461,6 +1663,8 @@ class Syncer:
         size: int,
         replace_in_place: bool = False,
         hidden: bool = False,
+        mtime: datetime | None = None,
+        source_url: str | None = None,
     ) -> tuple[str, str]:
         """Move a freshly fetched file into place without ever clobbering local work.
 
@@ -1483,23 +1687,23 @@ class Syncer:
             prev_abs = self.dest / previous["path"]
             if previous["sha256"] == sha:
                 if not intact(prev_abs, previous):
-                    self._move_into(tmp, prev_abs, hidden)
+                    self._finish_place(tmp, prev_abs, hidden, mtime, source_url)
                     self.record_placed(out_key, previous["path"], sha, size)
                     return "new", previous["path"]
                 return "unchanged", previous["path"]
             # The modification time is still ours: whatever changed the bytes, it was not the student.
             if prev_abs.is_file() and (not intact(prev_abs, previous) or untouched(prev_abs, previous)
                                        or sha256_file(prev_abs) == previous["sha256"]):
-                self._move_into(tmp, prev_abs, hidden)
+                self._finish_place(tmp, prev_abs, hidden, mtime, source_url)
                 self.record_placed(out_key, previous["path"], sha, size)
                 return "updated", previous["path"]
             if replace_in_place and not prev_abs.is_dir():
-                self._move_into(tmp, prev_abs, hidden)
+                self._finish_place(tmp, prev_abs, hidden, mtime, source_url)
                 self.record_placed(out_key, previous["path"], sha, size)
                 return "updated", previous["path"]
             rel, adopt = self.free_path(out_key, desired_rel, sha)
             if not adopt:
-                self._move_into(tmp, self.dest / rel, hidden)
+                self._finish_place(tmp, self.dest / rel, hidden, mtime, source_url)
             self.record_placed(out_key, rel, sha, size)
             if rel != previous["path"] and prev_abs.is_file():
                 self.state.keep_edited_original(previous["path"])
@@ -1507,9 +1711,24 @@ class Syncer:
 
         rel, adopt = self.free_path(out_key, desired_rel, sha)
         if not adopt:
-            self._move_into(tmp, self.dest / rel, hidden)
+            self._finish_place(tmp, self.dest / rel, hidden, mtime, source_url)
         self.record_placed(out_key, rel, sha, size)
         return ("unchanged" if adopt else "new"), rel
+
+    def _finish_place(
+        self,
+        tmp: Path,
+        target: Path,
+        hidden: bool,
+        mtime: datetime | None,
+        source_url: str | None,
+    ) -> None:
+        """Move ``tmp`` to ``target``, tag Mark of the Web on Windows, then stamp ``mtime``."""
+        self._move_into(tmp, target, hidden)
+        if source_url:
+            mark_of_the_web(target, source_url)
+        if mtime is not None:
+            _apply_mtime(target, mtime)
 
     def record_placed(self, out_key: str, rel: str, sha: str, size: int) -> None:
         """Record the file now at ``rel`` with the modification time it has as we wrote it."""
@@ -1596,7 +1815,12 @@ def run_sync(
     if state.recovery:
         report.warnings.append(state.recovery)
     if not dry_run:
-        remove_stale_partials(config.root, max_age=timedelta(0) if lock_held else STALE_PARTIAL_AGE)
+        _prune_old_tracked_partials(state, config.root)
+        remove_stale_partials(
+            config.root,
+            max_age=timedelta(0) if lock_held else STALE_PARTIAL_AGE,
+            keep=state.partial_paths(config.root),
+        )
     # Before ``Syncer`` claims the state for the school in use (``State.use_school``).
     ask = (confirm_first and not dry_run and not all_terms and not course_filters
            and not term_confirm.has_school_state(state, config.base_url)
@@ -1664,6 +1888,8 @@ def run_sync(
             syncer.checkpoint_now()  # keep progress even if a later course fails
     finally:
         syncer.checkpoint_now()
+        report.network_drops = syncer.network_drops
+        report.unstable_network = syncer.network_drops >= UNSTABLE_NETWORK_DROPS
         if state.save_error:
             report.warnings.append(
                 f"Could not save progress to {state.path.name} ({state.save_error}); "

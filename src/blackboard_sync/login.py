@@ -380,14 +380,19 @@ def wait_for_devtools_port(profile_dir: Path, timeout: float = 30) -> int:
 
 def session_user(base_url: str, cookies: list[dict], http: requests.Session | None = None) -> dict | None:
     """Return the signed-in Blackboard user for these cookies, or None."""
+    owned = http is None
     http = http or requests.Session()
-    for c in cookies:
-        http.cookies.set(c["name"], c["value"], domain=c.get("domain", ""), path=c.get("path") or "/")
     try:
-        data = BlackboardClient(base_url, http, timeout=15).me()
-    except (BlackboardSyncError, requests.RequestException):
-        return None
-    return data if data.get("id") else None
+        for c in cookies:
+            http.cookies.set(c["name"], c["value"], domain=c.get("domain", ""), path=c.get("path") or "/")
+        try:
+            data = BlackboardClient(base_url, http, timeout=15).me()
+        except (BlackboardSyncError, requests.RequestException):
+            return None
+        return data if data.get("id") else None
+    finally:
+        if owned:
+            http.close()
 
 
 def prune_tabs(context):

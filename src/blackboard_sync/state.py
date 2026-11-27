@@ -122,6 +122,7 @@ class State:
         data = data or {}
         self.items: dict[str, dict] = data.get("items", {})
         self.outputs: dict[str, dict] = data.get("outputs", {})
+        self.partials: dict[str, dict] = data.get("partials", {})
         self.folders: dict[str, str] = data.get("folders", {})
         self.edited_originals: list[str] = list(data.get("edited_originals", []))
         self.past_terms: dict[str, dict] = data.get("past_terms", {})
@@ -179,6 +180,8 @@ class State:
         if not self.dirty:
             return
         data = {"version": STATE_VERSION, "items": self.items, "outputs": self.outputs}
+        if self.partials:
+            data["partials"] = self.partials
         if self.announcements:
             data["announcements"] = self.announcements
         if self.current_courses:
@@ -372,6 +375,11 @@ class State:
         if folders != self.folders:
             self.folders = folders
             self.dirty = True
+        for entry in self.partials.values():
+            path = entry.get("path", "")
+            if path.startswith(prefix):
+                entry["path"] = new_dir.rstrip("/") + "/" + path[len(prefix):]
+                self.dirty = True
         return moved
 
     def move_file(self, old_rel: str, new_rel: str) -> None:
@@ -418,3 +426,51 @@ class State:
         self.outputs[new_key] = entry
         self._claimed[entry["path"]] = new_key
         self.dirty = True
+
+    # -- resumable partials ---------------------------------------------
+    def partial(self, key: str) -> dict | None:
+        entry = self.partials.get(key)
+        return entry if isinstance(entry, dict) else None
+
+    def record_partial(
+        self,
+        key: str,
+        rel_path: str,
+        modified: str | None,
+        size: int | None = None,
+        etag: str | None = None,
+        last_modified: str | None = None,
+        filename: str | None = None,
+        content_type: str = "",
+    ) -> None:
+        entry: dict = {"path": rel_path}
+        if modified is not None:
+            entry["modified"] = modified
+        if size is not None:
+            entry["size"] = size
+        if etag:
+            entry["etag"] = etag
+        if last_modified:
+            entry["last_modified"] = last_modified
+        if filename:
+            entry["filename"] = filename
+        if content_type:
+            entry["content_type"] = content_type
+        if self.partials.get(key) != entry:
+            self.partials[key] = entry
+            self.dirty = True
+
+    def clear_partial(self, key: str) -> dict | None:
+        removed = self.partials.pop(key, None)
+        if removed is not None:
+            self.dirty = True
+        return removed
+
+    def partial_paths(self, dest: Path) -> set[Path]:
+        """Paths of tracked partial files under ``dest`` that should be kept for Range resume."""
+        paths: set[Path] = set()
+        for entry in self.partials.values():
+            rel = entry.get("path") if isinstance(entry, dict) else None
+            if isinstance(rel, str) and rel:
+                paths.add(dest / rel)
+        return paths

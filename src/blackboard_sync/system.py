@@ -14,6 +14,7 @@ import subprocess
 import sys
 from pathlib import Path, PurePath
 from typing import IO, Callable, Mapping, TypeVar
+from urllib.parse import urlsplit
 
 log = logging.getLogger(__name__)
 
@@ -142,6 +143,49 @@ def set_hidden(path: Path, hidden: bool, platform: str | None = None) -> None:
         ctypes.windll.kernel32.SetFileAttributesW(str(path), attrs)
     except Exception:  # hiding is cosmetic, never fail a download over it
         log.debug("Could not change the hidden attribute of %s", path)
+
+
+def _motw_host_url(url: str) -> str:
+    """Clean ``url`` for a Windows ``Zone.Identifier`` HostUrl line (no query tokens or credentials)."""
+    if not url:
+        return ""
+    parts = urlsplit(url.strip())
+    if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
+        return ""
+    host = parts.hostname
+    if ":" in host:
+        host = f"[{host}]"
+    port = f":{parts.port}" if parts.port else ""
+    clean = f"{parts.scheme.lower()}://{host}{port}{parts.path}"
+    return clean.replace("\r", "").replace("\n", "")
+
+
+def mark_of_the_web(
+    path: Path,
+    url: str = "",
+    *,
+    platform: str | None = None,
+    opener: Callable[..., IO] = open,
+) -> bool:
+    """Tag a downloaded file with Windows Mark of the Web (``Zone.Identifier`` ADS).
+
+    Windows only and best effort: non-NTFS drives, network shares, or permission
+    errors are ignored and never fail a download. No-op on macOS and Linux.
+    """
+    if not is_windows(platform):
+        return False
+    lines = ["[ZoneTransfer]", "ZoneId=3"]
+    host_url = _motw_host_url(url)
+    if host_url:
+        lines.append(f"HostUrl={host_url}")
+    payload = "\r\n".join(lines) + "\r\n"
+    try:
+        with opener(f"{path}:Zone.Identifier", "w", encoding="utf-8", newline="") as fh:
+            fh.write(payload)
+        return True
+    except OSError as exc:
+        log.debug("Could not write Zone.Identifier for %s: %s", path, exc)
+        return False
 
 
 def make_private_dir(
