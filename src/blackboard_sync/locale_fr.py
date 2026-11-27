@@ -704,14 +704,12 @@ CATALOG = {
         "La session Google est supprimée de cet ordinateur. Les fichiers déjà dans Gemini Notebook y restent, "
         "et les nouveaux ne sont plus ajoutés.",
     "Connect Gemini Notebook": "Connecter Gemini Notebook",
-    "Sync Gemini Notebook": "Synchroniser Gemini Notebook",
     "Your course files are added after each sync.": "Vos fichiers de cours sont ajoutés après chaque synchro.",
     "Checking what is already in Gemini Notebook…": "Vérification du contenu de Gemini Notebook…",
     "Sign in to Google in the browser window.": "Connectez-vous à Google dans la fenêtre du navigateur.",
     "Adding {done} of {total}: {file}": "Ajout {done} sur {total} : {file}",
     "Gemini Notebook is reading the new files…": "Gemini Notebook lit les nouveaux fichiers…",
     "Checking the connection…": "Vérification de la connexion…",
-    "Open Gemini Notebook": "Ouvrir Gemini Notebook",
     "Google took the sign-in, but Gemini Notebook did not open. Try again.":
         "Google a accepté la connexion, mais Gemini Notebook ne s’est pas ouvert. Réessayez.",
     "{n} new file added to your notebooks": "{n} nouveau fichier ajouté à vos notebooks",

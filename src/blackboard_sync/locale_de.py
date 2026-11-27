@@ -692,14 +692,12 @@ CATALOG = {
         "Die Google-Sitzung wird von diesem Computer gelöscht. Dateien, die schon in Gemini Notebook sind, "
         "bleiben dort, neue werden nicht mehr hinzugefügt.",
     "Connect Gemini Notebook": "Gemini Notebook verbinden",
-    "Sync Gemini Notebook": "Gemini Notebook abgleichen",
     "Your course files are added after each sync.": "Deine Kursdateien werden nach jedem Sync hinzugefügt.",
     "Checking what is already in Gemini Notebook…": "Prüfe, was schon in Gemini Notebook ist…",
     "Sign in to Google in the browser window.": "Melde dich im Browserfenster bei Google an.",
     "Adding {done} of {total}: {file}": "Hinzufügen {done} von {total}: {file}",
     "Gemini Notebook is reading the new files…": "Gemini Notebook liest die neuen Dateien…",
     "Checking the connection…": "Verbindung wird geprüft…",
-    "Open Gemini Notebook": "Gemini Notebook öffnen",
     "Google took the sign-in, but Gemini Notebook did not open. Try again.":
         "Google hat die Anmeldung angenommen, aber Gemini Notebook hat sich nicht geöffnet. Versuche es erneut.",
     "{n} new file added to your notebooks": "{n} neue Datei zu deinen Notebooks hinzugefügt",
