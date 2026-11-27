@@ -78,7 +78,7 @@ def test_window_state_is_plain_json_with_home_and_sidebar():
     data = state()
     assert json.loads(json.dumps(data)) == data
     assert [item["id"] for item in data["nav"]] == list(main.NAV_SECTIONS)
-    assert {item["id"]: item["badge"] for item in data["nav"]}[main.COURSES] == "4/5"
+    assert {item["id"]: item["badge"] for item in data["nav"]}[main.COURSES] == ""
     home = data["home"]
     assert home["heading"] == "Good afternoon, Umut" and home["subtitle"] == "1 deadline today"
     assert home["button"] == {"id": "sync", "title": "Sync now", "enabled": True}

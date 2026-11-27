@@ -1280,8 +1280,7 @@ class MainWindow:
 
     @staticmethod
     def courses_nav_title(rows):
-        count = main.enabled_count(rows)
-        return main.T_NAV_COURSES + (f" ({count})" if count else "")
+        return main.T_NAV_COURSES
 
     def toggle_course(self, course_id, enabled):
         self.on_course_toggle(course_id, enabled)

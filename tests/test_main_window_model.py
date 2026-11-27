@@ -27,7 +27,6 @@ from blackboard_sync.menubar.main_window_model import (
     course_name_without_code,
     course_title,
     day_time,
-    enabled_count,
     has_changes,
     is_first_run,
     last_sync_text,
@@ -367,7 +366,6 @@ def test_course_rows_name_the_course_and_whether_it_syncs():
     assert course_title(on) == "CSE301 Algorithms" and course_title(off) == "MTH201"
     assert course_detail(on) == "2026-2027 Güz · syncing"
     assert course_detail(off) == "2026-2027 Güz · not syncing"
-    assert enabled_count((on,)) == "" and enabled_count((on, off)) == "1/2"
 
 
 def test_recent_files_of_an_unticked_course_are_hidden():

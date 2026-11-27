@@ -732,7 +732,7 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     assert window.window.topmost is False
     assert visible() == ['start'] and window.state.open
     assert [window.nav[s].options['text'] for s in (OVERVIEW, ACTIVITY, ANNOUNCEMENTS, COURSES)] == [
-        'Get started', 'Sync activity', 'Announcements', 'Courses (1/2)']
+        'Get started', 'Sync activity', 'Announcements', 'Courses']
     assert GENERAL not in window.nav  # Ayarlar is the gear at the top right
     assert window.start_button.options['text'] == 'Sign in'
     for text in ('Your course files start here.', 'Choose your school and folder',
