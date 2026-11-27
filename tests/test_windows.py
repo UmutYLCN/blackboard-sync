@@ -1309,3 +1309,56 @@ def test_tray_menu_filters_stale_updater_actions_only_for_store(tmp_path, monkey
     assert any(entry.action == 'update' for entry in app.drawn.entries) is not packaged
     assert any(entry.action == 'settings' for entry in app.drawn.entries)
 
+
+def test_windows_home_badges_show_course_title_and_truncate_long_titles(monkeypatch, tmp_path):
+    from datetime import timedelta
+    from blackboard_sync import announcements, deadlines
+    from blackboard_sync.menubar.main_window_model import main_status
+    from blackboard_sync.menubar.model import RecentItem, RunOutcome
+    from blackboard_sync.windows import main_window as module
+
+    fake_tk(monkeypatch, tmp_path)
+    now = datetime.now(timezone.utc)
+    model = AppModel(tmp_path, now, configured=True, last=RunOutcome('ok', finished_at=now),
+                     session={'saved_at': now.timestamp(), 'user': {'displayName': 'Ada Student'}},
+                     recent=[RecentItem('Term/CSE301/file.pdf', 'CSE301', now.isoformat())])
+    ann_rows = (
+        announcements.AnnouncementRow('a1', 'CSE301 Databases', 'Exam', '22.11', '', '', '', 'CSE301'),
+        announcements.AnnouncementRow(
+            'a2', 'PHY101 Physics I (Mechatronics - CENG - Chemical Engineering)', 'Lab', '22.11', '', '', '', 'PHY101'),
+        announcements.AnnouncementRow('a3', 'MTH201', 'Note', '22.11', '', '', '', 'MTH201'),
+    )
+    local_now = now.astimezone()
+    due_today = local_now.replace(hour=23, minute=59, second=0, microsecond=0)
+    if due_today <= local_now:
+        due_today = local_now + timedelta(minutes=1)
+    dl_rows = (
+        deadlines.DeadlineRow('Homework', 'CSE301 Databases', due_today, 'https://school.edu/x', 'CSE301'),
+        deadlines.DeadlineRow(
+            'Report', 'PHY101 Physics I (Mechatronics - CENG - Chemical Engineering)',
+            due_today + timedelta(days=2), 'https://school.edu/y', 'PHY101'),
+    )
+    page = deadlines.DeadlinePage((deadlines.DeadlineDay(due_today.date(), 'x', False, dl_rows),), '')
+    status = main_status(model, now, page, timezone.utc, current_course_codes=('CSE301', 'PHY101', 'MTH201'))
+    window = module.MainWindow(None, FormValues('https://school.edu', str(tmp_path), True), status,
+                               lambda *a: None, lambda *a: None, lambda: None,
+                               on_deadlines=lambda: page, on_announcements=lambda: ann_rows)
+
+    def detail_labels(frame):
+        return [child for entry in frame.children for child in entry.children
+                if child.options.get('style') == 'Muted.TLabel']
+
+    ann_labels = detail_labels(window.notify_frame)
+    assert ann_labels[0].options['text'] == 'Databases · 22.11'
+    assert 'wraplength' not in ann_labels[0].options
+    assert ann_labels[1].options['text'].endswith('… · 22.11')
+    assert ann_labels[1].options['text'].startswith('Physics')
+    assert 'wraplength' not in ann_labels[1].options
+    assert ann_labels[2].options['text'] == '22.11'  # code-only course does not repeat the badge
+
+    dl_labels = detail_labels(window.calendar_frame)
+    assert dl_labels[0].options['text'].startswith('Databases · ')
+    assert 'wraplength' not in dl_labels[0].options
+    assert '… · ' in dl_labels[1].options['text']
+    assert 'wraplength' not in dl_labels[1].options
+

@@ -134,6 +134,7 @@ from blackboard_sync.menubar.main_window_model import (
     WindowState,
     course_color_index,
     course_detail,
+    course_name_without_code,
     course_title,
     enabled_count,
     has_changes,
@@ -647,26 +648,52 @@ def _course_badge_colors(index: int):
     return tuple(dynamic(srgb(day), srgb(night)) for day, night in zip(light, dark))
 
 
-def _course_detail(parent, x, y, width, detail, code, when, color):
-    """Draw Home's metadata line with room for a truncated code and timestamp."""
+def _course_detail(parent, x, y, width, detail, code, when, color, course_title: str = ""):
+    """Draw Home's metadata line with a course badge, optional truncated course title, and timestamp."""
     height = 18
-    if code and color is not None:
-        font = NSFont.systemFontOfSize_weight_(11, NSFontWeightSemibold)
-        text_size = NSAttributedString.alloc().initWithString_attributes_(code, {NSFontAttributeName: font}).size()
-        badge_width = min(ceil(text_size.width) + 12, width * 0.65 if when else width)
-        fill, ink = _course_badge_colors(color)
-        badge = _pill(NSMakeRect(x, y, badge_width, height), fill)
-        badge.setCornerRadius_(6)
-        badge.setToolTip_(detail)
-        label = _centered(code, NSMakeRect(0, 0, badge_width, height), 11, font=font)
-        label.setTextColor_(ink)
-        badge.contentView().addSubview_(label)
-        parent.addSubview_(badge)
-        if not when:
+    if not (code and color is not None):
+        line = _label(detail, _small(), secondary=True)
+        line.setFrame_(NSMakeRect(x, y + 2, width, 15))
+        line.setToolTip_(detail)
+        parent.addSubview_(line)
+        return
+    font = NSFont.systemFontOfSize_weight_(11, NSFontWeightSemibold)
+    text_size = NSAttributedString.alloc().initWithString_attributes_(code, {NSFontAttributeName: font}).size()
+    has_trailing = bool(course_title or when)
+    badge_width = min(ceil(text_size.width) + 12, width * 0.65 if has_trailing else width)
+    fill, ink = _course_badge_colors(color)
+    badge = _pill(NSMakeRect(x, y, badge_width, height), fill)
+    badge.setCornerRadius_(6)
+    badge.setToolTip_(detail)
+    label = _centered(code, NSMakeRect(0, 0, badge_width, height), 11, font=font)
+    label.setTextColor_(ink)
+    badge.contentView().addSubview_(label)
+    parent.addSubview_(badge)
+    if not has_trailing:
+        return
+    x += badge_width + 6
+    width = max(0.0, width - badge_width - 6)
+    if course_title and when:
+        combined = _label(f"{course_title} · {when}", _small(), secondary=True)
+        combined.setToolTip_(detail)
+        if ceil(combined.fittingSize().width) <= width:
+            combined.setFrame_(NSMakeRect(x, y + 2, width, 15))
+            parent.addSubview_(combined)
             return
-        x += badge_width + 6
-        width -= badge_width + 6
-    line = _label(when if code and color is not None else detail, _small(), secondary=True)
+        when_field = _label(f"· {when}", _small(), secondary=True)
+        when_field.setToolTip_(detail)
+        suffix_width = min(ceil(when_field.fittingSize().width), max(0.0, width - 24))
+        title_width = max(0.0, width - suffix_width)
+        if title_width > 0:
+            title_field = _label(course_title, _small(), secondary=True)
+            title_field.setFrame_(NSMakeRect(x, y + 2, title_width, 15))
+            title_field.setToolTip_(detail)
+            parent.addSubview_(title_field)
+        if suffix_width > 0:
+            when_field.setFrame_(NSMakeRect(x + title_width, y + 2, suffix_width, 15))
+            parent.addSubview_(when_field)
+        return
+    line = _label(course_title or when, _small(), secondary=True)
     line.setFrame_(NSMakeRect(x, y + 2, width, 15))
     line.setToolTip_(detail)
     parent.addSubview_(line)
@@ -1258,7 +1285,8 @@ class MainWindow:
             title.setFrame_(NSMakeRect(18, y, RIGHT_W - 36, 17))
             title.setToolTip_(row.title)
             body.addSubview_(title)
-            _course_detail(body, 18, y + 18, RIGHT_W - 36, row.detail, row.course_code, row.date, color)
+            _course_detail(body, 18, y + 18, RIGHT_W - 36, row.detail, row.course_code, row.date, color,
+                           course_name_without_code(row.course, row.course_code))
             button = NSButton.buttonWithTitle_target_action_("", self.target, "openHomeAnnouncement:")
             button.setBordered_(False)
             button.setTransparent_(True)
@@ -1332,7 +1360,8 @@ class MainWindow:
             body.addSubview_(title)
             when = deadlines.when_text(row, today)
             detail = f"{when} · {row.course}"
-            _course_detail(body, 18, y + 18, RIGHT_W - 36, detail, row.course_code, when, color)
+            _course_detail(body, 18, y + 18, RIGHT_W - 36, detail, row.course_code, when, color,
+                           course_name_without_code(row.course, row.course_code))
             button = NSButton.buttonWithTitle_target_action_("", self.target, "openHomeDeadline:")
             button.setBordered_(False)
             button.setTransparent_(True)

@@ -142,6 +142,7 @@ def home_announcements(status: main.MainStatus, rows) -> tuple[list[dict], list[
     rows = tuple(rows)[:max(main.HOME_ANNOUNCEMENT_ROWS - len(items), 0)]
     return attention_items(items), [
         {"id": row.key, "title": row.title, "detail": row.detail, "when": row.date, "course_code": row.course_code,
+         "course_title": main.course_name_without_code(row.course, row.course_code),
          "color": main.course_color_index(status.course_colors, row.course_code)}
         for row in rows
     ]
@@ -154,6 +155,7 @@ def home_deadlines(status: main.MainStatus, page: deadlines.DeadlinePage, today:
         when = deadlines.when_text(row, today)
         rows.append({"id": row.target, "title": row.title, "detail": f"{when} · {row.course}",
                      "when": when, "course_code": row.course_code,
+                     "course_title": main.course_name_without_code(row.course, row.course_code),
                      "color": main.course_color_index(status.course_colors, row.course_code)})
     return rows, "" if rows else page.message or main.T_NO_DEADLINES
 

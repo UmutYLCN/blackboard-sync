@@ -266,9 +266,16 @@
     if (!row.course_code || row.color == null) {
       return h("div", { class: "row-detail", text: row.detail, title: row.detail });
     }
+    const meta = row.course_title && row.when
+      ? h("span", { class: "row-course-meta" },
+        h("span", { class: "row-detail row-course-title", text: row.course_title }),
+        h("span", { class: "row-detail row-course-when", text: `· ${row.when}` }))
+      : (row.course_title || row.when)
+        ? h("span", { class: "row-detail", text: row.course_title || row.when })
+        : null;
     return h("div", { class: "row-course", title: row.detail },
       h("span", { class: "course-badge", "data-c": row.color, text: row.course_code }),
-      row.when ? h("span", { class: "row-detail", text: row.when }) : null);
+      meta);
   }
 
   function listRow(iconName, row, kind) {

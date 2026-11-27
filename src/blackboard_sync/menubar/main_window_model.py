@@ -62,7 +62,7 @@ from blackboard_sync.menubar.model import (
 )
 from blackboard_sync.menubar.settings_form import T_SAVE, FormValues, WindowStatus, window_status
 from blackboard_sync.notebooklm.store import NotebookLMStatus
-from blackboard_sync.paths import fold_course_key
+from blackboard_sync.paths import course_code_and_title, fold_course_key
 
 OVERVIEW, GENERAL, COURSES, CALENDAR, ANNOUNCEMENTS = "overview", "general", "courses", "calendar", "announcements"
 ACTIVITY = "activity"
@@ -302,6 +302,27 @@ def load_course_colors(data: object) -> dict[str, int]:
 
 def course_color_index(colors: Mapping[str, int], code: str) -> int | None:
     return colors.get(fold_course_key(code))
+
+
+def course_name_without_code(course: str, code: str) -> str:
+    """Course title for a row that already shows ``code`` as a badge."""
+    text = " ".join((course or "").split())
+    if not text or not code:
+        return text
+    code_key = fold_course_key(code)
+    parsed_code, parsed_title = course_code_and_title("", text)
+    if parsed_code != "Course" and fold_course_key(parsed_code) == code_key:
+        if parsed_title == text or fold_course_key(parsed_title) == code_key:
+            return ""
+        return parsed_title
+    if fold_course_key(text) == code_key:
+        return ""
+    if text.casefold().startswith(code.casefold()):
+        rest = text[len(code):]
+        if not rest or rest[0] in " -_:|":
+            rest = rest.strip(" -_:|")
+            return "" if fold_course_key(rest) == code_key else rest
+    return text
 
 
 def assign_course_colors(model: AppModel, current_codes: Iterable[str], other_codes: Iterable[str]) -> None:

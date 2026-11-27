@@ -288,9 +288,13 @@ button, input, select { font: inherit; color: inherit; }
 .row-text { flex: 1; min-width: 0; }
 .row-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-detail { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-course { display: flex; align-items: center; gap: 6px; }
+.row-course { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.row-course-meta { display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.row-course-title { flex: 0 1 auto; min-width: 0; }
+.row-course-when { flex: 0 0 auto; max-width: 100%; }
 .course-badge {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
+  max-width: 65%;
   min-width: 0;
   padding: 2px 6px;
   border-radius: 6px;
@@ -301,6 +305,7 @@ button, input, select { font: inherit; color: inherit; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.course-badge:only-child { max-width: 100%; }
 .course-badge[data-c="0"] { background: var(--course-0); color: var(--course-0-ink); }
 .course-badge[data-c="1"] { background: var(--course-1); color: var(--course-1-ink); }
 .course-badge[data-c="2"] { background: var(--course-2); color: var(--course-2-ink); }

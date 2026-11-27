@@ -109,6 +109,31 @@ def wheel_steps(delta):
     return int(-delta / 120) or (-1 if delta > 0 else 1)
 
 
+def _badge_trailing_text(course_title: str, when: str, available_px: float) -> str:
+    """Format "Title · Date" after a badge, truncating a long title with an ellipsis."""
+    if not course_title:
+        return when
+    suffix = f" · {when}" if when else ""
+    full = f"{course_title}{suffix}"
+    if available_px <= 0:
+        return full
+    try:
+        from tkinter import font as tkfont
+
+        measure = tkfont.nametofont("TkDefaultFont").measure
+    except Exception:
+        measure = lambda text: len(text) * 7
+    if measure(full) <= available_px:
+        return full
+    budget = available_px - measure(suffix)
+    if budget <= measure("…"):
+        return when or "…"
+    clipped = course_title
+    while len(clipped) > 1 and measure(clipped.rstrip() + "…") > budget:
+        clipped = clipped[:-1]
+    return f"{clipped.rstrip()}…{suffix}"
+
+
 class MainWindow:
     def __init__(self, root, values, status, on_submit, on_action, on_close, on_values=None,
                  on_open=lambda path: None, on_courses=lambda: (),
@@ -450,7 +475,8 @@ class MainWindow:
             for row, color in zip(rows, colors):
                 ttk.Button(self.notify_frame, text=row.title, style="Toolbutton",
                            command=lambda item=row: self.on_open_announcement(item)).pack(anchor="w")
-                self._course_detail(self.notify_frame, row.detail, row.course_code, row.date, color, wrap=240).pack(
+                self._course_detail(self.notify_frame, row.detail, row.course_code, row.date, color, wrap=240,
+                                    course_title=main.course_name_without_code(row.course, row.course_code)).pack(
                     anchor="w", padx=(4, 0), pady=(0, 6))
             if items or rows:
                 PillButton(self.notify_frame, main.T_VIEW_ALL, lambda: self.select(main.ANNOUNCEMENTS),
@@ -472,11 +498,13 @@ class MainWindow:
                            command=lambda target=row.target: self.on_deadline(target)).pack(anchor="w")
                 when = deadlines.when_text(row, today)
                 self._course_detail(self.calendar_frame, f"{when} · {row.course}", row.course_code,
-                                    when, color, wrap=240).pack(anchor="w", padx=(4, 0), pady=(0, 6))
+                                    when, color, wrap=240,
+                                    course_title=main.course_name_without_code(row.course, row.course_code)).pack(
+                    anchor="w", padx=(4, 0), pady=(0, 6))
             PillButton(self.calendar_frame, main.T_OPEN_CALENDAR, lambda: self.select(main.CALENDAR),
                        accent=True).pack(anchor="w", pady=(6, 0))
 
-    def _course_detail(self, parent, detail, code, when, color, wrap=0):
+    def _course_detail(self, parent, detail, code, when, color, wrap=0, course_title=""):
         import tkinter as tk
         from tkinter import ttk
 
@@ -493,9 +521,10 @@ class MainWindow:
         shape = badge.create_polygon(rounded(0, 0, width, height, 6), smooth=True, fill=fill)
         badge.tag_lower(shape, text)
         badge.pack(side="left")
-        if when:
-            ttk.Label(row, text=when, style="Muted.TLabel",
-                      wraplength=max(1, wrap - width - 6) if wrap else 0).pack(side="left", padx=(6, 0))
+        trailing = _badge_trailing_text(course_title, when, max(0, wrap - width - 6) if wrap else 0)
+        if trailing:
+            label_kwargs = {"wraplength": max(1, wrap - width - 6)} if (wrap and not course_title) else {}
+            ttk.Label(row, text=trailing, style="Muted.TLabel", **label_kwargs).pack(side="left", padx=(6, 0))
         return row
 
     def _attention_row(self, parent, item, wrap):

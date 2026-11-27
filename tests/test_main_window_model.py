@@ -24,6 +24,7 @@ from blackboard_sync.menubar.main_window_model import (
     T_WAITING,
     WindowState,
     course_detail,
+    course_name_without_code,
     course_title,
     day_time,
     enabled_count,
@@ -309,6 +310,48 @@ def test_recent_files_for_the_same_folded_course_share_a_color(codes, key):
     assert [(row.course_code, row.color) for row in status.recent] == [
         (code, status.course_colors[key]) for code in codes
     ]
+
+
+@pytest.mark.parametrize("course, code, expected", [
+    ("CSE301 Database Management", "CSE301", "Database Management"),
+    ("CSE301-1 Database Management", "CSE301", "Database Management"),
+    ("CSE301 - Database Management", "CSE301", "Database Management"),
+    ("Mathematics", "MTH201", "Mathematics"),
+    ("MTH201 Mathematics", "MTH201", "Mathematics"),
+    ("CSE301", "CSE301", ""),
+    ("CSE301 CSE301", "CSE301", ""),
+    ("PHY101-1", "PHY101", ""),
+    ("BİL101 Algoritmalar", "BİL101", "Algoritmalar"),
+    ("BİL101 Algoritmalar", "BIL101", "Algoritmalar"),
+    ("ORIENTATION Orientation Guide", "ORIENTATION", "Orientation Guide"),
+    ("MTH2010 Advanced Math", "MTH201", "MTH2010 Advanced Math"),
+    ("Database Management", "", "Database Management"),
+    ("", "CSE301", ""),
+])
+def test_course_name_without_code_avoids_repeating_the_badge(course, code, expected):
+    assert course_name_without_code(course, code) == expected
+
+
+def test_window_status_hides_termless_course_deadlines_by_default(tmp_path):
+    config = Config(data_dir=tmp_path / "data", dest=tmp_path / "dest")
+    config.ensure_data_dir()
+    state = State.load(config.state_file)
+    state.courses = {
+        "term": {"code": "CSE301", "title": "Database", "term": "2026-2027 Güz", "termless": False},
+        "guide": {"code": "ORI100", "title": "Orientation", "term": "", "termless": True},
+    }
+    state.current_courses = ["term", "guide"]
+    state.deadline_courses = {
+        "term": {"name": "CSE301 Database", "items": []},
+        "guide": {"name": "ORI100 Orientation", "items": [
+            {"title": "Survey", "due": (NOW + timedelta(days=1)).isoformat(), "url": "https://bb.example/s"},
+        ]},
+    }
+    state.dirty = True
+    state.save()
+    model = synced()
+    status = jobs.window_status(config, model, NOW, config.dest)
+    assert status.home_subtitle == "No deadlines this week"
 
 
 def test_course_rows_name_the_course_and_whether_it_syncs():

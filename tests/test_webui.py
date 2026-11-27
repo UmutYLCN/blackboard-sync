@@ -119,8 +119,88 @@ def test_home_payload_carries_one_course_color_for_files_announcements_and_deadl
         assert row["course_code"] == "MTH201"
         assert row["color"] == current.course_colors["mth201"]
         assert row["when"] and row["when"] in row["detail"]
+    assert home["announcements"][0]["course_title"] == "Mathematics"
+    assert home["deadlines"][0]["course_title"] == "Mathematics"
     assert label in home["announcements"][0]["detail"]
     assert label in home["deadlines"][0]["detail"]
+
+
+def test_home_announcements_and_deadlines_keep_course_title_visible_beside_badge():
+    due = datetime(2026, 10, 18, 20, 59, tzinfo=timezone.utc)
+    long_course = "PHY101 Physics I (Mechatronics - CENG - Chemical Engineering)"
+    ann_rows = (
+        AnnouncementRow("a1", "CSE301 Database Management", "Exercise 2", "22.11", "", "", "", "CSE301"),
+        AnnouncementRow("a2", long_course, "Lab note", "22.11", "", "", "", "PHY101"),
+        AnnouncementRow("a3", "MTH201", "Code only", "22.11", "", "", "", "MTH201"),
+    )
+    dl_rows = (
+        deadlines.DeadlineRow("Proposal", "CSE301 Database Management", due, "https://bb.example/p", "CSE301"),
+        deadlines.DeadlineRow("Report", long_course, due + timedelta(days=2), "https://bb.example/r", "PHY101"),
+    )
+    page = deadlines.DeadlinePage((deadlines.DeadlineDay(due.date(), "", False, dl_rows),), "")
+    recent_rows = (main.RecentRow("notes.pdf", "CSE301 · today 12:36", "Term/CSE301/notes.pdf", "PDF",
+                                  "2026-10-18T09:36:00Z", False, "CSE301", "today 12:36", 0),)
+    current = status(recent=recent_rows, course_colors={"cse301": 0, "phy101": 1, "mth201": 2})
+    data = state(current, ann_rows, page)
+
+    assert [row["course_title"] for row in data["home"]["announcements"]] == [
+        "Database Management", "Physics I (Mechatronics - CENG - Chemical Engineering)", "",
+    ]
+    assert [row["course_title"] for row in data["home"]["deadlines"]] == [
+        "Database Management", "Physics I (Mechatronics - CENG - Chemical Engineering)",
+    ]
+    assert "row-course-title" in APP_JS and "row-course-when" in APP_JS
+    app_css = (webui_page.ASSETS / "app.css").read_text(encoding="utf-8")
+    assert ".row-course-meta" in app_css and ".row-course-title" in app_css and ".row-course-when" in app_css
+
+    sync_api = pytest.importorskip("playwright.sync_api")
+    script = Path(__file__).resolve().parents[1] / "scripts" / "webui-preview.py"
+    namespace = {"__name__": "webui_preview"}
+    exec(compile(script.read_text(encoding="utf-8"), str(script), "exec"), namespace)
+    try:
+        with sync_api.sync_playwright() as playwright:
+            browser = playwright.chromium.launch(executable_path=namespace["chromium"]())
+            browser_page = browser.new_page(viewport={"width": 1024, "height": 720})
+            browser_page.set_content(webui_page.document(
+                extra_script="window.__PREVIEW_STATE__ = " + json.dumps(data) + ";"))
+            cards = browser_page.locator(".home .column:nth-of-type(2) .card")
+            # Announcements: badge + course title + · date; code-only row skips duplicate title.
+            ann_courses = cards.nth(0).locator(".row-course")
+            assert ann_courses.nth(0).locator(".course-badge").text_content() == "CSE301"
+            assert ann_courses.nth(0).locator(".row-course-title").text_content() == "Database Management"
+            assert ann_courses.nth(0).locator(".row-course-when").text_content() == "· 22.11"
+            assert ann_courses.nth(0).get_attribute("title") == "CSE301 Database Management · 22.11"
+            assert ann_courses.nth(2).locator(".row-course-title").count() == 0
+            assert ann_courses.nth(2).locator(".row-detail").text_content() == "22.11"
+            # Long title truncates with ellipsis on one line while keeping the date visible.
+            long_title = ann_courses.nth(1).locator(".row-course-title")
+            metrics = long_title.evaluate("""el => {
+                const style = getComputedStyle(el);
+                return {
+                    whiteSpace: style.whiteSpace,
+                    textOverflow: style.textOverflow,
+                    overflow: style.overflow,
+                    scrollWidth: el.scrollWidth,
+                    clientWidth: el.clientWidth,
+                    height: el.getBoundingClientRect().height,
+                };
+            }""")
+            assert metrics["whiteSpace"] == "nowrap" and metrics["textOverflow"] == "ellipsis"
+            assert metrics["overflow"] == "hidden"
+            assert metrics["scrollWidth"] > metrics["clientWidth"]
+            assert metrics["height"] < 28  # single line, never wraps
+            assert ann_courses.nth(1).locator(".row-course-when").evaluate("el => el.getBoundingClientRect().width > 0")
+            # Deadlines: badge + course title + · date, keeping tooltip & aria-label.
+            dl_courses = cards.nth(1).locator(".row-course")
+            assert dl_courses.nth(0).locator(".course-badge").text_content() == "CSE301"
+            assert dl_courses.nth(0).locator(".row-course-title").text_content() == "Database Management"
+            assert dl_courses.nth(0).locator(".row-course-when").text_content().startswith("· ")
+            assert "CSE301 Database Management" in cards.nth(1).locator(".row-main").nth(0).get_attribute("aria-label")
+            browser.close()
+    except sync_api.Error as exc:
+        if "Executable doesn't exist" in str(exc) or "browserType.launch" in str(exc):
+            pytest.skip(f"no Chromium: {exc}")
+        raise
 
 
 def test_home_button_follows_the_state():
