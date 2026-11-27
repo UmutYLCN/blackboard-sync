@@ -191,6 +191,7 @@ class RunOutcome:
     unreadable_courses: int = 0  # courses whose content could not be read at all
     failed_files: list[FailedFile] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)  # non-file warnings
+    unstable_network: bool = False
     # The sync first moved files of an older version into the University folder.
     moved_into_root: int = 0
     left_outside_root: int = 0  # ...and these could not be moved
@@ -255,6 +256,7 @@ class RunOutcome:
             unreadable_courses=sum(1 for c in data.get("courses") or [] if c.get("content_error")),
             failed_files=failed_files,
             warnings=warnings,
+            unstable_network=bool(data.get("unstable_network")),
             moved_into_root=data.get("moved_into_root") or 0,
             left_outside_root=len(data.get("left_outside_root") or []),
             entries=entries,

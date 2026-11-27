@@ -302,6 +302,9 @@ CATALOG = {
     "{n} file could not be downloaded": "{n} dosya indirilemedi",
     "{n} files could not be downloaded": "{n} dosya indirilemedi",
     "{files}. The next sync tries again.": "{files}. Sonraki eşitleme yeniden dener.",
+    "Your internet connection seems unstable": "İnternet bağlantınız dengesiz görünüyor",
+    "Downloads were interrupted several times. Interrupted files resume automatically when the connection steadies.":
+        "İndirmeler birkaç kez kesintiye uğradı. Bağlantı düzeldiğinde yarım kalan dosyalar kaldığı yerden kendiliğinden devam eder.",
     "Something went wrong during the last sync": "Son eşitlemede bir sorun çıktı",
     "Could not read {courses}": "{courses} okunamadı",
     "syncing": "senkronize ediliyor",

@@ -97,26 +97,30 @@ def test_course_code_without_recognizable_code():
     assert course_folder_name("ORIENT", "Student Orientation") == "ORIENT Student Orientation"
 
 
-# -- Windows rules (applied only on Windows; injected here) -------------------
+# -- Cross-platform cleaning & Windows path limits ----------------------------
 
-def test_windows_replaces_forbidden_characters():
-    assert sanitize_name('Q1 "Big-O" <draft> a|b back\\slash?*', windows=True) == "Q1 'Big-O' (draft) a-b back-slash"
-    assert sanitize_name("What is a heap?", windows=True) == "What is a heap"
-    assert sanitize_name("???", windows=True) == "untitled"
-
-
-def test_windows_rules_do_not_rename_macos_files():
-    for name in ('Q1 "Big-O" <draft>', "What is a heap?", "CON", "nul.txt", "x" * 200 + ".pdf"):
-        assert sanitize_name(name, windows=False) == name
+def test_cross_platform_replaces_forbidden_characters_on_every_os():
+    for windows in (False, True):
+        assert sanitize_name('Q1 "Big-O" <draft> a|b back\\slash?*', windows=windows) == "Q1 'Big-O' (draft) a-b back-slash"
+        assert sanitize_name("What is a heap?", windows=windows) == "What is a heap"
+        assert sanitize_name("???", windows=windows) == "untitled"
 
 
-def test_windows_reserved_device_names():
-    assert sanitize_name("CON", windows=True) == "CON_"
-    assert sanitize_name("nul.txt", windows=True) == "nul_.txt"
-    assert sanitize_name("com1.tar.gz", windows=True) == "com1_.tar.gz"
-    assert sanitize_name("LPT9", windows=True) == "LPT9_"
-    assert sanitize_name("Console notes.pdf", windows=True) == "Console notes.pdf"
-    assert sanitize_name("CON.", windows=True) == "CON_"  # trailing dot dropped first
+def test_macos_allows_up_to_255_bytes_while_windows_caps_at_120_chars():
+    long_ascii = "x" * 200 + ".pdf"
+    assert sanitize_name(long_ascii, windows=False) == long_ascii
+    win = sanitize_name(long_ascii, windows=True)
+    assert len(win) == WINDOWS_MAX_NAME_CHARS and win.endswith(".pdf")
+
+
+def test_reserved_device_names_are_cleaned_on_every_os():
+    for windows in (False, True):
+        assert sanitize_name("CON", windows=windows) == "CON_"
+        assert sanitize_name("nul.txt", windows=windows) == "nul_.txt"
+        assert sanitize_name("com1.tar.gz", windows=windows) == "com1_.tar.gz"
+        assert sanitize_name("LPT9", windows=windows) == "LPT9_"
+        assert sanitize_name("Console notes.pdf", windows=windows) == "Console notes.pdf"
+        assert sanitize_name("CON.", windows=windows) == "CON_"  # trailing dot dropped first
 
 
 def test_windows_trailing_dots_and_spaces():

@@ -418,9 +418,9 @@ def keep_alive(config: Config) -> KeepAlive:
     try:
         with run_lock(config.lock_file):
             session_data = load_session(config.session_file, config.base_url)
-            client = BlackboardClient(config.base_url, http_session(session_data), timeout=15)
-            client.me()
-            refresh_saved_cookies(config.session_file, session_data, client.http)
+            with BlackboardClient(config.base_url, http_session(session_data), timeout=15) as client:
+                client.me()
+                refresh_saved_cookies(config.session_file, session_data, client.http)
             return KeepAlive(ALIVE, session_expires_at(load_session(config.session_file, config.base_url)))
     except AlreadyRunning:
         return KeepAlive(LOCKED)  # a running sync is its own keep-alive

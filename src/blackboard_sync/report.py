@@ -74,6 +74,9 @@ class SyncReport:
     left_outside_root: list[str] = field(default_factory=list)  # relative paths that stayed
     # Status ``confirm``: the terms and courses the first sync at a school asks about (``term_confirm``).
     confirm: dict | None = None
+    # Mid-transfer download interruptions recovered or retried during this run.
+    network_drops: int = 0
+    unstable_network: bool = False
 
     def totals(self) -> dict[str, int]:
         keys = (
@@ -126,6 +129,8 @@ class SyncReport:
                 lines += [f"      {label} {p}" for p in paths]
             lines += [f"      ! {w}" for w in course.warnings]
         lines += [f"  ! {w}" for w in self.warnings]
+        if self.unstable_network:
+            lines.append(f"  ! {tr('Your internet connection seems unstable')}")
         changed = sum(1 for c in self.courses if c.change_count)
         lines.append(tr("Nothing new.") if not changed else tr("{n} course(s) had changes.").format(n=changed))
         return "\n".join(lines)

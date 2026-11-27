@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import mimetypes
 import re
 import unicodedata
 from pathlib import Path, PurePosixPath
@@ -38,40 +39,101 @@ _LEGACY_COURSE_CODE = re.compile(r"\b([A-Za-z]{2,6})\s?(\d{3,4}[A-Za-z]?)(?:[-_.
 # Turkish dotted/dotless i, which plain ``upper()``/``casefold()`` get wrong.
 _TURKISH_UPPER = str.maketrans({"i": "İ", "ı": "I"})
 _TURKISH_FOLD = str.maketrans({"ı": "i"})
-# Characters Windows does not allow in names (":" and "/" are handled for both).
-_WINDOWS_REPLACEMENTS = str.maketrans({"\\": "-", "|": "-", '"': "'", "<": "(", ">": ")", "?": "", "*": ""})
+# Characters cleaned on every platform so names stay valid across macOS, Windows and cloud drives.
+_UNSAFE_CHARS = str.maketrans({"\\": "-", "|": "-", '"': "'", "<": "(", ">": ")", "?": "", "*": ""})
 # Device names Windows reserves in any case, with or without an extension.
 _WINDOWS_RESERVED = re.compile(
     r"^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[0-9¹²³]|LPT[0-9¹²³])(\.|$)", re.IGNORECASE
 )
+_REAL_EXT = re.compile(r"^\.[A-Za-z0-9+_-]{1,10}$")
+_GENERIC_MIMES = frozenset({
+    "",
+    "application/octet-stream",
+    "binary/octet-stream",
+    "application/unknown",
+    "application/x-unknown",
+})
+# Common academic file types mapped deterministically (Python's mimetypes varies by OS).
+_MIME_EXTENSIONS = {
+    "application/pdf": ".pdf",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.ms-powerpoint": ".ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+    "application/vnd.ms-excel": ".xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/zip": ".zip",
+    "application/x-zip-compressed": ".zip",
+    "application/gzip": ".gz",
+    "application/x-gzip": ".gz",
+    "application/x-tar": ".tar",
+    "application/x-rar-compressed": ".rar",
+    "application/vnd.rar": ".rar",
+    "application/x-7z-compressed": ".7z",
+    "application/json": ".json",
+    "application/rtf": ".rtf",
+    "application/epub+zip": ".epub",
+    "application/xml": ".xml",
+    "text/plain": ".txt",
+    "text/csv": ".csv",
+    "text/markdown": ".md",
+    "text/html": ".html",
+    "text/xml": ".xml",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/svg+xml": ".svg",
+    "image/bmp": ".bmp",
+    "image/tiff": ".tiff",
+}
 
 
 def sanitize_name(name: str, fallback: str = "untitled", *, windows: bool | None = None) -> str:
     """Turn arbitrary Blackboard text into a single safe path component.
 
-    Keeps the original name wherever possible: only characters that the file
-    system cannot store or that would change the meaning of the path are
-    replaced. On Windows (``windows`` defaults to the running system) its extra
-    rules apply too: no ``\\ | " < > ? *``, no reserved device names such as
-    ``CON`` or ``NUL.txt``, and shorter names. macOS names are unchanged by them.
+    Uses the same character-cleaning and reserved-name rules on every platform,
+    and caps every segment at ``MAX_NAME_BYTES`` UTF-8 bytes while keeping the
+    file extension. On Windows (``windows`` defaults to the running system),
+    single names are also kept within ``WINDOWS_MAX_NAME_CHARS`` so deep paths
+    fit within MAX_PATH.
     """
     windows = is_windows() if windows is None else windows
+    max_chars = WINDOWS_MAX_NAME_CHARS if windows else None
     name = html.unescape(name or "")
     name = unicodedata.normalize("NFC", name)
     name = _CONTROL.sub(" ", name)
     # "/" separates paths; ":" is shown as "/" by Finder and rejected by some APIs.
     name = name.replace(": ", " - ").replace("/", "-").replace(":", "-")
-    if windows:
-        name = name.translate(_WINDOWS_REPLACEMENTS)
+    name = name.translate(_UNSAFE_CHARS)
     name = _WHITESPACE.sub(" ", name).strip()
     # A leading dot would hide the file; trailing dots/spaces confuse other tools
     # (and Windows silently drops them).
     name = name.lstrip(".").rstrip(". ")
     if name in ("", ".", ".."):
         name = fallback
-    if windows:
-        name = _WINDOWS_RESERVED.sub(lambda m: m.group(1) + "_" + m.group(2), name, count=1)
-    return truncate_name(name, max_chars=WINDOWS_MAX_NAME_CHARS if windows else None)
+    name = _WINDOWS_RESERVED.sub(lambda m: m.group(1) + "_" + m.group(2), name, count=1)
+    name = truncate_name(name, MAX_NAME_BYTES, max_chars=max_chars)
+    # Guard against truncation producing a reserved device name.
+    name = _WINDOWS_RESERVED.sub(lambda m: m.group(1) + "_" + m.group(2), name, count=1)
+    return truncate_name(name, MAX_NAME_BYTES, max_chars=max_chars)
+
+
+def legacy_macos_name(name: str, fallback: str = "untitled") -> str:
+    """The folder name older macOS versions used before cross-platform cleaning.
+
+    Used only to keep writing into a folder that already exists on disk, so
+    existing users never see mass renames or duplicate folders.
+    """
+    name = html.unescape(name or "")
+    name = unicodedata.normalize("NFC", name)
+    name = _CONTROL.sub(" ", name)
+    name = name.replace(": ", " - ").replace("/", "-").replace(":", "-")
+    name = _WHITESPACE.sub(" ", name).strip()
+    name = name.lstrip(".").rstrip(". ")
+    if name in ("", ".", ".."):
+        name = fallback
+    return truncate_name(name)
 
 
 def split_ext(name: str) -> tuple[str, str]:
@@ -80,6 +142,71 @@ def split_ext(name: str) -> tuple[str, str]:
     if not dot or not stem or " " in ext or len(ext) > 10:
         return name, ""
     return stem, "." + ext
+
+
+def has_real_extension(name: str) -> bool:
+    """True when ``name`` already carries a real file extension (e.g. ``.ipynb``, ``.m``, ``.pdf``)."""
+    _, ext = split_ext(name)
+    return bool(ext and _REAL_EXT.match(ext) and any(c.isalpha() for c in ext))
+
+
+def guess_extension(mime_type: str | None) -> str:
+    """Guess a file extension (with leading dot) from a specific MIME type; empty for generic/unknown."""
+    mime = (mime_type or "").split(";", 1)[0].strip().lower()
+    if mime in _GENERIC_MIMES or mime.startswith(("video/", "audio/")):
+        return ""
+    ext = _MIME_EXTENSIONS.get(mime)
+    if not ext:
+        ext = mimetypes.guess_extension(mime, strict=False) or ""
+    if ext and _REAL_EXT.match(ext) and any(c.isalpha() for c in ext):
+        return ext.lower()
+    return ""
+
+
+def ensure_extension(
+    name: str,
+    *mime_types: str | None,
+    fallback_name: str | None = None,
+    windows: bool | None = None,
+) -> str:
+    """Keep ``name``'s own extension; add one from ``fallback_name`` or MIME only when it has none.
+
+    The result never exceeds ``MAX_NAME_BYTES`` UTF-8 bytes (or ``WINDOWS_MAX_NAME_CHARS`` on Windows).
+    """
+    if not name or has_real_extension(name):
+        return name
+    ext = ""
+    if fallback_name:
+        clean_fallback = sanitize_name(fallback_name, windows=windows)
+        if has_real_extension(clean_fallback):
+            _, ext = split_ext(clean_fallback)
+    if not ext:
+        for mime in mime_types:
+            ext = guess_extension(mime)
+            if ext:
+                break
+    if not ext:
+        return name
+    windows = is_windows() if windows is None else windows
+    max_chars = WINDOWS_MAX_NAME_CHARS if windows else None
+    return truncate_name(name + ext, MAX_NAME_BYTES, max_chars=max_chars)
+
+
+def append_suffix(name: str, suffix: str, *, windows: bool | None = None) -> str:
+    """Append a disambiguating suffix (e.g. ``" (CSE303)"``) while staying within the byte cap."""
+    windows = is_windows() if windows is None else windows
+    clean_suffix = sanitize_name(suffix, fallback="", windows=windows) if suffix.strip() else ""
+    if not clean_suffix:
+        return sanitize_name(name, windows=windows)
+    suffix_part = f" ({clean_suffix})"
+    max_chars = WINDOWS_MAX_NAME_CHARS if windows else None
+    base = sanitize_name(name, windows=windows)
+    byte_budget = MAX_NAME_BYTES - len(suffix_part.encode("utf-8"))
+    char_budget = None if max_chars is None else max_chars - len(suffix_part)
+    if byte_budget <= 0 or (char_budget is not None and char_budget <= 0):
+        return sanitize_name(f"{base}{suffix_part}", windows=windows)
+    short = truncate_name(base, byte_budget, char_budget)
+    return sanitize_name(f"{short}{suffix_part}", windows=windows)
 
 
 def truncate_name(name: str, limit: int = MAX_NAME_BYTES, max_chars: int | None = None) -> str:
@@ -95,7 +222,12 @@ def truncate_name(name: str, limit: int = MAX_NAME_BYTES, max_chars: int | None 
     stem = encoded.decode("utf-8", errors="ignore")
     if char_budget is not None:
         stem = stem[:char_budget]
-    return stem.rstrip(". ") + ext
+    stem = stem.rstrip(". ")
+    if not stem:
+        stem = "untitled".encode("utf-8")[: max(budget, 1)].decode("utf-8", errors="ignore")
+        if char_budget is not None:
+            stem = stem[: max(char_budget, 1)]
+    return stem + ext
 
 
 def numbered_variant(rel_path: str, n: int, *, windows: bool | None = None) -> str:
@@ -132,6 +264,7 @@ def markdown_twin(rel_path: str) -> str:
     """
     path = PurePosixPath(rel_path)
     stem, _ = split_ext(path.name)
+    stem = truncate_name(stem, MAX_NAME_BYTES - len("..md"))
     return str(path.with_name(f".{stem}.md"))
 
 
@@ -151,7 +284,7 @@ def fit_windows_path(base: Path, rel_path: str, limit: int = WINDOWS_MAX_PATH - 
     stem, ext = split_ext(path.name)
     keep = max(len(stem) - over, min(MIN_STEM_CHARS, len(stem)))
     short = stem[:keep].rstrip(". ") or stem[:keep]
-    return str(path.with_name(short + ext))
+    return str(path.with_name(truncate_name(short + ext, MAX_NAME_BYTES)))
 
 
 def fit_windows_folder(base: Path, parent_rel: str, name: str) -> str:
@@ -167,13 +300,15 @@ def fit_windows_folder(base: Path, parent_rel: str, name: str) -> str:
     """
     used = len(str(base).rstrip("/\\")) + 1 + (len(parent_rel) + 1 if parent_rel else 0)
     cap = max(MIN_FOLDER_CHARS, (WINDOWS_MAX_PATH - WINDOWS_FILE_ROOM - used) // 2)
-    if len(name) <= cap:
+    if len(name) <= cap and len(name.encode("utf-8")) <= MAX_NAME_BYTES:
         return name
+    if len(name) <= cap:
+        return truncate_name(name, MAX_NAME_BYTES)
     tail = name[len(name) - min(FOLDER_TAIL_CHARS, cap // 3):].lstrip(" .")
     if " " in tail:
         tail = tail.split(" ", 1)[1].lstrip(" .")  # start at a word: "…Part 2", not "…rt 2"
     head = name[: cap - len(ELLIPSIS) - len(tail)].rstrip(" ")
-    return head + ELLIPSIS + tail
+    return truncate_name(head + ELLIPSIS + tail, MAX_NAME_BYTES)
 
 
 def course_code_and_title(course_id: str, name: str) -> tuple[str, str]:

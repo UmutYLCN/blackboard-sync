@@ -163,6 +163,7 @@ class CalendarClient:
     def __init__(self, config: Config, *, http=None, credentials=None, sleep=time.sleep,
                  now=None, cancel: threading.Event | None = None):
         self.config = config
+        self._owns_http = http is None
         self.http = http if http is not None else requests.Session()
         self.credentials = credentials if credentials is not None else CredentialStore(config.data_dir)
         self.sleep = sleep
@@ -178,6 +179,12 @@ class CalendarClient:
         self.expires = 0.0
         self.oauth_client = oauth_client_settings()
         self.client_id = os.environ.get("BBSYNC_GOOGLE_CLIENT_ID") or self.oauth_client.get("client_id") or CLIENT_ID
+
+    def close(self):
+        if self._owns_http:
+            close = getattr(self.http, "close", None)
+            if callable(close):
+                close()
 
     def _save(self):
         write_private_json(self.path, self.data)
@@ -195,29 +202,37 @@ class CalendarClient:
             except requests.RequestException:
                 raise BlackboardSyncError(tr("Could not reach Google Calendar.")) from None
             try:
-                body = response.json()
-            except ValueError:
-                body = {}
-            if not isinstance(body, dict):
-                body = {}
-            if (url == TOKEN and response.status_code == 400
+                try:
+                    body = response.json()
+                except ValueError:
+                    body = {}
+                if not isinstance(body, dict):
+                    body = {}
+                status_code = response.status_code
+                retry_after = response.headers.get("Retry-After", 2 ** attempt)
+            finally:
+                if not (getattr(response, "_content_consumed", True) is False and getattr(response, "raw", None) is None):
+                    close = getattr(response, "close", None)
+                    if callable(close):
+                        close()
+            if (url == TOKEN and status_code == 400
                     and body.get("error") == "invalid_request"
                     and "client_secret" in str(body.get("error_description", "")).lower()):
                 raise BlackboardSyncError(tr(
                     "Google requires this Desktop client's secret. Set BBSYNC_GOOGLE_CLIENT_SECRET locally and connect again."
                 ))
-            if body.get("error") == "invalid_grant" or response.status_code == 401:
+            if body.get("error") == "invalid_grant" or status_code == 401:
                 if not self._connecting:  # a connect that fails is not stored; the account was not connected yet
                     self.data.update(needs_reconnect=True, last_error=tr("Google Calendar needs to be reconnected"))
                     self._save()
                 raise CalendarAuthExpired()
             error = body.get("error")
             reasons = [e.get("reason") for e in error.get("errors", [])] if isinstance(error, dict) else []
-            retry = response.status_code == 429 or response.status_code >= 500 or any(
+            retry = status_code == 429 or status_code >= 500 or any(
                 reason in ("rateLimitExceeded", "userRateLimitExceeded") for reason in reasons)
             if retry and attempt < 4:
                 try:
-                    delay = min(60, max(0, float(response.headers.get("Retry-After", 2 ** attempt))))
+                    delay = min(60, max(0, float(retry_after)))
                 except ValueError:
                     delay = 2 ** attempt
                 if self.sleep is time.sleep:
@@ -226,8 +241,8 @@ class CalendarClient:
                 else:
                     self.sleep(delay)
                 continue
-            if response.status_code >= 400:
-                raise ApiError(response.status_code, url)
+            if status_code >= 400:
+                raise ApiError(status_code, url)
             return body
         raise AssertionError("unreachable")
 
@@ -500,3 +515,5 @@ def perform(config: Config, action: str, *, cancel=None, **options):
                 client.data["needs_reconnect"] = True
             client._save()
             raise
+        finally:
+            client.close()
