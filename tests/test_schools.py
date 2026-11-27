@@ -118,11 +118,11 @@ def test_every_school_is_still_found_by_local_name_abbreviation_domain_and_host(
 
 
 def test_the_list_has_the_original_sixteen_first_and_every_school_once():
-    assert len(schools.SCHOOLS) >= 143
+    assert len(schools.SCHOOLS) >= 193
     assert [s.name for s in schools.SCHOOLS[:2]] == ["Istanbul Health and Technology University", "King Saud University"]
     assert schools.SCHOOLS[15].name == "Jazan University"
     assert all(s.verified == "2026-11-07" for s in schools.SCHOOLS[:16])
-    assert all(s.verified == "2026-11-08" for s in schools.SCHOOLS[16:])
+    assert all(s.verified >= "2026-11-08" for s in schools.SCHOOLS[16:])
     rest = schools.SCHOOLS[16:]
     assert [(s.country, s.name.casefold()) for s in rest] == sorted((s.country, s.name.casefold()) for s in rest)
     assert len({s.url for s in schools.SCHOOLS}) == len(schools.SCHOOLS)

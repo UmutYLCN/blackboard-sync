@@ -1,0 +1,49 @@
+name: Request a university
+description: Ask us to add your school's Blackboard address to the built-in school list.
+title: "[School]: "
+labels: ["school-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If your school is not in the built-in list yet, share its details below. We verify that the address answers Blackboard Learn's public system check before adding it.
+  - type: input
+    id: school_name
+    attributes:
+      label: School name
+      description: Full name of your university or college (in English, if applicable).
+      placeholder: e.g. University of Example
+    validations:
+      required: true
+  - type: input
+    id: country
+    attributes:
+      label: Country
+      description: Country name or two-letter ISO code.
+      placeholder: e.g. US, GB, TR, SA
+    validations:
+      required: true
+  - type: input
+    id: blackboard_url
+    attributes:
+      label: Blackboard URL
+      description: The web address you open in your browser to sign in to Blackboard.
+      placeholder: e.g. https://blackboard.example.edu
+    validations:
+      required: true
+  - type: input
+    id: website_domain
+    attributes:
+      label: School website domain (optional)
+      description: Your school's main web domain, if different from the Blackboard address.
+      placeholder: e.g. example.edu
+    validations:
+      required: false
+  - type: input
+    id: aliases
+    attributes:
+      label: Abbreviation or local-language name (optional)
+      description: Common abbreviation or name in your local language.
+      placeholder: e.g. UoE
+    validations:
+      required: false
