@@ -259,7 +259,7 @@ def test_sidebar_switches_sections_and_baslangic_becomes_home(tmp_path):
         assert titles == ['Get started', 'Sync activity', 'Announcements', 'Courses']
         assert list(window.nav_items) == [OVERVIEW, ACTIVITY, ANNOUNCEMENTS, COURSES, CALENDAR]
         assert GENERAL not in window.nav_items  # Ayarlar is the gear at the top right
-        assert str(window.nav_items[COURSES][3].stringValue()) == '1/2'
+        assert str(window.nav_items[COURSES][3].stringValue()) == ''
         assert visible_page(window) == 'start' and window.section == OVERVIEW
         assert str(window.start_button.title()) == 'Sign in'
         assert str(window.start_button.keyEquivalent()) == '\r'  # Return signs in
@@ -858,7 +858,7 @@ def test_dersler_lists_courses_with_a_checkbox_and_saves_a_change(tmp_path):
         boxes[1].setState_(0)
         window.target.courseToggled_(boxes[1])
         assert toggles == [('_2_1', False)]
-        assert str(window.nav_items[COURSES][3].stringValue()) == '1/2'
+        assert str(window.nav_items[COURSES][3].stringValue()) == ''
         texts = [str(v.stringValue()) for v in window.courses_scroll.documentView().subviews()
                  if hasattr(v, 'stringValue')]
         assert 'T · not syncing' in texts  # drawn again with the new choice

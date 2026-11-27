@@ -141,7 +141,6 @@ from blackboard_sync.menubar.main_window_model import (
     course_detail,
     course_name_without_code,
     course_title,
-    enabled_count,
     has_changes,
     home_recent_rows,
     recent_count,
@@ -2301,7 +2300,6 @@ class MainWindow:
     def refresh_courses(self) -> None:
         """Draw Dersler again when the course list or a choice changed."""
         rows = self.on_courses()
-        self.nav_items[COURSES][3].setStringValue_(enabled_count(rows))
         if rows == self._drawn_courses:
             return
         self._drawn_courses = rows

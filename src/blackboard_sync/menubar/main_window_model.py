@@ -917,12 +917,6 @@ def course_detail(row: courses.CourseRow) -> str:
     return " · ".join(part for part in (row.term, tr("syncing") if row.enabled else tr("not syncing")) if part)
 
 
-def enabled_count(rows: tuple[courses.CourseRow, ...]) -> str:
-    """The count beside Dersler in the sidebar: "4/5" while some course is unticked."""
-    enabled = sum(row.enabled for row in rows)
-    return f"{enabled}/{len(rows)}" if enabled != len(rows) else ""
-
-
 def has_changes(saved: FormValues, current: FormValues) -> bool:
     """Whether Genel shows its Vazgeç/Kaydet bar: only once a field differs from what is saved."""
     return current != saved

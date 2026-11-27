@@ -74,8 +74,8 @@ def texts() -> dict[str, str]:
     }
 
 
-def nav(status: main.MainStatus, course_count: str = "") -> list[dict]:
-    """The sidebar, top to bottom; a count beside Announcements (attention) and Courses ("4/5")."""
+def nav(status: main.MainStatus) -> list[dict]:
+    """The sidebar, top to bottom; a count beside Announcements (attention) only."""
     titles = {
         main.OVERVIEW: status.overview_title,
         main.ACTIVITY: main.T_NAV_ACTIVITY,
@@ -83,8 +83,7 @@ def nav(status: main.MainStatus, course_count: str = "") -> list[dict]:
         main.COURSES: main.T_NAV_COURSES,
         main.CALENDAR: deadlines.T_TAB,
     }
-    badges = {main.ANNOUNCEMENTS: str(len(status.attention)) if status.attention else "",
-              main.COURSES: course_count}
+    badges = {main.ANNOUNCEMENTS: str(len(status.attention)) if status.attention else ""}
     return [{"id": section, "title": titles[section], "icon": NAV_ICONS[section], "badge": badges.get(section, "")}
             for section in main.NAV_SECTIONS]
 
@@ -396,7 +395,7 @@ def window_state(status: main.MainStatus, section: str, page: str, announcement_
         "page": page,
         "theme": theme,
         "text": texts(),
-        "nav": nav(status, main.enabled_count(course_rows)),
+        "nav": nav(status),
         "chrome": chrome(status),
         "banner": banner(status, updates_enabled),
         "home": home(status, announcement_rows, deadline_page, today),
