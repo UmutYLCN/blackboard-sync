@@ -16,8 +16,8 @@ import webbrowser
 from dataclasses import replace
 from pathlib import Path
 
-from blackboard_sync import (ai_launcher, announcements, courses, deadlines, relocate, runtime, session_refresh,
-                             signout, term_confirm, updater, uninstall)
+from blackboard_sync import (ai_launcher, announcements, courses, deadlines, licensing, relocate, runtime,
+                             session_refresh, signout, term_confirm, updater, uninstall)
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.i18n import tr
@@ -25,6 +25,8 @@ from blackboard_sync.menubar import jobs, settings_form
 from blackboard_sync.menubar.main_window_model import (
     AI_OPEN_PREFIX,
     GENERAL,
+    LICENSE_BUY_ACTION,
+    LICENSE_RESTORE_ACTION,
     OVERVIEW,
     notebooklm_progress,
     shows_window_at_launch,
@@ -35,6 +37,7 @@ from blackboard_sync.menubar.model import (
     NOTEBOOKLM_CONNECT,
     NOTEBOOKLM_SYNC,
     SESSION_JOB,
+    SYNC_JOBS,
     UPDATE_ACTIONS,
     RunOutcome,
     open_target,
@@ -129,7 +132,7 @@ def cli_popen(command, **kwargs):
 class TrayApp:
     web = None  # the WebView2 window's ``WebHost`` when the main window is the page (``web_window``)
 
-    def __init__(self, config, root, show_window=False):
+    def __init__(self, config, root, show_window=False, license_provider=None):
         import pystray
 
         self.config, self.root = config, root
@@ -143,10 +146,24 @@ class TrayApp:
         self.closed = False
         self.uninstalling = False
         self.ai_detecting = False  # ``detect_ai_tools`` is looking
+        self._license_provider = license_provider or licensing.default_provider()
+        self._license_provider.set_on_change(lambda: self.post(self.on_license_changed))
         self.drawn = None
         self.drawn_icon = None
         self.icon = pystray.Icon("Blackboard Sync", icon_image(self.model.icon()), "Blackboard Sync")
         self.refresh()
+
+    @property
+    def license_provider(self):
+        provider = getattr(self, "_license_provider", None)
+        if provider is None:
+            provider = licensing.AlwaysFullProvider()
+            self._license_provider = provider
+        return provider
+
+    @license_provider.setter
+    def license_provider(self, provider):
+        self._license_provider = provider
 
     def run(self):
         self.icon.run_detached()
@@ -154,6 +171,8 @@ class TrayApp:
         self.root.bind(WAKE_EVENT, self.drain)
         self.root.after(REQUEST_CHECK_MS, self.poll)
         self.root.after(1000, self.tick)
+        if self.license_provider.managed:
+            self.root.after(100, self.start_license_check)
         # The menu item and Home's AI card need to know which tools and terminals are here.
         self.root.after(500, self.detect_ai_tools)
         if shows_window_at_launch(self.background, self.model.configured):
@@ -203,9 +222,12 @@ class TrayApp:
         if self.uninstalling:
             self.root.after(30000, self.tick)
             return
+        now = jobs.utcnow()
+        if self.model.license_check_due(now, self.license_provider.managed):
+            self.start_license_check()
         self.start_next()
         self.start_session_check()
-        if updater.enabled() and self.model.update_due(jobs.utcnow()):
+        if updater.enabled() and self.model.update_due(now):
             self.start_update_check(manual=False)
         self.remind()
         self.refresh()
@@ -220,16 +242,20 @@ class TrayApp:
 
     def start_next(self):
         """A job a folder change asked for goes first, then the scheduled sync."""
+        now = jobs.utcnow()
         jobs.refresh_session(self.config, self.model, self.settings)  # a queued sync waits for it
-        job = self.model.pending_job()
+        job = self.model.pending_job(now)
         if job is not None:
             self.start_job(job)
-        elif self.model.due(jobs.utcnow()):
+        elif self.model.due(now):
             self.start_job("sync")
 
     def start_job(self, job):
         old, new = self.model.move_from, self.model.dest
         if job == MOVE_JOB and old is None:
+            return
+        if job in SYNC_JOBS and self.model.license_expired(jobs.utcnow()):
+            self.refresh()
             return
         if job == "login" and self.model.busy == SESSION_JOB:  # over in seconds, and it may use the browser profile
             self.login_after_job = True
@@ -456,6 +482,77 @@ class TrayApp:
         self.save()
         self.refresh()
 
+    def on_license_changed(self):
+        """``StoreContext.OfflineLicensesChanged`` fired: re-check the Store license."""
+        log.info("Store license changed; re-checking")
+        self.start_license_check(force=True)
+
+    def start_license_check(self, manual=False, force=False):
+        if not self.license_provider.managed:
+            return
+        if manual:
+            if self.model.license_busy is not None:
+                return
+            self.model.license_busy = "restore"
+            self.model.license_notice = ""
+            self.refresh()
+        else:
+            if self.model.license_checking and not force:
+                return
+            self.model.license_checking = True
+        provider = self.license_provider
+
+        def worker():
+            state = provider.get_state(jobs.utcnow())
+            self.post(self.license_checked, state, manual)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def license_checked(self, state, manual=False):
+        now = jobs.utcnow()
+        if manual:
+            self.model.license_busy = None
+        notice = ""
+        if manual and state.is_expired(now):
+            notice = licensing.no_purchase_found_message()
+        elif manual and state.kind == licensing.LicenseKind.UNKNOWN:
+            notice = state.message or licensing.store_unreachable_message()
+        unlocked = self.model.apply_license(state, now, notice=notice)
+        if unlocked and self.model.configured and self.model.account()[0] is not None and not self.model.paused:
+            self.start_next()
+        self.refresh()
+
+    def start_purchase(self):
+        if self.model.license_busy is not None:
+            return
+        self.model.license_busy = "buy"
+        self.model.license_notice = ""
+        self.refresh()
+        provider = self.license_provider
+        if self.web is not None:
+            hwnd = self.web.window_handle()
+            on_ui_thread = self.web.invoke_ui
+        else:
+            hwnd = (self.window.window_handle()
+                    if self.window is not None and hasattr(self.window, "window_handle") else None)
+            on_ui_thread = ((lambda fn: self.root.after(0, fn))
+                            if self.root is not None and hasattr(self.root, "after") else None)
+
+        def worker():
+            result = provider.purchase(hwnd=hwnd, on_ui_thread=on_ui_thread, now=jobs.utcnow())
+            self.post(self.purchase_done, result)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def purchase_done(self, result):
+        now = jobs.utcnow()
+        self.model.license_busy = None
+        notice = result.message if result.outcome == licensing.PurchaseOutcome.UNAVAILABLE else ""
+        unlocked = self.model.apply_license(result.state, now, notice=notice)
+        if unlocked and self.model.configured and self.model.account()[0] is not None and not self.model.paused:
+            self.start_next()
+        self.refresh()
+
     def start_update(self):
         if not updater.enabled():
             return
@@ -531,6 +628,12 @@ class TrayApp:
             self.start_update_check()
         elif action == "update":
             self.start_update()
+        elif action == LICENSE_BUY_ACTION:
+            self.start_purchase()
+            return
+        elif action == LICENSE_RESTORE_ACTION:
+            self.start_license_check(manual=True)
+            return
         elif action == "uninstall":
             self.start_uninstall()
             return
@@ -615,6 +718,7 @@ class TrayApp:
                 self.show_message("info", "Blackboard Sync", settings_form.T_BUSY, parent=self.root)
                 return
             jobs.notebooklm_child.stop()  # safe at any moment; the next run goes on from there
+            self.license_provider.close()
             self.closed = True
             self.icon.stop()
             self.root.destroy()

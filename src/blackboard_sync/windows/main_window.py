@@ -351,7 +351,8 @@ class MainWindow:
         from tkinter import ttk
 
         self.start_update_banner = self._build_update_banner(page, 0)
-        self.start_canvas, frame = self._scroll_area(page, 1)
+        self.start_license_banner = self._build_license_banner(page, 1)
+        self.start_canvas, frame = self._scroll_area(page, 2)
         frame.columnconfigure(1, weight=1)
         ttk.Label(frame, text=main.T_START_TITLE, font=TITLE_FONT, wraplength=WRAP).grid(
             row=0, column=0, columnspan=2, sticky="w")
@@ -405,6 +406,62 @@ class MainWindow:
         button.grid(row=0, column=1, rowspan=2, padx=(16, 0))
         return card, title, button
 
+    def _build_license_banner(self, page, row):
+        from tkinter import ttk
+
+        card = ttk.LabelFrame(page, padding=(16, 12))
+        card.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+        card.columnconfigure(0, weight=1)
+        title = ttk.Label(card, font=HEADING_FONT, wraplength=WRAP - 200)
+        title.grid(row=0, column=0, sticky="w")
+        detail = ttk.Label(card, wraplength=WRAP - 200)
+        detail.grid(row=1, column=0, sticky="w", pady=(2, 0))
+        notice = ttk.Label(card, foreground=WARNING, wraplength=WRAP - 200)
+        notice.grid(row=2, column=0, sticky="w", pady=(4, 0))
+        buttons = ttk.Frame(card)
+        buttons.grid(row=0, column=1, rowspan=3, sticky="e", padx=(16, 0))
+        buy = ttk.Button(buttons, style="Accent.TButton",
+                         command=lambda: self.on_action(main.LICENSE_BUY_ACTION))
+        buy.pack(side="left")
+        restore = ttk.Button(buttons, command=lambda: self.on_action(main.LICENSE_RESTORE_ACTION))
+        restore.pack(side="left", padx=(8, 0))
+        card.grid_remove()
+        return card, title, detail, notice, buy, restore
+
+    def _draw_license_banner(self, view, data):
+        box, title, detail, notice, buy, restore = view
+        if data is None:
+            box.grid_remove()
+            return
+        title.configure(text=data.title)
+        if data.title:
+            title.grid()
+        else:
+            title.grid_remove()
+        detail.configure(text=data.detail, foreground=MUTED if data.kind == main.LICENSE_TRIAL else "")
+        notice.configure(text=data.notice)
+        if data.notice:
+            notice.grid()
+        else:
+            notice.grid_remove()
+        buy.configure(text=data.buy_title, state="normal" if data.buy_enabled else "disabled")
+        restore.pack_forget()
+        if data.restore_action:
+            restore.configure(text=data.restore_title, state="normal" if data.restore_enabled else "disabled")
+            restore.pack(side="left", padx=(8, 0))
+        box.grid()
+
+    def window_handle(self):
+        """The Win32 HWND for modal Store purchase dialogs (``IInitializeWithWindow``)."""
+        for getter in (lambda: int(str(self.window.wm_frame()), 16), lambda: int(self.window.winfo_id())):
+            try:
+                hwnd = getter()
+                if hwnd:
+                    return hwnd
+            except Exception:
+                continue
+        return None
+
     def _build_overview(self, page):
         from tkinter import ttk
 
@@ -421,6 +478,7 @@ class MainWindow:
         self.overview_canvas, page = self._scroll_area(page, 1)
         page.columnconfigure(0, weight=3, uniform="home")
         page.columnconfigure(1, weight=2, uniform="home")
+        self.overview_license_banner = self._build_license_banner(page, 0)
         self.overview_update_banner = self._build_update_banner(page, 1)
         background = background_of(page)
 
@@ -1099,6 +1157,11 @@ class MainWindow:
                 title.configure(text=banner.title)
                 button.configure(text=banner.button_title, state="normal" if banner.enabled else "disabled")
                 box.grid()
+        self._draw_license_banner(self.overview_license_banner, status.license)
+        self._draw_license_banner(
+            self.start_license_banner,
+            status.license if status.license and status.license.kind == main.LICENSE_EXPIRED else None,
+        )
         # Başlangıç
         self.start_button.configure(text=status.start_title, state="normal" if status.start_enabled else "disabled")
         self._draw_start_message()

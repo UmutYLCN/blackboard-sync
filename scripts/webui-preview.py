@@ -135,6 +135,19 @@ def fixtures(now: datetime) -> dict[str, dict]:
         "update": (replace(synced, update_banner=main.UpdateBanner(
                        tr("Blackboard Sync {version} is ready").format(version="1.7.0"), main.T_UPDATE, True)),
                    announcements, page),
+        "trial": (replace(synced, license=main.LicenseCard(
+                      main.LICENSE_TRIAL, "", tr("Free trial · {remaining}").format(
+                          remaining=tr("{n} hours left").format(n=18)),
+                      buy_title=tr("Buy"))), announcements, page),
+        "trial-expired": (replace(synced, sync_enabled=False, pause_enabled=False,
+                              home=main.HomeState(main.STATE_ATTENTION, tr("Free trial ended"), account.detail),
+                              license=main.LicenseCard(
+                                  main.LICENSE_EXPIRED, tr("Your free trial has ended"),
+                                  tr("Buy Blackboard Sync once ({price}) to keep syncing your courses. "
+                                     "Your downloaded files are still in your folder.").format(price="$4.99"),
+                                  buy_title=tr("Buy for {price}").format(price="$4.99"),
+                                  restore_action=main.LICENSE_RESTORE_ACTION,
+                                  restore_title=tr("I already bought it"))), announcements, page),
     }
     ai.ai_installed = frozenset()
     states["ai-none"] = (replace(synced, ai=main.ai_card(ai)), announcements, page)

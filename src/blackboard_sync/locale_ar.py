@@ -694,4 +694,32 @@ CATALOG = {
     "{n} files may already be in Gemini Notebook, so they were not added.":
         "قد تكون {n} ملفات موجودة بالفعل في Gemini Notebook، لذا لم تتم إضافتها.",
     "{n} held back": "{n} مؤجَّلة",
+
+    # Store trial and purchase (licensing)
+    "Purchases are not available in this build.": "عمليات الشراء غير متاحة في هذا الإصدار.",
+    "Could not reach the Microsoft Store. Check your internet connection and try again.":
+        "تعذّر الوصول إلى Microsoft Store. تحقّق من اتصالك بالإنترنت وحاول مرة أخرى.",
+    "Could not complete the purchase in the Microsoft Store. Try again in a moment.":
+        "تعذّر إتمام الشراء في Microsoft Store. حاول مرة أخرى بعد قليل.",
+    "No purchase was found for this account yet.": "لم يُعثر على عملية شراء لهذا الحساب بعد.",
+    "Free trial ended": "انتهت الفترة التجريبية المجانية",
+    "{n} minute left": "{n} دقيقة متبقية",
+    "{n} minutes left": "{n} دقائق متبقية",
+    "{n} hour left": "{n} ساعة متبقية",
+    "{n} hours left": "{n} ساعات متبقية",
+    "{n} day left": "{n} يوم متبقٍّ",
+    "{n} days left": "{n} أيام متبقية",
+    "Free trial · {remaining}": "فترة تجريبية مجانية · {remaining}",
+    "Free trial": "فترة تجريبية مجانية",
+    "Buy": "شراء",
+    "Buy for {price}": "شراء مقابل {price}",
+    "Opening Store…": "جارٍ فتح المتجر…",
+    "Your free trial has ended": "انتهت فترتك التجريبية المجانية",
+    "Buy Blackboard Sync once ({price}) to keep syncing your courses. Your downloaded files are still in your folder.":
+        "اشترِ Blackboard Sync مرة واحدة ({price}) لمواصلة مزامنة مقرراتك. "
+        "ملفاتك المحمّلة لا تزال في مجلدك.",
+    "Buy Blackboard Sync once to keep syncing your courses. Your downloaded files are still in your folder.":
+        "اشترِ Blackboard Sync مرة واحدة لمواصلة مزامنة مقرراتك. "
+        "ملفاتك المحمّلة لا تزال في مجلدك.",
+    "I already bought it": "اشتريته بالفعل",
 }

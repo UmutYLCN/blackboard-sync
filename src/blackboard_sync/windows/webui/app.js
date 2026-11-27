@@ -324,6 +324,28 @@
       pill(data.button, "filled", () => call("action", "update"), { disabled: !data.enabled }));
   }
 
+  function licenseBanner() {
+    const data = state.license;
+    if (!data) return null;
+    if (data.kind === "trial") {
+      return h("section", { class: "trial-bar", id: "license-banner" },
+        h("div", { class: "trial-text" },
+          h("span", { class: "trial-detail", text: data.detail }),
+          data.notice ? h("span", { class: "trial-notice", text: data.notice }) : null),
+        pill(data.buy.title, "tonal small", () => call("action", data.buy.id), { disabled: !data.buy.enabled }));
+    }
+    return h("section", { class: "card license-card", id: "license-card" },
+      icon("warning-fill", "license-icon"),
+      h("div", { class: "license-body" },
+        h("h2", { class: "license-title", text: data.title }),
+        h("p", { class: "license-detail", text: data.detail }),
+        data.notice ? h("p", { class: "message warning", text: data.notice }) : null,
+        h("div", { class: "license-buttons" },
+          pill(data.buy.title, "filled", () => call("action", data.buy.id), { disabled: !data.buy.enabled }),
+          data.restore ? pill(data.restore.title, "gray", () => call("action", data.restore.id),
+            { disabled: !data.restore.enabled }) : null)));
+  }
+
   function fileRow(row) {
     return h("div", { class: "row file-row", "data-id": row.id },
       h("button", { class: "row-main", type: "button", title: row.name,
@@ -468,6 +490,7 @@
     const home = state.home;
     return h("div", { class: "home" },
       banner(),
+      licenseBanner(),
       h("div", { class: "column" }, statusCard(home), h("div", { id: "notebooklm" }), home.ai ? aiCard(home.ai) : null),
       h("div", { class: "column" }, announcementsCard(home), deadlinesCard(home)));
   }
@@ -567,6 +590,7 @@
   function startPage() {
     const data = state.start;
     return h("div", { class: "start" },
+      state.license && state.license.kind === "expired" ? licenseBanner() : null,
       h("div", {},
         h("h2", { class: "start-title", text: data.title }),
         h("p", { class: "hint", text: data.intro }),
@@ -782,8 +806,8 @@
     general: () => settingsPage(),
   };
   const PAGE_DATA = {
-    overview: () => [{ ...state.home, notebooklm: null }, state.banner], // drawNotebooklm has its own
-    start: () => [state.start, state.settings.error_field, state.settings.error],
+    overview: () => [{ ...state.home, notebooklm: null }, state.banner, state.license], // drawNotebooklm has its own
+    start: () => [state.start, state.settings.error_field, state.settings.error, state.license],
     activity: () => state.activity,
     announcements: () => state.announcements,
     courses: () => state.courses,

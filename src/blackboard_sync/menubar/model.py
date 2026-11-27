@@ -24,6 +24,7 @@ from blackboard_sync import __version__, ai_launcher, term_confirm
 from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
 from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.inapp import INAPP
+from blackboard_sync.licensing import LicenseKind, LicenseState
 from blackboard_sync.report import UNAVAILABLE_STATUSES
 from blackboard_sync.session_refresh import EXPIRED, REFRESHED, RefreshResult, SessionCare
 from blackboard_sync.settings import DEFAULT_SYNC_INTERVAL_MINUTES, Settings, normalize_sync_interval
@@ -43,6 +44,9 @@ RECENT_LIMIT = 10
 UPDATE_INTERVAL = timedelta(days=1)
 UPDATE_FIRST_DELAY = timedelta(minutes=2)
 UPDATE_RETRY_DELAY = timedelta(hours=1)
+# Store trial and offline-grace re-checks; full licenses listen to OfflineLicensesChanged instead.
+LICENSE_CHECK_INTERVAL = timedelta(minutes=30)
+LICENSE_RETRY_INTERVAL = timedelta(minutes=15)
 
 # (report key, label after one, label after more): "1 new file", "2 new files".
 CHANGE_LABELS = (
@@ -709,6 +713,7 @@ class AppModel:
         ai_cli: str = "",
         ai_resume: bool = True,
         ai_terminal: str = "",
+        license_state: LicenseState | None = None,
     ):
         self.dest = dest  # the folder the student chose; the files are in ``root``
         self.session = session
@@ -763,6 +768,11 @@ class AppModel:
         # A sync at start-up looks at the session anyway, so the first keep-alive counts from there.
         self.session_care = SessionCare(enabled=auto_relogin, checked_at=now)
         self.updates = updates or UpdateState(not_before=now + UPDATE_FIRST_DELAY)
+        self.license: LicenseState = license_state or LicenseState(LicenseKind.FULL)
+        self.license_busy: str | None = None  # "buy" | "restore"
+        self.license_checking = False
+        self.license_checked_at: datetime | None = None
+        self.license_notice = ""
 
     # -- state ----------------------------------------------------------
     @property
@@ -782,6 +792,8 @@ class AppModel:
     def icon(self) -> Icon:
         if self.busy in SYNC_JOBS or self.busy == MOVE_JOB:
             return Icon.SYNCING
+        if self.license_expired():
+            return Icon.PAUSED
         if self.health == "login_required":
             return Icon.EXPIRED
         if self.health == "error":
@@ -789,6 +801,36 @@ class AppModel:
         if self.paused:
             return Icon.PAUSED
         return Icon.IDLE
+
+    def license_expired(self, now: datetime | None = None) -> bool:
+        """True when a Store trial has ended and no full license is active."""
+        return self.license.is_expired(now)
+
+    def license_check_due(self, now: datetime, managed: bool = False) -> bool:
+        """Whether the app should ask the Store provider how the license stands now."""
+        if not managed or self.license_checking or self.license_busy is not None:
+            return False
+        if self.license_checked_at is None:
+            return True
+        if (self.license.kind == LicenseKind.TRIAL and self.license.expires_at is not None
+                and now >= self.license.expires_at and self.license_checked_at < self.license.expires_at):
+            return True
+        if self.license.kind == LicenseKind.FULL:
+            return False
+        interval = LICENSE_RETRY_INTERVAL if self.license.kind == LicenseKind.UNKNOWN else LICENSE_CHECK_INTERVAL
+        return not (self.license_checked_at <= now < self.license_checked_at + interval)
+
+    def apply_license(self, state: LicenseState, now: datetime, *, notice: str = "") -> bool:
+        """Record ``state`` from the Store; True when syncing was unlocked from an expired trial."""
+        was_expired = self.license_expired(now)
+        self.license = state
+        self.license_checked_at = now
+        self.license_checking = False
+        self.license_notice = notice
+        unlocked = was_expired and not self.license_expired(now)
+        if unlocked:
+            self.next_run_at = self.schedule(now, timedelta(0))
+        return unlocked
 
     # -- scheduling -----------------------------------------------------
     @property
@@ -825,6 +867,7 @@ class AppModel:
         return (
             self.configured
             and not self.paused
+            and not self.license_expired(now)
             and self.busy is None
             and self.next_run_at is not None
             and now >= self.next_run_at
@@ -835,6 +878,7 @@ class AppModel:
         return (
             self.configured
             and not self.paused
+            and not self.license_expired(now)
             and self.busy is None
             and self.pending is None
             and self.updates.busy != "download"
@@ -846,7 +890,7 @@ class AppModel:
         """Time for the daily look for a new app version (never while it is switched off)."""
         return self.updates.due(now, self.check_updates)
 
-    def pending_job(self) -> str | None:
+    def pending_job(self, now: datetime | None = None) -> str | None:
         """The job a destination change asked for, if it can start now.
 
         It goes before any scheduled sync. A sync waits until the student is
@@ -854,7 +898,7 @@ class AppModel:
         """
         if not self.configured or self.busy is not None or self.pending is None:
             return None
-        if self.pending == "sync" and (self.session is None or self.paused):
+        if self.pending == "sync" and (self.session is None or self.paused or self.license_expired(now)):
             return None
         return self.pending
 
@@ -1160,7 +1204,7 @@ class AppModel:
             return tr("tried at {time}").format(time=when)
         return tr("tried at {time} · error").format(time=when)
 
-    def activity(self) -> str:
+    def activity(self, now: datetime | None = None) -> str:
         """What is going on instead of the usual schedule ("" when nothing special)."""
         if self.busy == "sync":
             return tr("Checking for new content…")
@@ -1172,6 +1216,8 @@ class AppModel:
             return tr("Moving files to the new folder…")
         if not self.configured:
             return tr("Choose “{settings}” to finish setting up").format(settings=T_SETTINGS)
+        if self.license_expired(now):
+            return tr("Free trial ended")
         if self.paused:
             return T_PAUSED
         return ""
@@ -1205,7 +1251,7 @@ class AppModel:
         sign-in item and a single line sums up the rest.
         """
         name, _expired = self.account()
-        activity = self.activity()
+        activity = self.activity(now)
         if name is not None:
             lines = [f"✓ {name} · {self.headline(now)}", activity or capitalize(" · ".join(self.detail(now)))]
         elif activity:
@@ -1240,10 +1286,11 @@ class AppModel:
         return self.root.name or str(self.root)
 
     def menu(self, now: datetime) -> MenuModel:
+        expired_license = self.license_expired(now)
         menu = MenuModel(
             status_lines=self.status_lines(now),
             sync_title=T_SYNCING if self.busy == "sync" else T_SYNC_NOW,
-            sync_enabled=self.busy is None and not self.paused,
+            sync_enabled=self.busy is None and not self.paused and not expired_license,
             recent=unique_labels([(f"{(parse_iso(item.at) or now).astimezone():%d.%m %H:%M} · {item.label}", item.path)
                                   for item in self.visible_recent()]),
         )
@@ -1262,7 +1309,7 @@ class AppModel:
             course_items.append((label, course.folder))
         update = self.updates.menu_entry()
         sync = MenuEntry(menu.sync_title, "sync", enabled=menu.sync_enabled)
-        pause = MenuEntry(T_RESUME if self.paused else T_PAUSE, "pause", enabled=self.configured)
+        pause = MenuEntry(T_RESUME if self.paused else T_PAUSE, "pause", enabled=self.configured and not expired_license)
         status = [MenuEntry(line, enabled=False) for line in menu.status_lines]
         # Nothing syncs by itself in manual mode, so the button comes first.
         head = ([*top, sync, pause, *status, MenuEntry()] if self.sync_interval is None

@@ -694,4 +694,32 @@ CATALOG = {
     "{n} files may already be in Gemini Notebook, so they were not added.":
         "{n} dosya Gemini Notebook'ta zaten olabilir, bu yüzden eklenmedi.",
     "{n} held back": "{n} bekletildi",
+
+    # Store trial and purchase (licensing)
+    "Purchases are not available in this build.": "Bu sürümde satın alma kullanılamıyor.",
+    "Could not reach the Microsoft Store. Check your internet connection and try again.":
+        "Microsoft Store'a ulaşılamadı. İnternet bağlantınızı kontrol edip yeniden deneyin.",
+    "Could not complete the purchase in the Microsoft Store. Try again in a moment.":
+        "Microsoft Store'daki satın alma tamamlanamadı. Biraz sonra yeniden deneyin.",
+    "No purchase was found for this account yet.": "Bu hesap için henüz bir satın alma bulunamadı.",
+    "Free trial ended": "Ücretsiz deneme sona erdi",
+    "{n} minute left": "{n} dakika kaldı",
+    "{n} minutes left": "{n} dakika kaldı",
+    "{n} hour left": "{n} saat kaldı",
+    "{n} hours left": "{n} saat kaldı",
+    "{n} day left": "{n} gün kaldı",
+    "{n} days left": "{n} gün kaldı",
+    "Free trial · {remaining}": "Ücretsiz deneme · {remaining}",
+    "Free trial": "Ücretsiz deneme",
+    "Buy": "Satın al",
+    "Buy for {price}": "Satın al ({price})",
+    "Opening Store…": "Mağaza açılıyor…",
+    "Your free trial has ended": "Ücretsiz deneme süreniz sona erdi",
+    "Buy Blackboard Sync once ({price}) to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Derslerinizi senkronize etmeye devam etmek için Blackboard Sync'i bir kez satın alın ({price}). "
+        "İndirdiğiniz dosyalar klasörünüzde duruyor.",
+    "Buy Blackboard Sync once to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Derslerinizi senkronize etmeye devam etmek için Blackboard Sync'i bir kez satın alın. "
+        "İndirdiğiniz dosyalar klasörünüzde duruyor.",
+    "I already bought it": "Zaten satın aldım",
 }

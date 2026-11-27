@@ -748,4 +748,32 @@ CATALOG = {
     "{n} files may already be in Gemini Notebook, so they were not added.":
         "{n} fichiers sont peut-être déjà dans Gemini Notebook, ils n’ont donc pas été ajoutés.",
     "{n} held back": "{n} en attente",
+
+    # Store trial and purchase (licensing)
+    "Purchases are not available in this build.": "Les achats ne sont pas disponibles dans cette version.",
+    "Could not reach the Microsoft Store. Check your internet connection and try again.":
+        "Impossible de joindre le Microsoft Store. Vérifiez votre connexion internet et réessayez.",
+    "Could not complete the purchase in the Microsoft Store. Try again in a moment.":
+        "Impossible de finaliser l’achat dans le Microsoft Store. Réessayez dans un instant.",
+    "No purchase was found for this account yet.": "Aucun achat n’a encore été trouvé pour ce compte.",
+    "Free trial ended": "Essai gratuit terminé",
+    "{n} minute left": "{n} minute restante",
+    "{n} minutes left": "{n} minutes restantes",
+    "{n} hour left": "{n} heure restante",
+    "{n} hours left": "{n} heures restantes",
+    "{n} day left": "{n} jour restant",
+    "{n} days left": "{n} jours restants",
+    "Free trial · {remaining}": "Essai gratuit · {remaining}",
+    "Free trial": "Essai gratuit",
+    "Buy": "Acheter",
+    "Buy for {price}": "Acheter pour {price}",
+    "Opening Store…": "Ouverture de la boutique…",
+    "Your free trial has ended": "Votre essai gratuit est terminé",
+    "Buy Blackboard Sync once ({price}) to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Achetez Blackboard Sync une seule fois ({price}) pour continuer à synchroniser vos cours. "
+        "Vos fichiers téléchargés restent dans votre dossier.",
+    "Buy Blackboard Sync once to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Achetez Blackboard Sync une seule fois pour continuer à synchroniser vos cours. "
+        "Vos fichiers téléchargés restent dans votre dossier.",
+    "I already bought it": "Je l’ai déjà acheté",
 }
