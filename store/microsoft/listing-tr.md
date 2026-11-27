@@ -55,7 +55,7 @@ TAKVİM VE DUYURULAR
 Yaklaşan ödev teslim tarihlerini ve ders duyurularını uygulamada görürsün. Ayarlar’dan isteğe bağlı Google Takvim bağlantısını açarak teslim tarihlerini ayrı bir Blackboard Deadlines takviminde güncel tutabilirsin. Diğer takvimlerin gizli kalır.
 
 NOTEBOOKLM
-İsteğe bağlı olarak Ana sayfadaki karttan NotebookLM’i bağlayabilirsin. Her senkrondan sonra indirilen ders dosyaların ve PDF notların her ders için ayrı bir notebook’a eklenir; kaynaklarınla doğrudan çalışır, özet çıkarır veya soru sorabilirsin. “NotebookLM’e ekle” dosyaları istediğin an ekler, “NotebookLM’i aç” notebook’larını açar. Notebook’ta zaten bulunan dosya bir daha eklenmez; Ayarlar’daki “Kopyaları bul” fazla kopyaları listeler. NotebookLM’e Google’ın resmî olmayan bir bağlantısıyla ulaşılır; Google NotebookLM’de değişiklik yaparsa çalışmayabilir. Google oturumun bilgisayarında kalır, Ayarlar’daki “Bağlantıyı kes” onu siler ve ders dosyaların kendi Google hesabına gider.
+İsteğe bağlı olarak Ana sayfadaki karttan NotebookLM’i bağlayabilirsin. Her senkrondan sonra indirilen ders dosyaların ve PDF notların her ders için ayrı bir notebook’a eklenir; kaynaklarınla doğrudan çalışır, özet çıkarır veya soru sorabilirsin. “NotebookLM’e ekle” dosyaları istediğin an ekler, “NotebookLM’i aç” notebook’larını açar. Notebook’ta zaten bulunan dosya bir daha eklenmez. NotebookLM’e Google’ın resmî olmayan bir bağlantısıyla ulaşılır; Google NotebookLM’de değişiklik yaparsa çalışmayabilir. Google oturumun bilgisayarında kalır, Ayarlar’daki “Bağlantıyı kes” onu siler ve ders dosyaların kendi Google hesabına gider.
 
 OTURUM AÇIK KALIR
 Uygulama çalışırken Blackboard oturumunu canlı tutar; oturum dolunca okulunun tek oturum açma sayfası üzerinden sessizce yeniden giriş yapar. Okulun şifre ya da iki adımlı doğrulama kodu isterse hiçbir şey doldurulmaz ve her zamanki Giriş yap bildirimi gelir. Ayarlar’dan kapatılabilir.
@@ -106,7 +106,7 @@ Açık, koyu ve sistem temaları; Türkçe ve İngilizce arayüz
 Otomatik senkron: her 30 dakikada, her saat, her 3 saatte ya da yalnızca elle
 Silinenler: klasörden sildiğin dosyaları seçip geri indir
 NotebookLM: her senkrondan sonra dosyalar her ders için ayrı notebook’a eklenir
-Aynı dosyayı iki kez eklemez; notebook’taki kopyaları bulur
+Aynı dosyayı bir notebook’a iki kez eklemez
 Oturum açık kalır: okulunun tek oturum açma sayfasıyla sessiz yeniden giriş
 Güncel dönemi senkronize eder; yeni okulda dersleri onaylatır
 Bilgisayar açılınca arka planda başlayabilir

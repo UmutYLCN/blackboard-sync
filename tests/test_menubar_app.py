@@ -891,7 +891,6 @@ def test_settings_page_is_sections_of_rows(tmp_path):
     from blackboard_sync.menubar.main_window import INNER, SETTINGS_PAD
     from blackboard_sync.menubar.main_window_model import GENERAL, main_status
     from blackboard_sync.menubar.settings_form import SECTION_CALENDAR, SECTIONS, settings_sections
-    from blackboard_sync.notebooklm.store import NotebookLMStatus
 
     window, model, _ = make_window(tmp_path)
     try:
@@ -947,22 +946,6 @@ def test_settings_page_is_sections_of_rows(tmp_path):
         assert str(window.check_updates.accessibilityLabel()) == 'Check for updates automatically'
         assert str(window.url_field.accessibilityLabel()) == "Your school's Blackboard address"
         assert 'Danger zone' in by_text and str(window.uninstall_button.attributedTitle().string()) == 'Uninstall app…'
-
-        # The NotebookLM footer grows with the latest totals and collapses on disconnect.
-        original_height = window.form_height
-        model.notebooklm = NotebookLMStatus(connected=True, finished_at=NOW.isoformat(), skipped=29, modified=31)
-        window.update_status(main_status(model, NOW))
-        with_totals = {text: top for top, text in settings_texts(window)}
-        totals = ("29 files can't go to NotebookLM: their format isn't supported, or they're missing, empty "
-                  "or over 200 MB. "
-                  "31 files changed after they were added; NotebookLM keeps the version it has.")
-        assert with_totals["Disconnect NotebookLM"] < with_totals[totals] < with_totals["Folder"]
-        assert window.form_height > original_height
-        model.notebooklm = NotebookLMStatus()
-        window.update_status(main_status(model, NOW))
-        restored = {text: top for top, text in settings_texts(window)}
-        assert totals not in restored and restored["Folder"] == by_text["Folder"]
-        assert window.form_height == original_height
 
         # Both appearances draw.
         for name in ('NSAppearanceNameAqua', 'NSAppearanceNameDarkAqua'):
@@ -1243,12 +1226,17 @@ def test_pause_stops_a_running_sync_and_resume_syncs_again(menu_app, monkeypatch
 
 
 def test_macos_home_ai_card_sits_under_notebooklm_and_routes_every_state(tmp_path):
+    from AppKit import NSAppearance
     from blackboard_sync import ai_launcher
-    from blackboard_sync.menubar.main_window import GAP
+    from blackboard_sync.menubar.main_window import GAP, LEFT_W
     from blackboard_sync.menubar.main_window_model import main_status
 
     actions = []
     window, model, _ = make_window(tmp_path, on_action=actions.append)
+
+    def shown():
+        return [key for key, button in window.ai_tools.items() if not button.isHidden()]
+
     try:
         signed_in(model)
         window.update_status(main_status(model, NOW))
@@ -1256,37 +1244,67 @@ def test_macos_home_ai_card_sits_under_notebooklm_and_routes_every_state(tmp_pat
         ai = window.ai_card.frame()
         assert ai.origin.y == nlm.origin.y + nlm.size.height + GAP
         assert str(window.ai_title.stringValue()) == 'AI study session'
-        assert str(window.ai_detail.stringValue()) == 'Choose Claude, Gemini or Codex in Settings.'
-        assert str(window.ai_button.title()) == 'Choose' and window.ai_secondary.isHidden()
-        window.target.aiAction_(None)
-        assert actions == ['ai_settings']
+        assert str(window.ai_detail.stringValue()) == 'Looking for AI tools…'
+        assert shown() == [] and window.ai_terminal.isHidden() and window.ai_button.isHidden()
 
-        # Ready state
-        model.apply_settings(tmp_path, school_changed=False, ai_cli='claude', ai_resume=True)
-        model.ai_term = '2026-2027 Güz'
-        model.ai_installed = frozenset({'claude'})
+        # Ready: a logo button per installed tool, and the terminal picker beside them.
+        model.ai_term, model.ai_cli = '2026-2027 Güz', 'codex'
+        model.finish_ai_detection(frozenset({'claude', 'codex'}), frozenset({'terminal', 'iterm2', 'kitty'}))
         window.update_status(main_status(model, NOW))
-        assert str(window.ai_button.title()) == 'Open in Claude Code' and window.ai_button.isEnabled()
+        assert shown() == ['claude', 'codex'] and window.ai_button.isHidden() and window.ai_secondary.isHidden()
         assert '2026-2027 Güz' in str(window.ai_detail.stringValue())
-        window.target.aiAction_(None)
-        assert actions[-1] == 'ai_open'
+        claude, codex = window.ai_tools['claude'], window.ai_tools['codex']
+        for button, label in ((claude, 'Open in Claude Code'), (codex, 'Open in Codex')):
+            assert str(button.accessibilityLabel()) == str(button.toolTip()) == label
+            assert button.image() is not None and button.isEnabled()
+        assert codex.current and not claude.current and codex.image().isTemplate()
+        popup = window.ai_terminal
+        assert [str(title) for title in popup.itemTitles()] == ['Terminal', 'iTerm2', 'kitty']
+        assert str(popup.titleOfSelectedItem()) == 'Terminal' and str(popup.accessibilityLabel()) == 'Terminal'
+        assert claude.frame().origin.x + claude.frame().size.width <= codex.frame().origin.x
+        assert codex.frame().origin.x + codex.frame().size.width <= popup.frame().origin.x
+        assert popup.frame().origin.x + popup.frame().size.width <= LEFT_W
+        window.target.aiTool_(codex)
+        popup.selectItemAtIndex_(2)
+        window.target.aiTerminal_(popup)
+        assert actions == ['ai_open:codex', 'ai_terminal:kitty']
 
-        # CLI missing: both "How to install" and "Try again" pills work
-        model.ai_installed = frozenset()
+        # The chosen terminal is gone: the card says which one is used.
+        model.ai_terminal = 'ghostty'
         window.update_status(main_status(model, NOW))
+        assert str(window.ai_note.stringValue()) == "Ghostty wasn't found. Using Terminal instead."
+        assert not window.ai_note.isHidden()
+        assert window.ai_note.frame().origin.y + window.ai_note.frame().size.height <= claude.frame().origin.y
+        for name in ('NSAppearanceNameAqua', 'NSAppearanceNameDarkAqua'):
+            window.window.setAppearance_(NSAppearance.appearanceNamed_(name))
+            card = window.ai_card
+            rep = card.bitmapImageRepForCachingDisplayInRect_(card.bounds())
+            card.cacheDisplayInRect_toBitmapImageRep_(card.bounds(), rep)
+            assert rep.pixelsHigh() > 0
+
+        model.ai_launching = True
+        window.update_status(main_status(model, NOW))
+        assert not claude.isEnabled() and not popup.isEnabled()
+        model.ai_launching = False
+
+        # No tool: both "How to install" and "Try again" pills work
+        model.finish_ai_detection(frozenset(), model.ai_terminals)
+        window.update_status(main_status(model, NOW))
+        assert shown() == [] and popup.isHidden()
         assert str(window.ai_button.title()) == 'How to install' and not window.ai_secondary.isHidden()
         assert str(window.ai_secondary.title()) == 'Try again'
         window.target.aiAction_(None)
         window.target.aiSecondary_(None)
-        assert actions[-2:] == ['ai_install', 'ai_open']
+        assert actions[-2:] == ['ai_install', 'ai_detect']
 
-        # Folder missing: offers Sync now
-        model.ai_installed = frozenset({'claude'})
+        # Folder missing: offers Sync now under the tools
+        model.finish_ai_detection(frozenset({'claude'}), model.ai_terminals)
         model.ai_result = ai_launcher.LaunchResult(
             ai_launcher.Failure.FOLDER_MISSING, ai_launcher.TOOLS['claude'], tmp_path / 'University' / '2026-2027 Güz',
         )
         window.update_status(main_status(model, NOW))
         assert str(window.ai_button.title()) == 'Sync now' and window.ai_secondary.isHidden()
+        assert window.ai_button.frame().origin.y >= claude.frame().origin.y + claude.frame().size.height
         window.target.aiAction_(None)
         assert actions[-1] == 'sync'
     finally:
@@ -1298,6 +1316,7 @@ def test_menubar_app_wires_ai_card_actions_and_menu_item(menu_app, monkeypatch, 
     from blackboard_sync import ai_launcher
     from blackboard_sync.menubar import app, jobs
     from blackboard_sync.menubar.main_window_model import OVERVIEW
+    from blackboard_sync.settings import load_settings, save_settings
 
     opened_urls, opened_paths, launched = [], [], []
     monkeypatch.setattr(app, 'open_url', opened_urls.append)
@@ -1315,36 +1334,63 @@ def test_menubar_app_wires_ai_card_actions_and_menu_item(menu_app, monkeypatch, 
 
     term_dir = tmp_path / 'dest' / 'University' / '2026-2027 Güz'
     term_dir.mkdir(parents=True)
-    menu_app.settings = replace(menu_app.settings, dest=tmp_path / 'dest', ai_cli='claude', ai_resume=True)
-    menu_app.model.apply_settings(tmp_path / 'dest', school_changed=False, ai_cli='claude', ai_resume=True)
+    menu_app.settings = replace(menu_app.settings, dest=tmp_path / 'dest', ai_resume=True)
+    save_settings(menu_app.config.data_dir, menu_app.settings)
+    menu_app.model.apply_settings(tmp_path / 'dest', school_changed=False, ai_resume=True)
     menu_app.model.ai_term = '2026-2027 Güz'
-
-    # Menu bar includes "Open Claude Code in 2026-2027 Güz".
-    menu_app.refresh()
-    assert 'Open Claude Code in 2026-2027 Güz' in menu_app.menu
 
     # How to install opens vendor docs.
     menu_app.window_action('ai_install')
     assert opened_urls == [ai_launcher.TOOLS['claude'].install_url]
 
+    # Looking for the tools finds them; the menu bar then offers the first one.
+    monkeypatch.setattr(ai_launcher.DETECTOR, 'refresh', dict)
+    monkeypatch.setattr(ai_launcher.TERMINAL_DETECTOR, 'refresh', dict)
+    monkeypatch.setattr(ai_launcher.DETECTOR, 'installed', lambda: frozenset({'claude', 'gemini'}))
+    monkeypatch.setattr(ai_launcher.TERMINAL_DETECTOR, 'installed', lambda: frozenset({'terminal', 'kitty'}))
+    menu_app.window_action('ai_detect')
+    assert menu_app.model.ai_installed == {'claude', 'gemini'}
+    assert 'Open Claude Code in 2026-2027 Güz' in menu_app.menu
+
+    # The picker's choice is remembered at once.
+    menu_app.window_action('ai_terminal:kitty')
+    menu_app.window_action('ai_terminal:warp')  # not a terminal this app knows: ignored
+    assert menu_app.settings.ai_terminal == 'kitty'
+    assert load_settings(menu_app.config.data_dir).ai_terminal == 'kitty'
+
+    # A click on a tool opens it in that terminal, and the menu bar then offers it.
+    def fake_success(ai_cli, resume, config, terminal=''):
+        launched.append((ai_cli, resume, config.dest, terminal))
+        return ai_launcher.LaunchResult(None, ai_launcher.TOOLS[ai_cli], term_dir)
+
+    monkeypatch.setattr(jobs, 'run_ai_launch_guarded', fake_success)
+    menu_app.window_action('ai_open:gemini')
+    assert launched.pop() == ('gemini', True, tmp_path / 'dest', 'kitty') and not opened_paths
+    assert 'Open Gemini CLI in 2026-2027 Güz' in menu_app.menu
+    assert load_settings(menu_app.config.data_dir).ai_cli == 'gemini'
+
     # Terminal failure falls back to opening the folder in Finder and shows Home when triggered from menu.
-    def fake_launch(ai_cli, resume, config):
-        launched.append((ai_cli, resume, config.dest))
+    def fake_launch(ai_cli, resume, config, terminal=''):
+        launched.append((ai_cli, resume, config.dest, terminal))
         return ai_launcher.LaunchResult(
-            ai_launcher.Failure.TERMINAL_FAILED, ai_launcher.TOOLS['claude'], term_dir, 'Terminal failed',
+            ai_launcher.Failure.TERMINAL_FAILED, ai_launcher.TOOLS[ai_cli], term_dir, 'Terminal failed',
         )
 
     monkeypatch.setattr(jobs, 'run_ai_launch_guarded', fake_launch)
     monkeypatch.setattr(menu_app, 'detect_ai_tools', lambda: None)
     menu_app.start_ai_launch(from_menu=True)
-    assert launched == [('claude', True, tmp_path / 'dest')]
+    assert launched == [('gemini', True, tmp_path / 'dest', 'kitty')]
     assert opened_paths == [term_dir]
     assert menu_app.model.ai_result.failure == ai_launcher.Failure.TERMINAL_FAILED
     assert menu_app.windows and menu_app.windows[0].shown[-1] == OVERVIEW
 
     # Re-detecting the tool clears a CLI_MISSING error.
     menu_app.model.ai_result = ai_launcher.LaunchResult(ai_launcher.Failure.CLI_MISSING, ai_launcher.TOOLS['claude'])
-    monkeypatch.setattr(ai_launcher.DETECTOR, 'installed', lambda: frozenset({'claude'}))
     menu_app._ai_detected()
     assert menu_app.model.ai_result is None
+
+    # With no tool installed the menu bar item is gone.
+    monkeypatch.setattr(ai_launcher.DETECTOR, 'installed', lambda: frozenset())
+    menu_app._ai_detected()
+    assert not any('Gemini CLI' in str(title) for title in menu_app.menu.keys())
 

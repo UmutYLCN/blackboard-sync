@@ -30,9 +30,13 @@ DEFAULT_SYNC_INTERVAL_MINUTES = 60
 # The main window's colors (the Windows WebView2 window): follow Windows, or always light or dark.
 THEME_SYSTEM, THEME_LIGHT, THEME_DARK = "system", "light", "dark"
 THEMES = (THEME_SYSTEM, THEME_LIGHT, THEME_DARK)
-# "Yapay zekâ asistanı": the command-line AI tool the term folder opens with (``ai_launcher``); "" is none.
+# "Yapay zekâ asistanı": the command-line AI tools the term folder opens with (``ai_launcher``).
 AI_CLAUDE, AI_GEMINI, AI_CODEX = "claude", "gemini", "codex"
 AI_CLIS = (AI_CLAUDE, AI_GEMINI, AI_CODEX)
+# The terminals Home's AI card can open them in, macOS's then Windows'.
+MACOS_AI_TERMINALS = ("terminal", "iterm2", "ghostty", "wezterm", "kitty", "alacritty")
+WINDOWS_AI_TERMINALS = ("windows_terminal", "powershell", "cmd")
+AI_TERMINALS = MACOS_AI_TERMINALS + WINDOWS_AI_TERMINALS
 
 
 def normalize_theme(value: object) -> str:
@@ -43,6 +47,11 @@ def normalize_theme(value: object) -> str:
 def normalize_ai_cli(value: object) -> str:
     """A known AI tool, else none ("")."""
     return value if value in AI_CLIS else ""
+
+
+def normalize_ai_terminal(value: object) -> str:
+    """A known terminal, else the system's own ("")."""
+    return value if value in AI_TERMINALS else ""
 
 
 def normalize_sync_interval(value: object) -> int:
@@ -72,8 +81,11 @@ class Settings:
     # "Otomatik yeniden giriş": keep the session alive and sign in again in the background (``session_refresh``).
     auto_relogin: bool = True
     notebooklm_auto: bool = True  # add new files to NotebookLM after each sync, once it is connected
-    ai_cli: str = ""  # AI_CLIS or "": the AI tool the term folder opens with
+    # Chosen on Home's AI card, not part of the Settings form: the tool used last ("" none yet)
+    # and the terminal it opens in (AI_TERMINALS, "" the system's own).
+    ai_cli: str = ""
     ai_resume: bool = True  # continue that tool's last session in the folder instead of starting a new one
+    ai_terminal: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -87,6 +99,7 @@ class Settings:
             "notebooklm_auto": self.notebooklm_auto,
             "ai_cli": self.ai_cli,
             "ai_resume": self.ai_resume,
+            "ai_terminal": self.ai_terminal,
         }
 
     @classmethod
@@ -102,6 +115,7 @@ class Settings:
             notebooklm_auto=data.get("notebooklm_auto", True) is not False,
             ai_cli=normalize_ai_cli(data.get("ai_cli")),
             ai_resume=data.get("ai_resume", True) is not False,
+            ai_terminal=normalize_ai_terminal(data.get("ai_terminal")),
         )
 
 

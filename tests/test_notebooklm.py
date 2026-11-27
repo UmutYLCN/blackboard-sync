@@ -3,7 +3,6 @@
 import asyncio
 import json
 import os
-import subprocess
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -11,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-from blackboard_sync.cli import main
 from blackboard_sync.config import Config
 from blackboard_sync.errors import (
     BlackboardSyncError,
@@ -21,9 +19,9 @@ from blackboard_sync.errors import (
     NotebookLMSignInFailed,
     NotebookLMTransient,
 )
-from blackboard_sync.menubar import jobs, main_window_model
-from blackboard_sync.menubar.model import NOTEBOOKLM_DUPLICATES, AppModel
-from blackboard_sync.notebooklm import duplicates, planner, runner, signin, store
+from blackboard_sync.menubar import main_window_model
+from blackboard_sync.menubar.model import AppModel
+from blackboard_sync.notebooklm import planner, runner, signin, store
 from blackboard_sync.notebooklm.planner import CourseScan, FileInfo
 from blackboard_sync.settings import Settings
 from blackboard_sync.state import State
@@ -39,7 +37,6 @@ class Remote:
     id: str
     title: str
     status: str = "ready"
-    created_at: str = ""
 
 
 class FakeGateway:
@@ -50,8 +47,6 @@ class FakeGateway:
         self.sources = {key: list(value) for key, value in (sources or {}).items()}
         self.limit = limit
         self.added: list[tuple[str, str]] = []
-        self.deleted: list[str] = []
-        self.undeletable: set[str] = set()
         self.failures: dict[str, list[Exception]] = {}  # per title, raised before it goes up
         self.land_despite_failure = False
         self.processing = "ready"
@@ -82,12 +77,6 @@ class FakeGateway:
         source = Remote(f"s{len(self.added)}", title, "processing")
         self.sources.setdefault(notebook_id, []).append(source)
         return source.id
-
-    async def delete_source(self, notebook_id, source_id):
-        if source_id in self.undeletable:
-            raise NotebookLMTransient("timed out")
-        self.deleted.append(source_id)
-        self.sources[notebook_id] = [s for s in self.sources[notebook_id] if s.id != source_id]
 
     async def wait_ready(self, notebook_id, source_ids, timeout):
         return {source_id: self.processing for source_id in source_ids}
@@ -1282,7 +1271,7 @@ def test_a_file_already_recorded_keeps_its_entry_but_the_old_copy_is_remembered(
 
     assert state.import_legacy([CS], config.notebooklm_legacy_state) == 0
     assert state.get_file(CS, "a.pdf")["source_id"] == "new"
-    assert state.known_sources(CS)["old"].origin == store.ORIGIN_LEGACY
+    assert state.known_sources(CS) == {"new": "h", "old": "h"}
 
 
 @pytest.mark.parametrize("text", ["not json", "[]", '{"courses": []}', '{"courses": {"C": {"files": 1}}}'])
@@ -1302,276 +1291,10 @@ def test_the_old_state_path_can_be_set(tmp_path):
     assert Config.from_env({"BBSYNC_DATA_DIR": str(tmp_path)}).notebooklm_legacy_state.name == "state.json"
 
 
-# Duplicates: listing, and removing only what is safe to remove.
-
-OLD, NEW = "2026-10-23T10:18:00+00:00", "2026-11-06T10:53:00+00:00"
-
-
-def known(rel="a.pdf", sha="h", origin=store.ORIGIN_APP):
-    return store.KnownSource(rel, sha, origin)
-
-
-def verdicts(sources, record):
-    return [(d.older.id, [(c.id, c.verdict, c.removable) for c in d.newer])
-            for d in duplicates.find_in_notebook(sources, record)]
-
-
-def test_a_newer_identical_copy_this_app_added_can_go():
-    sources = [Remote("new", "a.pdf", created_at=NEW), Remote("old", "Week 1/a.pdf", created_at=OLD)]
-    record = {"old": known(origin=store.ORIGIN_LEGACY), "new": known()}
-    assert verdicts(sources, record) == [("old", [("new", duplicates.IDENTICAL, True)])]
-
-
-def test_a_file_changed_on_blackboard_keeps_both_versions():
-    sources = [Remote("old", "a.pdf", created_at=OLD), Remote("new", "a.pdf", created_at=NEW)]
-    record = {"old": known(sha="before", origin=store.ORIGIN_LEGACY), "new": known(sha="after")}
-    assert verdicts(sources, record) == [("old", [("new", duplicates.CHANGED, False)])]
-
-
-@pytest.mark.parametrize("record", [
-    {},  # nothing here knows them
-    {"old": known()},  # the newer copy is nobody's on this computer
-    {"old": known(), "new": known(origin=store.ORIGIN_ADOPTED)},  # the app found it there
-    {"old": known(), "new": known(origin=store.ORIGIN_LEGACY)},
-])
-def test_a_copy_this_app_did_not_add_is_listed_and_stays(record):
-    sources = [Remote("old", "a.pdf", created_at=OLD), Remote("new", "a.pdf", created_at=NEW)]
-    assert verdicts(sources, record) == [("old", [("new", duplicates.NOT_ADDED_BY_APP, False)])]
-
-
-def test_an_older_copy_with_unknown_content_is_no_ground_for_removing_the_newer():
-    sources = [Remote("hand", "a.pdf", created_at=OLD), Remote("new", "a.pdf", created_at=NEW)]
-    assert verdicts(sources, {"new": known()}) == [("hand", [("new", duplicates.UNVERIFIED, False)])]
-
-
-@pytest.mark.parametrize("older", [
-    Remote("old", "a.pdf", "error", OLD),  # the only good copy would go
-    Remote("old", "a.pdf", "ready", ""),  # no telling which is older
-])
-def test_the_copy_that_stays_must_be_good_and_older(older):
-    sources = [older, Remote("new", "a.pdf", created_at=NEW)]
-    record = {"old": known(origin=store.ORIGIN_LEGACY), "new": known()}
-    assert not any(copy.removable for d in duplicates.find_in_notebook(sources, record) for copy in d.newer)
-
-
-def test_two_different_files_sharing_a_name_are_no_duplicate():
-    sources = [Remote("one", "notes.pdf", created_at=OLD), Remote("two", "notes.pdf", created_at=NEW)]
-    assert verdicts(sources, {"one": known("A/notes.pdf", "h1"), "two": known("B/notes.pdf", "h2")}) == []
-
-
-def test_each_of_two_same_named_files_has_its_own_duplicate():
-    sources = [Remote("b", "notes.pdf", created_at=OLD), Remote("a", "notes.pdf", created_at="2026-10-24T00:00:00+00:00"),
-               Remote("a2", "notes.pdf", created_at=NEW)]
-    record = {"b": known("B/notes.pdf", "h2"), "a": known("A/notes.pdf", "h1", store.ORIGIN_LEGACY),
-              "a2": known("A/notes.pdf", "h1")}
-    assert verdicts(sources, record) == [("a", [("a2", duplicates.IDENTICAL, True)])]
-
-
-def record_pair(config, removable=True):
-    """The live case: the old tool's copy, and this app's newer one of the same file."""
-    state = store.UploadState(store.state_file(config))
-    state.set_notebook(CS, "n1")
-    state.record(CS, "Week 1/a.pdf", notebook_id="n1", source_id="new", size=1, mtime_ns=1, sha256="h")
-    state.save()
-    config.notebooklm_legacy_state.parent.mkdir(exist_ok=True)
-    config.notebooklm_legacy_state.write_text(json.dumps({"courses": {"CSE301 Database": {"files": {
-        "Week 1/a.pdf": {"notebook_id": "n1", "source_id": "old", "size": 1, "mtime_ns": 1,
-                         "sha256": "h" if removable else "older content"}}}}}))
-    return FakeGateway(sources={"n1": [Remote("old", "a.pdf", created_at=OLD),
-                                       Remote("hand", "b.pdf", created_at=OLD),
-                                       Remote("hand2", "b.pdf", created_at=NEW),
-                                       Remote("new", "Week 1/a.pdf", created_at=NEW)]})
-
-
-@pytest.fixture
-def gateway_of(monkeypatch):
-    """Runs the duplicates step against this gateway, without its pause between removals."""
-    monkeypatch.setattr(duplicates, "DELETE_DELAY_SECONDS", 0)
-
-    def use(gateway):
-        async def opener(_config):
-            return gateway
-
-        monkeypatch.setattr(runner, "open_gateway", opener)
-        return gateway
-
-    return use
-
-
-def test_listing_deletes_nothing(config, gateway_of):
-    gateway = gateway_of(record_pair(config))
-
-    report = duplicates.find(config)
-
-    assert report.status == "ok" and not gateway.deleted
-    assert report.as_dict()["duplicates"] == 2 and report.as_dict()["removable"] == 1
-    assert gateway.closed
-
-
-def test_removing_takes_only_the_newer_copy_and_the_file_stays_known(config, gateway_of):
-    gateway = gateway_of(record_pair(config))
-
-    report = duplicates.remove(config, ["new", "old", "hand", "hand2"])
-
-    assert gateway.deleted == ["new"]
-    assert report.removed == ["CSE301 Database/Week 1/a.pdf"]
-    entry = store.UploadState.load(store.state_file(config)).get_file(CS, "Week 1/a.pdf")
-    assert entry["source_id"] == "old" and entry["adopted"]
-
-
-def test_a_changed_file_is_not_removed_even_when_asked(config, gateway_of):
-    gateway = gateway_of(record_pair(config, removable=False))
-
-    duplicates.remove(config, ["new"])
-
-    assert not gateway.deleted
-
-
-def test_a_failed_removal_is_reported_and_leaves_the_record(config, gateway_of):
-    gateway = gateway_of(record_pair(config))
-    gateway.undeletable.add("new")
-
-    report = duplicates.remove(config, ["new"])
-
-    assert report.failed and not report.removed
-    assert store.UploadState.load(store.state_file(config)).get_file(CS, "Week 1/a.pdf")["source_id"] == "new"
-
-
-def test_removing_a_copy_does_not_bring_the_file_back(config, gateway_of):
-    write_state(config, [CS], [put(config, CS, "Week 1/a.pdf")])
-    gateway = gateway_of(record_pair(config))
-    gateway.notebooks = [Remote("n1", "CSE301 Database")]
-    duplicates.remove(config, ["new"])
-
-    run(config, gateway)
-
-    assert not gateway.added
-
-
-def test_duplicates_wait_for_a_running_sync(config, gateway_of):
-    gateway_of(FakeGateway())
-    with run_lock(store.lock_file(config)):
-        assert duplicates.find(config).status == "locked"
-
-
-def test_duplicates_need_a_session(config, gateway_of):
-    gateway_of(FakeGateway())
-    store.session_file(config).unlink()
-    assert duplicates.find(config).status == "login_required"
-
-
-def cli(config, monkeypatch, *arguments, tty=False, answer=""):
-    monkeypatch.setattr("sys.stdin.isatty", lambda: tty, raising=False)
-    monkeypatch.setattr("builtins.input", lambda _prompt: answer)
-    monkeypatch.setenv("BBSYNC_NOTEBOOKLM_LEGACY_STATE", str(config.notebooklm_legacy_state))
-    return main(["--data-dir", str(config.data_dir), "notebooklm", *arguments])
-
-
-def test_the_duplicates_command_lists_as_json_and_deletes_nothing(config, monkeypatch, capsys, gateway_of):
-    gateway = gateway_of(record_pair(config))
-
-    assert cli(config, monkeypatch, "duplicates", "--json") == 0
-
-    report = json.loads(capsys.readouterr().out)
-    assert report["removable"] == 1 and not gateway.deleted
-    copy = report["courses"][0]["duplicates"][0]
-    assert copy["older"]["id"] == "old" and copy["newer"][0]["id"] == "new"
-
-
-def test_the_duplicates_command_says_which_copy_is_which(config, monkeypatch, capsys, gateway_of):
-    gateway_of(record_pair(config))
-    assert cli(config, monkeypatch, "duplicates") == 0
-    out = capsys.readouterr().out
-    assert "a.pdf" in out and "2026-10-23" in out and "2026-11-06" in out and "can be removed" in out
-
-
-def test_removing_from_a_script_needs_yes(config, monkeypatch, capsys, gateway_of):
-    gateway = gateway_of(record_pair(config))
-
-    assert cli(config, monkeypatch, "remove-duplicates") != 0
-
-    assert not gateway.deleted
-
-
-@pytest.mark.parametrize("answer, deleted", [("", []), ("n", []), ("y", ["new"])])
-def test_removing_asks_first(config, monkeypatch, capsys, gateway_of, answer, deleted):
-    gateway = gateway_of(record_pair(config))
-    cli(config, monkeypatch, "remove-duplicates", tty=True, answer=answer)
-    assert gateway.deleted == deleted
-
-
-def test_yes_removes_only_the_named_copies(config, monkeypatch, capsys, gateway_of):
-    gateway = gateway_of(record_pair(config))
-    assert cli(config, monkeypatch, "remove-duplicates", "--yes", "--source", "other") == 0
-    assert not gateway.deleted
-    assert cli(config, monkeypatch, "remove-duplicates", "--yes", "--source", "new") == 0
-    assert gateway.deleted == ["new"]
-
-
-def test_the_gateway_reads_the_age_of_a_source_and_deletes_through_the_library():
-    gateway_mod = gateway_module()
-    deleted = []
-
-    class Sources:
-        async def list(self, notebook_id):
-            status = type("Status", (), {"name": "READY"})
-            when = datetime(2026, 10, 23, 10, 18, tzinfo=timezone.utc)
-            return [type("S", (), {"id": "s1", "title": "a.pdf", "status": status, "created_at": when})]
-
-        async def delete(self, notebook_id, source_id):
-            deleted.append((notebook_id, source_id))
-
-    gateway = gateway_mod.Gateway(Path("session.json"))
-    gateway._client = type("Client", (), {"sources": Sources()})
-
-    async def scenario():
-        assert (await gateway.list_sources("n1"))[0].created_at == "2026-10-23T10:18:00+00:00"
-        await gateway.delete_source("n1", "s1")
-
-    asyncio.run(scenario())
-    assert deleted == [("n1", "s1")]
-
-
-def test_the_card_says_what_was_held_back_and_when_it_looks_for_duplicates(tmp_path):
+def test_the_card_says_what_was_held_back(tmp_path):
     model = AppModel(Settings(base_url="https://bb.example.edu", dest=tmp_path), datetime.now(timezone.utc))
     model.notebooklm = store.NotebookLMStatus(connected=True, finished_at="2026-11-06T10:00:00+00:00", held=2)
     assert "2 held back" in main_window_model.notebooklm_card(model, datetime.now(timezone.utc)).warning_counts
-    assert model.begin_notebooklm(NOTEBOOKLM_DUPLICATES)
-    card = main_window_model.notebooklm_card(model, datetime.now(timezone.utc))
-    assert card.running and card.detail == main_window_model.T_NOTEBOOKLM_DUPLICATES_RUNNING
-
-
-def test_the_duplicates_window_lists_both_copies_and_only_offers_what_can_go():
-    copy = {"created_at": NEW, "verdict": "changed", "removable": False, "id": "x"}
-    report = {"duplicates": 2, "courses": [
-        {"course": "CSE301", "duplicates": [
-            {"name": "a.pdf", "older": {"created_at": OLD}, "newer": [copy]},
-            {"name": "b.pdf", "older": {"created_at": OLD},
-             "newer": [{**copy, "verdict": "identical", "removable": True, "id": "y"}]}]},
-        {"course": "Empty", "duplicates": []}]}
-
-    assert main_window_model.removable_ids(report) == ["y"]
-    assert main_window_model.duplicates_title(report).startswith("2 ")
-    text = main_window_model.duplicates_text(report)
-    assert "CSE301" in text and "2026-10-23" in text and "2026-11-06" in text and "Empty" not in text
-    assert main_window_model.duplicates_title({"duplicates": 0}) == "No duplicates in your notebooks."
-
-
-def test_the_app_lists_duplicates_through_the_child_and_survives_its_failure(monkeypatch):
-    calls = []
-
-    def fake_run(command, **_options):
-        calls.append(command)
-        return subprocess.CompletedProcess(command, 0, stdout='noise\n{"status": "ok"}\n', stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    assert jobs.run_notebooklm_duplicates() == {"status": "ok"}
-    assert jobs.run_notebooklm_duplicates(["a", "b"]) == {"status": "ok"}
-    assert calls[0][-3:] == ["notebooklm", "duplicates", "--json"]
-    assert calls[1][-4:] == ["--source", "a", "--source", "b"] and "--yes" in calls[1]
-
-    monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: subprocess.CompletedProcess([], 1, stdout="", stderr=""))
-    assert jobs.run_notebooklm_duplicates()["status"] == "error"
 
 
 def test_a_course_without_a_term_is_never_scanned_unless_ticked(config):

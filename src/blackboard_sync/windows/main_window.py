@@ -8,11 +8,13 @@ Closing only hides the window: the tray icon, the
 timers and a running job go on, and the taskbar button leaves with the window.
 """
 
+import base64
+import io
 import logging
 import sys
 from pathlib import Path
 
-from blackboard_sync import (announcements, courses, deadlines, runtime, schools, term_confirm, updater,
+from blackboard_sync import (ai_launcher, announcements, courses, deadlines, runtime, schools, term_confirm, updater,
                              uninstall)
 from . import package
 from blackboard_sync.menubar import main_window_model as main
@@ -55,6 +57,8 @@ COMPACT_SCENE = (120, 70)  # in Home's status card while a sync runs
 ROW_WRAP = 360  # the left text of a row wraps here first, then at the width the window leaves it
 ROW_MIN_WRAP = 120
 NOTEBOOKLM_WRAP = 420  # Home's NotebookLM card
+AI_LOGO_SIZE = 24  # the logos on the AI card's buttons
+AI_CURRENT_BORDER = "#2563eb"  # around the tool used last
 DANGER_BORDER = "#d9534f"
 # In the Microsoft Store build the Store owns updates and removal: no check box, no buttons.
 PACKAGED_HIDDEN_ROWS = ("check_updates",)
@@ -63,7 +67,6 @@ ROW_ATTRIBUTES = {
     "account": ("account_button", "account_label", None),
     "interval": ("interval_dropdown", None, None),
     "language": ("language_dropdown", None, None),
-    "ai_cli": ("ai_dropdown", None, None),
     "update": ("update_button", "version_label", None),
     "uninstall": ("uninstall_button", None, None),
 }
@@ -134,6 +137,49 @@ def _badge_trailing_text(course_title: str, when: str, available_px: float) -> s
     return f"{clipped.rstrip()}…{suffix}"
 
 
+def _logo_image(master, key: str, dark: bool):
+    """The tool's logo as a Tk image; None where it cannot be drawn (the button shows the name)."""
+    try:
+        import tkinter as tk
+        from PIL import Image
+
+        with Image.open(ai_launcher.logo_path(key, dark)) as picture:
+            small = picture.convert("RGBA").resize((AI_LOGO_SIZE, AI_LOGO_SIZE), Image.LANCZOS)
+        data = io.BytesIO()
+        small.save(data, "PNG")
+        return tk.PhotoImage(master=master, data=base64.b64encode(data.getvalue()))
+    except Exception:
+        log.warning("Could not draw the %s logo", key, exc_info=True)
+        return None
+
+
+class Tooltip:
+    """``text`` under a widget while the pointer is over it (Tk has no tooltips of its own)."""
+
+    def __init__(self, widget, text: str = ""):
+        self.widget, self.text, self.window = widget, text, None
+        widget.bind("<Enter>", self.show)
+        widget.bind("<Leave>", self.hide)
+        widget.bind("<ButtonPress>", self.hide)
+
+    def show(self, _event=None):
+        if self.window is not None or not self.text:
+            return
+        import tkinter as tk
+        from tkinter import ttk
+
+        self.window = tk.Toplevel(self.widget)
+        self.window.wm_overrideredirect(True)
+        below = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self.window.wm_geometry(f"+{self.widget.winfo_rootx()}+{below}")
+        ttk.Label(self.window, text=self.text, padding=(6, 3), relief="solid", borderwidth=1).pack()
+
+    def hide(self, _event=None):
+        if self.window is not None:
+            self.window.destroy()
+            self.window = None
+
+
 class MainWindow:
     def __init__(self, root, values, status, on_submit, on_action, on_close, on_values=None,
                  on_open=lambda path: None, on_courses=lambda: (),
@@ -192,9 +238,6 @@ class MainWindow:
         self.auto_relogin = tk.BooleanVar(value=values.auto_relogin)
         self.notebooklm_auto = tk.BooleanVar(value=values.notebooklm_auto)
         self.ai_resume = tk.BooleanVar(value=values.ai_resume)
-        # "Open with" shows each tool's install state, which changes the menu's texts: the choice is its index.
-        self.ai_titles = [title for _, title in form.ai_cli_choices(status.form.ai_installed)]
-        self.ai_cli = tk.StringVar(value=self.ai_titles[form.ai_cli_index(values.ai_cli)])
         self.interval = tk.StringVar(value=form.interval_title(values.sync_interval_minutes))
         self.language = tk.StringVar(value=form.language_title(values.language))
         self.section_var = tk.StringVar(value=main.OVERVIEW)
@@ -212,12 +255,12 @@ class MainWindow:
             self.pages[name] = page
             build(page)
         for variable in (self.url, self.dest, self.autostart, self.check_updates, self.interval, self.language,
-                         self.auto_relogin, self.notebooklm_auto, self.ai_cli, self.ai_resume):
+                         self.auto_relogin, self.notebooklm_auto, self.ai_resume):
             variable.trace_add("write", lambda *_args: self.changed())
         # The wheel scrolls the section in view wherever the pointer is; over a
         # list it scrolls too instead of changing the choice.
         window.bind("<MouseWheel>", self.wheel)
-        for combobox in (self.interval_dropdown, self.language_dropdown, self.ai_dropdown):
+        for combobox in (self.interval_dropdown, self.language_dropdown, self.ai_picker):
             combobox.bind("<MouseWheel>", lambda e: self.wheel(e) or "break")
         self._build_topbar(window)
         self.update_status(status)
@@ -456,6 +499,7 @@ class MainWindow:
 
     def _build_ai_card(self, parent):
         """Under the NotebookLM card: the same AI study session card as macOS and WebView2, in plain Tk."""
+        import tkinter as tk
         from tkinter import ttk
 
         card = ttk.LabelFrame(parent, text=main.T_AI_TITLE, padding=(14, 8))
@@ -464,20 +508,78 @@ class MainWindow:
         self.ai_card_frame = card
         self.ai_detail = ttk.Label(card, foreground=MUTED, wraplength=NOTEBOOKLM_WRAP)
         self.ai_detail.grid(row=0, column=0, sticky="w")
+        self.ai_note = ttk.Label(card, foreground=WARNING, wraplength=NOTEBOOKLM_WRAP)
+        self.ai_note.grid(row=1, column=0, sticky="w")
+        # A button per tool (shown while it is installed), in a frame whose border marks the one used last.
+        self.ai_row = ttk.Frame(card)
+        self.ai_row.grid(row=2, column=0, sticky="w", pady=(8, 0))
+        background = background_of(card)
+        dark = is_dark(background)
+        self.ai_tools, self.ai_images = {}, []
+        for key, tool in ai_launcher.TOOLS.items():
+            border = tk.Frame(self.ai_row, highlightthickness=2, highlightbackground=background,
+                              highlightcolor=background)
+            image = _logo_image(border, key, dark)
+            picture = {"image": image, "compound": "image"} if image is not None else {}
+            button = ttk.Button(border, text=tool.name,
+                                command=lambda k=key: self.on_action(main.AI_OPEN_PREFIX + k), **picture)
+            button.pack()
+            self.ai_images.append(image)  # Tk drops an image that nothing holds on to
+            self.ai_tools[key] = (border, button, Tooltip(button), background)
+        self.ai_terminal = tk.StringVar(value="")
+        self.ai_picker = ttk.Combobox(self.ai_row, textvariable=self.ai_terminal, width=18, state="readonly")
+        self.ai_picker.bind("<<ComboboxSelected>>", self.ai_terminal_picked)
+        Tooltip(self.ai_picker, main.T_AI_TERMINAL)
         buttons = ttk.Frame(card)
-        buttons.grid(row=1, column=0, sticky="w", pady=(8, 0))
+        buttons.grid(row=3, column=0, sticky="w", pady=(8, 0))
         self.ai_button = PillButton(buttons, command=lambda: self.status.ai.action and self.on_action(self.status.ai.action))
         self.ai_button.pack(side="left")
         self.ai_secondary = PillButton(
             buttons, command=lambda: self.status.ai.secondary_action and self.on_action(self.status.ai.secondary_action))
         self.ai_secondary.pack(side="left", padx=(8, 0))
 
+    def ai_terminal_picked(self, _event=None):
+        for key, name in self.status.ai.terminals:
+            if name == self.ai_terminal.get():
+                self.on_action(main.AI_TERMINAL_PREFIX + key)
+
     def _draw_ai_card(self):
         card = self.status.ai
         self.ai_card_frame.configure(text=card.title)
         self.ai_detail.configure(text=card.detail, foreground=WARNING if card.warning else MUTED)
+        self.ai_note.configure(text=card.note)
+        if card.note:
+            self.ai_note.grid()
+        else:
+            self.ai_note.grid_remove()
+        state = "normal" if card.tools_enabled else "disabled"
+        shown = {tool.key: tool for tool in card.tools}
+        for border, *_ in self.ai_tools.values():
+            border.pack_forget()
+        self.ai_picker.pack_forget()
+        for key, (border, button, tooltip, background) in self.ai_tools.items():
+            tool = shown.get(key)
+            if tool is None:
+                continue
+            tooltip.text = tool.label
+            button.configure(state=state)
+            color = AI_CURRENT_BORDER if tool.current else background
+            border.configure(highlightbackground=color, highlightcolor=color)
+            border.pack(side="left", padx=(0, 6))
+        if shown and card.terminals:
+            names = [name for _, name in card.terminals]
+            self.ai_terminal.set(dict(card.terminals)[card.terminal])
+            self.ai_picker.configure(values=names, state="readonly" if card.tools_enabled else "disabled")
+            self.ai_picker.pack(side="left", padx=(6, 0))
+        if shown:
+            self.ai_row.grid()
+        else:
+            self.ai_row.grid_remove()
         self.ai_button.configure(text=card.action_title, state="normal" if card.enabled else "disabled")
+        self.ai_button.pack_forget()
         self.ai_secondary.pack_forget()
+        if card.action:
+            self.ai_button.pack(side="left")
         if card.secondary_action:
             self.ai_secondary.configure(text=card.secondary_title,
                                         state="normal" if card.secondary_enabled else "disabled")
@@ -675,10 +777,6 @@ class MainWindow:
             ttk.Label(frame, text=section.footer, foreground=MUTED, wraplength=WRAP).grid(
                 row=row, column=0, sticky="w", pady=(4, 0))
             row += 1
-        if section.key == form.SECTION_NOTEBOOKLM:
-            self.notebooklm_settings_totals = ttk.Label(frame, foreground=MUTED, wraplength=WRAP)
-            self.notebooklm_settings_totals.grid(row=row, column=0, sticky="w", pady=(4, 0))
-            row += 1
         return row
 
     def _card(self, frame, danger):
@@ -741,15 +839,14 @@ class MainWindow:
         variables = {"base_url": self.url, "dest": self.dest, "autostart": self.autostart,
                      "check_updates": self.check_updates, "interval": self.interval, "language": self.language,
                      "auto_relogin": self.auto_relogin,
-                     "notebooklm_auto": self.notebooklm_auto, "ai_cli": self.ai_cli, "ai_resume": self.ai_resume}
+                     "notebooklm_auto": self.notebooklm_auto, "ai_resume": self.ai_resume}
         if kind == form.CONTROL_FIELD:
             if key == "base_url":  # typing a school's name offers the known schools
                 return ttk.Combobox(frame, textvariable=variables[key], width=34, values=schools.suggestions())
             return ttk.Entry(frame, textvariable=variables[key], width=26 if definition.button else 34)
         if kind == form.CONTROL_POPUP:
             choices = {"interval": [title for _, title in form.INTERVAL_OPTIONS],
-                       "language": [name for _, name in form.LANGUAGE_OPTIONS],
-                       "ai_cli": self.ai_titles}.get(key, [])
+                       "language": [name for _, name in form.LANGUAGE_OPTIONS]}.get(key, [])
             return ttk.Combobox(frame, textvariable=variables[key], width=24, values=choices,
                                 state="readonly" if choices else "disabled")
         if kind == form.CONTROL_SWITCH:
@@ -757,7 +854,6 @@ class MainWindow:
         commands = {"account": self.account_pressed,
                     "update": lambda: self.on_action(self.status.form.update_action),
                     "uninstall": lambda: self.on_action("uninstall"),
-                    "notebooklm_duplicates": lambda: self.on_action("notebooklm_duplicates"),
                     "notebooklm_disconnect": lambda: self.on_action("notebooklm_disconnect")}
         style = self._danger_button_style() if danger else None
         options = {"style": style} if style else {}
@@ -883,11 +979,9 @@ class MainWindow:
 
     def values(self):
         minutes = next((m for m, title in form.INTERVAL_OPTIONS if title == self.interval.get()), 60)
-        ai_cli = form.ai_cli_value(self.ai_titles.index(self.ai_cli.get()) if self.ai_cli.get() in self.ai_titles
-                                   else -1)
         return form.FormValues(self.url.get(), self.dest.get(), self.autostart.get(),
                                self.check_updates.get(), minutes, form.language_code(self.language.get()),
-                               self.auto_relogin.get(), self.notebooklm_auto.get(), ai_cli, self.ai_resume.get())
+                               self.auto_relogin.get(), self.notebooklm_auto.get(), self.ai_resume.get())
 
     def set_values(self, values):
         """Show ``values`` as what is saved: the bar goes away."""
@@ -900,7 +994,6 @@ class MainWindow:
             self.auto_relogin.set(values.auto_relogin)
             self.notebooklm_auto.set(values.notebooklm_auto)
             self.ai_resume.set(values.ai_resume)
-            self.ai_cli.set(self.ai_titles[form.ai_cli_index(values.ai_cli)])
             self.interval.set(form.interval_title(values.sync_interval_minutes))
             self.language.set(form.language_title(values.language))
         finally:
@@ -1022,36 +1115,13 @@ class MainWindow:
                                 fill=WARNING if card.warning else AVATAR_TEXT)
         # Genel
         form_status = status.form
-        totals = form_status.notebooklm_totals
-        self.notebooklm_settings_totals.configure(text=totals)
-        if totals:
-            self.notebooklm_settings_totals.grid()
-        else:
-            self.notebooklm_settings_totals.grid_remove()
         for key, state in form.row_states(form_status).items():
             if key.startswith("google_calendar"):
                 continue
             self._apply_row_state(key, state)
-        for key in ("notebooklm_duplicates", "notebooklm_disconnect"):
-            self._apply_row_state(key, form.notebooklm_disconnect_state(form_status))
-        self._retitle_ai_choices(form_status.ai_installed)
+        self._apply_row_state("notebooklm_disconnect", form.notebooklm_disconnect_state(form_status))
         self._animate()
         self.refresh_announcements()
-
-    def _retitle_ai_choices(self, installed):
-        """Show in "Open with" which tools are installed, keeping the choice (and the unsaved state)."""
-        titles = [title for _, title in form.ai_cli_choices(installed)]
-        if titles == self.ai_titles:
-            return
-        index = self.ai_titles.index(self.ai_cli.get()) if self.ai_cli.get() in self.ai_titles else 0
-        self.ai_titles = titles
-        if getattr(self, "ai_dropdown", None) is not None:
-            self.ai_dropdown.configure(values=titles)
-        loading, self._loading = self._loading, True
-        try:
-            self.ai_cli.set(titles[index])
-        finally:
-            self._loading = loading
 
     def _build_calendar(self, page):
         from tkinter import ttk
@@ -1365,46 +1435,6 @@ def ask_dest_choice(parent, old, new, files):
     dialog.grab_set()
     dialog.wait_window()
     return answer[0] if answer else None
-
-
-def ask_notebooklm_duplicates(parent, title, text, remove):
-    """What is there twice, in a box that scrolls; True for ``remove``, the button of any copy that can go."""
-    import tkinter as tk
-    from tkinter import ttk
-
-    dialog = tk.Toplevel(parent)
-    dialog.title(title)
-    dialog.transient(parent)
-    answer = []
-
-    def confirm():
-        answer.append(True)
-        dialog.destroy()
-
-    frame = ttk.Frame(dialog, padding=20)
-    frame.grid(sticky="nsew")
-    ttk.Label(frame, text=title, font=HEADING_FONT, wraplength=520).grid(sticky="w", pady=(0, 8))
-    box = ttk.Frame(frame)
-    box.grid(sticky="nsew", pady=(0, 16))
-    lines = tk.Text(box, width=70, height=16, wrap="word", relief="flat")
-    lines.insert("1.0", text)
-    lines.configure(state="disabled")
-    lines.pack(side="left", fill="both", expand=True)
-    bar = ttk.Scrollbar(box, command=lines.yview)
-    bar.pack(side="right", fill="y")
-    lines.configure(yscrollcommand=bar.set)
-    buttons = ttk.Frame(frame)
-    buttons.grid(sticky="e")
-    close = ttk.Button(buttons, text=tr("Close"), command=dialog.destroy)
-    close.pack(side="left", padx=4)
-    if remove:
-        ttk.Button(buttons, text=remove, command=confirm).pack(side="left", padx=4)
-    dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
-    dialog.bind("<Escape>", lambda _e: dialog.destroy())
-    close.focus_set()
-    dialog.grab_set()
-    dialog.wait_window()
-    return bool(answer)
 
 
 FIRST_COURSES_VISIBLE = 12  # more courses than this scroll

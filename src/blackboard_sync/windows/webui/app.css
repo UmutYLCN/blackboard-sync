@@ -495,6 +495,26 @@ button, input, select { font: inherit; color: inherit; }
 .ai-title { margin: 0; font: 400 19px/1.25 var(--font-display); letter-spacing: -0.01em; }
 .ai-detail { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 .ai-detail.warning { color: var(--warning); }
+.ai-note { margin: 4px 0 0; color: var(--caution); font-size: 12.5px; }
+.ai-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.ai-tool {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+.ai-tool:not(:disabled):hover { background: var(--surface-press); }
+.ai-tool.current { border-color: var(--accent); }
+.ai-tool:disabled { opacity: 0.45; cursor: default; }
+/* Each tool's picture comes from webui_page.logo_styles. */
+.ai-logo { width: 24px; height: 24px; background: center / contain no-repeat; }
+.ai-tools .select { margin-left: 4px; max-width: 100%; }
 .ai-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -730,18 +750,6 @@ button, input, select { font: inherit; color: inherit; }
 .dialog-title { margin: 0 0 10px; font: 600 20px/1.3 var(--font-display); }
 .dialog-message { margin: 0; color: var(--text-2); white-space: pre-line; }
 .dialog-detail { margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13px; word-break: break-all; }
-.dialog-list {
-  margin: 0;
-  padding: 10px 12px;
-  max-height: 280px;
-  overflow: auto;
-  border-radius: 10px;
-  background: var(--surface-2);
-  color: var(--text-2);
-  font: 13px/1.5 var(--font);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 .dialog-choices {
   margin: 14px 0 0;
   padding: 4px 12px;

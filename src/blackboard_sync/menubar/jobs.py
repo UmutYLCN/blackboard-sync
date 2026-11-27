@@ -44,7 +44,7 @@ from blackboard_sync.menubar.model import (
     sync_arguments,
 )
 from blackboard_sync.session import write_private_json, load_session
-from blackboard_sync.settings import Settings, load_settings
+from blackboard_sync.settings import Settings, load_settings, save_settings
 from blackboard_sync.state import State
 from blackboard_sync.system import sync_root, try_lock
 
@@ -356,21 +356,6 @@ def run_notebooklm_guarded(config: Config, action: str, settings: Settings, auto
         return replace(notebooklm_store.status(config), error=True, message=str(exc))
 
 
-def run_notebooklm_duplicates(source_ids: list[str] | None = None, runner: Runner | None = None) -> dict:
-    """List the duplicates, or remove these confirmed copies; the child's result, whatever happened."""
-    arguments = ["notebooklm", "duplicates", "--json"]
-    if source_ids is not None:
-        arguments = ["notebooklm", "remove-duplicates", "--json", "--yes"]
-        arguments += [argument for source_id in source_ids for argument in ("--source", source_id)]
-    try:
-        proc = (runner or subprocess.run)(cli_command(*arguments), stdin=subprocess.DEVNULL, capture_output=True,
-                                          text=True, timeout=NOTEBOOKLM_TIMEOUT)
-        report = json.loads(proc.stdout.strip().splitlines()[-1])
-    except (OSError, subprocess.SubprocessError, ValueError, IndexError) as exc:
-        log.exception("NotebookLM duplicates job failed")
-        return {"status": "error", "message": str(exc)}
-    return report if isinstance(report, dict) else {"status": "error", "message": ""}
-
 
 def run_login_guarded(settings: Settings) -> tuple[bool, str]:
     """``run_login`` that turns any unexpected exception into a failed login."""
@@ -399,10 +384,22 @@ def refresh_ai_term(config: Config, model: AppModel) -> None:
         log.warning("Could not read the current term folder: %s", exc)
 
 
-def run_ai_launch_guarded(ai_cli: str, resume: bool, config: Config) -> ai_launcher.LaunchResult:
+def save_ai_choice(config: Config, settings: Settings) -> None:
+    """Keep what was chosen on Home's AI card (the tool used last, the terminal), apart from the
+    Settings form; before the first Save it waits for it. Never raises."""
+    if saved_settings(config) is None:
+        return
+    try:
+        save_settings(config.data_dir, settings)
+    except OSError as exc:
+        log.warning("Could not save the AI tool and terminal: %s", exc)
+
+
+def run_ai_launch_guarded(ai_cli: str, resume: bool, config: Config,
+                          terminal: str = "") -> ai_launcher.LaunchResult:
     """``ai_launcher.launch`` for a worker thread: it always reports back, and never raises."""
     try:
-        return ai_launcher.launch(ai_cli, resume, config)
+        return ai_launcher.launch(ai_cli, resume, config, terminal=terminal)
     except Exception as exc:
         log.exception("AI launch failed")
         return ai_launcher.LaunchResult(ai_launcher.Failure.TERMINAL_FAILED, ai_launcher.TOOLS.get(ai_cli),
@@ -511,6 +508,7 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
         auto_relogin=settings.auto_relogin,
         ai_cli=settings.ai_cli,
         ai_resume=settings.ai_resume,
+        ai_terminal=settings.ai_terminal,
         updates=UpdateState.load((saved or {}).get("updates"), now),
         recent_seen=RecentSeen((saved or {}).get("recent_seen")),
     )

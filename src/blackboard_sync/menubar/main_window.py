@@ -63,7 +63,6 @@ from AppKit import (
     NSTextAlignmentCenter,
     NSTextAlignmentRight,
     NSTextField,
-    NSTextView,
     NSView,
     NSViewHeightSizable,
     NSViewMinYMargin,
@@ -81,13 +80,15 @@ from AppKit import (
 )
 from Foundation import NSURL, NSMakeRect, NSObject, NSTimer, NSRunLoop, NSRunLoopCommonModes
 
-from blackboard_sync import courses, deadlines, schools, term_confirm
+from blackboard_sync import ai_launcher, courses, deadlines, schools, term_confirm
 from blackboard_sync.menubar.main_window_model import (
     ACTIVITY,
     AI_ATTENTION,
     AI_LAUNCHING,
     AI_OFF,
+    AI_OPEN_PREFIX,
     AI_READY,
+    AI_TERMINAL_PREFIX,
     COURSES,
     CALENDAR,
     COURSE_PALETTE,
@@ -107,6 +108,7 @@ from blackboard_sync.menubar.main_window_model import (
     STATE_PAUSED,
     STATE_SYNCED,
     T_ACTIVITY_EMPTY,
+    T_AI_TERMINAL,
     T_AI_TITLE,
     T_ALL_GOOD,
     T_ALL_GOOD_DETAIL,
@@ -147,7 +149,7 @@ from blackboard_sync.menubar.main_window_model import (
     reopen_hint,
 )
 from blackboard_sync.menubar.model import T_RECENT_EMPTY
-from blackboard_sync.i18n import ntr, tr
+from blackboard_sync.i18n import tr
 from blackboard_sync import announcements
 from blackboard_sync.menubar.main_window_model import ANNOUNCEMENTS
 from blackboard_sync.menubar.settings_form import (
@@ -172,9 +174,6 @@ from blackboard_sync.menubar.settings_form import (
     T_URL_PLACEHOLDER,
     FormValues,
     RowState,
-    ai_cli_choices,
-    ai_cli_index,
-    ai_cli_value,
     dest_change_message,
     interval_title,
     language_code,
@@ -182,13 +181,12 @@ from blackboard_sync.menubar.settings_form import (
     notebooklm_disconnect_state,
     row_states,
     calendar_presentation,
-    SECTION_NOTEBOOKLM,
     settings_sections,
     window_height,
 )
 from blackboard_sync.menubar.sync_scene_view import SyncSceneView, reduce_motion
 from blackboard_sync.menubar.presentation import configure_main_window, present_main_window
-from blackboard_sync.settings import display_path
+from blackboard_sync.settings import AI_CLIS, AI_CODEX, display_path
 
 # The window keeps its width; only the height follows the screen and the student.
 WIDTH = 960
@@ -213,7 +211,7 @@ ROW_MIN = 56
 SECTION_GAP = 26
 CONTROL_GAP = 16  # between a row's text and its control
 FIELD_WIDTH, FIELD_WITH_BUTTON = 300, 230
-POPUP_WIDTH = {"interval": 190, "language": 160, "ai_cli": 220}
+POPUP_WIDTH = {"interval": 190, "language": 160}
 AVATAR = 34  # the sidebar's account card
 SCENE_HEIGHT = 84  # the small illustration in Home's status card while a sync runs
 UPDATE_BANNER_HEIGHT = 86
@@ -227,6 +225,7 @@ NOTEBOOKLM_LINE = 20  # height of each visible text or progress line
 NOTEBOOKLM_FADE = 0.3  # seconds the card takes from one state to the next
 ICON_SIZE = 28  # the state symbol beside "Up to date", like Drive's cloud
 PILL_H = 36  # Drive's rounded "View all" buttons
+AI_TOOL_SIZE, AI_LOGO_SIZE = 44, 24  # the AI card's square buttons and the logos on them
 HOME_ROW = 54  # a notification or due-date row on Home
 CTRL = 36  # the round buttons at the top right
 CTRL_Y = 20
@@ -332,6 +331,46 @@ def _pill_view(title: str, target, action: str, x: float, y: float, neutral: boo
     return button
 
 
+class _LogoButton(NSButton):
+    """A square button with an AI tool's logo; the tool used last has an accent border."""
+
+    def drawRect_(self, rect):
+        size = self.bounds().size
+        shape = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+            NSMakeRect(1, 1, size.width - 2, size.height - 2), 10, 10)
+        NSColor.labelColor().colorWithAlphaComponent_(0.16 if self.isHighlighted() else 0.07).setFill()
+        shape.fill()
+        if getattr(self, "current", False):
+            NSColor.controlAccentColor().setStroke()
+            shape.setLineWidth_(1.5)
+            shape.stroke()
+        objc.super(_LogoButton, self).drawRect_(rect)
+
+    def setEnabled_(self, flag):
+        objc.super(_LogoButton, self).setEnabled_(flag)
+        self.setAlphaValue_(1.0 if flag else 0.45)
+
+
+def _logo_button(key: str, target, tag: int):
+    button = _LogoButton.alloc().initWithFrame_(NSMakeRect(0, 0, AI_TOOL_SIZE, AI_TOOL_SIZE))
+    button.setBordered_(False)
+    button.setTarget_(target)
+    button.setAction_("aiTool:")
+    button.setTag_(tag)
+    image = NSImage.alloc().initWithContentsOfFile_(str(ai_launcher.logo_path(key)))
+    if image is None:  # a broken installation: the tool's first letter still names the button
+        button.setTitle_(ai_launcher.TOOLS[key].name[0])
+        return button
+    image.setSize_((AI_LOGO_SIZE, AI_LOGO_SIZE))
+    button.setTitle_("")
+    button.setImage_(image)
+    button.setImagePosition_(1)  # NSImageOnly
+    if key == AI_CODEX:  # OpenAI's mark is black on light and white on dark
+        image.setTemplate_(True)
+        button.setContentTintColor_(NSColor.textColor())
+    return button
+
+
 class _EditableWindow(NSWindow):
     def performKeyEquivalent_(self, event):
         flags = event.modifierFlags() & NSEventModifierFlagDeviceIndependentFlagsMask
@@ -367,8 +406,14 @@ class _Target(NSObject):
     def notebooklmDisconnect_(self, _sender):
         self.owner.on_action("notebooklm_disconnect")
 
-    def notebooklmDuplicates_(self, _sender):
-        self.owner.on_action("notebooklm_duplicates")
+    def aiTool_(self, sender):
+        self.owner.on_action(AI_OPEN_PREFIX + AI_CLIS[int(sender.tag())])
+
+    def aiTerminal_(self, sender):
+        terminals = self.owner.status.ai.terminals
+        index = int(sender.indexOfSelectedItem())
+        if 0 <= index < len(terminals):
+            self.owner.on_action(AI_TERMINAL_PREFIX + terminals[index][0])
 
     def aiAction_(self, _sender):
         if self.owner.status.ai.action:
@@ -612,9 +657,7 @@ ROW_ATTRIBUTES = {
     "language": ("language_popup", None, None),
     "dest": ("dest_field", None, None),
     "notebooklm_auto": ("notebooklm_switch", None, None),
-    "notebooklm_duplicates": (None, None, None),
     "notebooklm_disconnect": (None, None, None),
-    "ai_cli": ("ai_popup", None, None),
     "ai_resume": ("ai_resume_switch", None, None),
     "check_updates": ("check_updates", None, None),
     "update": ("update_button", "version_label", None),
@@ -623,7 +666,7 @@ ROW_ATTRIBUTES = {
 # A button of a row that acts at once, and the buttons whose title changes keep one width.
 ROW_ACTIONS = {"google_calendar": "googleCalendar:", "google_calendar_sync": "googleCalendarSync:",
                "google_calendar_disconnect": "googleCalendarDisconnect:", "account": "account:", "update": "update:", "uninstall": "uninstall:",
-               "notebooklm_disconnect": "notebooklmDisconnect:", "notebooklm_duplicates": "notebooklmDuplicates:"}
+               "notebooklm_disconnect": "notebooklmDisconnect:"}
 ROW_BUTTON_WIDTH = {"google_calendar": 210, "account": ACTION_WIDTH, "update": ACTION_WIDTH}
 # Rows whose description changes while the app runs keep room for two lines.
 LIVE_DETAIL_LINES = {"google_calendar": 3}
@@ -937,12 +980,6 @@ class MainWindow:
         point = row.convertPoint_toView_((0, 0), self.form_scroll.documentView())
         self.form_scroll.documentView().scrollPoint_(point)
 
-    def show_ai_settings(self):
-        self.show(GENERAL)
-        row = self.settings_rows["ai_cli"].title
-        point = row.convertPoint_toView_((0, 0), self.form_scroll.documentView())
-        self.form_scroll.documentView().scrollPoint_(point)
-
     def run_attention(self, index: int) -> None:
         items = self.status.attention
         if 0 <= index < len(items) and items[index].action:
@@ -1223,7 +1260,8 @@ class MainWindow:
         NSAnimationContext.endGrouping()
 
     def _build_ai_card(self, page) -> None:
-        """Under the NotebookLM card: opens the current term folder in a terminal with the chosen AI tool."""
+        """Under the NotebookLM card: a button per installed AI tool, which opens the current term folder
+        with it, and beside them the terminal it opens in."""
         self.ai_card = _card(NSMakeRect(PAD, HEADER, LEFT_W, NOTEBOOKLM_BASE))
         content = self.ai_card.contentView()
         self.ai_icon = NSImageView.alloc().initWithFrame_(NSMakeRect(22, 18, ICON_SIZE, ICON_SIZE))
@@ -1233,6 +1271,19 @@ class MainWindow:
         content.addSubview_(self.ai_title)
         self.ai_detail, _ = _wrapping("", LEFT_W - NOTEBOOKLM_TEXT_X - 20, 13, secondary=True)
         content.addSubview_(self.ai_detail)
+        self.ai_note, _ = _wrapping("", LEFT_W - NOTEBOOKLM_TEXT_X - 20, _small())
+        self.ai_note.setTextColor_(NSColor.systemOrangeColor())
+        content.addSubview_(self.ai_note)
+        self.ai_tools = {key: _logo_button(key, self.target, tag) for tag, key in enumerate(AI_CLIS)}
+        for button in self.ai_tools.values():
+            content.addSubview_(button)
+        self.ai_terminal = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(0, 0, 150, 25), False)
+        self.ai_terminal.setTarget_(self.target)
+        self.ai_terminal.setAction_("aiTerminal:")
+        self.ai_terminal.setAccessibilityLabel_(T_AI_TERMINAL)
+        self.ai_terminal.setToolTip_(T_AI_TERMINAL)
+        content.addSubview_(self.ai_terminal)
+        self._ai_terminal_names = []
         self.ai_button = _pill_view("", self.target, "aiAction:", 0, 0)
         content.addSubview_(self.ai_button)
         self.ai_secondary = _pill_view("", self.target, "aiSecondary:", 0, 0)
@@ -1241,7 +1292,7 @@ class MainWindow:
         page.addSubview_(self.ai_card)
 
     def _layout_ai_card(self) -> float:
-        """Fills the AI study session card and returns its height."""
+        """Fills the card and returns its height; ``_place_ai_card`` puts it on the page."""
         card = self.status.ai
         symbol, tint = AI_SYMBOLS.get(card.kind, AI_SYMBOLS[AI_OFF])
         self.ai_icon.setImage_(_symbol_image(symbol, 20))
@@ -1250,16 +1301,18 @@ class MainWindow:
         text = LEFT_W - x - 20
         self.ai_title.setStringValue_(card.title)
         self.ai_title.setFrame_(NSMakeRect(x, 16, text, 24))
-        self.ai_detail.setStringValue_(card.detail)
-        self.ai_detail.setToolTip_(card.detail or None)
         self.ai_detail.setTextColor_(NSColor.systemOrangeColor() if card.warning else NSColor.secondaryLabelColor())
-        self.ai_detail.setPreferredMaxLayoutWidth_(text)
-        detail_height = max(self.ai_detail.fittingSize().height, 17) if card.detail else 0
-        self.ai_detail.setHidden_(not card.detail)
         y = 46
-        if card.detail:
-            self.ai_detail.setFrame_(NSMakeRect(x, y, text, detail_height))
-            y += detail_height + 10
+        for label, value in ((self.ai_detail, card.detail), (self.ai_note, card.note)):
+            label.setStringValue_(value)
+            label.setToolTip_(value or None)
+            label.setHidden_(not value)
+            if value:
+                label.setPreferredMaxLayoutWidth_(text)
+                height = max(label.fittingSize().height, 17)
+                label.setFrame_(NSMakeRect(x, y, text, height))
+                y += height + 4
+        y = self._layout_ai_tools(card, x, y)
         button, secondary = self.ai_button, self.ai_secondary
         button.setHidden_(not card.action)
         button.setTitle_(card.action_title)
@@ -1267,15 +1320,50 @@ class MainWindow:
         secondary.setHidden_(not card.secondary_action)
         secondary.setTitle_(card.secondary_title)
         secondary.setEnabled_(card.secondary_enabled)
-        width = _pill_width(button) if card.action else 0
-        secondary_width = _pill_width(secondary) if card.secondary_action else 0
-        needed = width + (8 + secondary_width if card.secondary_action else 0)
-        left = max(min(NOTEBOOKLM_TEXT_X, LEFT_W - 20 - needed), 20)
-        button.setFrame_(NSMakeRect(left, y, width, PILL_H))
-        secondary.setFrame_(NSMakeRect(left + width + 8, y, secondary_width, PILL_H))
+        if card.action or card.secondary_action:
+            y += 6
+            # The pills share a row under the text; they leave its column only if they would not fit.
+            width = _pill_width(button) if card.action else 0
+            other = _pill_width(secondary) if card.secondary_action else 0
+            needed = width + other + (8 if width and other else 0)
+            left = max(min(x, LEFT_W - 20 - needed), 20)
+            button.setFrame_(NSMakeRect(left, y, width, PILL_H))
+            secondary.setFrame_(NSMakeRect(left + (width + 8 if width else 0), y, other, PILL_H))
+            y += PILL_H
         _tone(self.ai_card, card.warning)
-        self._ai_height = y + PILL_H + 16
+        self._ai_height = y + 16
         return self._ai_height
+
+    def _layout_ai_tools(self, card, x: float, y: float) -> float:
+        """The row of tool buttons and the terminal picker from ``y``; returns where it ends."""
+        shown = {tool.key: tool for tool in card.tools}
+        top, left = y + 4, x
+        for key, button in self.ai_tools.items():
+            tool = shown.get(key)
+            button.setHidden_(tool is None)
+            if tool is None:
+                continue
+            button.current = tool.current
+            button.setToolTip_(tool.label)
+            button.setAccessibilityLabel_(tool.label)
+            button.setEnabled_(card.tools_enabled)
+            button.setNeedsDisplay_(True)
+            button.setFrame_(NSMakeRect(left, top, AI_TOOL_SIZE, AI_TOOL_SIZE))
+            left += AI_TOOL_SIZE + 8
+        popup = self.ai_terminal
+        popup.setHidden_(not (shown and card.terminals))
+        if shown and card.terminals:
+            names = [name for _, name in card.terminals]
+            if names != self._ai_terminal_names:  # rebuilding would close a menu that is open
+                popup.removeAllItems()
+                popup.addItemsWithTitles_(names)
+                self._ai_terminal_names = names
+            popup.selectItemAtIndex_([key for key, _ in card.terminals].index(card.terminal))
+            popup.setEnabled_(card.tools_enabled)
+            size = popup.fittingSize()
+            popup.setFrame_(NSMakeRect(left + 4, top + (AI_TOOL_SIZE - size.height) / 2,
+                                       min(size.width, LEFT_W - 20 - left - 4), size.height))
+        return top + AI_TOOL_SIZE + 2 if shown else y
 
     def _place_ai_card(self, top: float) -> None:
         frame = NSMakeRect(PAD, top, LEFT_W, self._ai_height)
@@ -1613,13 +1701,6 @@ class MainWindow:
         y = 8
         for section in settings_sections(notebooklm=True, auto_relogin=True):
             y = self._build_section(view, section, y)
-            if section.key == SECTION_NOTEBOOKLM:
-                self.notebooklm_settings_totals, _ = _wrapping("", INNER - 8, _small(), secondary=True)
-                self.notebooklm_settings_totals.setFrame_(NSMakeRect(PAD + 4, y - SECTION_GAP + 8, INNER - 8, 0))
-                self.notebooklm_settings_totals.setHidden_(True)
-                view.addSubview_(self.notebooklm_settings_totals)
-                notebooklm_footer_end = len(view.subviews())
-        self.settings_below_notebooklm = view.subviews()[notebooklm_footer_end:]
         y += PAD - SECTION_GAP
         view.setFrame_(NSMakeRect(0, 0, PAGE, y))
         self.form_height = y
@@ -1675,23 +1756,6 @@ class MainWindow:
             view.addSubview_(note)
             y += 8 + note_height
         return y + SECTION_GAP
-
-    def _update_notebooklm_totals(self, text: str) -> None:
-        label = self.notebooklm_settings_totals
-        if text == label.stringValue():
-            return
-        frame = label.frame()
-        old_space = frame.size.height + 8 if frame.size.height else 0
-        label.setStringValue_(text)
-        height = label.fittingSize().height if text else 0
-        label.setFrameSize_((frame.size.width, height))
-        label.setHidden_(not text)
-        shift = (height + 8 if text else 0) - old_space
-        for view in self.settings_below_notebooklm:
-            origin = view.frame().origin
-            view.setFrameOrigin_((origin.x, origin.y + shift))
-        self.form_height += shift
-        self.form_scroll.documentView().setFrameSize_((PAGE, self.form_height))
 
     def _build_google_calendar(self, content, section) -> float:
         """A compact card shared by connected, disconnected and reconnect states.
@@ -1808,8 +1872,7 @@ class MainWindow:
             popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
                 NSMakeRect(0, 0, POPUP_WIDTH[row.key], 25), False)
             titles = {"interval": [title for _, title in INTERVAL_OPTIONS],
-                      "language": [name for _, name in LANGUAGE_OPTIONS],
-                      "ai_cli": [title for _, title in ai_cli_choices(None)]}.get(row.key)
+                      "language": [name for _, name in LANGUAGE_OPTIONS]}.get(row.key)
             if titles:
                 popup.addItemsWithTitles_(titles)
                 popup.setTarget_(self.target)
@@ -2024,7 +2087,6 @@ class MainWindow:
             language=language_code(str(self.language_popup.titleOfSelectedItem())),
             auto_relogin=bool(self.auto_relogin.state()),
             notebooklm_auto=bool(self.notebooklm_switch.state()),
-            ai_cli=ai_cli_value(int(self.ai_popup.indexOfSelectedItem())),
             ai_resume=bool(self.ai_resume_switch.state()),
         )
 
@@ -2042,7 +2104,6 @@ class MainWindow:
         self.interval_popup.selectItemWithTitle_(interval_title(values.sync_interval_minutes))
         self.language_popup.selectItemWithTitle_(language_title(values.language))
         self.notebooklm_switch.setState_(1 if values.notebooklm_auto else 0)
-        self.ai_popup.selectItemAtIndex_(ai_cli_index(values.ai_cli))
         self.ai_resume_switch.setState_(1 if values.ai_resume else 0)
         self.show_error("")
 
@@ -2150,14 +2211,7 @@ class MainWindow:
             if not key.startswith("google_calendar"):
                 self._apply_row_state(key, state)
         self._update_google_calendar(form)
-        self._update_notebooklm_totals(form.notebooklm_totals)
         self._apply_row_state("notebooklm_disconnect", notebooklm_disconnect_state(form))
-        self._apply_row_state("notebooklm_duplicates", notebooklm_disconnect_state(form))
-        # "Open with": each tool says whether it is installed once the app has looked.
-        for index, (_value, title) in enumerate(ai_cli_choices(form.ai_installed)):
-            item = self.ai_popup.itemAtIndex_(index)
-            if item is not None and str(item.title()) != title:
-                item.setTitle_(title)
         self._animate()
         self.refresh_announcements()
 
@@ -2498,52 +2552,6 @@ def ask_notebooklm_disconnect() -> bool:
     alert.addButtonWithTitle_(T_CANCEL).setKeyEquivalent_("\x1b")
     NSApp.activateIgnoringOtherApps_(True)
     return alert.runModal() == NSAlertFirstButtonReturn
-
-
-def _scrolling_text(text: str):
-    """A list too long for an alert's own text, in a box that scrolls."""
-    scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, 520, 280))
-    scroll.setHasVerticalScroller_(True)
-    scroll.setBorderType_(NSBezelBorder)
-    view = NSTextView.alloc().initWithFrame_(NSMakeRect(0, 0, 505, 280))
-    view.setEditable_(False)
-    view.setString_(text)
-    view.textContainer().setWidthTracksTextView_(True)
-    scroll.setDocumentView_(view)
-    return scroll
-
-
-def show_notebooklm_duplicates(title: str, text: str, removable: int) -> bool:
-    """The list; True when the student asks to remove the copies that can go (they confirm once more)."""
-    alert = NSAlert.alloc().init()
-    alert.setMessageText_(title)
-    alert.setAccessoryView_(_scrolling_text(text))
-    if removable:
-        alert.addButtonWithTitle_(ntr("Remove {n} copy…", "Remove {n} copies…", removable).format(n=removable))
-    alert.addButtonWithTitle_(tr("Close")).setKeyEquivalent_("\x1b")
-    NSApp.activateIgnoringOtherApps_(True)
-    return alert.runModal() == NSAlertFirstButtonReturn and removable > 0
-
-
-def ask_notebooklm_remove_duplicates(removable: int) -> bool:
-    """Deleting cannot be undone from here, so it takes this second, plain question."""
-    alert = NSAlert.alloc().init()
-    alert.setMessageText_(ntr("Remove {n} copy from NotebookLM?", "Remove {n} copies from NotebookLM?",
-                              removable).format(n=removable))
-    alert.setInformativeText_(tr("Only newer copies this app added are removed, and only with the same content as "
-                                 "the older copy. The older copy stays. This cannot be undone."))
-    alert.addButtonWithTitle_(tr("Remove"))
-    alert.addButtonWithTitle_(T_CANCEL).setKeyEquivalent_("\x1b")
-    NSApp.activateIgnoringOtherApps_(True)
-    return alert.runModal() == NSAlertFirstButtonReturn
-
-
-def tell_notebooklm(title: str, text: str) -> None:
-    alert = NSAlert.alloc().init()
-    alert.setMessageText_(title)
-    alert.setInformativeText_(text)
-    NSApp.activateIgnoringOtherApps_(True)
-    alert.runModal()
 
 
 def ask_calendar_disconnect() -> bool | None:

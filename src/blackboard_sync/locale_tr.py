@@ -631,28 +631,26 @@ CATALOG = {
 
     # Settings → AI assistant (ai_launcher)
     "AI assistant": "Yapay zekâ asistanı",
-    "Open with": "Şununla aç",
-    "The AI tool that starts in a terminal, in your current term's folder.":
-        "Güncel dönem klasörünüzde bir terminalde başlayan yapay zekâ aracı.",
     "Continue my last session in this folder": "Bu klasördeki son oturumumdan devam et",
     "When it is off, a new session starts every time.": "Kapalıyken her seferinde yeni bir oturum başlar.",
     "The app only opens a terminal in your course folder. The AI tool runs with your own account and its own "
     "rules.":
         "Uygulama yalnızca ders klasörünüzde bir terminal açar. Yapay zekâ aracı kendi hesabınız ve kendi "
         "kurallarıyla çalışır.",
-    "None": "Hiçbiri",
-    "{name} (installed)": "{name} (kurulu)",
-    "{name} (not found)": "{name} (bulunamadı)",
     "No earlier session here, starting a new one.": "Burada önceki oturum yok, yeni bir oturum başlıyor.",
     "AI study session": "Yapay zekâ ile çalış",
-    "Opens {term} in {name}, continuing your last session there.":
-        "{term} klasörünü {name} ile açar, oradaki son oturumdan devam eder.",
-    "Opens {term} in {name}, starting a new session.":
-        "{term} klasörünü {name} ile açar, yeni bir oturum başlatır.",
+    "Click a tool to open {term}, continuing your last session there.":
+        "Bir araca tıklayın: {term} açılır, oradaki son oturumunuz sürer.",
+    "Click a tool to open {term} in a new session.":
+        "Bir araca tıklayın: {term} yeni bir oturumla açılır.",
+    "Looking for AI tools…": "Yapay zekâ araçları aranıyor…",
+    "Terminal": "Terminal",
+    "Command Prompt": "Komut İstemi",
+    "No AI tool is installed. Install Claude Code, Gemini CLI or Codex, then try again.":
+        "Kurulu bir yapay zekâ aracı yok. Claude Code, Gemini CLI veya Codex'i kurup yeniden deneyin.",
+    "{name} wasn't found. Using {default} instead.": "{name} bulunamadı. Onun yerine {default} kullanılıyor.",
     "Open in {name}": "{name} ile aç",
     "Opening…": "Açılıyor…",
-    "Choose Claude, Gemini or Codex in Settings.": "Ayarlar'dan Claude, Gemini veya Codex'i seçin.",
-    "Choose": "Seç",
     "{name} is not installed. Install it, then try again.": "{name} kurulu değil. Kurup yeniden deneyin.",
     "How to install": "Nasıl kurulur",
     "Try again": "Yeniden dene",
@@ -683,26 +681,14 @@ CATALOG = {
     "{n} new files added to your notebooks": "Defterlerinize {n} yeni dosya eklendi",
     "No new files were added": "Yeni dosya eklenmedi",
     "Last checked: {time}": "Son kontrol: {time}",
-    "{n} file can't go to NotebookLM: its format isn't supported, or it's missing, empty or over 200 MB.":
-        "{n} dosya NotebookLM'e eklenemiyor: biçimi desteklenmiyor ya da dosya bulunamadı, boş veya 200 MB'tan büyük.",
-    "{n} files can't go to NotebookLM: their format isn't supported, or they're missing, empty or over 200 MB.":
-        "{n} dosya NotebookLM'e eklenemiyor: biçimi desteklenmiyor ya da dosya bulunamadı, boş veya 200 MB'tan büyük.",
-    "{n} file changed after it was added; NotebookLM keeps the version it has.":
-        "{n} dosya eklendikten sonra değişti; NotebookLM elindeki sürümü tutuyor.",
-    "{n} files changed after they were added; NotebookLM keeps the version it has.":
-        "{n} dosya eklendikten sonra değişti; NotebookLM elindeki sürümü tutuyor.",
     "{n} course blocked": "{n} ders engellendi",
     "{n} courses blocked": "{n} ders engellendi",
     "{n} failed": "{n} başarısız",
     "Add new files to NotebookLM after each sync": "Her senkrondan sonra yeni dosyaları NotebookLM'e ekle",
     "Disconnect NotebookLM": "NotebookLM bağlantısını kes",
-    "Files already there are not added again.": "Zaten orada olan dosyalar yeniden eklenmez.",
-    "Deletes the Google session on this computer. Files in NotebookLM stay there.":
-        "Bu bilgisayardaki Google oturumunu siler. NotebookLM'deki dosyalar orada kalır.",
-    "NotebookLM (Gemini Notebook) is reached through an unofficial connection that may stop working if Google "
-    "changes NotebookLM. Your course files go to your own Google account.":
-        "NotebookLM'e (Gemini Notebook) resmi olmayan bir bağlantıyla ulaşılır; Google NotebookLM'i değiştirirse "
-        "çalışmayabilir. Ders dosyalarınız kendi Google hesabınıza gider.",
+    "Files in NotebookLM stay there.": "NotebookLM'deki dosyalar orada kalır.",
+    "Unofficial connection: it may stop working if Google changes NotebookLM.":
+        "Resmi olmayan bağlantı: Google NotebookLM'i değiştirirse çalışmayabilir.",
     "{course}: {n} over the {limit} source limit; nothing added.":
         "{course}: {limit} kaynak sınırı {n} aşıldı; hiçbir şey eklenmedi.",
     "{course}: several notebooks have this name, so it was skipped.":
@@ -716,44 +702,10 @@ CATALOG = {
     "NotebookLM needs Chrome, Edge or Brave to sign in to Google; install one and try again.":
         "NotebookLM, Google'da oturum açmak için Chrome, Edge veya Brave gerektirir; birini kurup yeniden deneyin.",
 
-    # NotebookLM: files that may be there already, and duplicates
+    # NotebookLM: files that may be there already
     "{n} file may already be in NotebookLM, so it was not added.":
         "{n} dosya NotebookLM'de zaten olabilir, bu yüzden eklenmedi.",
     "{n} files may already be in NotebookLM, so they were not added.":
         "{n} dosya NotebookLM'de zaten olabilir, bu yüzden eklenmedi.",
     "{n} held back": "{n} bekletildi",
-    "Find duplicates": "Yinelenenleri bul",
-    "Remove": "Kaldır",
-    "Lists sources that are in a notebook twice. Nothing is removed unless you confirm it.":
-        "Bir not defterinde iki kez bulunan kaynakları listeler. Siz onaylamadan hiçbir şey kaldırılmaz.",
-    "Looking through the notebooks…": "Not defterlerine bakılıyor…",
-    "No duplicates in your notebooks.": "Not defterlerinizde yinelenen kaynak yok.",
-    "{n} file is in a notebook more than once.": "{n} dosya bir not defterinde birden çok kez var.",
-    "{n} files are in a notebook more than once.": "{n} dosya bir not defterinde birden çok kez var.",
-    "same content, can be removed": "içerik aynı, kaldırılabilir",
-    "the file changed since then, both stay": "dosya o zamandan beri değişti, ikisi de kalır",
-    "not added by this app, stays": "bu uygulama eklemedi, kalır",
-    "cannot be compared, stays": "karşılaştırılamıyor, kalır",
-    "same content, this app added it: can be removed": "içerik aynı, bu uygulama ekledi: kaldırılabilir",
-    "the file changed since the older copy: both stay": "dosya eski kopyadan sonra değişti: ikisi de kalır",
-    "not added by this app: stays": "bu uygulama eklemedi: kalır",
-    "cannot be compared: stays": "karşılaştırılamıyor: kalır",
-    "older: {time}": "eski: {time}",
-    "newer: {time}": "yeni: {time}",
-    "older": "eski",
-    "newer": "yeni",
-    "{groups} duplicated, {removable} can be removed.": "{groups} yinelenen, {removable} kaldırılabilir.",
-    "Remove {n} newer copies from NotebookLM? [y/N] ": "{n} yeni kopya NotebookLM'den kaldırılsın mı? [e/H] ",
-    "Nothing was removed.": "Hiçbir şey kaldırılmadı.",
-    "{n} removed, {failed} failed.": "{n} kaldırıldı, {failed} başarısız.",
-    "Remove {n} copy…": "{n} kopyayı kaldır…",
-    "Remove {n} copies…": "{n} kopyayı kaldır…",
-    "Remove {n} copy from NotebookLM?": "{n} kopya NotebookLM'den kaldırılsın mı?",
-    "Remove {n} copies from NotebookLM?": "{n} kopya NotebookLM'den kaldırılsın mı?",
-    "Only newer copies this app added are removed, and only with the same content as the older copy. "
-    "The older copy stays. This cannot be undone.":
-        "Yalnızca bu uygulamanın eklediği ve eski kopyayla içeriği aynı olan yeni kopyalar kaldırılır. "
-        "Eski kopya kalır. Bu işlem geri alınamaz.",
-    "Could not look through NotebookLM.": "NotebookLM'e bakılamadı.",
-    "Duplicates removed.": "Yinelenenler kaldırıldı.",
 }

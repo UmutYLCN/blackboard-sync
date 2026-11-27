@@ -462,14 +462,11 @@ def test_windows_tk_window_draws_the_notebooklm_card_and_keeps_its_settings(monk
     assert window.notebooklm_secondary.options["text"].startswith("Last checked: ")
     assert window.notebooklm_warning_counts.options["text"] == "1 failed"
     assert window.notebooklm_warning_counts.options["foreground"] == "#b00020"
-    assert window.notebooklm_settings_totals.options["text"].startswith("29 files can't go to NotebookLM")
-    assert not window.notebooklm_settings_totals.removed
 
     model.notebooklm = replace(model.notebooklm, error=True, message='down')
     window.update_status(main.main_status(model, now))
     assert window.notebooklm_bar.removed and window.notebooklm_button.options['state'] == 'normal'
     assert window.notebooklm_detail.options['foreground'] == '#b00020'
-    assert window.notebooklm_settings_totals.removed
     assert window.settings_rows['notebooklm_disconnect'].control.options['state'] == 'normal'
 
 
@@ -485,34 +482,55 @@ def test_windows_tk_window_draws_the_ai_card_in_every_state(monkeypatch, tmp_pat
     saved = FormValues('https://school.edu', str(tmp_path), True)
     window = MainWindow(None, saved, main.main_status(model, now), lambda *a: None, actions.append, lambda: None)
 
-    assert window.ai_detail.options['text'] == 'Choose Claude, Gemini or Codex in Settings.'
-    assert window.ai_button.options['text'] == 'Choose' and not window.ai_secondary.canvas.packed
-    window.ai_button.options['command']()
-    assert actions == ['ai_settings']
+    def shown():
+        return [key for key, (border, *_rest) in window.ai_tools.items() if getattr(border, 'packed', False)]
 
-    model.apply_settings(tmp_path, school_changed=False, ai_cli='codex', ai_resume=True)
+    assert window.ai_detail.options['text'] == 'Looking for AI tools…'
+    assert shown() == [] and window.ai_row.removed
+    assert not window.ai_button.canvas.packed and not window.ai_secondary.canvas.packed
+
     model.ai_term = '2026-2027 Güz'
-    model.ai_installed = frozenset({'codex'})
+    model.ai_cli = 'codex'
+    model.ai_terminal = 'windows_terminal'
+    model.finish_ai_detection(frozenset({'claude', 'codex'}), frozenset({'powershell', 'cmd'}))
     window.update_status(main.main_status(model, now))
-    assert window.ai_button.options['text'] == 'Open in Codex' and not window.ai_secondary.canvas.packed
-    window.ai_button.options['command']()
-    assert actions[-1] == 'ai_open'
+    assert shown() == ['claude', 'codex'] and not window.ai_row.removed
+    _border, button, tooltip, background = window.ai_tools['codex']
+    assert tooltip.text == 'Open in Codex' and button.options['state'] == 'normal'
+    assert window.ai_tools['codex'][0].options['highlightbackground'] != background  # the one used last
+    assert window.ai_tools['claude'][0].options['highlightbackground'] == window.ai_tools['claude'][3]
+    button.options['command']()
+    assert actions[-1] == 'ai_open:codex'
+    assert window.ai_picker.packed and window.ai_picker.options['values'] == ['PowerShell', 'Command Prompt']
+    assert window.ai_terminal.get() == 'PowerShell'
+    assert window.ai_note.options['text'] == "Windows Terminal wasn't found. Using PowerShell instead."
+    window.ai_terminal.set('Command Prompt')
+    window.ai_picker.bindings['<<ComboboxSelected>>'](None)
+    assert actions[-1] == 'ai_terminal:cmd'
+    assert not main.has_changes(saved, window.values())  # the picker is no part of the Settings form
 
-    model.ai_installed = frozenset()
+    model.ai_launching = True
     window.update_status(main.main_status(model, now))
+    assert button.options['state'] == 'disabled' and window.ai_picker.options['state'] == 'disabled'
+
+    model.ai_launching = False
+    model.finish_ai_detection(frozenset(), model.ai_terminals)
+    window.update_status(main.main_status(model, now))
+    assert shown() == [] and window.ai_row.removed
     assert window.ai_detail.options['foreground'] == '#b00020'
     assert window.ai_button.options['text'] == 'How to install' and window.ai_secondary.canvas.packed
     assert window.ai_secondary.options['text'] == 'Try again'
     window.ai_button.options['command']()
     window.ai_secondary.options['command']()
-    assert actions[-2:] == ['ai_install', 'ai_open']
+    assert actions[-2:] == ['ai_install', 'ai_detect']
 
-    model.ai_installed = frozenset({'codex'})
+    model.finish_ai_detection(frozenset({'codex'}), model.ai_terminals)
     model.ai_result = ai_launcher.LaunchResult(
         ai_launcher.Failure.FOLDER_MISSING, ai_launcher.TOOLS['codex'], tmp_path / 'University' / '2026-2027 Güz',
     )
     window.update_status(main.main_status(model, now))
     assert window.ai_button.options['text'] == 'Sync now' and not window.ai_secondary.canvas.packed
+    assert window.ai_button.canvas.packed
     window.ai_button.options['command']()
     assert actions[-1] == 'sync'
 

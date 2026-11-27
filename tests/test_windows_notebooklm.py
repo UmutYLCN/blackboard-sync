@@ -20,7 +20,6 @@ from blackboard_sync.menubar import settings_form as form
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     NOTEBOOKLM_CONNECT,
-    NOTEBOOKLM_DUPLICATES,
     NOTEBOOKLM_SYNC,
     SESSION_JOB,
     AppModel,
@@ -31,7 +30,7 @@ from blackboard_sync.notebooklm import signin, store
 from blackboard_sync.notebooklm.store import NotebookLMStatus
 from blackboard_sync.settings import Settings
 from blackboard_sync.windows import app as module, webui_state
-from blackboard_sync.windows.app import TrayApp, cli_popen, cli_run, console_command
+from blackboard_sync.windows.app import TrayApp, cli_popen, console_command
 
 NOW = datetime(2026, 11, 6, 12, tzinfo=timezone.utc)
 CONNECTED = NotebookLMStatus(connected=True)
@@ -58,6 +57,7 @@ def app(tmp_path, monkeypatch):
     tray.settings = Settings("https://bb.example", tmp_path / "files")
     tray.login_after_job = False
     tray.uninstalling = False
+    tray.ai_detecting = False
     tray.closed = False
     tray.window = None
     tray.root = SimpleNamespace(destroy=lambda: None, after=lambda *a: None)
@@ -74,16 +74,8 @@ def app(tmp_path, monkeypatch):
     tray.answers = {}
     tray.web = SimpleNamespace(
         ask_destructive=lambda title, message, button: tray.answers.get("confirm", True),
-        ask_duplicates=lambda title, text, remove: tray.asked_list(title, text, remove),
         ask_yes_no=lambda title, message: True,
         show_message=lambda kind, title, message: tray.messages.append((kind, title, message)))
-    tray.lists = []
-
-    def asked_list(title, text, remove):
-        tray.lists.append((title, text, remove))
-        return tray.answers.get("remove", False)
-
-    tray.asked_list = asked_list
     return tray
 
 
@@ -102,7 +94,7 @@ def test_children_run_as_the_console_twin_with_utf8_and_no_window(monkeypatch, t
     monkeypatch.setattr(subprocess, "Popen", lambda command, **options: calls.append((command, options)))
     monkeypatch.setattr(subprocess, "run", lambda command, **options: calls.append((command, options)))
     cli_popen([str(gui), "a"], text=True)
-    cli_run([str(gui), "b"], text=True)
+    module.cli_run([str(gui), "b"], text=True)
     for command, options in calls:
         assert command[0] == str(tmp_path / module.CLI_EXE)
         assert options["encoding"] == "utf-8" and options["errors"] == "replace" and options["text"]
@@ -140,10 +132,6 @@ def test_the_shared_jobs_take_the_windows_runner(tmp_path, monkeypatch):
     outcome, refresh = jobs.run_sync_refreshing("sync", settings, may_refresh=True, runner=runner)
     assert [("refresh-session" in command) for command in calls] == [False, True, False]
     assert refresh.ok and outcome.status != "login_required"
-
-    calls.clear()
-    listed = lambda command, **_o: calls.append(command) or subprocess.CompletedProcess(command, 0, '{"status": "ok"}', "")
-    assert jobs.run_notebooklm_duplicates(runner=listed) == {"status": "ok"} and len(calls) == 1
 
 
 # -- NotebookLM beside the sync -------------------------------------------------------------------
@@ -237,45 +225,61 @@ def test_open_goes_to_notebooklm(app, monkeypatch):
 
 def test_tray_app_ai_card_and_menu_actions(app, monkeypatch, tmp_path):
     from blackboard_sync import ai_launcher
+    from blackboard_sync.settings import load_settings, save_settings
 
     opened_urls, started_files, shown = [], [], []
     monkeypatch.setattr(module.webbrowser, "open", opened_urls.append)
     monkeypatch.setattr(module.os, "startfile", started_files.append, raising=False)
     app.show_window = shown.append
+    save_settings(app.config.data_dir, app.settings)
 
-    app.dispatch("ai_settings")
-    assert shown == [main.GENERAL]
+    app.dispatch("ai_install")  # nothing used yet: the first tool's page
+    assert opened_urls == [ai_launcher.TOOLS["claude"].install_url]
 
     term_dir = tmp_path / "files" / "University" / "2026-2027 Güz"
     term_dir.mkdir(parents=True)
-    app.settings = replace(app.settings, ai_cli="gemini", ai_resume=True)
-    app.model.apply_settings(app.settings.dest, school_changed=False, ai_cli="gemini", ai_resume=True)
+    monkeypatch.setattr(ai_launcher.DETECTOR, "installed", lambda: frozenset({"gemini", "codex"}))
+    monkeypatch.setattr(ai_launcher.TERMINAL_DETECTOR, "installed", lambda: frozenset({"powershell", "cmd"}))
+    monkeypatch.setattr(ai_launcher.DETECTOR, "refresh", dict)
+    monkeypatch.setattr(ai_launcher.TERMINAL_DETECTOR, "refresh", dict)
+    app.dispatch("ai_detect")
+    assert app.model.ai_installed == {"gemini", "codex"} and app.model.ai_terminals == {"powershell", "cmd"}
 
-    app.dispatch("ai_install")
-    assert opened_urls == [ai_launcher.TOOLS["gemini"].install_url]
+    app.dispatch("ai_terminal:cmd")
+    app.dispatch("ai_terminal:iterm")  # not a terminal this app knows: ignored
+    assert app.settings.ai_terminal == app.model.ai_terminal == "cmd"
+    assert load_settings(app.config.data_dir).ai_terminal == "cmd"
 
-    launched = []
+    launched, failing = [], []
 
-    def fake_launch(ai_cli, resume, config):
-        launched.append((ai_cli, resume, config.dest))
-        return ai_launcher.LaunchResult(
-            ai_launcher.Failure.TERMINAL_FAILED, ai_launcher.TOOLS["gemini"], term_dir, "wt failed",
-        )
+    def fake_launch(ai_cli, resume, config, terminal=""):
+        launched.append((ai_cli, resume, config.dest, terminal))
+        failure = ai_launcher.Failure.TERMINAL_FAILED if failing else None
+        return ai_launcher.LaunchResult(failure, ai_launcher.TOOLS[ai_cli], term_dir, "wt failed" if failing else "")
 
     monkeypatch.setattr(jobs, "run_ai_launch_guarded", fake_launch)
-    app.dispatch("ai_open", from_menu=True)
-    assert launched == [("gemini", True, app.settings.dest)]
+    app.dispatch("ai_open:codex")
+    assert launched == [("codex", True, app.settings.dest, "cmd")] and not started_files and not shown
+    assert app.model.ai_cli == app.settings.ai_cli == "codex"
+    assert load_settings(app.config.data_dir).ai_cli == "codex"
+
+    failing.append(True)
+    app.dispatch("ai_open", from_menu=True)  # the menu item: the tool used last
+    assert launched[-1][0] == "codex"
     assert started_files == [str(term_dir)]
     assert app.model.ai_result.failure == ai_launcher.Failure.TERMINAL_FAILED
-    assert shown[-1] == main.OVERVIEW
+    assert shown == [main.OVERVIEW]
 
     app.model.ai_result = ai_launcher.LaunchResult(ai_launcher.Failure.CLI_MISSING, ai_launcher.TOOLS["gemini"])
-    monkeypatch.setattr(ai_launcher.DETECTOR, "installed", lambda: frozenset({"gemini"}))
     app.ai_detected()
     assert app.model.ai_result is None
 
+    app.model.ai_installed = frozenset()  # the menu has no item then; a late click does nothing
+    app.dispatch("ai_open", from_menu=True)
+    assert len(launched) == 2
 
-# -- disconnect and duplicates --------------------------------------------------------------------
+
+# -- disconnect ------------------------------------------------------------------------------------
 def test_disconnect_asks_and_deletes_the_session(app, tmp_path):
     session = store.session_file(app.config)
     session.parent.mkdir(parents=True)
@@ -305,62 +309,6 @@ def test_a_locked_session_file_is_said_on_the_card(app, monkeypatch):
     monkeypatch.setattr(store, "disconnect", locked)
     app.dispatch("notebooklm_disconnect")
     assert app.model.notebooklm.error and app.model.notebooklm.message == signout.LOCKED_WARNING
-
-
-REPORT = {"status": "ok", "duplicates": 1, "courses": [{"course": "CSE301", "duplicates": [{
-    "name": "a.pdf", "older": {"id": "s1", "created_at": "2026-10-01T00:00:00"},
-    "newer": [{"id": "s2", "created_at": "2026-10-09T00:00:00", "verdict": "identical", "removable": True},
-              {"id": "s3", "created_at": "2026-10-10T00:00:00", "verdict": "changed", "removable": False}]}]}]}
-
-
-@pytest.fixture
-def duplicates(monkeypatch, app):
-    done = SimpleNamespace(calls=[], reports=[REPORT, {"status": "ok", "removed": ["s2"], "failed": []}])
-
-    def run(source_ids=None, runner=None):
-        done.calls.append((source_ids, runner))
-        return done.reports.pop(0)
-
-    monkeypatch.setattr(jobs, "run_notebooklm_duplicates", run)
-    app.show_window = lambda section=None: None
-    return done
-
-
-def test_only_what_was_shown_as_removable_goes_and_only_after_both_questions(app, duplicates):
-    app.answers["remove"] = True
-    app.dispatch("notebooklm_duplicates")
-    assert duplicates.calls == [(None, cli_run), (["s2"], cli_run)]
-    assert "a.pdf" in app.lists[0][1] and "1" in app.lists[0][2]
-    assert app.messages[-1][1] == "Duplicates removed." and "1 removed, 0 failed." in app.messages[-1][2]
-    assert app.model.notebooklm_busy is None
-
-
-@pytest.mark.parametrize("answers", [{"remove": False}, {"remove": True, "confirm": False}])
-def test_nothing_is_removed_without_both_answers(app, duplicates, answers):
-    app.answers.update(answers)
-    app.dispatch("notebooklm_duplicates")
-    assert [call[0] for call in duplicates.calls] == [None]
-
-
-def test_a_failed_look_says_why_and_frees_the_slot(app, duplicates):
-    duplicates.reports[:] = [{"status": "login_required", "message": "Sign in again"}]
-    app.dispatch("notebooklm_duplicates")
-    assert app.messages[-1][2] == "Sign in again" and app.model.notebooklm_busy is None and app.lists == []
-
-
-def test_the_list_opens_the_window_if_it_was_closed_meanwhile(app, duplicates):
-    shown = []
-    app.show_window = shown.append
-    app.dispatch("notebooklm_duplicates")
-    assert shown == [main.GENERAL]
-
-
-def test_nothing_removable_offers_no_button(app, duplicates):
-    report = json.loads(json.dumps(REPORT))
-    report["courses"][0]["duplicates"][0]["newer"][0]["removable"] = False
-    duplicates.reports[:] = [report]
-    app.dispatch("notebooklm_duplicates")
-    assert app.lists[0][2] == ""
 
 
 # -- the look at the session between syncs ----------------------------------------------------------
@@ -526,7 +474,6 @@ def model_card(paused=False, busy=None, notebooklm=None, progress=None):
     (model_card(notebooklm=CONNECTED), "idle", "notebooklm_sync", True, True),
     (model_card(notebooklm=CONNECTED, paused=True), "idle", "notebooklm_sync", False, True),
     (model_card(notebooklm=CONNECTED, busy=NOTEBOOKLM_SYNC), "running", "notebooklm_sync", False, True),
-    (model_card(notebooklm=CONNECTED, busy=NOTEBOOKLM_DUPLICATES), "running", "notebooklm_sync", False, True),
     (model_card(notebooklm=replace(CONNECTED, needs_login=True, message="Sign in")), "attention", "notebooklm_connect",
      True, False),
     (model_card(notebooklm=replace(CONNECTED, error=True, message="Down")), "attention", "notebooklm_sync", True, True),
@@ -562,19 +509,19 @@ def test_settings_have_the_notebooklm_section_and_the_re_sign_in_switch():
     drawn = state(model_card())
     sections = {section["key"]: section for section in drawn["settings"]["sections"]}
     keys = [row["key"] for row in sections[form.SECTION_NOTEBOOKLM]["rows"]]
-    assert keys == ["notebooklm_auto", "notebooklm_duplicates", "notebooklm_disconnect"]
+    assert keys == ["notebooklm_auto", "notebooklm_disconnect"]
     assert "auto_relogin" in [row["key"] for row in sections[form.SECTION_SYNC]["rows"]]
     assert {"auto_relogin", "notebooklm_auto"} <= set(drawn["settings"]["values"])
-    assert {"notebooklm_duplicates", "notebooklm_disconnect"} <= webui_state.ids(drawn)["button"]
+    assert "notebooklm_disconnect" in webui_state.ids(drawn)["button"]
 
 
-def test_notebooklm_buttons_wait_for_a_connection_and_a_free_slot():
+def test_disconnect_waits_for_a_connection_and_a_free_slot():
     for changes in ({"notebooklm_connected": False}, {"notebooklm_busy": True}):
         current = status(model_card())
         current = replace(current, form=replace(FORM, **changes))
         drawn = webui_state.window_state(current, main.OVERVIEW, main.OVERVIEW, (), deadlines.DeadlinePage(),
                                          date(2026, 11, 6))
-        assert not {"notebooklm_duplicates", "notebooklm_disconnect"} & webui_state.ids(drawn)["button"]
+        assert "notebooklm_disconnect" not in webui_state.ids(drawn)["button"]
 
 
 def test_the_page_acts_only_on_the_buttons_of_the_card():
@@ -590,12 +537,11 @@ def test_the_page_acts_only_on_the_buttons_of_the_card():
     window.update_status(status(model_card(notebooklm=CONNECTED)))
     window.run_action("notebooklm_open")
     assert ("action", "notebooklm_open") in events
-    window.run_setting("notebooklm_duplicates", "")
     window.run_setting("notebooklm_disconnect", "")
-    assert ("action", "notebooklm_duplicates") in events and ("action", "notebooklm_disconnect") in events
+    assert ("action", "notebooklm_disconnect") in events
 
 
-def test_a_question_that_cannot_be_undone_defaults_to_no_and_the_list_scrolls():
+def test_a_question_that_cannot_be_undone_defaults_to_no():
     from tests.test_web_window import make_window
 
     window, host, _events = make_window()
@@ -614,13 +560,7 @@ def test_a_question_that_cannot_be_undone_defaults_to_no_and_the_list_scrolls():
     assert dialog["buttons"][0]["id"] == "cancel" and "danger" in dialog["buttons"][1]["style"]
     host.answer(dialog["id"], "confirm", False)
     thread.join(5)
-    while window.dialog is not None:
-        pass
-    dialog, thread = ask(lambda: host.ask_duplicates("Two", "a.pdf", "Remove 1 copy…"))
-    assert dialog["list"] == "a.pdf"
-    host.answer(dialog["id"], "cancel", False)
-    thread.join(5)
-    assert answers == [True, False]
+    assert answers == [True]
 
 
 def test_the_preview_draws_every_card_state(monkeypatch):
@@ -639,10 +579,10 @@ def test_the_preview_draws_every_card_state(monkeypatch):
     assert idle["secondary"].startswith("Last checked: ")
     assert idle["warning-counts"] == "2 held back"
     assert idle["button"]["id"] == "notebooklm_sync" and idle["open"]
-    totals = next(section["totals"] for section in states["settings"]["settings"]["sections"]
-                  if section["key"] == form.SECTION_NOTEBOOKLM)
-    assert totals.startswith("2 files can't go to NotebookLM") and "1 file changed after it was added" in totals
-    assert states["duplicates-dialog"]["dialog"]["id"] == "q2"
+    ai = states["up-to-date"]["home"]["ai"]
+    assert [tool["key"] for tool in ai["tools"]] == ["claude", "gemini", "codex"] and ai["terminals"]
+    assert states["ai-terminal-gone"]["home"]["ai"]["note"]
+    assert states["ai-none"]["home"]["ai"]["tools"] == [] and states["ai-none"]["home"]["ai"]["button"]
 
 
 # -- what the core does differently on Windows ------------------------------------------------------

@@ -20,24 +20,22 @@ from blackboard_sync import (ai_launcher, announcements, courses, deadlines, rel
                              signout, term_confirm, updater, uninstall)
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
-from blackboard_sync.i18n import ntr, tr
+from blackboard_sync.i18n import tr
 from blackboard_sync.menubar import jobs, settings_form
 from blackboard_sync.menubar.main_window_model import (
+    AI_OPEN_PREFIX,
+    AI_TERMINAL_PREFIX,
     GENERAL,
     OPEN_ITEM_PREFIX,
     OVERVIEW,
-    duplicates_text,
-    duplicates_title,
     notebooklm_progress,
     open_item_url,
-    removable_ids,
     shows_window_at_launch,
 )
 from blackboard_sync.menubar.model import (
     CALENDAR_NOTICE_SECONDS,
     MOVE_JOB,
     NOTEBOOKLM_CONNECT,
-    NOTEBOOKLM_DUPLICATES,
     NOTEBOOKLM_SYNC,
     SESSION_JOB,
     UPDATE_ACTIONS,
@@ -45,7 +43,7 @@ from blackboard_sync.menubar.model import (
     open_target,
 )
 from blackboard_sync.notebooklm import store as notebooklm_store
-from blackboard_sync.settings import SettingsError, save_settings
+from blackboard_sync.settings import AI_CLAUDE, SettingsError, save_settings
 from blackboard_sync.system import sync_root
 from . import activation, autostart, notifications, package
 from .presentation import icon_image, render_menu
@@ -159,6 +157,8 @@ class TrayApp:
         self.root.bind(WAKE_EVENT, self.drain)
         self.root.after(REQUEST_CHECK_MS, self.poll)
         self.root.after(1000, self.tick)
+        # The menu item and Home's AI card need to know which tools and terminals are here.
+        self.root.after(500, self.detect_ai_tools)
         if shows_window_at_launch(self.background, self.model.configured):
             self.root.after(200, self.show_window)
         self.root.mainloop()
@@ -358,49 +358,6 @@ class TrayApp:
             self.start_notebooklm(auto=action != NOTEBOOKLM_CONNECT)
         self.refresh()
 
-    def find_notebooklm_duplicates(self, source_ids=None):
-        """List the duplicates, or remove the copies just confirmed; both take the NotebookLM slot."""
-        if not self.model.begin_notebooklm(NOTEBOOKLM_DUPLICATES):
-            return
-        self.refresh()
-        def worker():
-            report = jobs.run_notebooklm_duplicates(source_ids, runner=cli_run)
-            self.post(self.notebooklm_duplicates_done, report, source_ids is not None)
-        threading.Thread(target=worker, daemon=True).start()
-
-    def notebooklm_duplicates_done(self, report, removed):
-        self.notebooklm_done(NOTEBOOKLM_DUPLICATES, notebooklm_store.status(self.config))
-        if report.get("status") != "ok":
-            log.warning("NotebookLM duplicates: %s %s", report.get("status"), report.get("message"))
-            self.show_message("warning", tr("Could not look through NotebookLM."), report.get("message") or "")
-        elif removed:
-            self.show_message("info", tr("Duplicates removed."), tr("{n} removed, {failed} failed.").format(
-                n=len(report.get("removed", ())), failed=len(report.get("failed", ()))))
-        else:
-            ids = removable_ids(report)
-            if self.window is None or not self.window_open:
-                self.show_window(GENERAL)  # the look takes a while: it may have been closed since
-            if self.ask_duplicates(report, len(ids)) and self.ask_remove_duplicates(len(ids)):
-                self.find_notebooklm_duplicates(ids)
-
-    def ask_duplicates(self, report, removable):
-        """The list; True when the student asks to remove the copies that can go (they confirm once more)."""
-        remove = ntr("Remove {n} copy…", "Remove {n} copies…", removable).format(n=removable) if removable else ""
-        title, text = duplicates_title(report), duplicates_text(report)
-        if self.web is not None:
-            return self.web.ask_duplicates(title, text, remove)
-        from .main_window import ask_notebooklm_duplicates
-
-        return ask_notebooklm_duplicates(self.dialog_parent(), title, text, remove)
-
-    def ask_remove_duplicates(self, removable):
-        """Deleting cannot be undone from here, so it takes this second, plain question."""
-        return self.ask_destructive(
-            ntr("Remove {n} copy from NotebookLM?", "Remove {n} copies from NotebookLM?",
-                removable).format(n=removable),
-            tr("Only newer copies this app added are removed, and only with the same content as "
-               "the older copy. The older copy stays. This cannot be undone."), tr("Remove"))
-
     def disconnect_notebooklm(self):
         """Confirmed first: signing in again takes the student through Google's sign-in."""
         if self.model.notebooklm_busy is not None or not self.ask_destructive(
@@ -582,11 +539,19 @@ class TrayApp:
             return
         elif action == "pause":
             self.toggle_pause()
-        elif action in ("settings", "calendar_settings", "ai_settings"):
+        elif action in ("settings", "calendar_settings"):
             self.show_window(GENERAL)
         elif action == "ai_open":
             self.start_ai_launch(from_menu=from_menu)
             return
+        elif action.startswith(AI_OPEN_PREFIX):
+            self.start_ai_launch(action.removeprefix(AI_OPEN_PREFIX))
+            return
+        elif action.startswith(AI_TERMINAL_PREFIX):
+            self.choose_ai_terminal(action.removeprefix(AI_TERMINAL_PREFIX))
+            return
+        elif action == "ai_detect":
+            self.detect_ai_tools()
         elif action == "ai_install":
             self.open_ai_install()
             return
@@ -602,8 +567,6 @@ class TrayApp:
             self.start_notebooklm()
         elif action == "notebooklm_open":
             webbrowser.open(notebooklm_store.APP_URL)
-        elif action == "notebooklm_duplicates":
-            self.find_notebooklm_duplicates()
         elif action == "notebooklm_disconnect":
             self.disconnect_notebooklm()
         elif action.startswith(OPEN_ITEM_PREFIX):
@@ -765,12 +728,12 @@ class TrayApp:
         self.refresh()
 
     def section_shown(self, section):
-        if section == GENERAL:
-            self.detect_ai_tools()  # Settings → AI assistant says which tools are installed
+        if section == OVERVIEW:
+            self.detect_ai_tools()  # Home's AI card lists the installed tools and terminals
         self.refresh()
 
     def detect_ai_tools(self):
-        """Look for the AI tools again in the background."""
+        """Look for the AI tools and terminals again in the background."""
         if self.ai_detecting:
             return
         self.ai_detecting = True
@@ -778,48 +741,64 @@ class TrayApp:
         def worker():
             try:
                 ai_launcher.DETECTOR.refresh()
-            except Exception:  # never lose the flag; Settings keeps the names without a state
+                ai_launcher.TERMINAL_DETECTOR.refresh()
+            except Exception:  # never lose the flag; the card keeps what it knew
                 log.exception("Looking for the AI tools failed")
             self.post(self.ai_detected)
         threading.Thread(target=worker, daemon=True).start()
 
     def ai_detected(self):
         self.ai_detecting = False
-        self.model.ai_installed = ai_launcher.DETECTOR.installed()
-        if (self.model.ai_result is not None
-                and self.model.ai_result.failure == ai_launcher.Failure.CLI_MISSING
-                and self.model.ai_installed is not None
-                and self.model.ai_cli in self.model.ai_installed):
-            self.model.ai_result = None
+        self.model.finish_ai_detection(ai_launcher.DETECTOR.installed(), ai_launcher.TERMINAL_DETECTOR.installed())
         self.refresh()
 
     def open_ai_install(self):
         tool = ((self.model.ai_result.tool if self.model.ai_result is not None else None)
-                or ai_launcher.TOOLS.get(self.settings.ai_cli))
-        if tool is not None:
-            webbrowser.open(tool.install_url)
+                or ai_launcher.TOOLS.get(self.model.ai_cli) or ai_launcher.TOOLS[AI_CLAUDE])
+        webbrowser.open(tool.install_url)
 
-    def start_ai_launch(self, from_menu=False):
+    def choose_ai_terminal(self, key):
+        """The AI card's terminal picker: remembered right away."""
+        if key not in ai_launcher.TERMINALS:
+            return
+        self.settings = replace(self.settings, ai_terminal=key)
+        self.model.choose_ai_terminal(key)
+        jobs.save_ai_choice(self.config, self.settings)
+        self.refresh()
+
+    def start_ai_launch(self, key=None, from_menu=False):
+        """Open the term folder with ``key`` (the menu item: the tool used last) in the chosen terminal."""
         if self.model.ai_launching:
             return
+        if key is None:
+            tool = ai_launcher.preferred_tool(self.model.ai_cli, self.model.ai_installed)
+            if tool is None:
+                return
+            key = tool.key
         self.model.ai_launching = True
         self.model.ai_result = None
         self.refresh()
-        ai_cli, ai_resume = self.settings.ai_cli, self.settings.ai_resume
-        launch_config = replace(self.config, dest=self.settings.dest)
+        settings = self.settings
+        launch_config = replace(self.config, dest=settings.dest)
 
         def worker():
-            result = jobs.run_ai_launch_guarded(ai_cli, ai_resume, launch_config)
+            result = jobs.run_ai_launch_guarded(key, settings.ai_resume, launch_config, settings.ai_terminal)
             self.post(self.ai_launched, result, from_menu)
 
         threading.Thread(target=worker, daemon=True).start()
 
     def ai_launched(self, result, from_menu=False):
-        self.model.ai_launching = False
+        self.model.finish_ai_launch(result)
+        # The launch looked again first.
         installed = ai_launcher.DETECTOR.installed()
         if installed is not None:
             self.model.ai_installed = installed
-        self.model.ai_result = None if result.ok else result
+        terminals = ai_launcher.TERMINAL_DETECTOR.installed()
+        if terminals is not None:
+            self.model.ai_terminals = terminals
+        if result.ok and result.tool is not None:
+            self.settings = replace(self.settings, ai_cli=result.tool.key)
+            jobs.save_ai_choice(self.config, self.settings)
         if (result.failure == ai_launcher.Failure.TERMINAL_FAILED
                 and result.folder is not None and result.folder.is_dir()):
             try:
@@ -887,7 +866,6 @@ class TrayApp:
             self.settings.sync_interval_minutes,
             dest_choice=choice,
             auto_relogin=self.settings.auto_relogin,
-            ai_cli=self.settings.ai_cli,
             ai_resume=self.settings.ai_resume,
         )
         jobs.refresh_ai_term(self.config, self.model)

@@ -17,6 +17,8 @@ import re
 import secrets
 from pathlib import Path
 
+from blackboard_sync import ai_launcher
+
 ASSETS = Path(__file__).with_name("webui")
 ICON_DIR = ASSETS / "icons"
 _PATH = re.compile(r'<path d="([^"]+)"')
@@ -49,9 +51,28 @@ def new_nonce() -> str:
     return secrets.token_urlsafe(18)
 
 
+def _png_data(path: Path) -> str:
+    return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
+
+
 def logo() -> str:
     """The app's logo (``webui/logo.png``, 128 px) as a data URI: the page loads no files."""
-    return "data:image/png;base64," + base64.b64encode((ASSETS / "logo.png").read_bytes()).decode()
+    return _png_data(ASSETS / "logo.png")
+
+
+def logo_styles() -> str:
+    """The AI tools' logos (``ai_launcher.LOGO_DIR``) as backgrounds, with the one for dark
+    backgrounds where there is one, following the same theme choice as the colors."""
+    rules = []
+    for key in ai_launcher.TOOLS:
+        light, dark = ai_launcher.logo_path(key), ai_launcher.logo_path(key, dark=True)
+        rules.append(f".ai-logo.{key} {{ background-image: url({_png_data(light)}); }}")
+        if dark != light:
+            image = f"{{ background-image: url({_png_data(dark)}); }}"
+            rules.append(f':root[data-theme="dark"] .ai-logo.{key} {image}')
+            rules.append('@media (prefers-color-scheme: dark) '
+                         f'{{ :root:not([data-theme="light"]) .ai-logo.{key} {image} }}')
+    return "\n".join(rules)
 
 
 def document(nonce: str | None = None, extra_style: str = "", extra_script: str = "", lang: str = "en",
@@ -62,7 +83,7 @@ def document(nonce: str | None = None, extra_style: str = "", extra_script: str 
     """
     nonce = nonce or new_nonce()
     template = (ASSETS / "index.html").read_text(encoding="utf-8")
-    style = (ASSETS / "app.css").read_text(encoding="utf-8") + extra_style
+    style = (ASSETS / "app.css").read_text(encoding="utf-8") + logo_styles() + extra_style
     script = (ASSETS / "app.js").read_text(encoding="utf-8")
     before = f'<script nonce="{nonce}">{extra_script}</script>' if extra_script else ""
     replacements = {

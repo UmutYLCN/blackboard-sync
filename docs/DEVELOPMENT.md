@@ -457,7 +457,7 @@ blackboard-sync [...] refresh-session [--json]
 blackboard-sync [...] check [--all-terms] [--course CODE ...]
 blackboard-sync [...] sync  [--all-terms] [--course CODE ...]
                             [--dest DIR] [--json] [--dry-run]
-blackboard-sync [...] notebooklm login | sync [--dest DIR] [--auto] | status | duplicates [--json] | remove-duplicates [--yes] [--source ID] [--json] | disconnect
+blackboard-sync [...] notebooklm login | sync [--dest DIR] [--auto] | status | disconnect
 ```
 
 | Option | Meaning |
@@ -1263,7 +1263,6 @@ user connects. `src/blackboard_sync/notebooklm/` holds:
 | `gateway.py` | The only module that imports `notebooklm` (notebooklm-py). Sorts every failure into `NotebookLMLoginRequired`, `NotebookLMTransient` or `NotebookLMPermanent`. |
 | `planner.py` | Pure. What to upload for a course, from `State` and the remote sources. No network. |
 | `store.py` | The files in `notebooklm/`: upload record, last run, connected or not, `disconnect`, and the read-only import of the `dersler-notebooklm` state. |
-| `duplicates.py` | Listing sources that are in a notebook twice, and the only code that deletes one. |
 | `runner.py` | One run: plan, upload, wait for processing, write the last run. Holds `run.lock`. |
 | `signin.py` | The one-time Google sign-in. |
 
@@ -1281,7 +1280,7 @@ the extension. A source the record knows to hold other content is no match, so t
 a name in two folders. One clear candidate is adopted; anything else is `HOLD`: reported, never
 uploaded. A held file has no record, so `--auto` keeps opening the network for that course.
 `store.import_legacy` runs before planning and counts the old tool's uploads as present; it keeps
-their source ids under the course's `legacy` key, since those copies are never this app's to remove.
+their source ids under the course's `legacy` key.
 
 **The card** is `main_window_model.notebooklm_card`. While a job runs it shows the sync illustration
 and an `NSProgressIndicator`: filling from `finished / total` of the progress events, or moving
@@ -1324,10 +1323,7 @@ PDF in the source count, and announcements would eat the limit.
 
 **Rules kept from the original uploader:**
 
-- A run only adds. The only remote delete is `duplicates.remove`, reached from a confirmed
-  `remove-duplicates`. It recomputes what may go under the run lock, on what the notebook holds at
-  that moment, and takes only a newer copy this app added with the same content as an older, ready
-  copy. Nothing updates a source.
+- A run only adds. Nothing deletes or updates a source in NotebookLM.
 - Idempotent. A remote source that matches a file is adopted instead of uploaded (see *Recognizing a
   file already in the notebook*), so losing `state.json` or a crash after an upload adds nothing
   twice. A file is recorded right after its upload.

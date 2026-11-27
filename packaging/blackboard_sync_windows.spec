@@ -11,6 +11,8 @@ GOOGLE_OAUTH_DATAS = oauth_datas(ROOT)
 TTKBOOTSTRAP_DATAS = collect_data_files("ttkbootstrap.assets")
 # The WebView2 main window's page, stylesheet, script and icons (windows/webui_page.py).
 WEBUI_DATAS = [(str(ROOT / "src" / "blackboard_sync" / "windows" / "webui"), "blackboard_sync/windows/webui")]
+# The AI tools' logos on Home's card (ai_launcher.LOGO_DIR).
+AI_LOGO_DATAS = [(str(ROOT / "src" / "blackboard_sync" / "ai_logos"), "blackboard_sync/ai_logos")]
 VERSION = re.search(
     r'__version__ = "([^"]+)"', (ROOT / "src" / "blackboard_sync" / "__init__.py").read_text()
 ).group(1)
@@ -26,7 +28,7 @@ a = Analysis(
     pathex=[str(ROOT / "src")],
     # Fonts of the PDF notes (blackboard_sync.notepdf), with their license.
     datas=[(str(ROOT / "assets" / "fonts"), "assets/fonts")] + GOOGLE_OAUTH_DATAS + TTKBOOTSTRAP_DATAS + WEBUI_DATAS
-          + copy_metadata("notebooklm-py"),
+          + AI_LOGO_DATAS + copy_metadata("notebooklm-py"),
     # The sync child run and the tray app are imported lazily by app_entry, the
     # in-app sign-in window (pywebview on WebView2, through pythonnet) by login.
     # pyinstaller-hooks-contrib's pywebview hook bundles the WebView2 interop DLLs.

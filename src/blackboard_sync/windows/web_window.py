@@ -30,7 +30,7 @@ from blackboard_sync import deadlines, term_confirm, uninstall, updater
 from blackboard_sync.i18n import LANGUAGES, language, tr
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
-from blackboard_sync.settings import THEME_DARK, THEME_LIGHT, THEME_SYSTEM, THEMES
+from blackboard_sync.settings import AI_CLIS, AI_TERMINALS, THEME_DARK, THEME_LIGHT, THEME_SYSTEM, THEMES
 from blackboard_sync.windows import webui_page, webui_state
 
 log = logging.getLogger(__name__)
@@ -43,12 +43,13 @@ STATE_WAIT = 20.0  # seconds a page's request for a new state waits before it as
 QUIT_GRACE = 10.0  # seconds pywebview's loop gets to end after Quit before the process ends anyway
 # What the page may ask the window to do (``Bridge.action``, ``Bridge.setting``).
 NOTEBOOKLM_ACTIONS = ("notebooklm_connect", "notebooklm_sync", "notebooklm_open")
-AI_ACTIONS = ("ai_open", "ai_settings", "ai_install")
+AI_ACTIONS = ("ai_install", "ai_detect", *(main.AI_OPEN_PREFIX + key for key in AI_CLIS),
+              *(main.AI_TERMINAL_PREFIX + key for key in AI_TERMINALS))
 ACTIONS = ("sync", "pause", "folder", "update", "home_action", "account", *NOTEBOOKLM_ACTIONS, *AI_ACTIONS)
 SETTING_BUTTONS = ("account", "update", "uninstall", "google_calendar", "google_calendar_sync",
-                   "google_calendar_disconnect", "notebooklm_duplicates", "notebooklm_disconnect")
+                   "google_calendar_disconnect", "notebooklm_disconnect")
 BUTTON_ACTIONS = {"google_calendar": "calendar_connect", "google_calendar_sync": "calendar_sync",
-                  "google_calendar_disconnect": "calendar_disconnect", "notebooklm_duplicates": "notebooklm_duplicates",
+                  "google_calendar_disconnect": "calendar_disconnect",
                   "notebooklm_disconnect": "notebooklm_disconnect"}
 MAX_ID = 4096  # an id is a path, a URL or a key; anything longer was not handed out
 MAX_VISIBLE = 64
@@ -96,18 +97,18 @@ def form_values(data) -> form.FormValues | None:
     base_url, dest = data.get("base_url"), data.get("dest")
     interval, code = data.get("sync_interval_minutes"), data.get("language")
     switches = tuple(data.get(key) for key in ("autostart", "check_updates", "auto_relogin", "notebooklm_auto"))
-    ai_cli, ai_resume = data.get("ai_cli", ""), data.get("ai_resume", True)
+    ai_resume = data.get("ai_resume", True)
     if not (isinstance(base_url, str) and len(base_url) <= 2048 and isinstance(dest, str) and len(dest) <= MAX_ID):
         return None
     if any(not isinstance(value, bool) for value in switches) or isinstance(interval, bool):
         return None
     if interval not in INTERVALS or code not in LANGUAGE_CODES:
         return None
-    if not isinstance(ai_cli, str) or ai_cli not in form.AI_VALUES or not isinstance(ai_resume, bool):
+    if not isinstance(ai_resume, bool):
         return None
     autostart, check_updates, auto_relogin, notebooklm_auto = switches
     return form.FormValues(base_url, dest, autostart, check_updates, interval, code, auto_relogin, notebooklm_auto,
-                           ai_cli, ai_resume)
+                           ai_resume)
 
 
 class Bridge:
@@ -347,13 +348,6 @@ class WebHost:
         if not answer or answer[0] != "confirm" or not isinstance(answer[1], list):
             return None
         return set(answer[1]) & {course_id for course_id, _label in rows}
-
-    def ask_duplicates(self, title: str, text: str, remove: str) -> bool:
-        """What is there twice, in a box that scrolls; True for ``remove``, the button of any copy that can go."""
-        close = [{"id": "cancel", "title": tr("Close"), "style": "gray", "default": True}]
-        action = [{"id": "remove", "title": remove, "style": "filled"}] if remove else []
-        answer = self.ask({"title": title, "message": "", "list": text, "buttons": close + action})
-        return bool(answer) and answer[0] == "remove"
 
     # -- pywebview's threads ask ---------------------------------------------------
     def next_state(self, known: int, timeout: float):

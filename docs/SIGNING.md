@@ -240,11 +240,14 @@ signed release:
 The hardened runtime is required for notarization. Each exception is an
 entitlement in `packaging/entitlements/`:
 
-- **The app (`app.plist`): none.** Python, PyObjC (the menu bar app, the
-  settings and sign-in windows) and WebKit run under the plain hardened
-  runtime. Library validation stays on: every library in the bundle is signed
+- **The app (`app.plist`): `com.apple.security.automation.apple-events`.**
+  Home's AI card opens a window in iTerm2, when that is the chosen terminal, by
+  sending it Apple events; macOS asks the student first, with the text of
+  `NSAppleEventsUsageDescription`. Nothing else needs an exception: Python,
+  PyObjC (the menu bar app, the settings and sign-in windows) and WebKit run
+  under the plain hardened runtime. Library validation stays on: every library in the bundle is signed
   by the same team, so `disable-library-validation` is not needed.
-  Checked by signing the bundle with the hardened runtime (an Apple
+  That was checked by signing the bundle with the hardened runtime (an Apple
   Development identity, so library validation applied) and running the sign-in
   self-test, the menu bar app and a CLI command.
 - **Playwright's Node.js driver (`node.plist`): `com.apple.security.cs.allow-jit`.**

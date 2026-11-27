@@ -259,18 +259,11 @@ that it is the same file, the file is **held back**: it is not added, the card c
 - Skipped and counted: other file types, images, larger files, and files you put in the folders
   yourself.
 
-**What the app never does.** A sync only adds. It deletes and replaces nothing in NotebookLM; the one
-exception is removing duplicates, below, which you confirm yourself. A source you
+**What the app never does.** A sync only adds. It deletes and replaces nothing in NotebookLM. A source you
 remove there stays removed: the app remembers the file and does not add it again. If a course has more files than the notebook's source limit (often 50), that
 course is left as it is and marked **blocked**, because adding only some of them would leave a silent
 gap. If a file changed on Blackboard after it was added, it is counted as **modified**; the old source
 stays. If two notebooks have the same name, that course is skipped until you rename one.
-
-**Duplicates.** **Settings → NotebookLM → Find duplicates** lists the sources that are in a notebook
-more than once, with the date of each copy. It deletes nothing. Press **Remove** and confirm to take
-out the extra copies. Only a newer copy that this app added, with the same content as an older copy
-that is ready, can go. An older copy, a source you added yourself, and a file that changed on
-Blackboard in between (both versions stay, and you decide in NotebookLM) are listed but never removed.
 
 **If you used the `dersler-notebooklm` tool before.** Its `state.json` is read, never changed, and
 what it uploaded counts as already there. The app looks in
@@ -300,8 +293,6 @@ Terminal commands:
 blackboard-sync notebooklm login
 blackboard-sync notebooklm sync
 blackboard-sync notebooklm status
-blackboard-sync notebooklm duplicates [--json]
-blackboard-sync notebooklm remove-duplicates [--yes] [--source ID] [--json]
 blackboard-sync notebooklm disconnect
 ```
 
@@ -310,18 +301,24 @@ session is never printed.
 
 ## AI study session (Mac and Windows)
 
-Open your current term's folder in a terminal with your chosen AI CLI already running, continuing the
-last session in that folder when possible.
+Open your current term's folder in a terminal with an AI CLI already running, continuing the last
+session in that folder when possible.
 
-- **Choose a tool.** In **Settings → AI assistant**, pick **Claude Code**, **Gemini CLI** or **Codex**
-  under **Open with** (the menu shows which ones are installed on your computer). Leave **Continue my
-  last session in this folder** on to resume where you left off, or turn it off to start fresh each time.
-- **Launch from Home or the menu bar / tray.** On **Home**, press **Open in {AI}** on the **AI study
-  session** card under NotebookLM, or choose **Open {AI} in {term}** in the menu bar / tray menu.
-- **What runs.** The app opens Terminal on macOS (or Windows Terminal / PowerShell on Windows) in your
-  current term's folder and starts the chosen CLI. If resuming fails immediately because there is no
-  earlier session in that folder, it starts a new session instead. The AI tool runs with your own
-  account and its own rules.
+- **Click a tool.** On **Home**, the **AI study session** card under NotebookLM shows a button for each
+  of **Claude Code**, **Gemini CLI** and **Codex** that is installed on your computer. Click one to
+  open it straight away. If none is installed, the card offers **How to install** and **Try again**.
+- **Choose a terminal.** The menu next to the buttons lists the terminal apps found on your computer.
+  On a Mac: Terminal, iTerm2, Ghostty, WezTerm, kitty and Alacritty. On Windows: Windows Terminal,
+  PowerShell and Command Prompt. Your choice is remembered. The system terminal (Terminal, or Windows
+  Terminal / PowerShell) is the default, and is used if the one you chose is removed. Warp is not
+  listed, because it offers no reliable way to open a window that runs a command. The first time
+  iTerm2 is used, macOS asks whether Blackboard Sync may control it.
+- **Menu bar / tray.** **Open {AI} in {term}** starts the tool you used last in the chosen terminal.
+- **Continue where you left off.** Leave **Settings → AI assistant → Continue my last session in this
+  folder** on, or turn it off to start fresh each time.
+- **What runs.** The terminal opens in your current term's folder and starts the tool. If resuming fails
+  immediately because there is no earlier session in that folder, a new session starts instead. The AI
+  tool runs with your own account and its own rules.
 
 
 ## Version 1.6.0

@@ -8,7 +8,7 @@ Downloads your Blackboard course content to your computer automatically.
 - **Tidy folders:** Files are saved in a **University** folder with Blackboard's own term and course structure.
 - **Google Calendar (optional):** Send deadlines to a dedicated Blackboard Deadlines calendar; automatic updates after successful app syncs. [Client setup](docs/GOOGLE_CALENDAR_SETUP.md).
 - **NotebookLM (optional, Mac and Windows):** Add your course files to one notebook per course, automatically after each sync. Uses an unofficial connection. [Details](docs/USAGE.md#notebooklm-mac-and-windows).
-- **AI study session (optional, Mac and Windows):** Open your current term's folder in a terminal with Claude Code, Gemini CLI or Codex, continuing your last session there. [Details](docs/USAGE.md#ai-study-session-mac-and-windows).
+- **AI study session (optional, Mac and Windows):** Click an installed tool (Claude Code, Gemini CLI or Codex) on Home to open it in your current term's folder, in the terminal you choose, continuing your last session there. [Details](docs/USAGE.md#ai-study-session-mac-and-windows).
 - **Calendar:** See the due dates of assignments, exams and other graded work day by day, with the course name.
 - **Announcements:** Every synced announcement from your current-term courses in one place, newest first; open the saved notes from there.
 - **Courses:** Untick a course you don't want and it is no longer synced. The folder is a copy of Blackboard; deleted or damaged files come back by themselves.

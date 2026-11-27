@@ -182,6 +182,13 @@ def ai_card(card: main.AiCard) -> dict:
         "kind": card.kind,
         "title": card.title,
         "detail": card.detail,
+        "note": card.note,
+        "tools": [{"id": tool.action, "key": tool.key, "title": tool.label, "current": tool.current,
+                   "enabled": card.tools_enabled} for tool in card.tools],
+        "terminals": [{"id": main.AI_TERMINAL_PREFIX + key, "title": name} for key, name in card.terminals],
+        "terminal": main.AI_TERMINAL_PREFIX + card.terminal if card.terminals else "",
+        "terminal_label": main.T_AI_TERMINAL,
+        "terminal_enabled": card.tools_enabled,
         "button": {"id": card.action, "title": card.action_title, "enabled": card.enabled} if card.action else None,
         "secondary": ({"id": card.secondary_action, "title": card.secondary_title, "enabled": card.secondary_enabled}
                       if card.secondary_action else None),
@@ -290,9 +297,7 @@ def calendar_page(page: deadlines.DeadlinePage) -> dict:
     }
 
 
-def _choices(key: str, ai_installed: frozenset[str] | None = None) -> list[dict]:
-    if key == "ai_cli":
-        return [{"value": value, "title": title} for value, title in form.ai_cli_choices(ai_installed)]
+def _choices(key: str) -> list[dict]:
     if key == "interval":
         return [{"value": minutes, "title": title} for minutes, title in form.INTERVAL_OPTIONS]
     if key == "language":
@@ -302,8 +307,7 @@ def _choices(key: str, ai_installed: frozenset[str] | None = None) -> list[dict]
     return []
 
 
-def _row(definition: form.SettingRow, state: form.RowState | None, packaged: bool,
-         ai_installed: frozenset[str] | None = None) -> dict:
+def _row(definition: form.SettingRow, state: form.RowState | None, packaged: bool) -> dict:
     state = state or form.RowState()
     title = definition.title if state.title is None else state.title
     detail = definition.detail if state.detail is None else state.detail
@@ -320,7 +324,7 @@ def _row(definition: form.SettingRow, state: form.RowState | None, packaged: boo
         "destructive": definition.destructive,
         "enabled": state.enabled,
         "warning": state.warning,
-        "choices": _choices(definition.key, ai_installed),
+        "choices": _choices(definition.key),
         "hidden": False,
     }
 
@@ -351,29 +355,26 @@ def settings(status_form: form.WindowStatus, values: form.FormValues, error: tup
              theme: str) -> dict:
     """Settings: sections of rows, the saved form values the page edits, and the last save's error."""
     notebooklm_row = form.notebooklm_disconnect_state(status_form)
-    states = {**form.row_states(status_form), "notebooklm_disconnect": notebooklm_row,
-              "notebooklm_duplicates": notebooklm_row}
+    states = {**form.row_states(status_form), "notebooklm_disconnect": notebooklm_row}
     sections = []
     for section in form.settings_sections(appearance=True, notebooklm=True, auto_relogin=True):
         if packaged and section.danger:
             continue  # the Store removes the app; the Updates card says so
-        rows = [_row(definition, states.get(definition.key), packaged, status_form.ai_installed)
+        rows = [_row(definition, states.get(definition.key), packaged)
                 for definition in section.rows
                 if not (packaged and definition.key in PACKAGED_HIDDEN_ROWS)]
         if section.key == form.SECTION_CALENDAR:
             _calendar_rows(rows, status_form)
         notes = [updater.STORE_UPDATES, uninstall.STORE_REMOVAL] if packaged and section.key == form.SECTION_UPDATES else []
         sections.append({"key": section.key, "title": section.title, "rows": rows, "footer": section.footer,
-                         "danger": section.danger, "notes": notes,
-                         "totals": status_form.notebooklm_totals if section.key == form.SECTION_NOTEBOOKLM else ""})
+                         "danger": section.danger, "notes": notes})
     message, field = error
     return {
         "sections": sections,
         "values": {"base_url": values.base_url, "dest": values.dest, "autostart": values.autostart,
                    "check_updates": values.check_updates, "sync_interval_minutes": values.sync_interval_minutes,
                    "language": values.language, "auto_relogin": values.auto_relogin,
-                   "notebooklm_auto": values.notebooklm_auto, "ai_cli": values.ai_cli,
-                   "ai_resume": values.ai_resume},
+                   "notebooklm_auto": values.notebooklm_auto, "ai_resume": values.ai_resume},
         "theme": theme,
         "error": message,
         "error_field": field,
@@ -430,7 +431,9 @@ def ids(state: dict) -> dict[str, set[str]]:
         "notebooklm": ({card["button"]["id"]} if card["button"] and card["button"]["enabled"] else set())
                       | ({card["open"]["id"]} if card["open"] else set()),
         "ai": ({ai["button"]["id"]} if ai["button"] and ai["button"]["enabled"] else set())
-              | ({ai["secondary"]["id"]} if ai["secondary"] and ai["secondary"]["enabled"] else set()),
+              | ({ai["secondary"]["id"]} if ai["secondary"] and ai["secondary"]["enabled"] else set())
+              | {tool["id"] for tool in ai["tools"] if tool["enabled"]}
+              | ({terminal["id"] for terminal in ai["terminals"]} if ai["terminal_enabled"] else set()),
         # A settings button that is on the page and enabled.
         "button": ({row["key"] for row in rows
                     if row["control"] == form.CONTROL_BUTTON and row["enabled"] and not row["hidden"]}
