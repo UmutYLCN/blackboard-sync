@@ -74,6 +74,13 @@ def test_no_courses_yet_opens_the_university_folder(tmp_path):
     assert ai.term_folder(tmp_path, {}) == tmp_path
 
 
+def test_a_backslash_is_part_of_a_term_name_on_macos_but_a_separator_on_windows(tmp_path):
+    courses = {"_1_1": course("Güz\\Fall 2026")}
+    assert ai.term_folder(tmp_path, courses, platform="darwin") == tmp_path / "Güz\\Fall 2026"
+    assert ai.term_folder(tmp_path, courses, platform="win32") == tmp_path
+    assert ai.term_folder(tmp_path, {"_1_1": course("C:x")}, platform="win32") == tmp_path
+
+
 def test_a_recorded_folder_never_leads_outside_the_university_folder(tmp_path):
     courses = {
         "_1_1": {"term": "x", "folder": "../../etc/x"},
@@ -104,6 +111,10 @@ def test_the_current_term_folder_reads_the_saved_state_and_the_ticks(tmp_path):
 
 # -- where the tools are ---------------------------------------------------------------------------
 
+# The installers' folders under the fixture's home; the system ones (/opt/homebrew/bin) are left out.
+LOCAL_DIRS = tuple(path for path in ai.MACOS_DIRS if path.startswith("~/"))
+
+
 def program(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("#!/bin/sh\n", encoding="utf-8")
@@ -122,16 +133,18 @@ class ShellAnswer:
         return subprocess.CompletedProcess(argv, 0, self.stdout, "")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS paths and file modes")
 def test_macos_asks_the_login_shell_and_takes_only_real_programs(tmp_path):
     claude = program(tmp_path / "bin" / "claude")
     run = ShellAnswer(f"{claude}\ncodex\nalias gemini='npx gemini'\n/nowhere/gemini\n")
-    found = ai.detect("darwin", env={"SHELL": "/bin/zsh"}, home=tmp_path / "home", run=run)
+    found = ai.detect("darwin", env={"SHELL": "/bin/zsh"}, home=tmp_path / "home", run=run, dirs=LOCAL_DIRS)
     assert found == {"claude": claude, "gemini": None, "codex": None}
     argv, kwargs = run.calls[0]
     assert argv == ["/bin/zsh", "-lic", "command -v claude gemini codex"]
     assert kwargs["timeout"] == ai.SHELL_TIMEOUT and kwargs["stdin"] == subprocess.DEVNULL
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS paths and file modes")
 def test_macos_looks_in_the_install_folders_for_what_the_shell_did_not_name(tmp_path):
     home = tmp_path / "home"
     # The shell wraps codex in a function, so it prints a name: the install folder has it.
@@ -140,21 +153,23 @@ def test_macos_looks_in_the_install_folders_for_what_the_shell_did_not_name(tmp_
     gemini = program(home / ".nvm" / "versions" / "node" / "v22.11.0" / "bin" / "gemini")
     (home / ".claude" / "local").mkdir(parents=True)
     (home / ".claude" / "local" / "claude").write_text("not executable", encoding="utf-8")
-    found = ai.detect("darwin", env={"SHELL": "/bin/zsh"}, home=home, run=ShellAnswer("codex\n"))
+    found = ai.detect("darwin", env={"SHELL": "/bin/zsh"}, home=home, run=ShellAnswer("codex\n"), dirs=LOCAL_DIRS)
     assert found["codex"] == codex
     assert found["gemini"] == gemini  # the newest Node version
-    assert found["claude"] is None or found["claude"].parent in (Path("/opt/homebrew/bin"), Path("/usr/local/bin"))
+    assert found["claude"] is None
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS paths and file modes")
 def test_a_shell_that_hangs_or_is_missing_still_finds_the_install_folders(tmp_path):
     home = tmp_path / "home"
     claude = program(home / ".local" / "bin" / "claude")
     for error in (subprocess.TimeoutExpired("zsh", 3), FileNotFoundError("zsh")):
-        found = ai.detect("darwin", env={"SHELL": "/bin/zsh"}, home=home, run=ShellAnswer(error=error))
+        found = ai.detect("darwin", env={"SHELL": "/bin/zsh"}, home=home, run=ShellAnswer(error=error),
+                          dirs=LOCAL_DIRS)
         assert found["claude"] == claude
     # A relative or missing SHELL falls back to zsh.
     run = ShellAnswer()
-    ai.detect("darwin", env={"SHELL": "zsh"}, home=home, run=run)
+    ai.detect("darwin", env={"SHELL": "zsh"}, home=home, run=run, dirs=LOCAL_DIRS)
     assert run.calls[0][0][0] == "/bin/zsh"
 
 
@@ -202,6 +217,7 @@ def test_the_window_status_carries_what_was_found(tmp_path):
 
 # -- the macOS script ------------------------------------------------------------------------------
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS paths and file modes")
 @pytest.mark.parametrize("key", ai.AI_CLIS)
 def test_the_macos_script_quotes_everything_and_falls_back_to_a_new_session(key, tmp_path):
     tool = ai.TOOLS[key]
@@ -224,7 +240,7 @@ def test_each_tool_resumes_with_its_own_verified_arguments():
     assert all(tool.fresh == () for tool in ai.TOOLS.values())
 
 
-ZSH = shutil.which("zsh")
+ZSH = None if sys.platform == "win32" else shutil.which("zsh")
 
 
 def fake_tool(path: Path, log: Path, exit_on_resume: int) -> Path:
@@ -349,6 +365,7 @@ def test_nothing_opens_without_a_tool_an_install_or_the_folder(tmp_path):
     assert (result.failure, result.folder) == (ai.Failure.FOLDER_MISSING, config.root / GUZ)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS paths and file modes")
 def test_macos_opens_terminal_with_a_private_script_that_deletes_itself(tmp_path):
     config = make_config(tmp_path, {"_1_1": course(GUZ)})
     (config.root / GUZ).mkdir(parents=True)
@@ -367,6 +384,7 @@ def test_macos_opens_terminal_with_a_private_script_that_deletes_itself(tmp_path
     assert Path(calls[0][3]).parent == config.data_dir / ai.LAUNCH_DIR
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS paths and file modes")
 def test_macos_reports_a_terminal_that_did_not_open_and_cleans_up(tmp_path):
     config = make_config(tmp_path, {"_1_1": course(GUZ)})
     (config.root / GUZ).mkdir(parents=True)
@@ -377,6 +395,7 @@ def test_macos_reports_a_terminal_that_did_not_open_and_cleans_up(tmp_path):
     assert list((config.data_dir / ai.LAUNCH_DIR).iterdir()) == []
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS paths and file modes")
 def test_old_scripts_terminal_never_ran_are_removed(tmp_path):
     folder = tmp_path / "data" / ai.LAUNCH_DIR
     folder.mkdir(parents=True)

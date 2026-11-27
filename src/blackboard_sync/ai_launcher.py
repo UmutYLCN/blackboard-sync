@@ -114,7 +114,8 @@ def _term_age(name: str) -> tuple[int, int]:
     return academic_order(name) or (-1, -1)
 
 
-def term_folder(root: Path, courses: Mapping[str, object], disabled: Collection[str] = ()) -> Path:
+def term_folder(root: Path, courses: Mapping[str, object], disabled: Collection[str] = (),
+                platform: str | None = None) -> Path:
     """The current term's folder inside ``root`` (the University folder).
 
     ``courses`` is ``State.courses`` (what the last sync found: ``folder`` is "<term>/<course>"),
@@ -130,8 +131,10 @@ def term_folder(root: Path, courses: Mapping[str, object], disabled: Collection[
         if not isinstance(folder, str):
             continue
         parts = PurePosixPath(folder).parts
-        if len(parts) < 2 or folder.startswith("/") or ".." in parts or "\\" in parts[0]:
+        if len(parts) < 2 or folder.startswith("/") or ".." in parts:
             continue  # not "<term>/<course>" inside root
+        if is_windows(platform) and ("\\" in parts[0] or ":" in parts[0]):
+            continue  # a separator or drive there (a backslash is an ordinary character on macOS)
         counts[parts[0]] += 1
     if not counts:
         return root
@@ -186,8 +189,8 @@ def shell_paths(output: str) -> dict[str, Path]:
     return found
 
 
-def _detect_macos(env: Mapping[str, str], home: Path, run: Callable[..., subprocess.CompletedProcess]
-                  ) -> dict[str, Path | None]:
+def _detect_macos(env: Mapping[str, str], home: Path, run: Callable[..., subprocess.CompletedProcess],
+                  dirs: Collection[str] = MACOS_DIRS) -> dict[str, Path | None]:
     shell = env.get("SHELL") or "/bin/zsh"
     if not os.path.isabs(shell):
         shell = "/bin/zsh"
@@ -198,7 +201,7 @@ def _detect_macos(env: Mapping[str, str], home: Path, run: Callable[..., subproc
         found = {key: path for key, path in shell_paths(result.stdout or "").items() if _executable(path)}
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         log.info("Could not ask the login shell where the AI tools are: %s", exc)
-    dirs = [_expand(path, home) for path in MACOS_DIRS]
+    folders = [_expand(path, home) for path in dirs]
     try:
         nvm = sorted((version / "bin" for version in _expand(NVM_DIR, home).iterdir()),
                      key=lambda folder: _version_key(folder.parent), reverse=True)
@@ -206,7 +209,7 @@ def _detect_macos(env: Mapping[str, str], home: Path, run: Callable[..., subproc
         nvm = []
     for key in AI_CLIS:
         if key not in found:
-            path = next((folder / key for folder in (*dirs, *nvm) if _executable(folder / key)), None)
+            path = next((folder / key for folder in (*folders, *nvm) if _executable(folder / key)), None)
             if path is not None:
                 found[key] = path
     return {key: found.get(key) for key in AI_CLIS}
@@ -243,13 +246,14 @@ def _detect_windows(env: Mapping[str, str], home: Path) -> dict[str, Path | None
 
 
 def detect(platform: str | None = None, env: Mapping[str, str] | None = None, home: Path | None = None,
-           run: Callable[..., subprocess.CompletedProcess] = subprocess.run) -> dict[str, Path | None]:
-    """Each tool's program, or None when it is not installed."""
+           run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+           dirs: Collection[str] = MACOS_DIRS) -> dict[str, Path | None]:
+    """Each tool's program, or None when it is not installed; ``dirs`` are macOS's install folders."""
     env = os.environ if env is None else env
     home = Path.home() if home is None else home
     if is_windows(platform):
         return _detect_windows(env, home)
-    return _detect_macos(env, home, run)
+    return _detect_macos(env, home, run, dirs)
 
 
 class Detector:
