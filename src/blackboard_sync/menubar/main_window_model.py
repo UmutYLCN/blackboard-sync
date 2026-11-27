@@ -355,20 +355,20 @@ class HomeState:
 
 # The NotebookLM card's states.
 NOTEBOOKLM_OFF, NOTEBOOKLM_IDLE, NOTEBOOKLM_RUNNING, NOTEBOOKLM_ATTENTION = "off", "idle", "running", "attention"
-T_NOTEBOOKLM = "NotebookLM"
-T_NOTEBOOKLM_CONNECT = tr("Connect NotebookLM")
-T_NOTEBOOKLM_SYNC = tr("Sync NotebookLM")
-T_NOTEBOOKLM_OPEN = tr("Open NotebookLM")
-T_NOTEBOOKLM_INTRO = tr("Add your course files to NotebookLM after each sync.")
-T_NOTEBOOKLM_CHECKING = tr("Checking what is already in NotebookLM…")
+T_NOTEBOOKLM = "Gemini Notebook"  # the card's title: Google's name for NotebookLM
+T_NOTEBOOKLM_CONNECT = tr("Connect Gemini Notebook")
+T_NOTEBOOKLM_SYNC = tr("Sync Gemini Notebook")
+T_NOTEBOOKLM_OPEN = tr("Open Gemini Notebook")
+T_NOTEBOOKLM_INTRO = tr("Your course files are added after each sync.")
+T_NOTEBOOKLM_CHECKING = tr("Checking what is already in Gemini Notebook…")
 T_NOTEBOOKLM_WAITING = tr("Sign in to Google in the browser window.")
 T_NOTEBOOKLM_VERIFYING = tr("Checking the connection…")
-T_NOTEBOOKLM_READING = tr("NotebookLM is reading the new files…")
+T_NOTEBOOKLM_READING = tr("Gemini Notebook is reading the new files…")
 
 
 @dataclass(frozen=True)
 class NotebookLMCard:
-    """The card under Home's status card, always titled "NotebookLM": its pill leaves no room for
+    """The card under Home's status card, always titled ``T_NOTEBOOKLM``: its pill leaves no room for
     more, so ``detail`` says what is going on. ``action`` is a window action."""
 
     kind: str  # one of the NOTEBOOKLM_* values

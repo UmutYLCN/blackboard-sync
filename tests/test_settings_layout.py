@@ -32,9 +32,9 @@ def test_the_notebooklm_section_has_connection_controls_and_footer():
     assert SECTION_NOTEBOOKLM not in [section.key for section in settings_sections(appearance=True)]
     section = next(s for s in settings_sections(notebooklm=True) if s.key == SECTION_NOTEBOOKLM)
     assert [row.key for row in section.rows] == ["notebooklm_auto", "notebooklm_disconnect"]
-    assert section.rows[0].title == "Add new files to NotebookLM after each sync"
-    assert section.footer == "Unofficial connection: it may stop working if Google changes NotebookLM."
-    assert [row.detail for row in section.rows] == ["", "Files in NotebookLM stay there."]
+    assert section.rows[0].title == "Add new files to Gemini Notebook after each sync"
+    assert section.footer == "Unofficial connection: it may stop working if Google changes Gemini Notebook."
+    assert [row.detail for row in section.rows] == ["", "Files in Gemini Notebook stay there."]
 
 
 def all_rows():

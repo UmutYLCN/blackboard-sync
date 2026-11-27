@@ -95,10 +95,6 @@ from blackboard_sync.menubar.main_window_model import (
     HOME_ANNOUNCEMENT_ROWS,
     HOME_RECENT_ROWS,
     NAV_SECTIONS,
-    NOTEBOOKLM_ATTENTION,
-    NOTEBOOKLM_IDLE,
-    NOTEBOOKLM_OFF,
-    NOTEBOOKLM_RUNNING,
     OVERVIEW,
     START_STEPS,
     STATE_ATTENTION,
@@ -240,13 +236,6 @@ STATE_SYMBOLS = {
 }
 
 # The NotebookLM card's symbol and its tint.
-NOTEBOOKLM_SYMBOLS = {
-    NOTEBOOKLM_OFF: ("text.book.closed", "secondaryLabelColor"),
-    NOTEBOOKLM_IDLE: ("text.book.closed.fill", "systemGreenColor"),
-    NOTEBOOKLM_RUNNING: ("arrow.triangle.2.circlepath", "controlAccentColor"),
-    NOTEBOOKLM_ATTENTION: ("exclamationmark.triangle", "systemOrangeColor"),
-}
-
 # The AI study session card's symbol and its tint.
 AI_SYMBOLS = {
     AI_OFF: ("terminal", "secondaryLabelColor"),
@@ -1178,7 +1167,8 @@ class MainWindow:
         """Under the status card, in its style: a symbol, the state and a line, a pill at the top right."""
         self.notebooklm_card = _card(NSMakeRect(PAD, HEADER, LEFT_W, NOTEBOOKLM_BASE))
         content = self.notebooklm_card.contentView()
-        self.notebooklm_icon = NSImageView.alloc().initWithFrame_(NSMakeRect(22, 18, ICON_SIZE, ICON_SIZE))
+        self.notebooklm_icon = NSImageView.alloc().initWithFrame_(NSMakeRect(22, 14, ICON_SIZE, ICON_SIZE))
+        self.notebooklm_logo = NSImage.alloc().initWithContentsOfFile_(str(ai_launcher.NOTEBOOK_LOGO))
         content.addSubview_(self.notebooklm_icon)
         self.notebooklm_title = _label(T_NOTEBOOKLM, 17)
         self.notebooklm_title.setFont_(NSFont.systemFontOfSize_weight_(17, -0.4))  # NSFontWeightLight
@@ -1226,9 +1216,12 @@ class MainWindow:
     def _layout_notebooklm_card(self) -> float:
         """Fills the card and returns its height; ``_place_notebooklm_card`` puts it on the page."""
         card = self.status.notebooklm
-        symbol, tint = NOTEBOOKLM_SYMBOLS[card.kind]
-        self.notebooklm_icon.setImage_(_symbol_image(symbol, 20))
-        self.notebooklm_icon.setContentTintColor_(getattr(NSColor, tint)())
+        if card.warning:  # something needs the student: the warning sign takes the logo's place
+            self.notebooklm_icon.setImage_(_symbol_image("exclamationmark.triangle", 20))
+            self.notebooklm_icon.setContentTintColor_(NSColor.systemOrangeColor())
+        else:
+            self.notebooklm_icon.setImage_(self.notebooklm_logo)
+            self.notebooklm_icon.setContentTintColor_(None)
         self.notebooklm_icon.setHidden_(card.running)
         self.notebooklm_scene.setHidden_(not card.running)
         x = 14 + SCENE_SMALL[0] + 10 if card.running else NOTEBOOKLM_TEXT_X
@@ -2532,8 +2525,8 @@ def ask_first_courses(card: dict) -> set[str] | None:
 def ask_notebooklm_disconnect() -> bool:
     """Confirm first: signing in again takes the student through Google's sign-in."""
     alert = NSAlert.alloc().init()
-    alert.setMessageText_(tr("Disconnect NotebookLM?"))
-    alert.setInformativeText_(tr("The Google session is deleted from this computer. Files already in NotebookLM "
+    alert.setMessageText_(tr("Disconnect Gemini Notebook?"))
+    alert.setInformativeText_(tr("The Google session is deleted from this computer. Files already in Gemini Notebook "
                                  "stay there, and new ones are no longer added."))
     alert.addButtonWithTitle_(tr("Disconnect"))
     alert.addButtonWithTitle_(T_CANCEL).setKeyEquivalent_("\x1b")

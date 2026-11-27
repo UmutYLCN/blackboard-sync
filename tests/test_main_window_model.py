@@ -444,7 +444,7 @@ def notebooklm_model(**status):
 def test_notebooklm_not_connected_offers_to_connect():
     card = main_window_model.notebooklm_card(notebooklm_model(), NOW)
     assert card.kind == main_window_model.NOTEBOOKLM_OFF
-    assert (card.action, card.action_title) == ("notebooklm_connect", "Connect NotebookLM")
+    assert (card.action, card.action_title) == ("notebooklm_connect", "Connect Gemini Notebook")
     assert card.enabled and "after each sync" in card.detail
 
 

@@ -149,8 +149,8 @@ T_AUTOSTART_DETAIL = tr("Keeps syncing in the background after you sign in to th
 T_CHECK_UPDATES_DETAIL = tr("Looks for a new version once a day.")
 T_UNINSTALL_LABEL = tr("Uninstall Blackboard Sync")
 T_SECTION_APPEARANCE = tr("Appearance")
-T_NOTEBOOKLM_AUTO = tr("Add new files to NotebookLM after each sync")
-T_NOTEBOOKLM_DISCONNECT = tr("Disconnect NotebookLM")
+T_NOTEBOOKLM_AUTO = tr("Add new files to Gemini Notebook after each sync")
+T_NOTEBOOKLM_DISCONNECT = tr("Disconnect Gemini Notebook")
 T_THEME_LABEL = tr("Theme")
 T_THEME_DETAIL = tr("System follows the light or dark mode chosen in Windows.")
 # (value, menu text); applies at once, outside the Save/Cancel form.
@@ -227,11 +227,11 @@ SECTIONS = {section.key: section for section in (
         SettingRow("google_calendar_sync", tr("Sync calendar now"), button=tr("Sync calendar now")),
         SettingRow("google_calendar_disconnect", tr("Disconnect Google Calendar"), button=tr("Disconnect")),
     ), footer=tr("Sends deadlines to a dedicated Blackboard Deadlines calendar. Your other calendars stay private.")),
-    SettingsSection(SECTION_NOTEBOOKLM, "NotebookLM", (
+    SettingsSection(SECTION_NOTEBOOKLM, "Gemini Notebook", (
         SettingRow("notebooklm_auto", T_NOTEBOOKLM_AUTO, control=CONTROL_SWITCH, field="notebooklm_auto"),
-        SettingRow("notebooklm_disconnect", T_NOTEBOOKLM_DISCONNECT, tr("Files in NotebookLM stay there."),
+        SettingRow("notebooklm_disconnect", T_NOTEBOOKLM_DISCONNECT, tr("Files in Gemini Notebook stay there."),
                    CONTROL_BUTTON, button=tr("Disconnect")),
-    ), footer=tr("Unofficial connection: it may stop working if Google changes NotebookLM.")),
+    ), footer=tr("Unofficial connection: it may stop working if Google changes Gemini Notebook.")),
     SettingsSection(SECTION_AI, T_SECTION_AI, (
         SettingRow("ai_terminal", T_AI_TERMINAL, T_AI_TERMINAL_DETAIL, CONTROL_POPUP, field="ai_terminal"),
         SettingRow("ai_resume", T_AI_RESUME, T_AI_RESUME_DETAIL, CONTROL_SWITCH, field="ai_resume"),

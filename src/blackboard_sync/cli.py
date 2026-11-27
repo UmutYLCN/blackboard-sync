@@ -102,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
     calendar_sync.add_argument("--reminders", action="store_true", help="use Google calendar default reminders")
     disconnect = commands.add_parser("disconnect", help="revoke access and remove local Calendar data")
     disconnect.add_argument("--delete-calendar", action="store_true")
-    notebooklm = sub.add_parser("notebooklm", help="add the synced course files to NotebookLM")
+    notebooklm = sub.add_parser("notebooklm", help="add the synced course files to Gemini Notebook")
     commands = notebooklm.add_subparsers(dest="notebooklm_action", required=True)
     commands.add_parser("login", help="sign in to Google in a browser and save the session")
     notebooklm_sync = commands.add_parser("sync", help="add new course files; prints one JSON event per line")

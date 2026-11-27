@@ -83,8 +83,8 @@ class RunResult:
             return ntr("{n} file could not be added; the next sync tries again.",
                        "{n} files could not be added; the next sync tries again.", failed).format(n=failed)
         if self.held:
-            return ntr("{n} file may already be in NotebookLM, so it was not added.",
-                       "{n} files may already be in NotebookLM, so they were not added.",
+            return ntr("{n} file may already be in Gemini Notebook, so it was not added.",
+                       "{n} files may already be in Gemini Notebook, so they were not added.",
                        len(self.held)).format(n=len(self.held))
         return ""
 

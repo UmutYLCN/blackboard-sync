@@ -90,6 +90,7 @@ assert tuple(TOOLS) == AI_CLIS
 
 # The vendors' marks for the buttons (``ai_logos/README.md`` says where each comes from).
 LOGO_DIR = Path(__file__).with_name("ai_logos")
+NOTEBOOK_LOGO = LOGO_DIR / "gemini-notebook.png"  # beside the title of Home's notebook card
 
 
 def logo_path(key: str, dark: bool = False) -> Path:

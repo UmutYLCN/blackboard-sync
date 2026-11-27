@@ -7,11 +7,6 @@
 "use strict";
 
 (() => {
-  const NOTEBOOKLM_ICONS = {
-    off: "menu_book",
-    idle: "menu_book-fill",
-    attention: "warning-fill",
-  };
   const STATE_ICONS = {
     synced: "check_circle-fill",
     syncing: "sync",
@@ -370,9 +365,15 @@
     card.querySelector(".nlm-buttons").replaceChildren(...notebooklmPills(data).filter(Boolean));
   }
 
+  // The notebook's own logo (webui_page.logo_styles); the warning sign while something needs the student.
+  function notebooklmIcon(data) {
+    if (data.kind === "attention") return icon("warning-fill", "nlm-icon attention");
+    return h("span", { class: "nlm-icon nlm-logo", "aria-hidden": "true" });
+  }
+
   function notebooklmCard(data) {
     const card = h("section", { class: data.warning ? "card notebooklm warning" : "card notebooklm", id: "notebooklm-card" },
-      data.running ? scene(true) : icon(NOTEBOOKLM_ICONS[data.kind] || NOTEBOOKLM_ICONS.off, `nlm-icon ${data.kind}`),
+      data.running ? scene(true) : notebooklmIcon(data),
       h("div", { class: "nlm-text" },
         h("div", { class: "nlm-title", text: data.title }),
         h("div", { class: "nlm-detail" }),

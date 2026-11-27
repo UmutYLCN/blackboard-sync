@@ -358,8 +358,8 @@ class TrayApp:
     def disconnect_notebooklm(self):
         """Confirmed first: signing in again takes the student through Google's sign-in."""
         if self.model.notebooklm_busy is not None or not self.ask_destructive(
-                tr("Disconnect NotebookLM?"),
-                tr("The Google session is deleted from this computer. Files already in NotebookLM "
+                tr("Disconnect Gemini Notebook?"),
+                tr("The Google session is deleted from this computer. Files already in Gemini Notebook "
                    "stay there, and new ones are no longer added."), tr("Disconnect")):
             return
         try:

@@ -645,22 +645,22 @@ CATALOG = {
 
     # NotebookLM
     "Sign in to Google again to keep adding files.": "Dosya eklemek için Google'da yeniden oturum açın.",
-    "Disconnect NotebookLM?": "NotebookLM bağlantısı kesilsin mi?",
-    "The Google session is deleted from this computer. Files already in NotebookLM stay there, and new ones "
+    "Disconnect Gemini Notebook?": "Gemini Notebook bağlantısı kesilsin mi?",
+    "The Google session is deleted from this computer. Files already in Gemini Notebook stay there, and new ones "
     "are no longer added.":
-        "Google oturumu bu bilgisayardan silinir. NotebookLM'deki dosyalar orada kalır, yenileri artık eklenmez.",
-    "Connect NotebookLM": "NotebookLM'i bağla",
-    "Sync NotebookLM": "NotebookLM'e ekle",
-    "Add your course files to NotebookLM after each sync.":
-        "Ders dosyalarınızı her senkrondan sonra NotebookLM'e ekleyin.",
-    "Checking what is already in NotebookLM…": "NotebookLM'de nelerin olduğuna bakılıyor…",
+        "Google oturumu bu bilgisayardan silinir. Gemini Notebook'taki dosyalar orada kalır, "
+        "yenileri artık eklenmez.",
+    "Connect Gemini Notebook": "Gemini Notebook'u bağla",
+    "Sync Gemini Notebook": "Gemini Notebook'a ekle",
+    "Your course files are added after each sync.": "Ders dosyalarınız her senkrondan sonra eklenir.",
+    "Checking what is already in Gemini Notebook…": "Gemini Notebook'ta nelerin olduğuna bakılıyor…",
     "Sign in to Google in the browser window.": "Tarayıcı penceresinde Google'da oturum açın.",
     "Adding {done} of {total}: {file}": "Ekleniyor {done}/{total}: {file}",
-    "NotebookLM is reading the new files…": "NotebookLM yeni dosyaları okuyor…",
+    "Gemini Notebook is reading the new files…": "Gemini Notebook yeni dosyaları okuyor…",
     "Checking the connection…": "Bağlantı kontrol ediliyor…",
-    "Open NotebookLM": "NotebookLM'i aç",
-    "Google took the sign-in, but NotebookLM did not open. Try again.":
-        "Google girişi kabul etti ama NotebookLM açılmadı. Yeniden deneyin.",
+    "Open Gemini Notebook": "Gemini Notebook'u aç",
+    "Google took the sign-in, but Gemini Notebook did not open. Try again.":
+        "Google girişi kabul etti ama Gemini Notebook açılmadı. Yeniden deneyin.",
     "{n} new file added to your notebooks": "Defterlerinize {n} yeni dosya eklendi",
     "{n} new files added to your notebooks": "Defterlerinize {n} yeni dosya eklendi",
     "No new files were added": "Yeni dosya eklenmedi",
@@ -668,11 +668,11 @@ CATALOG = {
     "{n} course blocked": "{n} ders engellendi",
     "{n} courses blocked": "{n} ders engellendi",
     "{n} failed": "{n} başarısız",
-    "Add new files to NotebookLM after each sync": "Her senkrondan sonra yeni dosyaları NotebookLM'e ekle",
-    "Disconnect NotebookLM": "NotebookLM bağlantısını kes",
-    "Files in NotebookLM stay there.": "NotebookLM'deki dosyalar orada kalır.",
-    "Unofficial connection: it may stop working if Google changes NotebookLM.":
-        "Resmi olmayan bağlantı: Google NotebookLM'i değiştirirse çalışmayabilir.",
+    "Add new files to Gemini Notebook after each sync": "Her senkrondan sonra yeni dosyaları Gemini Notebook'a ekle",
+    "Disconnect Gemini Notebook": "Gemini Notebook bağlantısını kes",
+    "Files in Gemini Notebook stay there.": "Gemini Notebook'taki dosyalar orada kalır.",
+    "Unofficial connection: it may stop working if Google changes Gemini Notebook.":
+        "Resmi olmayan bağlantı: Google Gemini Notebook'u değiştirirse çalışmayabilir.",
     "{course}: {n} over the {limit} source limit; nothing added.":
         "{course}: {limit} kaynak sınırı {n} aşıldı; hiçbir şey eklenmedi.",
     "{course}: several notebooks have this name, so it was skipped.":
@@ -683,13 +683,14 @@ CATALOG = {
         "{n} dosya eklenemedi; sonraki senkron yeniden deneyecek.",
     "The browser did not start. If a sign-in window from an earlier attempt is still open, close it and try again.":
         "Tarayıcı başlatılamadı. Önceki denemeden kalan bir giriş penceresi açıksa kapatıp yeniden deneyin.",
-    "NotebookLM needs Chrome, Edge or Brave to sign in to Google; install one and try again.":
-        "NotebookLM, Google'da oturum açmak için Chrome, Edge veya Brave gerektirir; birini kurup yeniden deneyin.",
+    "Gemini Notebook needs Chrome, Edge or Brave to sign in to Google; install one and try again.":
+        "Gemini Notebook, Google'da oturum açmak için Chrome, Edge veya Brave gerektirir; "
+        "birini kurup yeniden deneyin.",
 
     # NotebookLM: files that may be there already
-    "{n} file may already be in NotebookLM, so it was not added.":
-        "{n} dosya NotebookLM'de zaten olabilir, bu yüzden eklenmedi.",
-    "{n} files may already be in NotebookLM, so they were not added.":
-        "{n} dosya NotebookLM'de zaten olabilir, bu yüzden eklenmedi.",
+    "{n} file may already be in Gemini Notebook, so it was not added.":
+        "{n} dosya Gemini Notebook'ta zaten olabilir, bu yüzden eklenmedi.",
+    "{n} files may already be in Gemini Notebook, so they were not added.":
+        "{n} dosya Gemini Notebook'ta zaten olabilir, bu yüzden eklenmedi.",
     "{n} held back": "{n} bekletildi",
 }

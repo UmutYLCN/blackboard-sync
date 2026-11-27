@@ -150,7 +150,7 @@ def login(config: Config, timeout: float = SIGN_IN_TIMEOUT, run=subprocess.run, 
         app = find_browser("auto", platform=platform)
     except NoSupportedBrowserError as exc:
         raise NotebookLMSignInFailed(
-            tr("NotebookLM needs Chrome, Edge or Brave to sign in to Google; install one and try again."),
+            tr("Gemini Notebook needs Chrome, Edge or Brave to sign in to Google; install one and try again."),
             NO_BROWSER) from exc
     state = _capture_session(config, app, timeout, run, spawn, connect, platform)
     path = store.session_file(config)
@@ -160,7 +160,7 @@ def login(config: Config, timeout: float = SIGN_IN_TIMEOUT, run=subprocess.run, 
         check(config)
     except (NotebookLMLoginRequired, NotebookLMPermanent) as exc:
         path.unlink(missing_ok=True)
-        raise NotebookLMSignInFailed(tr("Google took the sign-in, but NotebookLM did not open. Try again."),
+        raise NotebookLMSignInFailed(tr("Google took the sign-in, but Gemini Notebook did not open. Try again."),
                                      VERIFY_FAILED) from exc
     except NotebookLMTransient:
         pass  # Google could not be reached just now; the first run will tell

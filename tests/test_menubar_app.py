@@ -1359,6 +1359,25 @@ def test_pause_stops_a_running_sync_and_resume_syncs_again(menu_app, monkeypatch
     assert menu_app.model.paused and stopped == [True]
 
 
+def test_macos_notebook_card_shows_gemini_notebooks_logo_until_something_needs_the_student(tmp_path):
+    from blackboard_sync.menubar.main_window_model import main_status
+    from blackboard_sync.notebooklm.store import NotebookLMStatus
+
+    window, model, _ = make_window(tmp_path)
+    try:
+        signed_in(model)
+        window.update_status(main_status(model, NOW))
+        assert str(window.notebooklm_title.stringValue()) == 'Gemini Notebook'
+        assert window.notebooklm_icon.image() == window.notebooklm_logo is not None
+        assert window.notebooklm_icon.contentTintColor() is None  # the logo keeps its own colors
+        model.notebooklm = NotebookLMStatus(connected=True, needs_login=True)
+        window.update_status(main_status(model, NOW))
+        assert window.notebooklm_icon.image() != window.notebooklm_logo
+        assert window.notebooklm_icon.contentTintColor() is not None
+    finally:
+        window.window.close()
+
+
 def test_macos_home_ai_card_sits_under_notebooklm_and_routes_every_state(tmp_path):
     from AppKit import NSAppearance
     from blackboard_sync import ai_launcher
