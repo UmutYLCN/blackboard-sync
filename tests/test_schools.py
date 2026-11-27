@@ -95,6 +95,41 @@ def test_the_command_line_accepts_a_school_name_too(tmp_path):
     assert make_config(args).base_url == "https://blackboard.okul.edu.tr"
 
 
+def _found(typed):
+    return [school.name for school in schools.search(typed)]
+
+
+@pytest.mark.parametrize(
+    "typed, first",
+    [
+        ("istanbul sag", "Istanbul Health and Technology University"),  # the start of the local name
+        ("İSTANBUL HEALTH", "Istanbul Health and Technology University"),
+        ("saud king", "King Saud University"),  # word starts, in any order
+        ("univ pretoria", "University of Pretoria"),
+        ("ملك سعود", "King Saud University"),  # inside a word: the article left out
+        ("ksu", "King Saud University"),
+        ("istun.edu", "Istanbul Health and Technology University"),  # a domain half typed
+        ("blackboard.istun.edu.tr", "Istanbul Health and Technology University"),
+    ],
+)
+def test_part_of_a_name_lists_the_school(typed, first):
+    assert _found(typed)[0] == first
+
+
+def test_search_puts_closer_matches_first_and_lists_each_school_once():
+    found = _found("saud")
+    assert found.index("Saudi Electronic University") < found.index("King Saud University")  # starts with it
+    assert len(found) == len(set(found))
+    assert _found("King Saud University")[0] == "King Saud University"
+    for school in schools.SCHOOLS:
+        assert _found(school.name)[0] == school.name
+
+
+@pytest.mark.parametrize("typed", ["", "   ", "---", "https://lms.ksu.edu.sa", "zzzz", "blackboard.myschool.example"])
+def test_search_lists_nothing_for_an_address_or_unknown_text(typed):
+    assert schools.search(typed) == []
+
+
 def test_suggestions_list_each_school_once_by_its_english_name():
     offered = schools.suggestions()
     assert offered == [school.name for school in schools.SCHOOLS]  # same order as SCHOOLS

@@ -147,7 +147,7 @@ def test_bridge_exposes_only_its_calls():
     public = {name for name in dir(Bridge(make_host())) if not name.startswith("_")}
     assert public == {"next_state", "navigate", "action", "open_file", "reveal_file", "announcement", "deadline",
                       "recent_visible", "toggle_course", "save", "cancel_form", "setting", "set_theme",
-                      "choose_folder", "dialog_answer"}
+                      "choose_folder", "dialog_answer", "search_schools"}
 
 
 @pytest.mark.parametrize("area, expected", [
@@ -187,6 +187,13 @@ def test_next_state_waits_for_a_newer_state_and_quit_releases_it():
     host.quit()
     waiter.join(2)
     assert answers[-1] is None and time.monotonic() - started < 1
+
+
+def test_bridge_lists_the_schools_matching_the_typed_text():
+    bridge = Bridge(make_host())
+    assert bridge.search_schools("istun") == ["Istanbul Health and Technology University"]
+    for junk in ("", None, 7, ["ksu"], "k" * 3000):
+        assert bridge.search_schools(junk) == []
 
 
 def test_bridge_checks_every_argument_before_posting():

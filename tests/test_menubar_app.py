@@ -864,6 +864,84 @@ def test_genel_bar_appears_only_after_a_change_and_saving_keeps_the_window_open(
         window.window.close()
 
 
+def test_typing_in_the_school_field_lists_only_the_matching_schools(tmp_path):
+    from AppKit import NSEvent, NSEventTypeKeyDown, NSEventTypeLeftMouseDown
+    from blackboard_sync import schools
+    from blackboard_sync.menubar.main_window_model import GENERAL
+    from blackboard_sync.menubar.model import AppModel
+    from Foundation import NSNotification
+
+    submitted = []
+    window, _, _ = make_window(tmp_path, AppModel(tmp_path, NOW, configured=False),
+                               on_submit=lambda v, l: submitted.append((v, l)))
+    picker = window.school_picker
+
+    def type_into(field, text):
+        field.setStringValue_(text)
+        window.target.controlTextDidChange_(
+            NSNotification.notificationWithName_object_("NSControlTextDidChangeNotification", field))
+
+    def key(characters):
+        return NSEvent.keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode_(
+            NSEventTypeKeyDown, (0, 0), 0, 0, 0, None, characters, characters, False, 0)
+
+    try:
+        window.select(GENERAL)
+        for field in (window.start_url, window.url_field):
+            assert not field.completes()
+            assert field.numberOfItems() == len(schools.SCHOOLS)  # the arrow still lists every school
+            type_into(field, "king sa")
+            assert picker.is_open() and picker.field is field
+            assert picker.view.superview() is field.enclosingScrollView().documentView()
+            assert picker.matches == [s.name for s in schools.search("king sa")]
+            assert picker.table.numberOfRows() == len(picker.matches) and picker.table.selectedRow() == 0
+            type_into(field, "https://blackboard.school.edu")  # an address needs no list
+            assert not picker.is_open() and picker.view.superview() is None
+
+        # Arrows move, Return picks (instead of the default button), and both fields take the name.
+        window.select(window.section)
+        type_into(window.start_url, "king saud")
+        assert window.target.control_textView_doCommandBySelector_(window.start_url, None, "moveDown:") is True
+        assert window.target.control_textView_doCommandBySelector_(window.start_url, None, "insertTab:") is False
+        second = picker.matches[1]
+        assert window.window.performKeyEquivalent_(key("\r")) and not picker.is_open() and submitted == []
+        assert str(window.start_url.stringValue()) == second == str(window.url_field.stringValue())
+
+        # Escape closes the list and keeps the typed text; a click picks the row.
+        type_into(window.url_field, "istun")
+        assert window.window.performKeyEquivalent_(key("\x1b")) and not picker.is_open()
+        assert str(window.url_field.stringValue()) == "istun"
+        type_into(window.url_field, "istun")
+        row = picker.table.rectOfRow_(0)
+        spot = picker.table.convertPoint_toView_(
+            (row.origin.x + 20, row.origin.y + row.size.height / 2), None)
+        picker.table.mouseDown_(
+            NSEvent.mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure_(
+                NSEventTypeLeftMouseDown, spot, 0, 0, 0, None, 0, 1, 1.0))
+        assert str(window.url_field.stringValue()) == "Istanbul Health and Technology University"
+        assert not picker.is_open()
+
+        # The same keys when they reach the field itself.
+        for command, expected in (("insertNewline:", "King Saud University"), ("cancelOperation:", "ksu")):
+            type_into(window.url_field, "ksu")
+            assert window.target.control_textView_doCommandBySelector_(window.url_field, None, command) is True
+            assert not picker.is_open() and str(window.url_field.stringValue()) == expected
+
+        # Leaving the field, the section or the window closes it.
+        type_into(window.url_field, "ksu")
+        window.target.controlTextDidEndEditing_(
+            NSNotification.notificationWithName_object_("NSControlTextDidEndEditingNotification", window.url_field))
+        assert not picker.is_open()
+        type_into(window.url_field, "ksu")
+        window.target.comboBoxWillPopUp_(None)
+        assert not picker.is_open()
+        type_into(window.url_field, "ksu")
+        window.select(GENERAL)
+        assert not picker.is_open()
+    finally:
+        window.window.close()
+
+
 def test_baslangic_signs_in_with_the_form(tmp_path):
     from blackboard_sync.menubar.model import AppModel
 

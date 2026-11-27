@@ -499,6 +499,45 @@ def resolve(text: str) -> str | None:
     return school.url if school else None
 
 
+# Per school, in ``SCHOOLS`` order: its folded names and abbreviations, then its folded web domain and host.
+_SEARCH_KEYS = tuple(
+    (tuple(fold(key) for key in (school.name, *school.local_names, *school.aliases)),
+     (fold(school.domain), fold(_host(school.url))))
+    for school in SCHOOLS
+)
+
+
+def _rank(query: str, names: tuple[str, ...], addresses: tuple[str, ...]) -> int | None:
+    """How well a school matches the folded ``query`` (lower is better), or None when it does not."""
+    if query in names or query in addresses:
+        return 0
+    if any(name.startswith(query) for name in names):
+        return 1
+    typed = query.split()
+    if any(all(any(word.startswith(part) for word in name.split()) for part in typed) for name in names):
+        return 2
+    if any(address.startswith(query) for address in addresses):
+        return 3
+    if len(query) >= 3 and any(query in name for name in names):
+        return 4
+    return None
+
+
+def search(text: str) -> list[School]:
+    """The schools that match what the student has typed so far, best first.
+
+    Matches like ``find`` (any language, accents optional, abbreviation or web domain), but a part
+    of a name is enough. An empty field or an address with a scheme matches nothing.
+    """
+    text = (text or "").strip()
+    query = "" if "://" in text else fold(text)
+    if not query:
+        return []
+    ranked = [(rank, position) for position, keys in enumerate(_SEARCH_KEYS)
+              if (rank := _rank(query, *keys)) is not None]
+    return [SCHOOLS[position] for _, position in sorted(ranked)]
+
+
 def suggestions() -> list[str]:
     """What a search list offers: each school once, by its English name, in ``SCHOOLS`` order.
 

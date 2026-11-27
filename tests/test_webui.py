@@ -71,7 +71,8 @@ def test_page_offers_the_known_schools_for_the_address_field():
     data = state()
     assert "King Saud University" in data["schools"]
     assert "جامعة الملك سعود" not in data["schools"]  # local-language names are matched, not listed
-    assert 'list: name === "base_url"' in APP_JS and 'id: "school-list"' in APP_JS
+    assert 'name === "base_url" ? schoolField(input) : input' in APP_JS
+    assert 'call("search_schools", typed)' in APP_JS and "datalist" not in APP_JS
 
 
 def test_window_state_is_plain_json_with_home_and_sidebar():

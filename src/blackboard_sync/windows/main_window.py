@@ -22,6 +22,7 @@ from blackboard_sync.menubar import settings_form as form
 from blackboard_sync.i18n import tr
 from blackboard_sync.menubar.model import T_RECENT_EMPTY
 from blackboard_sync.windows.pill_button import PillButton
+from blackboard_sync.windows.school_search import SchoolSearch
 from blackboard_sync.windows.sync_scene_view import SyncScene, background_of, is_dark, rounded
 from blackboard_sync.windows.theme import course_badge_colors
 
@@ -213,6 +214,7 @@ class MainWindow:
         self._drawn_home_notifications = None
         self._drawn_home_calendar = None
         self._drawn_activity = None
+        self.school_searches = []
         self._drawn_announcements = None
         self._loading = False
 
@@ -358,6 +360,7 @@ class MainWindow:
         self.start_fields = {"base_url": ttk.Combobox(card, textvariable=self.url, width=40,
                                                        values=schools.suggestions())}
         self.start_fields["base_url"].grid(row=1, column=0, columnspan=2, sticky="ew", pady=(4, 12))
+        self.school_searches.append(SchoolSearch(self.window, self.start_fields["base_url"], self.url))
         ttk.Label(card, text=form.T_DEST_LABEL).grid(row=2, column=0, columnspan=2, sticky="w")
         self.start_fields["dest"] = ttk.Entry(card, textvariable=self.dest)
         self.start_fields["dest"].grid(row=3, column=0, sticky="ew", pady=4)
@@ -810,8 +813,10 @@ class MainWindow:
                      "notebooklm_auto": self.notebooklm_auto, "ai_terminal": self.ai_terminal,
                      "ai_resume": self.ai_resume}
         if kind == form.CONTROL_FIELD:
-            if key == "base_url":  # typing a school's name offers the known schools
-                return ttk.Combobox(frame, textvariable=variables[key], width=34, values=schools.suggestions())
+            if key == "base_url":  # typing a school's name lists the matching schools
+                box = ttk.Combobox(frame, textvariable=variables[key], width=34, values=schools.suggestions())
+                self.school_searches.append(SchoolSearch(self.window, box, variables[key]))
+                return box
             return ttk.Entry(frame, textvariable=variables[key], width=26 if definition.button else 34)
         if kind == form.CONTROL_POPUP:
             choices = {"interval": [title for _, title in form.INTERVAL_OPTIONS],
@@ -932,6 +937,7 @@ class MainWindow:
         return "start" if section == main.OVERVIEW and self.status.first_run else section
 
     def _show_section(self):
+        self._hide_school_lists()
         visible = self.visible_page()
         if self.recent_seen is not None:
             if self.state.open and visible == main.OVERVIEW:
@@ -969,8 +975,13 @@ class MainWindow:
                                self.check_updates.get(), minutes, form.language_code(self.language.get()),
                                self.auto_relogin.get(), self.notebooklm_auto.get(), ai_terminal, self.ai_resume.get())
 
+    def _hide_school_lists(self):
+        for search in self.school_searches:
+            search.hide()
+
     def set_values(self, values):
         """Show ``values`` as what is saved: the bar goes away."""
+        self._hide_school_lists()
         self.saved = values
         self._loading = True
         try:

@@ -369,6 +369,76 @@ def fake_tk(monkeypatch, tmp_path):
     return widgets
 
 
+def test_the_tk_school_field_lists_only_the_matching_schools(monkeypatch, tmp_path):
+    import sys
+    from types import SimpleNamespace
+    from blackboard_sync import schools
+    from blackboard_sync.windows.school_search import SchoolSearch
+
+    fake_tk(monkeypatch, tmp_path)
+    tk = sys.modules["tkinter"]
+    base = tk.Toplevel
+
+    class Listbox(base):
+        def delete(self, *args):
+            self.items = []
+
+        def insert(self, _where, name):
+            self.items.append(name)
+
+        def place(self, **kwargs):
+            self.placed = kwargs
+
+        def place_forget(self):
+            self.placed = None
+
+        def selection_set(self, index):
+            self.selected = index
+
+        def nearest(self, y):
+            return y // 20
+
+    tk.Listbox = Listbox
+    tk.ttk.Style = lambda window: SimpleNamespace(lookup=lambda *args: "")
+    window, variable = base(), tk.StringVar(value="https://blackboard.istun.edu.tr")
+    box = tk.ttk.Combobox(window, textvariable=variable)
+    search = SchoolSearch(window, box, variable)
+
+    def press(keysym, text=None):
+        event = SimpleNamespace(keysym=keysym)
+        result = box.bindings["<KeyPress>"](event)
+        if text is not None:
+            variable.set(text)
+        box.bindings["<KeyRelease>"](event)
+        return result
+
+    box.options["postcommand"]()  # the arrow with a saved address: every school
+    assert box.options["values"] == schools.suggestions()
+    assert press("Left") is None and search.listbox is None  # moving around opens nothing
+
+    assert press("a", "king sa") is None
+    names = [s.name for s in schools.search("king sa")]
+    assert search.listbox.items == names and search.listbox.placed["in_"] is box and search.listbox.selected == 0
+    assert press("Down") == "break" and search.listbox.selected == 1
+    assert press("Return") == "break"
+    assert variable.get() == names[1] and search.listbox.placed is None
+    assert press("Return") is None  # closed: the key is the field's own again
+
+    press("n", "istun")
+    assert press("Escape") == "break" and search.listbox.placed is None and variable.get() == "istun"
+    press("n", "istunn")
+    assert search.listbox.placed is None
+    press("BackSpace", "istun")
+    assert search.listbox.bindings["<Button-1>"](SimpleNamespace(y=0)) == "break"
+    assert variable.get() == "Istanbul Health and Technology University"
+
+    press("n", "ksu")
+    box.bindings["<FocusOut>"](None)
+    assert search.listbox.placed is None
+    box.options["postcommand"]()
+    assert box.options["values"] == ["King Saud University"]
+
+
 def test_windows_recent_badges_track_viewport_and_return_visit(monkeypatch, tmp_path):
     import sys
     from types import SimpleNamespace
