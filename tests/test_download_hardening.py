@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -472,6 +473,7 @@ def test_fit_windows_folder_never_exceeds_255_utf8_bytes():
     assert len(fitted.encode("utf-8")) <= MAX_NAME_BYTES
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows filesystems forbid legacy macOS characters like '?' and '\"'")
 def test_existing_legacy_macos_files_and_folders_are_not_renamed(config, client, fake_bb, monkeypatch):
     monkeypatch.setattr(sync_mod, "is_windows", lambda platform=None: False)
     # Give a Blackboard folder a "?" in its title that older macOS versions kept verbatim.
@@ -511,6 +513,29 @@ def test_existing_legacy_macos_files_and_folders_are_not_renamed(config, client,
     assert (config.dest / legacy_file).is_file()
     assert (config.dest / legacy_folder / "extra.pdf").read_bytes() == b"%PDF extra"
     assert not (config.dest / CSE / "What is a syllabus").exists()
+
+
+def test_existing_recorded_file_keeps_its_path_across_platforms(config, client, fake_bb):
+    # A file already recorded under an older name (using Windows-safe chars) is never mass-renamed.
+    old_rel = f"{CSE}/Syllabus/older_syllabus_name"
+    (config.dest / old_rel).parent.mkdir(parents=True)
+    (config.dest / old_rel).write_bytes(b"%PDF syllabus v1")
+    state = State(config.state_file)
+    state.use_school(config.base_url)
+    st = (config.dest / old_rel).stat()
+    state.record_output(
+        "attachment:_13004_1:_a11_1",
+        old_rel,
+        sync_mod.sha256_file(config.dest / old_rel),
+        st.st_size,
+        st.st_mtime_ns,
+    )
+    state.record_item("content:_13004_1:_c11_1", "2026-09-01T10:05:00.000Z", ["attachment:_13004_1:_a11_1"], "Syllabus.pdf")
+    state.save()
+
+    sync(config, client)
+    assert (config.dest / old_rel).is_file()
+    assert not (config.dest / SYLLABUS).exists()
 
 
 # ---------------------------------------------------------------------------
