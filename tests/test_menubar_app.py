@@ -495,13 +495,14 @@ def test_home_announcements_and_deadlines_show_course_title_beside_badge(tmp_pat
             'a2', 'PHY101 Physics I (Mechatronics - CENG - Chemical Engineering)', 'Lab', '22.11', '', '', '', 'PHY101'),
         AnnouncementRow('a3', 'MTH201', 'Note', '22.11', '', '', '', 'MTH201'),
     )
-    due = NOW + timedelta(minutes=30)
+    now_local = __import__("datetime").datetime.now().astimezone().replace(hour=11, minute=30, second=0, microsecond=0)
+    due = now_local + timedelta(minutes=30)
     dl_row = deadlines.DeadlineRow('Proposal', 'CSE301 Databases', due, 'https://bb.example/p', 'CSE301')
     page = deadlines.DeadlinePage((deadlines.DeadlineDay(due.date(), 'x', False, (dl_row,)),), '')
     window, model, _ = make_window(tmp_path, on_announcements=lambda: rows, on_deadlines=lambda: page)
     try:
         signed_in(model)
-        status = main_status(model, NOW, page, current_course_codes=('CSE301', 'PHY101', 'MTH201'))
+        status = main_status(model, now_local, page, current_course_codes=('CSE301', 'PHY101', 'MTH201'))
         window.update_status(status)
 
         def badges_and_labels(body):

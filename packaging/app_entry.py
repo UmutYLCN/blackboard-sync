@@ -102,6 +102,7 @@ def _check_mas_sandbox() -> int:
         )
         if aqua:
             from AppKit import NSApplication, NSApplicationActivationPolicyAccessory, NSOpenPanel
+            from blackboard_sync import deadlines
             from blackboard_sync.menubar.main_window import MainWindow
 
             app = NSApplication.sharedApplication()
@@ -115,7 +116,7 @@ def _check_mas_sandbox() -> int:
                 on_values=lambda: form,
                 on_open=lambda *_a: None,
                 on_reveal=lambda *_a: None,
-                on_deadlines=lambda: None,
+                on_deadlines=deadlines.DeadlinePage,
                 on_deadline=lambda *_a: None,
                 on_announcements=lambda: (),
                 on_open_announcement=lambda *_a: None,

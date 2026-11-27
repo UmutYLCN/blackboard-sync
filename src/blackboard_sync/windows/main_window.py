@@ -475,7 +475,38 @@ class MainWindow:
         self.overview_subtitle.grid_remove()
         # Everything under the header scrolls: the window cannot grow to show what does not fit,
         # and the buttons at the top right stay clear of it.
-        self.overview_canvas, page = self._scroll_area(page, 1)
+        outer = page
+        outer.rowconfigure(1, weight=1)
+        outer.columnconfigure(0, weight=1)
+        self.overview_holder = ttk.Frame(outer)
+        self.overview_holder.grid(row=1, column=0, sticky="nsew")
+        self.overview_canvas, page = self._scroll_area(self.overview_holder, 0)
+        self.update_required_frame = ttk.LabelFrame(outer, padding=(24, 36))
+        self.update_required_frame.grid(row=1, column=0, sticky="nsew")
+        self.update_required_frame.rowconfigure(0, weight=1)
+        self.update_required_frame.rowconfigure(5, weight=1)
+        self.update_required_frame.columnconfigure(0, weight=1)
+        self.update_required_title = ttk.Label(
+            self.update_required_frame, font=TITLE_FONT, wraplength=440, justify="center"
+        )
+        self.update_required_title.grid(row=1, column=0, pady=(0, 8))
+        self.update_required_detail = ttk.Label(
+            self.update_required_frame, foreground=MUTED, wraplength=440, justify="center"
+        )
+        self.update_required_detail.grid(row=2, column=0, pady=(0, 8))
+        self.update_required_notice = ttk.Label(
+            self.update_required_frame, foreground=WARNING, wraplength=440, justify="center"
+        )
+        self.update_required_notice.grid(row=3, column=0, pady=(0, 8))
+        self.update_required_notice.grid_remove()
+        self.update_required_button = ttk.Button(
+            self.update_required_frame,
+            style="Accent.TButton",
+            padding=(16, 4),
+            command=lambda: self.on_action(main.REQUIRED_UPDATE_ACTION),
+        )
+        self.update_required_button.grid(row=4, column=0, pady=(8, 0))
+        self.update_required_frame.grid_remove()
         page.columnconfigure(0, weight=3, uniform="home")
         page.columnconfigure(1, weight=2, uniform="home")
         self.overview_license_banner = self._build_license_banner(page, 0)
@@ -957,6 +988,8 @@ class MainWindow:
         window.resizable(False, False)
 
     def wheel(self, event):
+        if self.visible_page() == main.OVERVIEW and self.status.update_required is not None:
+            return
         canvas = {"start": self.start_canvas, main.OVERVIEW: self.overview_canvas,
                   main.ACTIVITY: self.activity_canvas,
                   main.CALENDAR: self.calendar_canvas,
@@ -1007,13 +1040,15 @@ class MainWindow:
 
     def visible_page(self):
         section = self.state.section
+        if section == main.OVERVIEW and self.status.update_required is not None:
+            return main.OVERVIEW
         return "start" if section == main.OVERVIEW and self.status.first_run else section
 
     def _show_section(self):
         self._hide_school_lists()
         visible = self.visible_page()
         if self.recent_seen is not None:
-            if self.state.open and visible == main.OVERVIEW:
+            if self.state.open and visible == main.OVERVIEW and self.status.update_required is None:
                 self.recent_seen.show()
             else:
                 self.recent_seen.hide()
@@ -1139,7 +1174,10 @@ class MainWindow:
         self.set_values(self.on_values())
 
     def update_status(self, status):
-        first_run_changed = status.first_run != self.status.first_run
+        first_run_changed = (
+            status.first_run != self.status.first_run
+            or (status.update_required is None) != (self.status.update_required is None)
+        )
         self.status = status
         self.nav[main.OVERVIEW].configure(text=status.overview_title)
         self.nav[main.ACTIVITY].configure(text=main.T_NAV_ACTIVITY)
@@ -1162,6 +1200,23 @@ class MainWindow:
             self.start_license_banner,
             status.license if status.license and status.license.kind == main.LICENSE_EXPIRED else None,
         )
+        if status.update_required is not None:
+            req = status.update_required
+            self.overview_holder.grid_remove()
+            self.update_required_title.configure(text=req.title)
+            self.update_required_detail.configure(text=req.detail)
+            self.update_required_notice.configure(text=req.notice)
+            if req.notice:
+                self.update_required_notice.grid()
+            else:
+                self.update_required_notice.grid_remove()
+            self.update_required_button.configure(
+                text=req.button_title, state="normal" if req.enabled else "disabled"
+            )
+            self.update_required_frame.grid()
+        else:
+            self.update_required_frame.grid_remove()
+            self.overview_holder.grid()
         # Başlangıç
         self.start_button.configure(text=status.start_title, state="normal" if status.start_enabled else "disabled")
         self._draw_start_message()
@@ -1283,7 +1338,8 @@ class MainWindow:
 
     def _animate(self):
         """Run an illustration while it is in view and the window is open; stop it otherwise."""
-        if self.status.scene and self.state.open and self.state.section == main.OVERVIEW:
+        if (self.status.scene and self.state.open and self.state.section == main.OVERVIEW
+                and self.status.update_required is None):
             self.scene.start()
         else:
             self.scene.stop()
@@ -1376,6 +1432,7 @@ class MainWindow:
     def observe_recent(self):
         focus = self.window.focus_displayof()
         active = (self.state.open and self.visible_page() == main.OVERVIEW
+                  and self.status.update_required is None
                   and self.window.state() == "normal" and focus is not None
                   and focus.winfo_toplevel() == self.window)
         visible = []

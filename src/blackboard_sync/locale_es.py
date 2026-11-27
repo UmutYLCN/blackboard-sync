@@ -779,4 +779,21 @@ CATALOG = {
     "Updates are installed through the App Store.": "Las actualizaciones se instalan desde App Store.",
     "You can uninstall Blackboard Sync from Launchpad or the Applications folder.":
         "Puedes desinstalar Blackboard Sync desde Launchpad o la carpeta Aplicaciones.",
+
+    # Minimum-version enforcement (min_version)
+    "Update required": "Actualización obligatoria",
+    "Update required — Update": "Actualización obligatoria — Actualizar",
+    "Updating…": "Actualizando…",
+    "Update Blackboard Sync to version {version} or newer to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Actualiza Blackboard Sync a la versión {version} o posterior para seguir sincronizando tus cursos. "
+        "Tus archivos descargados siguen en tu carpeta.",
+    "Update Blackboard Sync to the latest version to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Actualiza Blackboard Sync a la última versión para seguir sincronizando tus cursos. "
+        "Tus archivos descargados siguen en tu carpeta.",
+    "Blackboard Sync moved to the Mac App Store": "Blackboard Sync se trasladó al Mac App Store",
+    "Get Blackboard Sync from the Mac App Store to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Obtén Blackboard Sync en el Mac App Store para seguir sincronizando tus cursos. "
+        "Tus archivos descargados siguen en tu carpeta.",
+    "Open Mac App Store": "Abrir Mac App Store",
+    "Could not open the Mac App Store.": "No se pudo abrir el Mac App Store.",
 }

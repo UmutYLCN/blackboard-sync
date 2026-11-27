@@ -124,6 +124,19 @@ def license_banner(status: main.MainStatus) -> dict | None:
     }
 
 
+def update_required(status: main.MainStatus) -> dict | None:
+    """Home's full-screen 'Update required' state when ``min-version.json`` demands a newer build."""
+    req = status.update_required
+    if req is None:
+        return None
+    return {
+        "title": req.title,
+        "detail": req.detail,
+        "notice": req.notice,
+        "button": {"id": req.action, "title": req.button_title, "enabled": req.enabled},
+    }
+
+
 def home_button(status: main.MainStatus) -> dict | None:
     """At most one button on the status card: what the state asks for (Sign in), else "Sync now".
 
@@ -417,6 +430,7 @@ def window_state(status: main.MainStatus, section: str, page: str, announcement_
         "chrome": chrome(status),
         "banner": banner(status, updates_enabled),
         "license": license_banner(status),
+        "update_required": update_required(status),
         "home": home(status, announcement_rows, deadline_page, today),
         "start": start(status, error[0]),
         "activity": activity(status),
@@ -435,6 +449,7 @@ def ids(state: dict) -> dict[str, set[str]]:
     card = home_state["notebooklm"]
     ai = home_state["ai"]
     lic = state.get("license")
+    req = state.get("update_required")
     settings_state = state["settings"]
     rows = [row for section in settings_state["sections"] for row in section["rows"]]
     return {
@@ -446,6 +461,7 @@ def ids(state: dict) -> dict[str, set[str]]:
         "course": {row["id"] for row in state["courses"]["rows"]},
         "license": (({lic["buy"]["id"]} if lic and lic["buy"] and lic["buy"]["enabled"] else set())
                     | ({lic["restore"]["id"]} if lic and lic["restore"] and lic["restore"]["enabled"] else set())),
+        "update_required": ({req["button"]["id"]} if req and req["button"] and req["button"]["enabled"] else set()),
         # The card's own buttons, while it shows them and they work.
         "notebooklm": ({card["button"]["id"]} if card["button"] and card["button"]["enabled"] else set())
                       | ({card["open"]["id"]} if card["open"] else set()),

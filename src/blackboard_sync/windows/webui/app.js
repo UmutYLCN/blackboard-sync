@@ -486,7 +486,18 @@
         buttons.length ? h("footer", { class: "ai-buttons" }, buttons) : null));
   }
 
+  function updateRequiredPage(data) {
+    return h("section", { class: "card update-required", id: "update-required" },
+      h("span", { class: "update-required-icon", "aria-hidden": "true" }, icon("download")),
+      h("h2", { class: "update-required-title", text: data.title }),
+      h("p", { class: "update-required-detail", text: data.detail }),
+      data.notice ? h("p", { class: "message warning", text: data.notice }) : null,
+      pill(data.button.title, "filled update-required-button", () => call("action", data.button.id),
+        { disabled: !data.button.enabled }));
+  }
+
   function homePage() {
+    if (state.update_required) return updateRequiredPage(state.update_required);
     const home = state.home;
     return h("div", { class: "home" },
       banner(),
@@ -806,8 +817,8 @@
     general: () => settingsPage(),
   };
   const PAGE_DATA = {
-    overview: () => [{ ...state.home, notebooklm: null }, state.banner, state.license], // drawNotebooklm has its own
-    start: () => [state.start, state.settings.error_field, state.settings.error, state.license],
+    overview: () => [{ ...state.home, notebooklm: null }, state.banner, state.license, state.update_required], // drawNotebooklm has its own
+    start: () => [state.start, state.settings.error_field, state.settings.error, state.license, state.update_required],
     activity: () => state.activity,
     announcements: () => state.announcements,
     courses: () => state.courses,

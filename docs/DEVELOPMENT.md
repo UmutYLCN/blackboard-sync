@@ -1037,6 +1037,35 @@ with a `-` (`v1.3.0-rc1`) is published as a pre-release, which `install.sh` and
 the updater ignore. Windows is not published to GitHub: it ships only through
 the Microsoft Store ([MSIX.md](MSIX.md)).
 
+### Raising the minimum allowed version
+
+Desktop builds check `https://blackboardsyncapp.com/min-version.json` at startup
+and during periodic update checks (`src/blackboard_sync/min_version.py`). To
+retire older versions without shipping a new build just to raise the floor, edit
+`site/min-version.json` and deploy `site/`:
+
+```json
+{
+  "schema": 1,
+  "minimum": {
+    "macos": "1.7.2",
+    "windows": "1.7.2"
+  },
+  "dmg_retired": false,
+  "mas_url": "https://apps.apple.com/app/id<TBD>"
+}
+```
+
+Add `"mas": "<version>"` under `"minimum"` once a Mac App Store build is live and
+needs its own floor. Only raise a platform's version after the replacement build
+is published on that channel (GitHub Release `.dmg` for `macos`, Microsoft Store
+for `windows`, Mac App Store for `mas`). Copies below the minimum stop syncing
+and show **Update required** on Home while leaving downloaded files untouched;
+to retire the direct `.dmg` build once the Mac App Store listing is live, set
+`"mas_url"` to its App Store URL and `"dmg_retired": true` (only affects macOS
+`direct` builds; Windows and `mas` builds ignore it). Offline, invalid,
+unknown-schema or missing-key responses never block.
+
 ### Windows build
 
 Windows ships only as the Microsoft Store package ([MSIX.md](MSIX.md)); GitHub

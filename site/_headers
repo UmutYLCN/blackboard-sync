@@ -7,3 +7,6 @@
 
 /assets/*
   Cache-Control: public, max-age=86400
+
+/min-version.json
+  Cache-Control: no-cache, max-age=0, must-revalidate

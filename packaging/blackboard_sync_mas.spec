@@ -39,6 +39,7 @@ a = Analysis(
         "blackboard_sync.inapp_macos",
         "blackboard_sync.licensing",
         "blackboard_sync.macos_bookmarks",
+        "blackboard_sync.min_version",
         "blackboard_sync.menubar.app",
         "rumps",
         "WebKit",

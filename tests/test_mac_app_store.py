@@ -539,6 +539,7 @@ def test_mas_entitlements_and_spec_contract():
 
     spec_text = (ROOT / "packaging" / "blackboard_sync_mas.spec").read_text(encoding="utf-8")
     assert '"playwright"' in spec_text and "excludes=[" in spec_text
+    assert '"blackboard_sync.min_version"' in spec_text
     assert "mas-distribution" in spec_text
     assert '"LSMinimumSystemVersion": "13.0"' in spec_text
     assert '"ITSAppUsesNonExemptEncryption": False' in spec_text

@@ -25,6 +25,7 @@ from blackboard_sync import (
     demo,
     licensing,
     macos_bookmarks,
+    min_version,
     runtime,
     session_refresh,
     signout,
@@ -42,6 +43,7 @@ from blackboard_sync.menubar.main_window_model import (
     DEMO_ACTION,
     GENERAL,
     OVERVIEW,
+    REQUIRED_UPDATE_ACTION,
     notebooklm_progress,
     shows_window_at_launch,
 )
@@ -270,7 +272,7 @@ def _receivers():
     return MenuDelegate, WindowRequests
 
 
-def build_app(config: Config, show_window: bool = False):
+def build_app(config: Config, show_window: bool = False, min_version_checker=None):
     import rumps
     from AppKit import NSApplication, NSColor, NSAttributedString, NSForegroundColorAttributeName
     from Foundation import NSDistributedNotificationCenter
@@ -293,6 +295,9 @@ def build_app(config: Config, show_window: bool = False):
             self._window = None  # the main window, built when first shown
             self._uninstalling = False
             self._ai_detecting = False  # ``detect_ai_tools`` is looking
+            self._min_version_checker = min_version_checker or min_version.default_checker()
+            self._min_version_timer = rumps.Timer(self._first_min_version_check, 1)
+            self._min_version_timer.start()
             # The menu item and Home's AI card need to know which tools and terminals are here.
             self._ai_timer = rumps.Timer(self._first_ai_detection, 1)
             self._ai_timer.start()
@@ -326,9 +331,12 @@ def build_app(config: Config, show_window: bool = False):
         def tick(self, _sender=None) -> None:
             if self._uninstalling:
                 return
+            now = jobs.utcnow()
+            if self.model.min_version_due(now):
+                self.start_min_version_check()
             self.start_next()
             self.start_session_check()
-            if updater.enabled() and self.model.update_due(jobs.utcnow()):
+            if updater.enabled() and self.model.update_due(now):
                 self.start_update_check(manual=False)
             self.remind()
             self.refresh()
@@ -354,12 +362,14 @@ def build_app(config: Config, show_window: bool = False):
                 self.start_sync()
 
         def start_sync(self, _sender=None, job: str = "sync") -> None:
+            if self.model.update_required or self.model.license_expired(jobs.utcnow()):
+                return
             if licensing.is_mas():
                 if not self.model.configured or macos_bookmarks.activate_saved_bookmark(self.config.data_dir) is None:
                     log.info("sync skipped: download folder not chosen yet")
                     self.show_window(OVERVIEW)
                     return
-            if self.model.license_expired(jobs.utcnow()) or not self.model.begin(job):
+            if not self.model.begin(job):
                 return
             log.info("%s started", job)
             self.refresh()
@@ -567,6 +577,44 @@ def build_app(config: Config, show_window: bool = False):
             self.tick()  # a successful sign-in makes a sync due right away
 
         # -- updates -----------------------------------------------------
+        def _first_min_version_check(self, timer) -> None:
+            timer.stop()
+            self.start_min_version_check()
+
+        def start_min_version_check(self) -> None:
+            if self.model.min_version_checking:
+                return
+            self.model.min_version_checking = True
+            threading.Thread(target=self._min_version_worker, daemon=True).start()
+
+        def _min_version_worker(self) -> None:
+            try:
+                result = self._min_version_checker.check()
+            except Exception:
+                log.exception("min-version check failed")
+                result = min_version.MinVersionResult("unknown")
+            AppHelper.callAfter(self._min_version_checked, result)
+
+        def _min_version_checked(self, result: min_version.MinVersionResult) -> None:
+            log.info("min-version check: %s %s", result.status, result.minimum)
+            self._apply_min_version(result)
+
+        def _apply_min_version(self, result: min_version.MinVersionResult) -> None:
+            became_blocked, unlocked = self.model.apply_min_version(result, jobs.utcnow())
+            if became_blocked:
+                if self.model.calendar_busy == "sync":
+                    self._calendar_cancel.set()
+                if self.model.notebooklm_busy == NOTEBOOKLM_SYNC:
+                    jobs.notebooklm_child.stop()
+                if self.model.busy == "sync":
+                    jobs.stop_sync()
+                if (not result.dmg_retired and updater.enabled()
+                        and self.model.updates.available is None and self.model.updates.busy is None):
+                    self.start_update_check(manual=False)
+            elif unlocked and self.model.configured and self.model.account()[0] is not None and not self.model.paused:
+                self.start_next()
+            self.refresh()
+
         def start_update_check(self, _sender=None, manual: bool = True) -> None:
             if not self.model.updates.begin("check"):
                 return
@@ -579,13 +627,67 @@ def build_app(config: Config, show_window: bool = False):
             except Exception:  # check() handles network errors; never leave the row stuck
                 log.exception("update check failed")
                 result = CheckResult("unknown")
-            AppHelper.callAfter(self._update_checked, result, manual)
+            try:
+                min_result = self._min_version_checker.check(force=manual)
+            except Exception:
+                log.exception("min-version check failed")
+                min_result = min_version.MinVersionResult("unknown")
+            AppHelper.callAfter(self._update_checked, result, manual, min_result)
 
-        def _update_checked(self, result: CheckResult, manual: bool) -> None:
+        def _update_checked(self, result: CheckResult, manual: bool,
+                            min_result: min_version.MinVersionResult | None = None) -> None:
             log.info("update check: %s %s", result.status, result.release.version if result.release else "")
             for note in self.model.updates.finish_check(result, jobs.utcnow(), manual):
                 self.notify(note)
+            if min_result is not None:
+                self._apply_min_version(min_result)
             self._save()
+            self.refresh()
+
+        def start_required_update(self, _sender=None) -> None:
+            self.model.min_version_notice = ""
+            if self.model.min_version.dmg_retired:
+                target_url = self.model.min_version.mas_url or min_version.MAC_APP_STORE_URL
+                if not min_version.open_mac_app_store(url=target_url, opener=open_url):
+                    self.model.min_version_notice = tr("Could not open the Mac App Store.")
+                self.refresh()
+                return
+            if licensing.is_mas():
+                if not min_version.open_mac_app_store(url=updater.store_update_url(), opener=open_url):
+                    self.model.min_version_notice = tr("Could not install the update.")
+                self.refresh()
+                return
+            if self.model.updates.busy is not None or self.model.min_version_updating:
+                return
+            if self.model.busy is not None:
+                self.model.min_version_notice = T_UPDATE_WAIT
+                self.notify(Notification(tr("The update cannot be installed now"), T_UPDATE_WAIT, {}))
+                self.refresh()
+                return
+            if self.model.updates.available is not None:
+                self.start_update()
+                return
+            self.model.min_version_updating = True
+            self.refresh()
+            threading.Thread(target=self._required_update_check_worker, daemon=True).start()
+
+        def _required_update_check_worker(self) -> None:
+            try:
+                result = updater.check()
+            except Exception:
+                log.exception("update check for required update failed")
+                result = CheckResult("unknown")
+            AppHelper.callAfter(self._required_update_checked, result)
+
+        def _required_update_checked(self, result: CheckResult) -> None:
+            self.model.min_version_updating = False
+            if result.release is not None:
+                self.model.updates.available = result.release
+                self.model.updates.checked_at = jobs.utcnow()
+                self._save()
+                self.start_update()
+                return
+            open_url(updater.RELEASES_URL)
             self.refresh()
 
         def start_update(self, _sender=None) -> None:
@@ -633,6 +735,8 @@ def build_app(config: Config, show_window: bool = False):
             for note in self.model.updates.finish_download(error):
                 self.notify(note)
             if error:
+                if self.model.update_required:
+                    self.model.min_version_notice = error
                 self.refresh()
                 return
             if path is None:
@@ -866,6 +970,7 @@ def build_app(config: Config, show_window: bool = False):
                 "sync": self.start_sync, "folder": self.open_school_folder, "login": self.start_login,
                 "logout": self.logout,
                 "check_updates": self.start_update_check, "update": self.start_update,
+                REQUIRED_UPDATE_ACTION: self.start_required_update,
                 "uninstall": self.start_uninstall, "pause": self.toggle_pause,
                 "notebooklm_connect": lambda: self.start_notebooklm(NOTEBOOKLM_CONNECT),
                 "notebooklm_sync": self.start_notebooklm, "notebooklm_disconnect": self.disconnect_notebooklm,
@@ -877,7 +982,7 @@ def build_app(config: Config, show_window: bool = False):
 
         def start_demo(self) -> None:
             """Enter built-in offline Demo Mode after an explicit folder selection."""
-            if self.model.busy is not None:
+            if self.model.busy is not None or self.model.update_required:
                 return
             mas = licensing.is_mas()
             picked_url = None
@@ -1163,7 +1268,8 @@ def build_app(config: Config, show_window: bool = False):
                     "sync": self.start_sync, "login": self.start_login,
                     "folder": self.open_school_folder, "settings": self.open_settings,
                     "quit": self.quit, "open": lambda _s: self.open_recent(entry.value),
-                    "update": self.start_update, "pause": self.toggle_pause,
+                    "update": self.start_update, REQUIRED_UPDATE_ACTION: self.start_required_update,
+                    "pause": self.toggle_pause,
                     "ai_open": lambda _s: self.start_ai_launch(from_menu=True),
                 }
                 item = rumps.MenuItem(entry.title, callback=actions.get(entry.action) if entry.enabled else None)

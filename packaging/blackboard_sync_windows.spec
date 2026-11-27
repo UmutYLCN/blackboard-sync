@@ -35,6 +35,7 @@ a = Analysis(
     hiddenimports=[
         "blackboard_sync.cli",
         "blackboard_sync.licensing",
+        "blackboard_sync.min_version",
         "blackboard_sync.windows.app",
         "blackboard_sync.windows.web_window",
         "pystray._win32",

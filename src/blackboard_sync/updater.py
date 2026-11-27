@@ -69,6 +69,7 @@ STORE_UPDATES = tr("Updates are installed through the Microsoft Store.")
 MAS_STORE_UPDATES = tr("Updates are installed through the App Store.")
 MAS_APP_ID_ENV = "BBSYNC_MAS_APP_ID"
 MAS_APP_ID = ""  # populated once the App Store Connect app record assigns a numeric Apple ID
+MAS_UPDATES_URL = "macappstore://showUpdatesPage"
 
 
 def store_updates_message(platform: str | None = None, env: Mapping[str, str] | None = None) -> str:
@@ -85,7 +86,7 @@ def store_update_url(platform: str | None = None, env: Mapping[str, str] | None 
         raw_id = (env.get(MAS_APP_ID_ENV) or MAS_APP_ID).strip().lstrip("id")
         if raw_id.isdigit():
             return f"macappstore://apps.apple.com/app/id{raw_id}"
-        return "macappstore://showUpdatesPage"
+        return MAS_UPDATES_URL
     return RELEASES_URL
 
 
