@@ -338,6 +338,14 @@ def test_windows_finds_the_extra_browsers_in_their_install_folders(tmp_path):
     assert browser_label(vivaldi) == "Vivaldi"
 
 
+def test_windows_only_the_install_folder_tells_opera_from_opera_gx(tmp_path):
+    base = tmp_path / "gx" / "abcgx"  # macOS temp folders look like /var/folders/gx/...
+    opera = _windows_install(base, "Programs", "Opera", "opera.exe")
+    gx = _windows_install(base, "Programs", "Opera GX", "opera.exe")
+    assert browser_label(opera) == "Opera"
+    assert browser_label(gx) == "Opera GX"
+
+
 def test_windows_shared_exe_registry_entries_are_matched_to_the_right_browser(tmp_path):
     env = _windows_env(tmp_path)
     gx = _windows_install(tmp_path / "Local", "Programs", "Opera GX", "opera.exe")
