@@ -1,9 +1,7 @@
 # Microsoft Store submission
 
-Files for Microsoft Store submissions and updates: the Partner Center checklist,
-listing text, Windows screenshots and artwork. Version 1.5.1 was the first Store
-submission; the current update targets **1.6.2** (MSIX **1.6.2.0**). The maintainer
-uploads media and submits in Partner Center; nothing here submits automatically.
+Listing text, Windows screenshots, artwork and the Partner Center checklist.
+The maintainer uploads media and submits in Partner Center.
 
 The package identity is already in the repository (`packaging/msix/identity.toml`,
 `docs/MSIX.md`): `UmutYLCN.blackboard-sync`, publisher display name `UmutYLCN`, reserved
@@ -14,13 +12,11 @@ still shows **Blackboard Sync**.
 
 | Path | What it is |
 | --- | --- |
-| `listing-tr.md` | Turkish Store listing (primary market), ready to paste |
-| `listing-en.md` | English Store listing (additional language), ready to paste |
-| `screenshots/01-tek-tek.png` … `10-notebooklm.png` | Final 1920x1080 Turkish images: problem card, then nine Windows screenshots, in upload order (see [Screenshots](#screenshots)) |
-| `screenshots/en/01-tek-tek.png` … `10-notebooklm.png` | The same ten images in English (English titles and an English app), for the English listing |
-| `screenshots/capture.py` | Captures the Windows app's own page (light and dark) and the tray menu into `screenshots/src/windows/` (Turkish) or, with `--lang en`, `screenshots/src/windows/en/` |
-| `screenshots/render.sh` | Renders the screenshots from `screenshots/src/` (`--lang en` renders the English set into `screenshots/en/`) |
-| `screenshots/src/` | `template.html`, `shots.js` (titles, captions, what to capture), `windows/` and `windows/en/` (the nine Windows captures per language as PNG, from `capture.py`) |
+| `listing-{en,tr,es,fr,de,ar}.md` | Six Store listings with captions in upload order |
+| `screenshots/` | Nine 1920×1080 images per language, with Turkish at the root and the others in language subfolders |
+| `screenshots/capture.py` | Captures the Windows app’s WebView2 page and draws the notification-area menu |
+| `screenshots/render.sh` | Renders the localized screenshots in upload order |
+| `screenshots/src/` | Template, localized screenshot titles and captions, and raw captures under `windows/` |
 | `trailer/make-trailer.sh` | Builds the 1920x1080 trailer and its thumbnail into `out/` |
 | `trailer/draft-trailer-thumbnail.png` | The thumbnail it makes, for review |
 | `images/hero-art.png` | 16:9 Super hero art, 1920x1080 (no text, no UI) |
@@ -39,7 +35,7 @@ Chrome), Node.js for the screenshot manifest, and `ffmpeg` for the trailer.
 1. Build the submission package with the manual Store workflow (see [4. Packages](#4-packages)).
 2. Do the manual test in `docs/MSIX.md` ("Manual Windows verification still required")
    with that exact `.msix`, signed with the test certificate as described there.
-3. Use the ten final Store images per language in [Screenshots](#screenshots). Capture additional
+3. Use the nine final Store images per language in [Screenshots](#screenshots). Capture additional
    screens during future manual tests to improve the listing.
 
 ## Partner Center checklist
@@ -50,13 +46,12 @@ Items marked **Decide** are the maintainer's call; all are collected again under
 
 ### 1. Pricing and availability
 
-- [ ] **Markets:** **Decide.** All markets (the default) or Turkey only. The app works with
-  any school's Blackboard Learn; its interface is English by default, with Turkish in Settings.
+- [ ] **Markets:** **Decide.** All markets (the default) or Turkey only. The built-in directory contains verified Blackboard Learn addresses. Students can also enter a school address directly.
 - [ ] **Audience:** Public audience.
 - [ ] **Discoverability:** Make this product available and discoverable in the Microsoft Store.
 - [ ] **Schedule:** Release as soon as possible; Stop acquisition never. (Use
   [6. Submission options](#6-submission-options) to hold the release instead.)
-- [ ] **Base price:** Free. No free trial, no sale pricing.
+- [ ] **Base price:** One-time purchase, approximately US$5, with a one-day free trial in Partner Center.
 - [ ] **Organizational licensing:** leave the defaults.
 
 ### 2. Properties
@@ -105,8 +100,8 @@ below follow what the app does. Check each question's info icon when its wording
 | Gambling, simulated gambling | No | Same |
 | Users can interact or exchange content with other users (chat, posting, sharing) | No | It only downloads from the student's own courses; nothing is posted |
 | Shares the user's location | No | It reads no location |
-| Shares personal information with third parties | Yes, optional | If Calendar is enabled, deadline titles, course names, due times and Blackboard links are sent to Google at the user’s request; disclose optional sharing in the submission. Blackboard cookies go only to the school. |
-| Digital purchases | No | Free, no in-app purchases |
+| Shares personal information with third parties | Yes, optional | Optional integrations send data to Google at the user’s request. Disclose this sharing in the submission. Blackboard cookies go only to the school. |
+| Digital purchases | No | No in-app purchases |
 | Unrestricted internet access (for example a web browser) | No | The sign-in window opens the school's sign-in page; the app is not a browser. Confirm against the question's info text |
 
 The course material comes from the student's school, not from the app. Expect the lowest
@@ -118,9 +113,7 @@ The Store signs the package, so upload the **unsigned** `.msix` from the
 **Microsoft Store package** workflow. Ordinary CI artifacts omit production Google
 OAuth metadata and are for testing only.
 
-1. Run the workflow on the tested `main` commit. It requires the existing
-   `GOOGLE_CALENDAR_OAUTH_CLIENT_JSON` secret, checks Calendar configuration inside
-   the installed package and exercises startup, tray activation and package behavior.
+1. Run the workflow on the tested `main` commit. It checks production OAuth configuration inside the installed package and exercises startup, tray activation and package behavior.
 2. Download the artifact after the workflow succeeds:
 
    ```sh
@@ -131,27 +124,29 @@ OAuth metadata and are for testing only.
 
    Or: GitHub > Actions > Microsoft Store package > the successful run > Artifacts >
    `microsoft-store`. It includes the unsigned MSIX, checksum and source commit.
-3. Partner Center > Packages: replace the previous `1.5.1` package with
-   `Blackboard-Sync-1.6.2-x64.msix`. The manifest version is `1.6.2.0`, higher than
-   `1.5.1.0`. Keep the production package unsigned; never upload the smoke test's
-   test-signed copy.
-4. **Device family availability:** Windows 10/11 Desktop only (the manifest's
+3. Partner Center > Packages: upload the release workflow’s unsigned
+   `Blackboard-Sync-<version>-x64.msix`. The Store signs the production package.
+3. **Device family availability:** Windows 10/11 Desktop only (the manifest's
    `Windows.Desktop`); leave the others off.
 5. Partner Center reports the package's languages (`en-US`, the default, and `tr-TR`), the restricted capability
    `runFullTrust` and the identity; they must match `packaging/msix/identity.toml`.
 
 ### 5. Store listings
 
-- [ ] **Languages:** English and Turkish both come from the package, so both listings are
-  needed (`listing-en.md` and `listing-tr.md`).
-- [ ] **Text:** paste from `listing-tr.md` (and `listing-en.md`): description, short
-  description, product features, keywords, copyright and trademark info, developed by.
-  Use the 1.7.1 text in "What's new in this version" for this update. The non-affiliation
-  sentence is the second paragraph of the description and part of the copyright line.
-- [ ] **Screenshots:** upload `01-tek-tek.png` to `10-notebooklm.png` in order, with the
-  captions from the listing file. The problem card comes first, followed by the nine Windows
-  captures. Upload the Turkish images (`screenshots/`) to the Turkish listing and the English
-  images (`screenshots/en/`) to the English (en-US) listing.
+- [ ] **Languages:** English (`en-us`), Turkish (`tr-tr`), Spanish (`es`), French (`fr`),
+  German (`de`) and Arabic (`ar`).
+- [ ] **Text:** use the corresponding `listing-<lang>.md`. The description limit is
+  10,000 characters and the short description limit is 1,000. Leave release notes blank
+  for the first publication. Enter up to 20
+  product features (200 characters each) and seven keywords (40 characters each).
+  Keep the reserved Store title `blackboard-sync` for every language.
+- [ ] **Screenshots:** upload the nine PNGs in filename order, with the captions in the
+  matching listing.
+- [ ] **Bulk import:** choose **Import listings → Import folder → Select folder** and select the folder
+  containing the UTF-8 Partner Center export CSV and its images. Keep the folder name
+  because the CSV paths start with it.
+  Review all six languages after import.
+  [MSIX listing import and export](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/import-and-export-store-listings)
 - [ ] **Store logos:** poster art (1440x2160): `images/poster-art.png`; 1:1 box art
   (2160x2160): `images/box-art.png`; 1:1 app tile icons: `images/store-logo-300.png`
   (300x300), `images/store-logo-150.png` (150x150), `images/store-logo-71.png` (71x71).
@@ -183,7 +178,7 @@ OAuth metadata and are for testing only.
   explanation and a link to the demo video. Suggested text for the second case (date it):
 
   ```text
-  [date] This app downloads course files from a university's Blackboard Learn system. Signing in requires the student's own school account on the school's sign-in page, so we cannot provide a shared test account. Without an account testers can: open the app from Start (the "Get started" first-run page appears; the UI is English, with Turkish under Settings > Language), enter any Blackboard address and choose a folder, open Settings (the gear; automatic sync interval, language, start at sign-in, the note that updates come from the Microsoft Store), and close the window to see the app keep running in the notification area. The Windows screenshots and optional Windows trailer in this submission illustrate the main screens. Full sync still requires a valid school account. The app has no analytics. It contacts the Blackboard address the user enters and its redirects; optional Calendar sync also contacts Google. Optional Google Calendar connection is available in Settings; it opens the Google consent page in the default browser and manages only a dedicated Blackboard Deadlines calendar.
+  [date] This app downloads course files from a university's Blackboard Learn system. Signing in requires the student's own school account on the school's sign-in page, so we cannot provide a shared test account. Without an account testers can: open the app from Start (the "Get started" first-run page appears; the UI language can be changed under Settings > Language), enter any Blackboard address and choose a folder, open Settings (the gear; automatic sync interval, language, start at sign-in, the note that updates come from the Microsoft Store), and close the window to see the app keep running in the notification area. The Windows screenshots and optional Windows trailer in this submission illustrate the main screens. Full sync still requires a valid school account. The app has no analytics. It contacts the Blackboard address the user enters and its redirects. Optional Gemini Notebook export contacts Google.
   ```
 
 - [ ] **Submission notification audience:** the account owner is notified by default; add
@@ -195,87 +190,40 @@ OAuth metadata and are for testing only.
 Microsoft: desktop screenshots are PNG, 1366x768 or larger (up to 3840x2160), at most 50 MB,
 up to 10 per language, with an optional caption of 200 characters each
 ([Screenshots, images and trailers](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/screenshots-and-images)).
-Each language has ten images at 1920x1080: Turkish titles and a Turkish app in `screenshots/`,
-English titles and an English app in `screenshots/en/` (the app supports both in Settings and the
-listing declares `en-US` and `tr-TR`). The opening card introduces the problem, followed by nine
-titled screenshots of the Windows app (`10-notebooklm.png` shows the NotebookLM card).
+The Turkish set is at `screenshots/`, with English, Spanish, French, German and Arabic
+in `en/`, `es/`, `fr/`, `de/` and `ar/`. The Arabic page, tray and screenshot titles
+read right to left.
 
-The app captures come from `screenshots/capture.py`: the app's own WebView2 page
-(`src/blackboard_sync/windows/webui`) with the states of `scripts/webui-preview.py` (the same
-invented student, courses and files as the promo films), in a Windows 11 window frame, at 2x.
-They are rendered as the Store package shows them, without update rows or offers (the Store
-updates the app). The tray image draws the notification-area menu with the app's menu texts in the
-language (`menubar/model.py`, `Model.menu`; Turkish or, with `--lang en`, English) above a taskbar corner with the tray icon (the logo).
-
-| Final image / upload order | Content |
+| Upload order | Content |
 | --- | --- |
-| [01-tek-tek.png](screenshots/01-tek-tek.png) | “Still downloading files from Blackboard one by one?” / “You no longer have to.” — text-only problem card |
-| [02-genel-bakis.png](screenshots/02-genel-bakis.png) | Ana sayfa after a sync: greeting, Güncel, recent files, announcements and upcoming due dates |
-| [03-teslim-tarihleri.png](screenshots/03-teslim-tarihleri.png) | Takvim page: upcoming due dates grouped by day |
-| [04-google-takvim.png](screenshots/04-google-takvim.png) | Ayarlar: Görünüm (theme) and Google Takvim connected |
-| [05-duyurular.png](screenshots/05-duyurular.png) | Duyurular page with three announcements |
-| [06-dersler.png](screenshots/06-dersler.png) | Dersler page: five courses, one turned off |
-| [07-koyu-tema.png](screenshots/07-koyu-tema.png) | Ana sayfa in the dark theme |
-| [08-baslangic.png](screenshots/08-baslangic.png) | Başlangıç first-run page: school address, save folder, start with computer and Giriş yap |
-| [09-tepsi-menusu.png](screenshots/09-tepsi-menusu.png) | Notification-area menu above the taskbar, with the tray icon |
-| [10-notebooklm.png](screenshots/10-notebooklm.png) | Ana sayfa with the NotebookLM card after a sync: last synced, files added, Sync NotebookLM and Open NotebookLM |
-
-The English set (`screenshots/en/`) shows the same ten screens; the English titles come from
-`shots.js` and the app's texts from its English interface. The NotebookLM card capture has no “files were held back” warning, so a Store image shows the
-plain success state.
-
-![Home](screenshots/02-genel-bakis.png)
-
-### Promo card selection
-
-The source is the maintainer's local `~/Desktop/blackboard-sync-video/scene.html` and its
-rendered preview frames. Its reusable text beats (Turkish in the video; English here) are:
-
-- **Problem:** “Still downloading files from Blackboard one by one?” (`s1cap`).
-- **Reveal:** “You no longer have to.” (`s2a`).
-- **Setup:** “Choose your school, sign in. That's it.” (`s3cap`).
-- **Background downloads:** “Checks every hour, downloads new files automatically and lets you know.” (`s4sub`).
-- **Organisation:** “Everything on your computer, folder by folder.” (`s5cap`).
-- **Other features:** assignment attachments, deleted-file recovery and past-term downloads.
-- **Closing value statement:** “Your course files, on your computer automatically.” (`s7tag`).
-
-The problem and reveal are combined into **one opening card**, so the listing introduces
-why the app exists and then immediately shows the Windows app. The remaining statements
-repeat the app screenshots or need captures that can be added later.
-
-The card reuses the source wording, bold white type, cyan-to-blue emphasis, navy radial
-background and cyan glow. Its HTML is laid out afresh for 16:9 in `template.html`; no 4:5
-frame is cropped or embedded. It includes no macOS UI, platform badge, logo or LinkedIn
-call to action. The Desktop video sources are read-only references and were not modified;
-rendering the Store set needs only repository files.
+| `01-home.png` | Recent downloads, Gemini Notebook and the AI study session card |
+| `02-gemini-notebook.png` | Connected Gemini Notebook card with course export controls |
+| `03-ai-study.png` | AI study session card with the four available tool logos |
+| `04-school-search.png` | Get started with matching schools as the student types |
+| `05-calendar.png` | Upcoming deadlines with colour-coded course badges |
+| `06-announcements.png` | Course announcements |
+| `07-courses.png` | Course selection for sync |
+| `08-languages.png` | Language selector expanded in Settings |
+| `09-tray.png` | Windows notification-area menu |
 
 ### Sources and rendering
 
-Capture the app, then render the final images, from the repository root:
+`capture.py` uses the Windows WebView2 page, synthetic data from `scripts/webui-preview.py`
+and a drawn Windows 11 frame and tray. It displays the six language options from the app
+as an expanded list for capture. `render.sh` pairs those captures with the localized titles
+in `screenshots/src/shots.js`.
+
+From the repository root, with Playwright Chromium and Node.js installed:
 
 ```sh
-PYTHONPATH=src python store/microsoft/screenshots/capture.py            # Turkish: src/windows/*.png
-./store/microsoft/screenshots/render.sh                                  # Turkish: screenshots/*.png
-PYTHONPATH=src python store/microsoft/screenshots/capture.py --lang en  # English: src/windows/en/*.png
-./store/microsoft/screenshots/render.sh --lang en                       # English: screenshots/en/*.png
+for lang in en tr es fr de ar; do
+  PYTHONPATH=src python store/microsoft/screenshots/capture.py --lang "$lang"
+  ./store/microsoft/screenshots/render.sh --lang "$lang"
+done
 ```
 
-`capture.py` needs Playwright's Chromium. Linux has no Segoe UI, so pass a font there
-(`--font inter-latin-wght-normal.woff2 --font inter-latin-ext-wght-normal.woff2`, as for the
-promo films); `--only ID` recaptures one image. `render.sh` uses headless Google Chrome as on macOS;
-on Linux its `--window-size` screenshot can come out short, so check the bottom edge of the images. The template fits each capture within its
-image area; the tray image is centred below the title (`compact` in `shots.js`).
-
-The ten final 1920x1080 PNGs per language are written to `screenshots/` (Turkish) and
-`screenshots/en/` (English). Upload them in the table's order, with the captions in `listing-tr.md` or `listing-en.md` (also stored in
-`screenshots/src/shots.js`). `kind: "card"` in `shots.js` renders the opening card without a
-capture; other entries take `src/windows/<id>.png` (`src/windows/en/<id>.png` for `--lang en`).
-
-### To add later
-
-- A **Deleted files** view.
-- **Folders**: File Explorer showing the University term/course folder structure.
-- A capture from a real Windows PC to compare with the rendered window before the submission.
+Use `--only ID` to recapture a specific image. On Linux, `--font PATH` can supply
+WOFF2 font files in place of Segoe UI. Set `CHROME` to override the Chromium executable.
 
 ## Trailer
 
@@ -329,20 +277,12 @@ risks failing certification. A trailer can be added later, rebuilt from Windows 
 1. **Notes for certification / test account:** how certification testers can sign in
    (school test account or explanation only). The biggest certification risk.
 2. **Markets:** all markets or Turkey only.
-3. **Screenshots:** the English set is now captured and rendered (`capture.py --lang en`,
-   `render.sh --lang en`). The committed Turkish captures of screens 02–09 were made before the NotebookLM
-   card; recapture them (`capture.py`) before submission if you want them to match the English set.
-4. **Category:** Education > Study aids is proposed; secondary category Productivity or none.
-5. **Support contact:** GitHub Issues URL or an email address.
-6. **OneDrive backup declaration:** keep the default (checked) or uncheck.
-7. **Publishing hold:** publish on certification or hold until "Publish now".
+3. **Category:** Education > Study aids is proposed; secondary category Productivity or none.
+4. **Support contact:** GitHub Issues URL or an email address.
+5. **OneDrive backup declaration:** keep the default (checked) or uncheck.
+6. **Publishing hold:** publish on certification or hold until "Publish now".
 
 ## Settled decisions
-
-- **Screenshots:** open with the promo problem/reveal card, then show nine captures of the
-  Windows app (WebView2 window): seven in light mode (one of them the NotebookLM card), one in dark mode, plus the
-  tray menu. Turkish images for the Turkish listing, English images (`screenshots/en/`) for
-  the English listing.
 
 - **Privacy policy page:** the page is now English, lives at `/privacy` (the old `/gizlilik`
   redirects there) and covers the Store package (data folder, startup task, no GitHub

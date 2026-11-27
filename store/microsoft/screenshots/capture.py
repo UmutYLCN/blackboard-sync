@@ -6,7 +6,7 @@ PYTHONPATH=src python store/microsoft/screenshots/capture.py --lang en --font in
 Each window capture is the app's own WebView2 page (windows/webui) with a state from
 scripts/webui-preview.py, in a Windows 11 frame, at 2x. The tray capture draws the
 notification-area menu with the app's menu texts and the tray icon (the logo). The captures
-are Turkish into src/windows/ and, with --lang en, English into src/windows/en/.
+go into src/windows/ for Turkish and into src/windows/<lang>/ for other languages.
 Linux has no Segoe UI: --font embeds another font. Then run render.sh (--lang en) for the final images.
 """
 
@@ -26,19 +26,21 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 OUT = HERE / "src" / "windows"
 
-# id -> (preview state, theme, content width, content height, element to scroll into view; the app's
-# English text, translated by capture.py for --lang tr)
+# id -> (preview state, content height)
 WINDOWS = {
-    "02-genel-bakis": ("up-to-date", "light", 1180, 760, None),
-    "03-teslim-tarihleri": ("calendar", "light", 1180, 760, None),
-    "04-google-takvim": ("settings", "light", 1180, 760, "Appearance"),
-    "05-duyurular": ("announcements-page", "light", 1180, 760, None),
-    "06-dersler": ("courses", "light", 1180, 760, None),
-    "07-koyu-tema": ("up-to-date", "dark", 1180, 760, None),
-    "08-baslangic": ("start", "light", 1180, 760, None),
-    "10-notebooklm": ("notebooklm-idle", "light", 1180, 760, None),
+    "01-home": ("notebooklm-idle", 880),
+    "02-gemini-notebook": ("notebooklm-idle", 880),
+    "03-ai-study": ("notebooklm-idle", 880),
+    "04-school-search": ("start", 760),
+    "05-calendar": ("calendar", 760),
+    "06-announcements": ("announcements-page", 760),
+    "07-courses": ("courses", 760),
+    "08-languages": ("settings", 640),
 }
-TRAY = "09-tepsi-menusu"
+FEATURE_CARDS = {"02-gemini-notebook": "#notebooklm-card", "03-ai-study": "#ai-card"}
+TRAY = "09-tray"
+SCHOOL_QUERY = "King"
+COURSE_COLORS = {"COE305": 0, "CSE301": 1, "CSE303": 2, "PHY101": 3}
 
 FRAME = """<!doctype html><html><head><meta charset="utf-8"><style>
 {font}
@@ -69,10 +71,10 @@ TRAY_PAGE = """<!doctype html><html><head><meta charset="utf-8"><style>
 html, body {{ background: transparent; font-family: 'Capture', 'Segoe UI', sans-serif; color: #f3f3f3; }}
 .wrap {{ display: inline-flex; flex-direction: column; align-items: flex-end; gap: 14px; padding: 2px; }}
 .menu {{ width: 430px; padding: 4px; border-radius: 8px; background: #2c2c2c; border: 1px solid #454545; font-size: 14px; }}
-.menu div {{ height: 30px; display: flex; align-items: center; padding: 0 12px 0 34px; border-radius: 4px; position: relative; }}
+.menu div {{ height: 30px; display: flex; align-items: center; padding-inline: 34px 12px; border-radius: 4px; position: relative; }}
 .menu div.off {{ color: #9d9d9d; }}
 .menu div.hot {{ background: #3d3d3d; }}
-.menu div b {{ position: absolute; right: 12px; font-weight: 400; font-size: 13px; }}
+.menu div b {{ position: absolute; inset-inline-end: 12px; font-weight: 400; font-size: 13px; }}
 .menu hr {{ border: 0; border-top: 1px solid #454545; margin: 4px 0; }}
 .bar {{ display: flex; align-items: center; gap: 2px; height: 48px; padding: 0 10px; border-radius: 8px;
         background: #1c1c1c; border: 1px solid #333; font-size: 12px; }}
@@ -81,7 +83,7 @@ html, body {{ background: transparent; font-family: 'Capture', 'Segoe UI', sans-
 .slot img {{ width: 20px; height: 20px; }}
 .slot svg {{ width: 16px; height: 16px; fill: #f3f3f3; }}
 .clock {{ text-align: right; line-height: 1.35; margin-left: 8px; padding: 0 4px; }}
-</style></head><body><div class="wrap">
+</style></head><body><div class="wrap" dir="{direction}">
 <div class="menu">
   <div class="off">✓ UMUT YALÇIN · {synced}</div>
   <div class="off">{summary} · {next}</div>
@@ -101,7 +103,7 @@ html, body {{ background: transparent; font-family: 'Capture', 'Segoe UI', sans-
   <div class="slot"><svg viewBox="0 -960 960 960"><path d="{wifi}"/></svg></div>
   <div class="slot"><svg viewBox="0 -960 960 960"><path d="{volume}"/></svg></div>
   <div class="slot"><svg viewBox="0 -960 960 960"><path d="{battery}"/></svg></div>
-  <div class="clock">18:14<br>{date}</div>
+  <div class="clock" dir="ltr">18:14<br>{date}</div>
 </div>
 </div></body></html>"""
 
@@ -130,8 +132,8 @@ def parse_args(argv=None):
     parser.add_argument("--font", type=Path, action="append", default=[],
                         help="a .woff2 used in place of Segoe UI (repeat for more files of one family)")
     parser.add_argument("--only", action="append", help="only these ids")
-    parser.add_argument("--lang", choices=("tr", "en"), default="tr",
-                        help="the app's language: tr into src/windows/, en into src/windows/en/ (default tr)")
+    parser.add_argument("--lang", choices=("tr", "en", "es", "fr", "de", "ar"), default="tr",
+                        help="the app's language (default tr)")
     return parser.parse_args(argv)
 
 
@@ -164,41 +166,52 @@ def states(lang: str) -> dict:
     os.environ["TZ"] = "Europe/Istanbul"
     time.tzset()
     sys.path.insert(0, str(ROOT / "src"))
+    from dataclasses import replace
+
     from blackboard_sync import i18n
 
     i18n.set_language(lang)  # before the modules with tr() constants are imported
+    from blackboard_sync.menubar.main_window_model import fold_course_key
     from blackboard_sync.windows import webui_state
 
     # As the Store package shows them: the Store updates the app, so no update rows or offers.
     window_state = webui_state.window_state
+    colors = {fold_course_key(code): color for code, color in COURSE_COLORS.items()}
 
-    def packaged_state(status, *args, **kwargs):
-        return window_state(status, *args, **{**kwargs, "packaged": True})
+    def packaged_state(status, section, page, announcements, deadlines, *args, values, **kwargs):
+        recent = []
+        for row in status.recent:
+            code, _, when = row.detail.partition(" · ")
+            recent.append(replace(row, course_code=code, when=when, color=COURSE_COLORS[code]))
+        announcements = tuple(replace(row, course_code=row.course.split()[0]) for row in announcements)
+        days = []
+        for day in deadlines.days:
+            rows = tuple(replace(row, course_code=row.course.split()[0], title=row.title.split(" Due Date:")[0])
+                         for row in day.rows)
+            days.append(replace(day, rows=rows))
+        deadlines = replace(deadlines, days=tuple(days))
+        status = replace(status, recent=tuple(recent), course_colors=colors)
+        return window_state(status, section, page, announcements, deadlines, *args,
+                            values=replace(values, language=lang), packaged=True, **kwargs)
 
     webui_state.window_state = packaged_state
     script = ROOT / "scripts" / "webui-preview.py"
     namespace = {"__name__": "webui_preview"}
     exec(compile(script.read_text(encoding="utf-8"), str(script), "exec"), namespace)
-    now = datetime.now(timezone.utc).replace(hour=15, minute=14, second=0, microsecond=0)  # 18:14 in Istanbul
+    now = datetime(2026, 10, 18, 15, 14, tzinfo=timezone.utc)  # 18:14 in Istanbul
     result = namespace["fixtures"](now)
-    # The preview's "held back" warning is a hard-coded English line; a Store shot shows the clean card.
-    clear_notice(result["notebooklm-idle"])
+    # Show a completed sync without the preview fixture's intentional held-file warning.
+    result["notebooklm-idle"]["home"]["notebooklm"].update({"notice": "", "warning-counts": ""})
+    # Keep the portion of Settings that contains the language control in frame.
+    settings = result["settings"]["settings"]
+    settings["sections"] = [section for section in settings["sections"]
+                            if any(row["key"] == "language" for row in section["rows"])]
     return result
 
 
-def clear_notice(node) -> None:
-    """Empty every NotebookLM card ``notice`` in a window state (dicts and lists, any depth)."""
-    if isinstance(node, dict):
-        if "notice" in node and "kind" in node and "counts" in node:
-            node["notice"] = ""
-        for value in node.values():
-            clear_notice(value)
-    elif isinstance(node, (list, tuple)):
-        for value in node:
-            clear_notice(value)
-
-
 def chromium() -> str | None:
+    if executable := os.environ.get("CHROME"):
+        return executable
     root = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
     if not root:
         return None
@@ -210,7 +223,7 @@ def main(argv=None) -> int:
     lang = args.lang
     fixtures = states(lang)
     out_dir = OUT if lang == "tr" else OUT / lang
-    from blackboard_sync.i18n import tr
+    from blackboard_sync import schools
     from blackboard_sync.windows import webui_page
     from playwright.sync_api import sync_playwright
 
@@ -229,31 +242,44 @@ def main(argv=None) -> int:
                 page.set_content(TRAY_PAGE.format(font=frame_font, logo=logo(64), up=icon_path("keyboard_arrow_up"),
                                                   wifi=icon_path("wifi"), volume=icon_path("volume_up"),
                                                   battery=icon_path("battery_full"),
-                                                  date="18.10.2026" if lang == "tr" else "10/18/2026",
+                                                  date="10/18/2026" if lang == "en" else "18.10.2026",
+                                                  direction="rtl" if lang == "ar" else "ltr",
                                                   **tray_texts()))
                 page.evaluate("document.fonts.ready")
                 page.locator(".wrap").screenshot(path=str(out), omit_background=True)
                 page.close()
                 print(out)
                 continue
-            name, theme, width, height, scroll = WINDOWS[shot_id]
-            if scroll:
-                scroll = tr(scroll)
+            name, height = WINDOWS[shot_id]
+            width = 1180
             page = browser.new_page(viewport={"width": width + 40, "height": height + 80}, device_scale_factor=2,
-                                    color_scheme=theme)
+                                    color_scheme="light")
             page.on("pageerror", lambda exc, shot_id=shot_id: errors.append(f"{shot_id}: {exc}"))
-            page.set_content(FRAME.format(font=frame_font, theme=theme, logo=logo(32), width=width, height=height))
+            page.set_content(FRAME.format(font=frame_font, theme="light", logo=logo(32), width=width, height=height))
             script = "window.__PREVIEW_STATE__ = " + json.dumps(fixtures[name], ensure_ascii=True) + ";"
+            if name == "start":
+                matches = json.dumps([school.name for school in schools.search(SCHOOL_QUERY)])
+                script += f"window.pywebview = {{api: {{search_schools: () => Promise.resolve({matches})}}}};"
             html = webui_page.document(extra_style=app_style, extra_script=script, lang=lang)
             page.locator("#app").evaluate("(el, html) => { el.srcdoc = html; }", html)
             app = page.frame_locator("#app")
             app.locator("body").wait_for()
             page.wait_for_timeout(300)
-            if scroll:
-                app.get_by_text(scroll, exact=True).first.evaluate("el => el.scrollIntoView({block: 'start'})")
-                page.wait_for_timeout(100)
+            if name == "start":
+                app.locator('input[aria-controls="school-list"]').fill(SCHOOL_QUERY)
+                app.get_by_role("option").first.wait_for()
+            if name == "settings":
+                language = app.locator('[data-key="select-language"]')
+                # Native select popups are outside Chromium's page screenshot surface.
+                # Expand the real app options as a listbox for the capture.
+                language.evaluate("""el => {
+                    el.size = el.options.length;
+                    el.style.height = 'auto';
+                    el.scrollIntoView({block: 'center'});
+                }""")
             page.evaluate("document.fonts.ready")
-            page.locator(".win").screenshot(path=str(out), omit_background=True, animations="disabled")
+            target = app.locator(FEATURE_CARDS[shot_id]) if shot_id in FEATURE_CARDS else page.locator(".win")
+            target.screenshot(path=str(out), omit_background=True, animations="disabled")
             page.close()
             print(out)
         browser.close()

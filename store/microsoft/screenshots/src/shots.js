@@ -1,102 +1,89 @@
-// Store upload order: a text-only promo card, then nine Windows captures (capture.py).
-// `id` names the output PNG and, for captures, the PNG in windows/. `kind: "card"`
-// needs no image input. Title parts are [plain, highlighted, optional suffix].
-// Captions are at most 200 characters. The Turkish images (screenshots/) and the English ones
-// (screenshots/en/) come from the same manifest; each has its own captures (windows/, windows/en/).
+// Store upload order. Each translation is [title, caption]. Capture filenames use the same IDs.
+const translations = {
+  en: [
+    ["Your Blackboard files, automatically", "Home brings together recent downloads, the AI study session card and Gemini Notebook."],
+    ["Export course files to Gemini Notebook", "Connect Gemini Notebook (NotebookLM) and export supported files to one notebook per course."],
+    ["Open your AI assistant in one click", "Launch Claude Code, Gemini CLI, Codex or Antigravity in your current term folder."],
+    ["Find your school as you type", "Search a directory of 193 verified institutions by name, abbreviation or domain."],
+    ["See what’s due next", "View upcoming Blackboard deadlines and their colour-coded courses in one calendar."],
+    ["Course announcements in one place", "Read the latest Blackboard announcements across your courses."],
+    ["Choose which courses sync", "See your current courses and choose which ones to download."],
+    ["Six languages in Settings", "Switch between English, Türkçe, Español, Français, Deutsch and العربية."],
+    ["Sync from the system tray", "Check your last sync and reach recent downloads from the Windows notification area."],
+  ],
+  tr: [
+    ["Blackboard dosyaların otomatik iner", "Ana sayfada son indirilenler, yapay zekâ ile çalışma kartı ve Gemini Notebook bir arada."],
+    ["Ders dosyalarını Gemini Notebook’a aktar", "Gemini Notebook’u (NotebookLM) bağla ve desteklenen dosyaları her ders için ayrı bir not defterine aktar."],
+    ["Yapay zekâ yardımcını tek tıkla aç", "Claude Code, Gemini CLI, Codex veya Antigravity’yi geçerli dönem klasöründe aç."],
+    ["Yazarken okulunu bul", "Doğrulanmış 193 kurumu ad, kısaltma veya alan adıyla ara."],
+    ["Sıradaki teslim tarihlerini gör", "Blackboard teslim tarihlerini ve renkli ders rozetlerini tek takvimde gör."],
+    ["Ders duyuruları tek yerde", "Tüm derslerinin en yeni Blackboard duyurularını oku."],
+    ["Eşitlenecek dersleri seç", "Bu dönemin derslerini gör ve hangilerinin indirileceğini belirle."],
+    ["Ayarlarda altı dil seçeneği", "English, Türkçe, Español, Français, Deutsch ve العربية arasında geçiş yap."],
+    ["Bildirim alanından eşitle", "Windows bildirim alanından son eşitlemeyi kontrol et ve son indirilenlere eriş."],
+  ],
+  es: [
+    ["Tus archivos de Blackboard, al día", "Inicio reúne las descargas recientes, la tarjeta de estudio con IA y Gemini Notebook."],
+    ["Exporta tus archivos a Gemini Notebook", "Conecta Gemini Notebook (NotebookLM) y exporta los archivos compatibles a un cuaderno por asignatura."],
+    ["Abre tu asistente de IA con un clic", "Abre Claude Code, Gemini CLI, Codex o Antigravity en la carpeta del periodo actual."],
+    ["Encuentra tu centro al escribir", "Busca por nombre, siglas o dominio entre 193 instituciones verificadas."],
+    ["Consulta las próximas entregas", "Consulta las próximas fechas de Blackboard y sus asignaturas con colores en un solo calendario."],
+    ["Todos los avisos en un solo lugar", "Lee los últimos avisos de Blackboard de todas tus asignaturas."],
+    ["Elige qué cursos sincronizar", "Consulta tus cursos actuales y elige de cuáles quieres descargar archivos."],
+    ["Seis idiomas en Ajustes", "Cambia entre English, Türkçe, Español, Français, Deutsch y العربية."],
+    ["Sincroniza desde la bandeja", "Consulta la última sincronización y las descargas recientes desde el área de notificación de Windows."],
+  ],
+  fr: [
+    ["Vos fichiers Blackboard, à jour", "L’accueil réunit les téléchargements récents, la carte de révision avec l’IA et Gemini Notebook."],
+    ["Exportez vos fichiers vers Gemini Notebook", "Connectez Gemini Notebook (NotebookLM) et exportez les fichiers compatibles vers un carnet par cours."],
+    ["Ouvrez votre assistant IA en un clic", "Ouvrez Claude Code, Gemini CLI, Codex ou Antigravity dans le dossier de la période en cours."],
+    ["Trouvez votre établissement", "Recherchez par nom, sigle ou domaine parmi 193 établissements vérifiés."],
+    ["Consultez les prochaines échéances", "Retrouvez les échéances Blackboard et leurs repères de cours colorés dans un seul calendrier."],
+    ["Toutes vos annonces au même endroit", "Lisez les dernières annonces Blackboard de tous vos cours."],
+    ["Choisissez les cours à synchroniser", "Consultez vos cours actuels et choisissez lesquels télécharger."],
+    ["Six langues dans les paramètres", "Passez de English à Türkçe, Español, Français, Deutsch ou العربية."],
+    ["Synchronisez depuis la barre des tâches", "Consultez la dernière synchronisation et les téléchargements récents dans la zone de notification de Windows."],
+  ],
+  de: [
+    ["Deine Blackboard-Dateien, immer aktuell", "Die Startseite zeigt letzte Downloads, die KI-Lernkarte und Gemini Notebook."],
+    ["Kursdateien zu Gemini Notebook exportieren", "Verbinde Gemini Notebook (NotebookLM) und exportiere unterstützte Dateien in ein Notizbuch pro Kurs."],
+    ["Öffne deinen KI-Assistenten mit einem Klick", "Starte Claude Code, Gemini CLI, Codex oder Antigravity im Ordner des aktuellen Semesters."],
+    ["Finde deine Hochschule beim Tippen", "Durchsuche 193 verifizierte Einrichtungen nach Name, Kürzel oder Domain."],
+    ["Behalte Abgabetermine im Blick", "Sieh kommende Blackboard-Fristen und farblich markierte Kurse in einem Kalender."],
+    ["Alle Ankündigungen an einem Ort", "Lies die neuesten Blackboard-Ankündigungen aus all deinen Kursen."],
+    ["Wähle die Kurse für die Synchronisierung", "Sieh deine aktuellen Kurse und wähle aus, welche du herunterladen möchtest."],
+    ["Sechs Sprachen in den Einstellungen", "Wechsle zwischen English, Türkçe, Español, Français, Deutsch und العربية."],
+    ["Direkt im Infobereich synchronisieren", "Sieh die letzte Synchronisierung und öffne letzte Downloads über den Windows-Infobereich."],
+  ],
+  ar: [
+    ["ملفات بلاك بورد محدّثة تلقائيًا", "تجمع الصفحة الرئيسية أحدث التنزيلات وبطاقة الدراسة بالذكاء الاصطناعي وGemini Notebook."],
+    ["صدّر ملفات مقرراتك إلى Gemini Notebook", "اربط Gemini Notebook (NotebookLM) وصدّر الملفات المدعومة إلى دفتر مستقل لكل مقرر."],
+    ["افتح مساعد الذكاء الاصطناعي بنقرة واحدة", "شغّل Claude Code أو Gemini CLI أو Codex أو Antigravity في مجلد الفصل الدراسي الحالي."],
+    ["اعثر على جامعتك أثناء الكتابة", "ابحث بالاسم أو الاختصار أو النطاق ضمن 193 مؤسسة تم التحقق منها."],
+    ["تابع مواعيد التسليم القادمة", "اطّلع على مواعيد بلاك بورد والمقررات المميّزة بالألوان في تقويم واحد."],
+    ["إعلانات المقررات في مكان واحد", "اقرأ أحدث إعلانات بلاك بورد من جميع مقرراتك."],
+    ["اختر المقررات التي تريد مزامنتها", "اطّلع على مقرراتك الحالية واختر المقررات التي تريد تنزيل ملفاتها."],
+    ["ست لغات في الإعدادات", "بدّل بين English وTürkçe وEspañol وFrançais وDeutsch والعربية."],
+    ["زامن من منطقة الإعلام", "تحقّق من آخر مزامنة وافتح التنزيلات الأخيرة من منطقة الإعلام في Windows."],
+  ],
+};
+
+const featured = new Set(["02-gemini-notebook", "03-ai-study"]);
+
 window.SHOTS = [
-  {
-    id: "01-tek-tek",
-    kind: "card",
-    title: {
-      tr: ["Blackboard’dan dosyaları\n", "tek tek", " mi indiriyorsun?"],
-      en: ["Still downloading files\n", "one by one", "?"],
-    },
-    subtitle: { tr: "Buna artık gerek yok.", en: "You no longer have to." },
-    caption: {
-      tr: "Blackboard’dan dosyaları tek tek mi indiriyorsun? Blackboard Sync, ders dosyalarını arka planda otomatik olarak bilgisayarına indirir.",
-      en: "Still downloading Blackboard files one by one? Blackboard Sync automatically downloads your course files to your computer in the background.",
-    },
-  },
-  {
-    id: "02-genel-bakis",
-    title: { tr: ["Ders dosyaların ", "kendiliğinden iner."], en: ["Your course files ", "download themselves."] },
-    caption: {
-      tr: "Ana sayfa: yeni ders dosyaları arka planda kendiliğinden iner. Son indirilenler, duyurular ve yaklaşan teslim tarihleri tek bakışta.",
-      en: "Home: new course files download in the background. Recent downloads, announcements and upcoming due dates at a glance.",
-    },
-    capture: "Ana sayfa after a sync: greeting, Güncel, recent files, announcements and upcoming due dates",
-  },
-  {
-    id: "03-teslim-tarihleri",
-    title: { tr: ["Teslim tarihlerini ", "kaçırma."], en: ["Never miss ", "a due date."] },
-    caption: {
-      tr: "Takvim: yaklaşan teslim tarihleri gün gün listelenir. Teslime 24 saat ve 1 saat kala bildirim gelir.",
-      en: "Calendar: upcoming due dates, day by day. A notification comes 24 hours and 1 hour before each one is due.",
-    },
-    capture: "Takvim page: upcoming due dates grouped by day",
-  },
-  {
-    id: "04-google-takvim",
-    title: { tr: ["Teslim tarihlerin ", "Google Takvim’inde."], en: ["Your due dates in ", "Google Calendar."] },
-    caption: {
-      tr: "Ayarlar’dan Google Takvim’i bağla: teslim tarihleri ayrı bir Blackboard Deadlines takviminde güncel kalır. Diğer takvimlerin gizli kalır.",
-      en: "Connect Google Calendar in Settings: due dates stay up to date in a separate Blackboard Deadlines calendar. Your other calendars stay private.",
-    },
-    capture: "Ayarlar: Görünüm (theme) and Google Takvim connected",
-  },
-  {
-    id: "05-duyurular",
-    title: { tr: ["Tüm duyurular ", "tek yerde."], en: ["Every announcement ", "in one place."] },
-    caption: {
-      tr: "Duyurular: tüm derslerinin Blackboard duyuruları tek listede, en yenisi en üstte. Herhangi birini tek tıkla aç.",
-      en: "Announcements: every course’s Blackboard announcements in one list, newest first. Open any of them in one click.",
-    },
-    capture: "Duyurular page with three announcements",
-  },
-  {
-    id: "06-dersler",
-    title: { tr: ["Hangi derslerin ineceğini ", "sen seç."], en: ["You choose ", "which courses sync."] },
-    caption: {
-      tr: "Dersler: bu dönemin derslerini gör, istemediğinin işaretini kaldır. İşaretsiz dersler senkronize edilmez; indirilmiş dosyalar silinmez.",
-      en: "Courses: see this term’s courses and untick the ones you don’t want. Unticked courses are not synced; downloaded files are not deleted.",
-    },
-    capture: "Dersler page: five courses, one turned off",
-  },
-  {
-    id: "07-koyu-tema",
-    title: { tr: ["Açık mı, koyu mu? ", "Sen seç."], en: ["Light or dark? ", "Your choice."] },
-    caption: {
-      tr: "Koyu tema: uygulama Windows’un temasını izler ya da Ayarlar’dan açık veya koyu temada kalır.",
-      en: "Dark theme: the app follows your Windows theme, or stays light or dark from Settings.",
-    },
-    capture: "Ana sayfa in the dark theme",
-  },
-  {
-    id: "08-baslangic",
-    title: { tr: ["Okulunu ve klasörünü seç, ", "giriş yap."], en: ["Choose your school and folder, ", "sign in."] },
-    caption: {
-      tr: "Başlangıç: okulunun Blackboard adresini yaz, kayıt klasörünü ve bilgisayar açılınca başlatma seçeneğini belirle, ardından giriş yap.",
-      en: "Getting started: enter your school's Blackboard address, choose a save folder and whether to start with your computer, then sign in.",
-    },
-    capture: "Başlangıç first-run page: school address, save folder, start with computer and Giriş yap",
-  },
-  {
-    id: "09-tepsi-menusu",
-    title: { tr: ["Saatin yanında ", "sessizce çalışır."], en: ["Quietly working ", "from your system tray."] },
-    caption: {
-      tr: "Pencereyi kapatsan da uygulama saatin yanındaki simgeden çalışır. Son senkronu gör, yeni bir senkron başlat veya derslerine ve indirdiklerine ulaş.",
-      en: "The app keeps working from the system tray after you close its window. Check the last sync, sync again, or access your courses and recent downloads.",
-    },
-    capture: "Notification-area menu above the taskbar, with the tray icon",
-    compact: true,
-  },
-  {
-    id: "10-notebooklm",
-    title: { tr: ["Ders dosyaların ", "NotebookLM’de hazır."], en: ["Your course files ", "ready in NotebookLM."] },
-    caption: {
-      tr: "NotebookLM: İndirilen ders dosyaları her ders için ayrı bir notebook'a otomatik aktarılır. Kaynaklarınla doğrudan çalış, özet çıkar veya soru sor.",
-      en: "NotebookLM: Downloaded course files sync automatically to one notebook per course. Chat with your sources, create study guides, and study faster.",
-    },
-    capture: "Ana sayfa with the NotebookLM card after a sync: last synced, files added, Sync and Open NotebookLM",
-  },
-];
+  "01-home",
+  "02-gemini-notebook",
+  "03-ai-study",
+  "04-school-search",
+  "05-calendar",
+  "06-announcements",
+  "07-courses",
+  "08-languages",
+  "09-tray",
+].map((id, index) => ({
+  id,
+  featured: featured.has(id),
+  compact: featured.has(id) || id === "09-tray",
+  title: Object.fromEntries(Object.entries(translations).map(([lang, shots]) => [lang, shots[index][0]])),
+  caption: Object.fromEntries(Object.entries(translations).map(([lang, shots]) => [lang, shots[index][1]])),
+}));
