@@ -39,6 +39,7 @@ from pathlib import Path, PurePosixPath
 
 from blackboard_sync import __version__, ai_launcher, announcements, courses, deadlines, updater
 from blackboard_sync.i18n import ntr, tr
+from blackboard_sync.licensing import LicenseKind
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     NOTEBOOKLM_CONNECT,
@@ -475,6 +476,82 @@ class UpdateBanner:
     enabled: bool
 
 
+LICENSE_TRIAL, LICENSE_EXPIRED = "trial", "expired"
+LICENSE_BUY_ACTION, LICENSE_RESTORE_ACTION = "license_buy", "license_restore"
+
+
+@dataclass(frozen=True)
+class LicenseCard:
+    """Home's compact trial line (``LICENSE_TRIAL``) or expired-trial buy card (``LICENSE_EXPIRED``)."""
+
+    kind: str  # LICENSE_TRIAL | LICENSE_EXPIRED
+    title: str
+    detail: str
+    buy_action: str = LICENSE_BUY_ACTION
+    buy_title: str = ""
+    buy_enabled: bool = True
+    restore_action: str = ""
+    restore_title: str = ""
+    restore_enabled: bool = True
+    notice: str = ""
+
+
+def trial_remaining_text(expires_at: datetime, now: datetime) -> str:
+    """Remaining trial time formatted for any Partner Center trial duration."""
+    seconds = max(0, int((expires_at - now).total_seconds()))
+    if seconds < 3600:
+        minutes = min(59, max(1, (seconds + 59) // 60))
+        return ntr("{n} minute left", "{n} minutes left", minutes).format(n=minutes)
+    hours = (seconds + 3599) // 3600
+    if hours <= 48:
+        return ntr("{n} hour left", "{n} hours left", hours).format(n=hours)
+    days = (seconds + 86399) // 86400
+    return ntr("{n} day left", "{n} days left", days).format(n=days)
+
+
+def license_card(model: AppModel, now: datetime) -> LicenseCard | None:
+    """The trial line while a trial runs, the buy card once it ended, or None (full / offline grace)."""
+    state = model.license
+    busy = model.license_busy
+    price = state.formatted_price.strip()
+    if state.is_expired(now):
+        detail = (
+            tr("Buy Blackboard Sync once ({price}) to keep syncing your courses. "
+               "Your downloaded files are still in your folder.").format(price=price)
+            if price else
+            tr("Buy Blackboard Sync once to keep syncing your courses. "
+               "Your downloaded files are still in your folder.")
+        )
+        buy_title = (tr("Opening Store…") if busy == "buy"
+                     else tr("Buy for {price}").format(price=price) if price
+                     else tr("Buy"))
+        restore_title = tr("Checking…") if busy == "restore" else tr("I already bought it")
+        return LicenseCard(
+            kind=LICENSE_EXPIRED,
+            title=tr("Your free trial has ended"),
+            detail=detail,
+            buy_title=buy_title,
+            buy_enabled=busy is None,
+            restore_action=LICENSE_RESTORE_ACTION,
+            restore_title=restore_title,
+            restore_enabled=busy is None,
+            notice=model.license_notice,
+        )
+    if state.kind == LicenseKind.TRIAL:
+        line = (tr("Free trial · {remaining}").format(remaining=trial_remaining_text(state.expires_at, now))
+                if state.expires_at is not None else tr("Free trial"))
+        buy_title = tr("Opening Store…") if busy == "buy" else tr("Buy")
+        return LicenseCard(
+            kind=LICENSE_TRIAL,
+            title="",
+            detail=line,
+            buy_title=buy_title,
+            buy_enabled=busy is None,
+            notice=model.license_notice,
+        )
+    return None
+
+
 def update_banner(model: AppModel) -> UpdateBanner | None:
     """Only an actionable newer release; Store updates have no detection path."""
     updates = model.updates
@@ -517,6 +594,7 @@ class MainStatus:
     notebooklm: NotebookLMCard = NotebookLMCard(NOTEBOOKLM_OFF, T_NOTEBOOKLM_INTRO)
     ai: AiCard = AiCard(AI_OFF, T_AI_LOOKING)
     course_colors: Mapping[str, int] = field(default_factory=dict)
+    license: LicenseCard | None = None
 
     @property
     def overview_title(self) -> str:
@@ -587,6 +665,8 @@ def home_state(model: AppModel, now: datetime) -> HomeState:
     if model.busy in SYNC_RUNNING_JOBS:
         return HomeState(STATE_SYNCING, T_STATE_TITLES[STATE_SYNCING],
                          sync_scene(model)[1] or model.activity() or detail)
+    if model.license_expired(now):
+        return HomeState(STATE_ATTENTION, tr("Free trial ended"), detail)
     if model.paused:
         return HomeState(STATE_PAUSED, T_STATE_TITLES[STATE_PAUSED], detail)
     if name is None:
@@ -766,9 +846,10 @@ def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.Deadli
         start_message = model.note
     scene, scene_line = sync_scene(model)
     first_run = is_first_run(model)
+    expired_license = model.license_expired(now)
     heading, subtitle = home_header(name, T_NAV_START if first_run else T_NAV_OVERVIEW, deadlines_page, now, zone)
     sync_title = T_SYNCING if model.busy == "sync" else T_SYNC_NOW
-    sync_enabled = idle and model.configured and name is not None and not model.paused
+    sync_enabled = idle and model.configured and name is not None and not model.paused and not expired_license
     return MainStatus(
         first_run=first_run,
         account=account_card(model, now),
@@ -786,13 +867,14 @@ def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.Deadli
         home=home_state(model, now),
         paused=model.paused,
         pause_title=T_RESUME if model.paused else T_PAUSE,
-        pause_enabled=model.configured and not is_first_run(model),
+        pause_enabled=model.configured and not first_run and not expired_license,
         activity=activity_rows(model, now),
         home_heading=heading,
         home_subtitle=subtitle,
         notebooklm=notebooklm_card(model, now),
         ai=ai_card(model, sync_title=sync_title, sync_enabled=sync_enabled),
         course_colors=model.course_colors.copy(),
+        license=license_card(model, now),
     )
 
 

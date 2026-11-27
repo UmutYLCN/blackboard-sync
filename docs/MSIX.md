@@ -150,6 +150,49 @@ startup settings or course files. **Sign out** still clears the session
 normally. An older unpackaged Setup build keeps its Inno uninstaller but no longer
 checks for updates; macOS behavior is unchanged.
 
+## Store pricing, 1-day free trial, and license testing
+
+In Partner Center > **Pricing and availability**:
+
+- **Base price:** one-time paid tier (~5 USD; no subscription).
+- **Free trial:** **Time-limited — 1 day** (every course and feature works during
+  the trial; already-downloaded files remain in the student's folder if the trial
+  expires).
+
+At runtime (`src/blackboard_sync/licensing.py`), the packaged MSIX build queries
+`Windows.Services.Store.StoreContext`:
+
+- `GetAppLicenseAsync()` reads `IsActive`, `IsTrial`, and `ExpirationDate` /
+  `TrialTimeRemaining` (so changing the trial length in Partner Center needs no
+  code change).
+- `GetStoreProductForCurrentAppAsync()` reads `StoreProduct.Price.FormattedPrice`
+  for the buy card (no price is hardcoded).
+- `RequestPurchaseAsync()` runs on the window's UI thread after binding the main
+  window's `HWND` via `IInitializeWithWindow`, and `OfflineLicensesChanged`
+  refreshes the entitlement after purchase.
+- When the Store is offline or unreachable (including an unassociated sideloaded
+  smoke-test install), the license resolves to `unknown` (offline grace) so paying
+  students are never locked out offline; the app re-checks periodically.
+
+To test without waiting for a live Store submission:
+
+1. **License simulation (`BBSYNC_LICENSE_SIMULATE`):** works both from source and
+   inside a sideloaded MSIX (note that `full` is ignored in a packaged MSIX so
+   environment variables cannot bypass Store licensing):
+   ```powershell
+   $env:BBSYNC_LICENSE_PRICE = '$4.99'
+   $env:BBSYNC_LICENSE_SIMULATE = 'trial:18h'   # Home trial line + Buy
+   $env:BBSYNC_LICENSE_SIMULATE = 'trial:30s'   # watch live expiry stop syncing
+   $env:BBSYNC_LICENSE_SIMULATE = 'expired'     # sync blocked + Buy / Restore card
+   $env:BBSYNC_LICENSE_SIMULATE = 'offline'     # offline grace
+   ```
+2. **Microsoft Store test account:** publish the submission to a hidden/private
+   Partner Center flight (or generate promotional codes for a test Microsoft
+   account), sign into the Microsoft Store app on a Windows 10/11 test PC with
+   that account, install from the Store, and verify the 1-day trial countdown,
+   the live `RequestPurchaseAsync` checkout dialog, and `"I already bought it"`
+   re-checking.
+
 ## Notifications and activation
 
 The PowerShell child process still sends toasts, with an explicit identity:

@@ -735,4 +735,32 @@ CATALOG = {
     "{n} files may already be in Gemini Notebook, so they were not added.":
         "Puede que {n} archivos ya estén en Gemini Notebook, así que no se agregaron.",
     "{n} held back": "{n} en espera",
+
+    # Store trial and purchase (licensing)
+    "Purchases are not available in this build.": "Las compras no están disponibles en esta compilación.",
+    "Could not reach the Microsoft Store. Check your internet connection and try again.":
+        "No se pudo conectar con Microsoft Store. Revisa tu conexión a internet y vuelve a intentarlo.",
+    "Could not complete the purchase in the Microsoft Store. Try again in a moment.":
+        "No se pudo completar la compra en Microsoft Store. Vuelve a intentarlo en un momento.",
+    "No purchase was found for this account yet.": "Aún no se encontró ninguna compra para esta cuenta.",
+    "Free trial ended": "La prueba gratuita terminó",
+    "{n} minute left": "queda {n} minuto",
+    "{n} minutes left": "quedan {n} minutos",
+    "{n} hour left": "queda {n} hora",
+    "{n} hours left": "quedan {n} horas",
+    "{n} day left": "queda {n} día",
+    "{n} days left": "quedan {n} días",
+    "Free trial · {remaining}": "Prueba gratuita · {remaining}",
+    "Free trial": "Prueba gratuita",
+    "Buy": "Comprar",
+    "Buy for {price}": "Comprar por {price}",
+    "Opening Store…": "Abriendo la tienda…",
+    "Your free trial has ended": "Tu prueba gratuita ha terminado",
+    "Buy Blackboard Sync once ({price}) to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Compra Blackboard Sync una sola vez ({price}) para seguir sincronizando tus cursos. "
+        "Tus archivos descargados siguen en tu carpeta.",
+    "Buy Blackboard Sync once to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Compra Blackboard Sync una sola vez para seguir sincronizando tus cursos. "
+        "Tus archivos descargados siguen en tu carpeta.",
+    "I already bought it": "Ya lo compré",
 }

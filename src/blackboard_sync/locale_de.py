@@ -735,4 +735,32 @@ CATALOG = {
     "{n} files may already be in Gemini Notebook, so they were not added.":
         "{n} Dateien sind möglicherweise schon in Gemini Notebook und wurden daher nicht hinzugefügt.",
     "{n} held back": "{n} zurückgehalten",
+
+    # Store trial and purchase (licensing)
+    "Purchases are not available in this build.": "Käufe sind in dieser Version nicht verfügbar.",
+    "Could not reach the Microsoft Store. Check your internet connection and try again.":
+        "Der Microsoft Store war nicht erreichbar. Prüfe deine Internetverbindung und versuche es erneut.",
+    "Could not complete the purchase in the Microsoft Store. Try again in a moment.":
+        "Der Kauf im Microsoft Store konnte nicht abgeschlossen werden. Versuche es gleich noch einmal.",
+    "No purchase was found for this account yet.": "Für dieses Konto wurde noch kein Kauf gefunden.",
+    "Free trial ended": "Testphase beendet",
+    "{n} minute left": "noch {n} Minute",
+    "{n} minutes left": "noch {n} Minuten",
+    "{n} hour left": "noch {n} Stunde",
+    "{n} hours left": "noch {n} Stunden",
+    "{n} day left": "noch {n} Tag",
+    "{n} days left": "noch {n} Tage",
+    "Free trial · {remaining}": "Kostenlose Testversion · {remaining}",
+    "Free trial": "Kostenlose Testversion",
+    "Buy": "Kaufen",
+    "Buy for {price}": "Für {price} kaufen",
+    "Opening Store…": "Store wird geöffnet…",
+    "Your free trial has ended": "Deine kostenlose Testphase ist abgelaufen",
+    "Buy Blackboard Sync once ({price}) to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Kaufe Blackboard Sync einmalig ({price}), um deine Kurse weiter zu synchronisieren. "
+        "Deine heruntergeladenen Dateien bleiben in deinem Ordner.",
+    "Buy Blackboard Sync once to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Kaufe Blackboard Sync einmalig, um deine Kurse weiter zu synchronisieren. "
+        "Deine heruntergeladenen Dateien bleiben in deinem Ordner.",
+    "I already bought it": "Ich habe es schon gekauft",
 }
