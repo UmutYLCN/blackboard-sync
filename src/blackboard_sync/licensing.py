@@ -302,6 +302,68 @@ def _default_init_window(context: object, hwnd: int) -> None:
     initialize_with_window(context, hwnd)
 
 
+def run_store_windowed_async(
+    context: object,
+    *,
+    init_window: Callable[[object, int], None],
+    hwnd: int | None,
+    on_ui_thread: Callable[[Callable[[], None]], None] | None,
+    start_op: Callable[[object], object],
+    timeout: float,
+    ref_holder: list[object] | None = None,
+) -> tuple[object | None, bool]:
+    """Initialize ``context`` with ``hwnd`` and await ``start_op(context)``.
+
+    Returns ``(result, timed_out)``; raises when starting or completing the
+    WinRT operation raises. When ``on_ui_thread`` is provided, modal initiation
+    runs on that UI thread and completion is awaited via ``.completed`` so an
+    STA UI pump never blocks.
+    """
+    if on_ui_thread is None:
+        if hwnd:
+            init_window(context, int(hwnd))
+        return start_op(context).get(), False
+
+    done = threading.Event()
+    outcome_box: list[tuple[object | None, BaseException | None]] = []
+    holder = ref_holder if ref_holder is not None else []
+
+    def start_on_ui() -> None:
+        try:
+            if hwnd:
+                init_window(context, int(hwnd))
+            operation = start_op(context)
+            if hasattr(operation, "completed"):
+                def on_completed(async_op: object, _status: object) -> None:
+                    try:
+                        get_res = getattr(async_op, "get_results", None) or getattr(async_op, "get")
+                        outcome_box.append((get_res(), None))
+                    except BaseException as err:
+                        outcome_box.append((None, err))
+                    finally:
+                        done.set()
+
+                holder.append(on_completed)
+                operation.completed = on_completed
+            else:
+                outcome_box.append((operation.get(), None))
+                done.set()
+        except BaseException as err:
+            outcome_box.append((None, err))
+            done.set()
+
+    on_ui_thread(start_on_ui)
+    try:
+        if not done.wait(timeout=timeout):
+            return None, True
+    finally:
+        holder.clear()
+    result, error = outcome_box[0] if outcome_box else (None, RuntimeError("no result"))
+    if error is not None:
+        raise error
+    return result, False
+
+
 class WindowsStoreProvider:
     """Microsoft Store licensing via ``Windows.Services.Store.StoreContext`` (MSIX build)."""
 
@@ -328,7 +390,7 @@ class WindowsStoreProvider:
         self._purchased = False
         # Strong references to WinRT callbacks so Python GC never collects them mid-flight.
         self._offline_handler_ref = self._on_offline_licenses_changed
-        self._purchase_completed_ref: object | None = None
+        self._purchase_completed_refs: list[object] = []
 
     def _on_offline_licenses_changed(self, _sender: object = None, _args: object = None) -> None:
         with self._lock:
@@ -442,46 +504,18 @@ class WindowsStoreProvider:
                     msg = store_unreachable_message()
                     return PurchaseResult(PurchaseOutcome.UNAVAILABLE, self.get_state(current_now), msg)
 
-                if on_ui_thread is not None:
-                    done = threading.Event()
-                    outcome_box: list[tuple[object | None, BaseException | None]] = []
-
-                    def start_purchase_on_ui() -> None:
-                        try:
-                            if hwnd:
-                                self._init_window(context, int(hwnd))
-                            operation = context.request_purchase_async(store_id)
-                            if hasattr(operation, "completed"):
-                                def on_completed(async_op: object, _status: object) -> None:
-                                    try:
-                                        get_res = getattr(async_op, "get_results", None) or getattr(async_op, "get")
-                                        outcome_box.append((get_res(), None))
-                                    except BaseException as err:
-                                        outcome_box.append((None, err))
-                                    finally:
-                                        done.set()
-
-                                self._purchase_completed_ref = on_completed
-                                operation.completed = on_completed
-                            else:
-                                outcome_box.append((operation.get(), None))
-                                done.set()
-                        except BaseException as err:
-                            outcome_box.append((None, err))
-                            done.set()
-
-                    on_ui_thread(start_purchase_on_ui)
-                    if not done.wait(timeout=PURCHASE_TIMEOUT):
-                        msg = purchase_failed_message()
-                        return PurchaseResult(PurchaseOutcome.UNAVAILABLE, self.get_state(current_now), msg)
-                    self._purchase_completed_ref = None
-                    purchase_result, error = outcome_box[0] if outcome_box else (None, RuntimeError("no result"))
-                    if error is not None:
-                        raise error
-                else:
-                    if hwnd:
-                        self._init_window(context, int(hwnd))
-                    purchase_result = context.request_purchase_async(store_id).get()
+                purchase_result, timed_out = run_store_windowed_async(
+                    context,
+                    init_window=self._init_window,
+                    hwnd=hwnd,
+                    on_ui_thread=on_ui_thread,
+                    start_op=lambda ctx: ctx.request_purchase_async(store_id),
+                    timeout=PURCHASE_TIMEOUT,
+                    ref_holder=self._purchase_completed_refs,
+                )
+                if timed_out:
+                    msg = purchase_failed_message()
+                    return PurchaseResult(PurchaseOutcome.UNAVAILABLE, self.get_state(current_now), msg)
 
                 status = int(getattr(purchase_result, "status", PURCHASE_SERVER_ERROR))
                 if status in (PURCHASE_SUCCEEDED, PURCHASE_ALREADY_PURCHASED):
@@ -516,7 +550,7 @@ class WindowsStoreProvider:
             context, token = self._context, self._token
             self._context = self._token = None
             self._on_change = None
-            self._purchase_completed_ref = None
+            self._purchase_completed_refs.clear()
         if context is not None and token is not None:
             remove = getattr(context, "remove_offline_licenses_changed", None)
             if remove is not None:

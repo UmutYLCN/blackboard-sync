@@ -16,7 +16,7 @@ import webbrowser
 from dataclasses import replace
 from pathlib import Path
 
-from blackboard_sync import (ai_launcher, announcements, courses, deadlines, licensing, relocate, runtime,
+from blackboard_sync import (ai_launcher, announcements, courses, deadlines, licensing, min_version, relocate, runtime,
                              session_refresh, signout, term_confirm, updater, uninstall)
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
@@ -28,6 +28,7 @@ from blackboard_sync.menubar.main_window_model import (
     LICENSE_BUY_ACTION,
     LICENSE_RESTORE_ACTION,
     OVERVIEW,
+    REQUIRED_UPDATE_ACTION,
     notebooklm_progress,
     shows_window_at_launch,
 )
@@ -132,7 +133,8 @@ def cli_popen(command, **kwargs):
 class TrayApp:
     web = None  # the WebView2 window's ``WebHost`` when the main window is the page (``web_window``)
 
-    def __init__(self, config, root, show_window=False, license_provider=None):
+    def __init__(self, config, root, show_window=False, license_provider=None, min_version_checker=None,
+                 store_updater=None):
         import pystray
 
         self.config, self.root = config, root
@@ -148,6 +150,8 @@ class TrayApp:
         self.ai_detecting = False  # ``detect_ai_tools`` is looking
         self._license_provider = license_provider or licensing.default_provider()
         self._license_provider.set_on_change(lambda: self.post(self.on_license_changed))
+        self._min_version_checker = min_version_checker or min_version.default_checker()
+        self._store_updater = store_updater or min_version.WindowsStoreUpdater()
         self.drawn = None
         self.drawn_icon = None
         self.icon = pystray.Icon("Blackboard Sync", icon_image(self.model.icon()), "Blackboard Sync")
@@ -165,12 +169,37 @@ class TrayApp:
     def license_provider(self, provider):
         self._license_provider = provider
 
+    @property
+    def min_version_checker(self):
+        checker = getattr(self, "_min_version_checker", None)
+        if checker is None:
+            checker = min_version.default_checker()
+            self._min_version_checker = checker
+        return checker
+
+    @min_version_checker.setter
+    def min_version_checker(self, checker):
+        self._min_version_checker = checker
+
+    @property
+    def store_updater(self):
+        updater_obj = getattr(self, "_store_updater", None)
+        if updater_obj is None:
+            updater_obj = min_version.WindowsStoreUpdater()
+            self._store_updater = updater_obj
+        return updater_obj
+
+    @store_updater.setter
+    def store_updater(self, updater_obj):
+        self._store_updater = updater_obj
+
     def run(self):
         self.icon.run_detached()
         log.info("Tray icon started (configured %s)", self.model.configured)
         self.root.bind(WAKE_EVENT, self.drain)
         self.root.after(REQUEST_CHECK_MS, self.poll)
         self.root.after(1000, self.tick)
+        self.root.after(100, self.start_min_version_check)
         if self.license_provider.managed:
             self.root.after(100, self.start_license_check)
         # The menu item and Home's AI card need to know which tools and terminals are here.
@@ -223,6 +252,8 @@ class TrayApp:
             self.root.after(30000, self.tick)
             return
         now = jobs.utcnow()
+        if self.model.min_version_due(now):
+            self.start_min_version_check()
         if self.model.license_check_due(now, self.license_provider.managed):
             self.start_license_check()
         self.start_next()
@@ -254,7 +285,7 @@ class TrayApp:
         old, new = self.model.move_from, self.model.dest
         if job == MOVE_JOB and old is None:
             return
-        if job in SYNC_JOBS and self.model.license_expired(jobs.utcnow()):
+        if job in SYNC_JOBS and (self.model.update_required or self.model.license_expired(jobs.utcnow())):
             self.refresh()
             return
         if job == "login" and self.model.busy == SESSION_JOB:  # over in seconds, and it may use the browser profile
@@ -475,11 +506,78 @@ class TrayApp:
         except Exception:
             log.exception("Update check failed")
             result = updater.CheckResult("unknown")
-        self.post(self.update_checked, result, manual)
+        try:
+            min_result = self.min_version_checker.check(force=manual)
+        except Exception:
+            log.exception("Min-version check failed")
+            min_result = min_version.MinVersionResult("unknown")
+        self.post(self.update_checked, result, manual, min_result)
 
-    def update_checked(self, result, manual):
+    def update_checked(self, result, manual, min_result=None):
         self.post_notifications(self.model.updates.finish_check(result, jobs.utcnow(), manual))
+        if min_result is not None:
+            self._apply_min_version(min_result)
         self.save()
+        self.refresh()
+
+    def start_min_version_check(self):
+        if self.model.min_version_checking:
+            return
+        self.model.min_version_checking = True
+        checker = self.min_version_checker
+
+        def worker():
+            try:
+                result = checker.check()
+            except Exception:
+                log.exception("Min-version check failed")
+                result = min_version.MinVersionResult("unknown")
+            self.post(self.min_version_checked, result)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def min_version_checked(self, result):
+        log.info("Min-version check: %s %s", result.status, result.minimum)
+        self._apply_min_version(result)
+
+    def _apply_min_version(self, result):
+        became_blocked, unlocked = self.model.apply_min_version(result, jobs.utcnow())
+        if became_blocked:
+            if self.model.calendar_busy == "sync":
+                self.calendar_cancel.set()
+            if self.model.notebooklm_busy == NOTEBOOKLM_SYNC:
+                jobs.notebooklm_child.stop()
+            if self.model.busy == "sync":
+                jobs.stop_sync()
+        elif unlocked and self.model.configured and self.model.account()[0] is not None and not self.model.paused:
+            self.start_next()
+        self.refresh()
+
+    def start_required_update(self):
+        if self.model.min_version_updating:
+            return
+        self.model.min_version_updating = True
+        self.model.min_version_notice = ""
+        self.refresh()
+        updater_obj = self.store_updater
+        if self.web is not None:
+            hwnd = self.web.window_handle()
+            on_ui_thread = self.web.invoke_ui
+        else:
+            hwnd = (self.window.window_handle()
+                    if self.window is not None and hasattr(self.window, "window_handle") else None)
+            on_ui_thread = ((lambda fn: self.root.after(0, fn))
+                            if self.root is not None and hasattr(self.root, "after") else None)
+
+        def worker():
+            outcome = updater_obj.install_update(hwnd=hwnd, on_ui_thread=on_ui_thread)
+            self.post(self.required_update_done, outcome)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def required_update_done(self, outcome):
+        self.model.min_version_updating = False
+        self.model.min_version_notice = outcome.message
         self.refresh()
 
     def on_license_changed(self):
@@ -628,6 +726,9 @@ class TrayApp:
             self.start_update_check()
         elif action == "update":
             self.start_update()
+        elif action == REQUIRED_UPDATE_ACTION:
+            self.start_required_update()
+            return
         elif action == LICENSE_BUY_ACTION:
             self.start_purchase()
             return
@@ -719,6 +820,8 @@ class TrayApp:
                 return
             jobs.notebooklm_child.stop()  # safe at any moment; the next run goes on from there
             self.license_provider.close()
+            if getattr(self, "_store_updater", None) is not None:
+                self._store_updater.close()
             self.closed = True
             self.icon.stop()
             self.root.destroy()

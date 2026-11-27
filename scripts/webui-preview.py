@@ -148,6 +148,23 @@ def fixtures(now: datetime) -> dict[str, dict]:
                                   buy_title=tr("Buy for {price}").format(price="$4.99"),
                                   restore_action=main.LICENSE_RESTORE_ACTION,
                                   restore_title=tr("I already bought it"))), announcements, page),
+        "update-required": (replace(synced, sync_enabled=False, pause_enabled=False,
+                                home_heading=main.T_NAV_OVERVIEW, home_subtitle="",
+                                home=main.HomeState(main.STATE_ATTENTION, tr("Update required"), account.detail),
+                                update_required=main.UpdateRequiredState(
+                                    tr("Update required"),
+                                    tr("Update Blackboard Sync to version {version} or newer to keep syncing your courses. "
+                                       "Your downloaded files are still in your folder.").format(version="1.7.2"),
+                                    main.T_UPDATE)), announcements, page),
+        "dmg-retired": (replace(synced, sync_enabled=False, pause_enabled=False,
+                            home_heading=main.T_NAV_OVERVIEW, home_subtitle="",
+                            home=main.HomeState(main.STATE_ATTENTION,
+                                                tr("Blackboard Sync moved to the Mac App Store"), account.detail),
+                            update_required=main.UpdateRequiredState(
+                                tr("Blackboard Sync moved to the Mac App Store"),
+                                tr("Get Blackboard Sync from the Mac App Store to keep syncing your courses. "
+                                   "Your downloaded files are still in your folder."),
+                                tr("Open Mac App Store"))), announcements, page),
     }
     ai.ai_installed = frozenset()
     states["ai-none"] = (replace(synced, ai=main.ai_card(ai)), announcements, page)

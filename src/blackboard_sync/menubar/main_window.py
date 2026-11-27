@@ -96,6 +96,7 @@ from blackboard_sync.menubar.main_window_model import (
     HOME_RECENT_ROWS,
     NAV_SECTIONS,
     OVERVIEW,
+    REQUIRED_UPDATE_ACTION,
     START_STEPS,
     STATE_ATTENTION,
     STATE_ERROR,
@@ -313,14 +314,17 @@ def _pill_width(button) -> float:
     return button.attributedTitle().size().width + 40
 
 
-def _pill_view(title: str, target, action: str, x: float, y: float, neutral: bool = False):
+def _pill_view(title: str, target, action: str, x: float, y: float, neutral: bool = False,
+               filled: bool = False):
     """A ``_PillButton`` at (x, y). Tinted with the accent color like Drive's "View all"; ``neutral``
-    (gray) is for the status card's own button ("Sync now", "Sign in")."""
+    (gray) is for the status card's own button ("Sync now", "Sign in"); ``filled`` is a primary CTA."""
     button = _PillButton.alloc().initWithFrame_(NSMakeRect(x, y, 100, PILL_H))
     button.setBordered_(False)
     button.setTarget_(target)
     button.setAction_(action)
-    if neutral:
+    if filled:
+        button.ink, button.fill = NSColor.whiteColor(), NSColor.controlAccentColor()
+    elif neutral:
         button.ink, button.fill = NSColor.labelColor(), NSColor.labelColor().colorWithAlphaComponent_(0.1)
     else:
         button.ink, button.fill = (NSColor.controlAccentColor(),
@@ -567,6 +571,9 @@ class _Target(NSObject):
 
     def update_(self, _sender):
         self.owner.on_action(self.owner.status.form.update_action)
+
+    def requiredUpdate_(self, _sender):
+        self.owner.on_action(REQUIRED_UPDATE_ACTION)
 
     def uninstall_(self, _sender):
         self.owner.on_action("uninstall")
@@ -1179,9 +1186,74 @@ class MainWindow:
         self.calendar_body = _FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, RIGHT_W, 150))
         self.calendar_card.contentView().addSubview_(self.calendar_body)
         page.addSubview_(self.calendar_card)
+        self._build_update_required(page)
         self._home_heights = (150, 150)
         self._home_rows = 0
         self._status_fixed = 0
+
+    def _build_update_required(self, page) -> None:
+        """Full-area centered 'Update required' state on Home with a single primary Update button."""
+        self.update_required_card = _card(NSMakeRect(PAD, HEADER, INNER, 360))
+        self.update_required_card.setHidden_(True)
+        content = self.update_required_card.contentView()
+        self.update_required_badge = _pill(
+            NSMakeRect(0, 0, 56, 56), NSColor.controlAccentColor().colorWithAlphaComponent_(0.14)
+        )
+        icon = NSImageView.alloc().initWithFrame_(NSMakeRect(14, 14, 28, 28))
+        icon.setImage_(_symbol_image("arrow.down.circle", 24))
+        icon.setContentTintColor_(NSColor.controlAccentColor())
+        self.update_required_badge.contentView().addSubview_(icon)
+        content.addSubview_(self.update_required_badge)
+        self.update_required_title, _ = _wrapping("", 440, 22, bold=True)
+        self.update_required_title.setAlignment_(NSTextAlignmentCenter)
+        content.addSubview_(self.update_required_title)
+        self.update_required_detail, _ = _wrapping("", 440, 13, secondary=True)
+        self.update_required_detail.setAlignment_(NSTextAlignmentCenter)
+        content.addSubview_(self.update_required_detail)
+        self.update_required_notice, _ = _wrapping("", 440, _small())
+        self.update_required_notice.setAlignment_(NSTextAlignmentCenter)
+        self.update_required_notice.setTextColor_(NSColor.systemOrangeColor())
+        content.addSubview_(self.update_required_notice)
+        self.update_required_button = _pill_view("", self.target, "requiredUpdate:", 0, 0, filled=True)
+        content.addSubview_(self.update_required_button)
+        page.addSubview_(self.update_required_card)
+
+    def _layout_update_required(self, req) -> None:
+        text_w = min(440.0, float(INNER - 64))
+        self.update_required_title.setStringValue_(req.title)
+        self.update_required_title.setPreferredMaxLayoutWidth_(text_w)
+        title_h = max(self.update_required_title.fittingSize().height, 28)
+        self.update_required_detail.setStringValue_(req.detail)
+        self.update_required_detail.setPreferredMaxLayoutWidth_(text_w)
+        detail_h = max(self.update_required_detail.fittingSize().height, 18)
+        has_notice = bool(req.notice)
+        self.update_required_notice.setHidden_(not has_notice)
+        notice_h = 0.0
+        if has_notice:
+            self.update_required_notice.setStringValue_(req.notice)
+            self.update_required_notice.setPreferredMaxLayoutWidth_(text_w)
+            notice_h = max(self.update_required_notice.fittingSize().height, 16)
+        self.update_required_button.setTitle_(req.button_title)
+        self.update_required_button.setEnabled_(req.enabled)
+        btn_w = max(_pill_width(self.update_required_button), 140.0)
+        stack_h = 56 + 16 + title_h + 8 + detail_h + (8 + notice_h if has_notice else 0) + 20 + PILL_H
+        avail_h = max(self.pages[OVERVIEW].frame().size.height - HEADER - PAD, stack_h + 64)
+        self.update_required_card.setFrame_(NSMakeRect(PAD, HEADER, INNER, avail_h))
+        self.update_required_card.contentView().setFrame_(NSMakeRect(0, 0, INNER, avail_h))
+        y = max(32.0, (avail_h - stack_h) / 2)
+        self.update_required_badge.setFrameOrigin_(((INNER - 56) / 2, y))
+        y += 56 + 16
+        self.update_required_title.setFrame_(NSMakeRect((INNER - text_w) / 2, y, text_w, title_h))
+        y += title_h + 8
+        self.update_required_detail.setFrame_(NSMakeRect((INNER - text_w) / 2, y, text_w, detail_h))
+        y += detail_h
+        if has_notice:
+            y += 8
+            self.update_required_notice.setFrame_(NSMakeRect((INNER - text_w) / 2, y, text_w, notice_h))
+            y += notice_h
+        y += 20
+        self.update_required_button.setFrame_(NSMakeRect((INNER - btn_w) / 2, y, btn_w, PILL_H))
+        self.overview_scroll.documentView().setFrameSize_((PAGE, HEADER + avail_h + PAD))
 
     def _build_notebooklm_card(self, page) -> None:
         """Under the status card, in its style: a symbol, the state and a line, a pill at the top right."""
@@ -1523,6 +1595,15 @@ class MainWindow:
     def _layout_overview(self) -> None:
         """Left: Drive's status card with the last files; right: announcements and the next due dates."""
         status = self.status
+        req = status.update_required
+        normal_cards = (self.status_card, self.notebooklm_card, self.ai_card, self.notify_card, self.calendar_card)
+        self.update_required_card.setHidden_(req is None)
+        for card in normal_cards:
+            card.setHidden_(req is not None)
+        if req is not None:
+            self.overview_update_banner[0].setHidden_(True)
+            self._layout_update_required(req)
+            return
         top = HEADER + (HOME_SUBTITLE_SHIFT if status.home_subtitle else 0)
         if status.update_banner is not None:
             self.overview_update_banner[0].setFrame_(NSMakeRect(PAD, top, INNER, UPDATE_BANNER_HEIGHT))
@@ -1552,7 +1633,9 @@ class MainWindow:
     @_mirrored
     def reflow_overview(self) -> None:
         """The window's height changed: Home follows when that changes how many files fit."""
-        if self.state.section == OVERVIEW and self._home_rows != self._fitting_rows():
+        if self.state.section == OVERVIEW and (
+            self.status.update_required is not None or self._home_rows != self._fitting_rows()
+        ):
             self._layout_overview()
 
     def _fitting_rows(self) -> int:
@@ -1596,11 +1679,13 @@ class MainWindow:
     def _animate(self) -> None:
         """Run an illustration while it is in view and the window is open; stop it otherwise."""
         for view, section in ((self.scene_view, OVERVIEW), (self.activity_scene, ACTIVITY)):
-            if self.status.scene and self.state.open and self.state.section == section:
+            shown = section != OVERVIEW or self.status.update_required is None
+            if self.status.scene and self.state.open and self.state.section == section and shown:
                 view.start()
             else:
                 view.stop()
-        if self.status.notebooklm.running and self.state.open and self.state.section == OVERVIEW:
+        if (self.status.notebooklm.running and self.state.open and self.state.section == OVERVIEW
+                and self.status.update_required is None):
             self.notebooklm_scene.start()
         else:
             self.notebooklm_scene.stop()
@@ -2030,9 +2115,11 @@ class MainWindow:
     def _show_section(self) -> None:
         self.school_picker.hide()
         section = self.state.section
-        visible = "start" if section == OVERVIEW and self.status.first_run else section
+        visible = OVERVIEW if (section == OVERVIEW and self.status.update_required is not None) else (
+            "start" if section == OVERVIEW and self.status.first_run else section
+        )
         if self.recent_seen is not None:
-            if self.state.open and visible == OVERVIEW:
+            if self.state.open and visible == OVERVIEW and self.status.update_required is None:
                 self.recent_seen.show()
             else:
                 self.recent_seen.hide()
@@ -2150,7 +2237,10 @@ class MainWindow:
 
     @_mirrored
     def update_status(self, status: MainStatus) -> None:
-        first_run_changed = status.first_run != self.status.first_run
+        first_run_changed = (
+            status.first_run != self.status.first_run
+            or (status.update_required is None) != (self.status.update_required is None)
+        )
         self.status = status
         self.nav_items[OVERVIEW][2].setStringValue_(status.overview_title)
         self.nav_items[OVERVIEW][3].setAccessibilityLabel_(status.overview_title)
@@ -2319,6 +2409,7 @@ class MainWindow:
     @_mirrored
     def observe_recent(self) -> None:
         active = (self.state.open and self.section == OVERVIEW and not self.status.first_run
+                  and self.status.update_required is None
                   and self.window.isVisible() and not self.window.isMiniaturized()
                   and self.window.isKeyWindow() and NSApp.isActive())
         visible = []

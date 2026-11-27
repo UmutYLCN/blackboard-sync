@@ -230,6 +230,11 @@ test("static asset requests and video do not record download points", async () =
   const otherReq = new Request("https://blackboardsyncapp.com/privacy");
   await worker.fetch(otherReq, env, ctx);
 
+  // Minimum-version file is served by static ASSETS without recording downloads
+  const minReq = new Request("https://blackboardsyncapp.com/min-version.json");
+  const minRes = await worker.fetch(minReq, env, ctx);
+  assert.strictEqual(minRes.status, 200);
+
   await Promise.all(ctx.promises);
   assert.strictEqual(env.dataPoints.length, 0);
 });

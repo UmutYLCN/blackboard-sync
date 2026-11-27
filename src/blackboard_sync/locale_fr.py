@@ -774,4 +774,21 @@ CATALOG = {
         "Achetez Blackboard Sync une seule fois pour continuer à synchroniser vos cours. "
         "Vos fichiers téléchargés restent dans votre dossier.",
     "I already bought it": "Je l’ai déjà acheté",
+
+    # Minimum-version enforcement (min_version)
+    "Update required": "Mise à jour requise",
+    "Update required — Update": "Mise à jour requise — Mettre à jour",
+    "Updating…": "Mise à jour…",
+    "Update Blackboard Sync to version {version} or newer to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Mettez Blackboard Sync à jour vers la version {version} ou une version plus récente pour continuer à "
+        "synchroniser vos cours. Vos fichiers téléchargés restent dans votre dossier.",
+    "Update Blackboard Sync to the latest version to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Mettez Blackboard Sync à jour vers la dernière version pour continuer à synchroniser vos cours. "
+        "Vos fichiers téléchargés restent dans votre dossier.",
+    "Blackboard Sync moved to the Mac App Store": "Blackboard Sync est passé sur le Mac App Store",
+    "Get Blackboard Sync from the Mac App Store to keep syncing your courses. Your downloaded files are still in your folder.":
+        "Téléchargez Blackboard Sync sur le Mac App Store pour continuer à synchroniser vos cours. "
+        "Vos fichiers téléchargés restent dans votre dossier.",
+    "Open Mac App Store": "Ouvrir le Mac App Store",
+    "Could not open the Mac App Store.": "Impossible d’ouvrir le Mac App Store.",
 }

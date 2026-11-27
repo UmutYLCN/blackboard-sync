@@ -720,4 +720,21 @@ CATALOG = {
         "اشترِ Blackboard Sync مرة واحدة لمواصلة مزامنة مقرراتك. "
         "ملفاتك المحمّلة لا تزال في مجلدك.",
     "I already bought it": "اشتريته بالفعل",
+
+    # Minimum-version enforcement (min_version)
+    "Update required": "التحديث مطلوب",
+    "Update required — Update": "التحديث مطلوب — تحديث",
+    "Updating…": "جارٍ التحديث…",
+    "Update Blackboard Sync to version {version} or newer to keep syncing your courses. Your downloaded files are still in your folder.":
+        "حدِّث Blackboard Sync إلى الإصدار {version} أو أحدث لمواصلة مزامنة مقرراتك. "
+        "ملفاتك المحمّلة لا تزال في مجلدك.",
+    "Update Blackboard Sync to the latest version to keep syncing your courses. Your downloaded files are still in your folder.":
+        "حدِّث Blackboard Sync إلى أحدث إصدار لمواصلة مزامنة مقرراتك. "
+        "ملفاتك المحمّلة لا تزال في مجلدك.",
+    "Blackboard Sync moved to the Mac App Store": "انتقل Blackboard Sync إلى Mac App Store",
+    "Get Blackboard Sync from the Mac App Store to keep syncing your courses. Your downloaded files are still in your folder.":
+        "احصل على Blackboard Sync من Mac App Store لمواصلة مزامنة مقرراتك. "
+        "ملفاتك المحمّلة لا تزال في مجلدك.",
+    "Open Mac App Store": "فتح Mac App Store",
+    "Could not open the Mac App Store.": "تعذّر فتح Mac App Store.",
 }

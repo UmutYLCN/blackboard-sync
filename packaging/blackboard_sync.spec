@@ -36,6 +36,7 @@ a = Analysis(
     # the in-app sign-in window (WKWebView) lazily by login.
     hiddenimports=[
         "blackboard_sync.cli",
+        "blackboard_sync.min_version",
         "blackboard_sync.menubar.app",
         "rumps",
         "playwright.sync_api",

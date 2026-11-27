@@ -430,6 +430,33 @@ button, input, select { font: inherit; color: inherit; }
 .license-detail { margin: 4px 0 0; color: var(--text-2); }
 .license-buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 
+.update-required {
+  display: flex;
+  flex-direction: column;
+  align-items: safe center;
+  justify-content: safe center;
+  text-align: center;
+  min-block-size: calc(100% - 8px);
+  padding-block: 48px;
+  padding-inline: 32px;
+  gap: 12px;
+}
+.update-required-icon {
+  display: grid;
+  place-items: center;
+  inline-size: 64px;
+  block-size: 64px;
+  margin-block-end: 4px;
+  border-radius: 50%;
+  background: var(--tonal);
+  color: var(--on-tonal);
+}
+.update-required-icon .icon { inline-size: 32px; block-size: 32px; }
+.update-required-title { margin: 0; max-inline-size: 480px; font: 600 24px/1.25 var(--font-display); letter-spacing: -0.015em; }
+.update-required-detail { margin: 0; color: var(--text-2); max-inline-size: 460px; }
+.update-required .message { margin: 2px 0 0; max-inline-size: 460px; }
+.update-required-button { margin-block-start: 10px; min-inline-size: 148px; padding-inline: 28px; block-size: 40px; }
+
 .banner {
   display: flex;
   align-items: center;

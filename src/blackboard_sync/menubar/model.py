@@ -25,6 +25,7 @@ from blackboard_sync.errors import EXIT_LOCKED, EXIT_LOGIN_REQUIRED, EXIT_OK
 from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.inapp import INAPP
 from blackboard_sync.licensing import LicenseKind, LicenseState
+from blackboard_sync.min_version import MinVersionResult
 from blackboard_sync.report import UNAVAILABLE_STATUSES
 from blackboard_sync.session_refresh import EXPIRED, REFRESHED, RefreshResult, SessionCare
 from blackboard_sync.settings import DEFAULT_SYNC_INTERVAL_MINUTES, Settings, normalize_sync_interval
@@ -115,6 +116,7 @@ def open_folder_title(root: Path) -> str:
 # restart it, or open the .dmg where it cannot; Windows: run the silent
 # installer and quit).
 UPDATE_ACTIONS = ("check_updates", "update")
+REQUIRED_UPDATE_ACTION = "required_update"
 
 
 # Sync and discovery jobs. Every "sync" mirrors Blackboard: files that were
@@ -714,6 +716,7 @@ class AppModel:
         ai_resume: bool = True,
         ai_terminal: str = "",
         license_state: LicenseState | None = None,
+        min_version_state: MinVersionResult | None = None,
     ):
         self.dest = dest  # the folder the student chose; the files are in ``root``
         self.session = session
@@ -773,6 +776,12 @@ class AppModel:
         self.license_checking = False
         self.license_checked_at: datetime | None = None
         self.license_notice = ""
+        self.min_version: MinVersionResult = min_version_state or MinVersionResult("unknown")
+        self.min_version_checking = False
+        self.min_version_checked_at: datetime | None = None
+        self.min_version_not_before: datetime | None = now + UPDATE_FIRST_DELAY
+        self.min_version_updating = False
+        self.min_version_notice = ""
 
     # -- state ----------------------------------------------------------
     @property
@@ -792,7 +801,7 @@ class AppModel:
     def icon(self) -> Icon:
         if self.busy in SYNC_JOBS or self.busy == MOVE_JOB:
             return Icon.SYNCING
-        if self.license_expired():
+        if self.update_required or self.license_expired():
             return Icon.PAUSED
         if self.health == "login_required":
             return Icon.EXPIRED
@@ -801,6 +810,39 @@ class AppModel:
         if self.paused:
             return Icon.PAUSED
         return Icon.IDLE
+
+    @property
+    def update_required(self) -> bool:
+        """True when ``min-version.json`` reports that this version is no longer allowed."""
+        return self.min_version.required
+
+    def min_version_due(self, now: datetime) -> bool:
+        """Whether the periodic minimum-version check is due."""
+        if self.min_version_checking or self.min_version_updating:
+            return False
+        if self.min_version_not_before is not None and now < self.min_version_not_before:
+            return False
+        if self.min_version_checked_at is None:
+            return True
+        return not (self.min_version_checked_at <= now < self.min_version_checked_at + UPDATE_INTERVAL)
+
+    def apply_min_version(self, result: MinVersionResult, now: datetime) -> tuple[bool, bool]:
+        """Record ``result`` from ``min_version``; returns ``(became_blocked, unlocked)``."""
+        was_required = self.update_required
+        self.min_version = result
+        self.min_version_checking = False
+        if result.status == "unknown":
+            self.min_version_not_before = now + UPDATE_RETRY_DELAY
+        else:
+            self.min_version_checked_at = now
+            self.min_version_not_before = None
+        now_required = self.update_required
+        if not now_required:
+            self.min_version_notice = ""
+        unlocked = was_required and not now_required
+        if unlocked:
+            self.next_run_at = self.schedule(now, timedelta(0))
+        return (not was_required and now_required), unlocked
 
     def license_expired(self, now: datetime | None = None) -> bool:
         """True when a Store trial has ended and no full license is active."""
@@ -867,6 +909,7 @@ class AppModel:
         return (
             self.configured
             and not self.paused
+            and not self.update_required
             and not self.license_expired(now)
             and self.busy is None
             and self.next_run_at is not None
@@ -878,6 +921,7 @@ class AppModel:
         return (
             self.configured
             and not self.paused
+            and not self.update_required
             and not self.license_expired(now)
             and self.busy is None
             and self.pending is None
@@ -898,7 +942,9 @@ class AppModel:
         """
         if not self.configured or self.busy is not None or self.pending is None:
             return None
-        if self.pending == "sync" and (self.session is None or self.paused or self.license_expired(now)):
+        if self.pending == "sync" and (
+            self.session is None or self.paused or self.update_required or self.license_expired(now)
+        ):
             return None
         return self.pending
 
@@ -1216,6 +1262,10 @@ class AppModel:
             return tr("Moving files to the new folder…")
         if not self.configured:
             return tr("Choose “{settings}” to finish setting up").format(settings=T_SETTINGS)
+        if self.min_version.dmg_retired:
+            return tr("Blackboard Sync moved to the Mac App Store")
+        if self.update_required:
+            return tr("Update required")
         if self.license_expired(now):
             return tr("Free trial ended")
         if self.paused:
@@ -1287,10 +1337,11 @@ class AppModel:
 
     def menu(self, now: datetime) -> MenuModel:
         expired_license = self.license_expired(now)
+        blocked = expired_license or self.update_required
         menu = MenuModel(
             status_lines=self.status_lines(now),
             sync_title=T_SYNCING if self.busy == "sync" else T_SYNC_NOW,
-            sync_enabled=self.busy is None and not self.paused and not expired_license,
+            sync_enabled=self.busy is None and not self.paused and not blocked,
             recent=unique_labels([(f"{(parse_iso(item.at) or now).astimezone():%d.%m %H:%M} · {item.label}", item.path)
                                   for item in self.visible_recent()]),
         )
@@ -1307,9 +1358,27 @@ class AppModel:
             if count:
                 label += " " + tr("({n} new)").format(n=count)
             course_items.append((label, course.folder))
-        update = self.updates.menu_entry()
+        if self.min_version.dmg_retired:
+            update = MenuEntry(
+                tr("Open Mac App Store"),
+                REQUIRED_UPDATE_ACTION,
+                enabled=True,
+                warning=True,
+            )
+        elif self.update_required:
+            busy_updating = self.min_version_updating or self.updates.busy == "download"
+            update = MenuEntry(
+                T_DOWNLOADING_UPDATE if self.updates.busy == "download"
+                else tr("Updating…") if self.min_version_updating
+                else tr("Update required — Update"),
+                REQUIRED_UPDATE_ACTION,
+                enabled=not busy_updating,
+                warning=not busy_updating,
+            )
+        else:
+            update = self.updates.menu_entry()
         sync = MenuEntry(menu.sync_title, "sync", enabled=menu.sync_enabled)
-        pause = MenuEntry(T_RESUME if self.paused else T_PAUSE, "pause", enabled=self.configured and not expired_license)
+        pause = MenuEntry(T_RESUME if self.paused else T_PAUSE, "pause", enabled=self.configured and not blocked)
         status = [MenuEntry(line, enabled=False) for line in menu.status_lines]
         # Nothing syncs by itself in manual mode, so the button comes first.
         head = ([*top, sync, pause, *status, MenuEntry()] if self.sync_interval is None

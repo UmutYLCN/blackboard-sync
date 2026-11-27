@@ -44,6 +44,7 @@ from blackboard_sync.menubar.model import (
     MOVE_JOB,
     NOTEBOOKLM_CONNECT,
     NOTEBOOKLM_SYNC,
+    REQUIRED_UPDATE_ACTION,
     T_LOGGING_IN,
     T_LOGIN,
     T_PAUSE,
@@ -510,8 +511,61 @@ def trial_remaining_text(expires_at: datetime, now: datetime) -> str:
     return ntr("{n} day left", "{n} days left", days).format(n=days)
 
 
+@dataclass(frozen=True)
+class UpdateRequiredState:
+    """Full-screen Home state when the running version is below ``min-version.json``."""
+
+    title: str
+    detail: str
+    button_title: str
+    action: str = REQUIRED_UPDATE_ACTION
+    enabled: bool = True
+    notice: str = ""
+
+
+def update_required_state(model: AppModel) -> UpdateRequiredState | None:
+    """The full-screen 'Update required' or retired-DMG state on Home, or None when allowed to run."""
+    if not model.update_required:
+        return None
+    if model.min_version.dmg_retired:
+        return UpdateRequiredState(
+            title=tr("Blackboard Sync moved to the Mac App Store"),
+            detail=tr(
+                "Get Blackboard Sync from the Mac App Store to keep syncing your courses. "
+                "Your downloaded files are still in your folder."
+            ),
+            button_title=tr("Open Mac App Store"),
+            enabled=True,
+            notice=model.min_version_notice,
+        )
+    minimum = model.min_version.minimum.strip()
+    detail = (
+        tr("Update Blackboard Sync to version {version} or newer to keep syncing your courses. "
+           "Your downloaded files are still in your folder.").format(version=minimum)
+        if minimum else
+        tr("Update Blackboard Sync to the latest version to keep syncing your courses. "
+           "Your downloaded files are still in your folder.")
+    )
+    downloading = model.updates.busy == "download"
+    updating = model.min_version_updating or model.updates.busy == "check"
+    button_title = (
+        tr("Downloading…") if downloading
+        else tr("Updating…") if updating
+        else T_UPDATE
+    )
+    return UpdateRequiredState(
+        title=tr("Update required"),
+        detail=detail,
+        button_title=button_title,
+        enabled=not (downloading or updating),
+        notice=model.min_version_notice,
+    )
+
+
 def license_card(model: AppModel, now: datetime) -> LicenseCard | None:
     """The trial line while a trial runs, the buy card once it ended, or None (full / offline grace)."""
+    if model.update_required:
+        return None
     state = model.license
     busy = model.license_busy
     price = state.formatted_price.strip()
@@ -555,6 +609,8 @@ def license_card(model: AppModel, now: datetime) -> LicenseCard | None:
 
 def update_banner(model: AppModel) -> UpdateBanner | None:
     """Only an actionable newer release; Store updates have no detection path."""
+    if model.update_required:
+        return None
     updates = model.updates
     release = updates.available
     if not updater.enabled() or release is None or not updater.is_newer(release.version, __version__):
@@ -596,9 +652,12 @@ class MainStatus:
     ai: AiCard = AiCard(AI_OFF, T_AI_LOOKING)
     course_colors: Mapping[str, int] = field(default_factory=dict)
     license: LicenseCard | None = None
+    update_required: UpdateRequiredState | None = None
 
     @property
     def overview_title(self) -> str:
+        if self.update_required is not None:
+            return T_NAV_OVERVIEW
         return T_NAV_START if self.first_run else T_NAV_OVERVIEW
 
     @property
@@ -666,6 +725,10 @@ def home_state(model: AppModel, now: datetime) -> HomeState:
     if model.busy in SYNC_RUNNING_JOBS:
         return HomeState(STATE_SYNCING, T_STATE_TITLES[STATE_SYNCING],
                          sync_scene(model)[1] or model.activity() or detail)
+    if model.min_version.dmg_retired:
+        return HomeState(STATE_ATTENTION, tr("Blackboard Sync moved to the Mac App Store"), detail)
+    if model.update_required:
+        return HomeState(STATE_ATTENTION, tr("Update required"), detail)
     if model.license_expired(now):
         return HomeState(STATE_ATTENTION, tr("Free trial ended"), detail)
     if model.paused:
@@ -848,9 +911,14 @@ def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.Deadli
     scene, scene_line = sync_scene(model)
     first_run = is_first_run(model)
     expired_license = model.license_expired(now)
-    heading, subtitle = home_header(name, T_NAV_START if first_run else T_NAV_OVERVIEW, deadlines_page, now, zone)
+    required_update = update_required_state(model)
+    blocked = expired_license or required_update is not None
+    if required_update is not None:
+        heading, subtitle = T_NAV_OVERVIEW, ""
+    else:
+        heading, subtitle = home_header(name, T_NAV_START if first_run else T_NAV_OVERVIEW, deadlines_page, now, zone)
     sync_title = T_SYNCING if model.busy == "sync" else T_SYNC_NOW
-    sync_enabled = idle and model.configured and name is not None and not model.paused and not expired_license
+    sync_enabled = idle and model.configured and name is not None and not model.paused and not blocked
     return MainStatus(
         first_run=first_run,
         account=account_card(model, now),
@@ -868,7 +936,7 @@ def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.Deadli
         home=home_state(model, now),
         paused=model.paused,
         pause_title=T_RESUME if model.paused else T_PAUSE,
-        pause_enabled=model.configured and not first_run and not expired_license,
+        pause_enabled=model.configured and not first_run and not blocked,
         activity=activity_rows(model, now),
         home_heading=heading,
         home_subtitle=subtitle,
@@ -876,6 +944,7 @@ def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.Deadli
         ai=ai_card(model, sync_title=sync_title, sync_enabled=sync_enabled),
         course_colors=model.course_colors.copy(),
         license=license_card(model, now),
+        update_required=required_update,
     )
 
 
