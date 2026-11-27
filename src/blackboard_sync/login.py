@@ -65,8 +65,8 @@ WINDOWS_BROWSERS = {
     "edge": ("msedge.exe", ("Microsoft", "Edge", "Application"), ("", "")),
     "brave": ("brave.exe", ("BraveSoftware", "Brave-Browser", "Application"), ("", "")),
     "vivaldi": ("vivaldi.exe", ("Vivaldi", "Application"), ("", "")),
-    "opera": ("opera.exe", ("Opera",), ("opera", "gx")),
-    "operagx": ("opera.exe", ("Opera GX",), ("gx", "")),
+    "opera": ("opera.exe", ("Opera",), ("opera", "opera gx")),
+    "operagx": ("opera.exe", ("Opera GX",), ("opera gx", "")),
     "chromium": ("chrome.exe", ("Chromium", "Application"), ("chromium", "")),
 }
 BROWSER_LABELS = {
