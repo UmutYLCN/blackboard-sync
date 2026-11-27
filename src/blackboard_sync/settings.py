@@ -31,9 +31,9 @@ DEFAULT_SYNC_INTERVAL_MINUTES = 60
 THEME_SYSTEM, THEME_LIGHT, THEME_DARK = "system", "light", "dark"
 THEMES = (THEME_SYSTEM, THEME_LIGHT, THEME_DARK)
 # "Yapay zekâ asistanı": the command-line AI tools the term folder opens with (``ai_launcher``).
-AI_CLAUDE, AI_GEMINI, AI_CODEX = "claude", "gemini", "codex"
-AI_CLIS = (AI_CLAUDE, AI_GEMINI, AI_CODEX)
-# The terminals Home's AI card can open them in, macOS's then Windows'.
+AI_CLAUDE, AI_GEMINI, AI_CODEX, AI_AGY = "claude", "gemini", "codex", "agy"
+AI_CLIS = (AI_CLAUDE, AI_GEMINI, AI_CODEX, AI_AGY)
+# The terminals Settings → AI assistant can open them in, macOS's then Windows'.
 MACOS_AI_TERMINALS = ("terminal", "iterm2", "ghostty", "wezterm", "kitty", "alacritty")
 WINDOWS_AI_TERMINALS = ("windows_terminal", "powershell", "cmd")
 AI_TERMINALS = MACOS_AI_TERMINALS + WINDOWS_AI_TERMINALS
@@ -81,8 +81,8 @@ class Settings:
     # "Otomatik yeniden giriş": keep the session alive and sign in again in the background (``session_refresh``).
     auto_relogin: bool = True
     notebooklm_auto: bool = True  # add new files to NotebookLM after each sync, once it is connected
-    # Chosen on Home's AI card, not part of the Settings form: the tool used last ("" none yet)
-    # and the terminal it opens in (AI_TERMINALS, "" the system's own).
+    # ``ai_cli`` is the tool used last on Home's AI card ("" none yet).
+    # ``ai_terminal`` (AI_TERMINALS, "" the system's own) is chosen in Settings → AI assistant.
     ai_cli: str = ""
     ai_resume: bool = True  # continue that tool's last session in the folder instead of starting a new one
     ai_terminal: str = ""

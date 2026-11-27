@@ -4,8 +4,8 @@ The settings live in the main window (``main_window_model``). Its Settings page
 is one scrolling page of sections, each a card of rows (``SECTIONS``, in the order of
 ``SECTION_ORDER``): Account (school address, who is signed in, sign in or out), Sync
 (sync interval, start at login, automatic re-sign-in, language), Folder (destination), Updates (automatic checks, check now, version) and, last, a Danger
-zone (uninstall). Calendar connection actions sit between Sync and Folder, and so does AI assistant (whether
-the AI tool continues its last session, ``ai_launcher``). Dersler (``courses.py``) picks the courses that sync. The GUI layers (``main_window.py`` on macOS,
+zone (uninstall). Calendar connection actions sit between Sync and Folder, and so does AI assistant (which
+terminal opens and whether the AI tool continues its last session, ``ai_launcher``). Dersler (``courses.py``) picks the courses that sync. The GUI layers (``main_window.py`` on macOS,
 ``windows/main_window.py``) only draw ``FormValues`` and ``WindowStatus`` and
 report which button was pressed.
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from blackboard_sync import __version__, uninstall
+from blackboard_sync import __version__, ai_launcher, uninstall
 from blackboard_sync.gcal import CalendarStatus
 from blackboard_sync.deadlines import parse_due
 from blackboard_sync.i18n import DEFAULT_LANGUAGE, LANGUAGES, language_name, normalize_language, ntr, tr
@@ -38,6 +38,7 @@ from blackboard_sync.settings import (
     THEME_SYSTEM,
     Settings,
     display_path,
+    normalize_ai_terminal,
     normalize_base_url,
     normalize_dest,
     normalize_sync_interval,
@@ -157,10 +158,34 @@ THEME_OPTIONS = ((THEME_SYSTEM, tr("System")), (THEME_LIGHT, tr("Light")), (THEM
 
 # Settings → AI assistant (``ai_launcher``).
 T_SECTION_AI = tr("AI assistant")
+T_AI_TERMINAL = tr("Terminal")
+T_AI_TERMINAL_DETAIL = tr("The terminal app that opens for AI tools.")
 T_AI_RESUME = tr("Continue my last session in this folder")
 T_AI_RESUME_DETAIL = tr("When it is off, a new session starts every time.")
 T_AI_FOOTER = tr("The app only opens a terminal in your course folder. The AI tool runs with your own account "
                  "and its own rules.")
+
+
+def ai_terminal_choices(installed: frozenset[str] | None, chosen: str = "") -> tuple[tuple[str, str], ...]:
+    """(key, name) for the Settings → Terminal popup: detected terminals, plus fallback if chosen is gone."""
+    if not installed:
+        return ()
+    used = ai_launcher.resolve_terminal(chosen, installed)
+    return tuple((key, terminal.name) for key, terminal in ai_launcher.TERMINALS.items()
+                 if key in installed or key == used)
+
+
+def ai_terminal_state(installed: frozenset[str] | None, chosen: str) -> RowState:
+    """Live state of Settings → Terminal: disabled until detected, with a fallback note if chosen is gone."""
+    if installed is None:
+        return RowState(enabled=False)
+    used = ai_launcher.resolve_terminal(chosen, installed)
+    selected = ai_launcher.TERMINALS.get(chosen)
+    detail = None
+    if selected is not None and selected.key != used:
+        detail = tr("{name} wasn't found. Using {default} instead.").format(
+            name=selected.name, default=ai_launcher.TERMINALS[used].name)
+    return RowState(detail=detail, enabled=bool(installed))
 @dataclass(frozen=True)
 class SettingRow:
     key: str
@@ -208,6 +233,7 @@ SECTIONS = {section.key: section for section in (
                    CONTROL_BUTTON, button=tr("Disconnect")),
     ), footer=tr("Unofficial connection: it may stop working if Google changes NotebookLM.")),
     SettingsSection(SECTION_AI, T_SECTION_AI, (
+        SettingRow("ai_terminal", T_AI_TERMINAL, T_AI_TERMINAL_DETAIL, CONTROL_POPUP, field="ai_terminal"),
         SettingRow("ai_resume", T_AI_RESUME, T_AI_RESUME_DETAIL, CONTROL_SWITCH, field="ai_resume"),
     ), footer=T_AI_FOOTER),
     SettingsSection(SECTION_FOLDER, T_SECTION_FOLDER, (
@@ -264,6 +290,7 @@ def row_states(status: "WindowStatus") -> dict[str, RowState]:
                             warning=status.account_warning),
         "update": RowState(title=status.version, button=status.update_title, enabled=status.update_enabled),
         "uninstall": RowState(enabled=status.uninstall_enabled),
+        "ai_terminal": ai_terminal_state(status.ai_terminals, status.ai_terminal),
     }
 
 
@@ -359,6 +386,7 @@ class FormValues:
     language: str = DEFAULT_LANGUAGE
     auto_relogin: bool = True
     notebooklm_auto: bool = True
+    ai_terminal: str = ""
     ai_resume: bool = True
 
 
@@ -402,6 +430,8 @@ class WindowStatus:
     calendar_notice: str = ""
     notebooklm_connected: bool = False
     notebooklm_busy: bool = False
+    ai_terminals: frozenset[str] | None = None
+    ai_terminal: str = ""
 
 
 def window_status(model: AppModel) -> WindowStatus:
@@ -428,6 +458,7 @@ def window_status(model: AppModel) -> WindowStatus:
         calendar=model.calendar, calendar_busy=model.calendar_busy, calendar_paused=model.paused,
         calendar_notice=model.current_calendar_notice(),
         notebooklm_connected=model.notebooklm.connected, notebooklm_busy=model.notebooklm_busy is not None,
+        ai_terminals=model.ai_terminals, ai_terminal=model.ai_terminal,
         account=account,
         account_warning=expired and model.busy != "login",
         account_title=title,
@@ -458,6 +489,7 @@ def initial_values(saved: Settings | None, current: Settings, autostart: bool) -
         language=shown.language,
         auto_relogin=shown.auto_relogin,
         notebooklm_auto=shown.notebooklm_auto,
+        ai_terminal=shown.ai_terminal,
         ai_resume=shown.ai_resume,
     )
 
@@ -477,9 +509,9 @@ def submit(values: FormValues, current: Settings) -> Submission:
         theme=current.theme,  # chosen apart from the form (``Settings.theme``)
         auto_relogin=values.auto_relogin,
         notebooklm_auto=values.notebooklm_auto,
-        ai_cli=current.ai_cli,  # chosen on Home's AI card, like the terminal
+        ai_cli=current.ai_cli,  # chosen on Home's AI card
         ai_resume=values.ai_resume,
-        ai_terminal=current.ai_terminal,
+        ai_terminal=normalize_ai_terminal(values.ai_terminal),
     )
     return Submission(
         settings=settings,

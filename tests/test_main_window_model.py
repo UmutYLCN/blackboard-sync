@@ -818,7 +818,7 @@ def test_open_item_url_accepts_only_school_urls():
 
 # -- AI study session card on Home -----------------------------------------------------------------
 
-def ai_model(installed=("claude", "gemini", "codex"), terminals=("terminal", "iterm2", "kitty"), **options):
+def ai_model(installed=("claude", "gemini", "codex", "agy"), terminals=("terminal", "iterm2", "kitty"), **options):
     """A synced model after the app has looked for the tools and terminals."""
     model = synced(**options)
     model.ai_term = "2026-2027 Güz"
@@ -830,12 +830,15 @@ def test_ai_card_before_the_first_look_has_no_buttons():
     card = main_window_model.ai_card(synced())
     assert (card.kind, card.detail) == (main_window_model.AI_OFF, "Looking for AI tools…")
     assert not card.warning and not card.action and not card.secondary_action
-    assert card.tools == () and card.terminals == ()
+    assert card.tools == ()
+    assert not hasattr(card, "terminals")
 
 
 @pytest.mark.parametrize("installed, labels", [
-    (("claude", "gemini", "codex"), ["Open in Claude Code", "Open in Gemini CLI", "Open in Codex"]),
+    (("claude", "gemini", "codex", "agy"),
+     ["Open in Claude Code", "Open in Gemini CLI", "Open in Codex", "Open in Antigravity"]),
     (("codex", "claude"), ["Open in Claude Code", "Open in Codex"]),
+    (("agy",), ["Open in Antigravity"]),
     (("gemini",), ["Open in Gemini CLI"]),
 ])
 def test_ai_card_has_a_button_per_installed_tool_only(installed, labels):
@@ -871,28 +874,35 @@ def test_ai_card_falls_back_to_university_folder_before_first_sync():
 
 
 @pytest.mark.parametrize("chosen, terminals, used, note", [
-    ("", ("terminal", "iterm2", "kitty"), "terminal", ""),
-    ("kitty", ("terminal", "iterm2", "kitty"), "kitty", ""),
+    ("", ("terminal", "iterm2", "kitty"), "terminal", None),
+    ("kitty", ("terminal", "iterm2", "kitty"), "kitty", None),
     ("ghostty", ("terminal", "kitty"), "terminal", "Ghostty wasn't found. Using Terminal instead."),
-    ("", ("powershell", "cmd"), "powershell", ""),
+    ("", ("powershell", "cmd"), "powershell", None),
     ("windows_terminal", ("powershell", "cmd"), "powershell",
      "Windows Terminal wasn't found. Using PowerShell instead."),
 ])
-def test_ai_card_lists_the_terminals_and_falls_back_from_a_missing_one(chosen, terminals, used, note):
-    card = main_window_model.ai_card(ai_model(terminals=terminals, ai_terminal=chosen))
-    assert [key for key, _name in card.terminals] == [key for key in ("terminal", "iterm2", "kitty", "powershell", "cmd")
-                                                      if key in terminals]
-    assert (card.terminal, card.note) == (used, note)
+def test_settings_terminal_row_lists_detected_terminals_and_falls_back(chosen, terminals, used, note):
+    from blackboard_sync import ai_launcher
+    from blackboard_sync.menubar import settings_form
+
+    model = ai_model(terminals=terminals, ai_terminal=chosen)
+    form_status = settings_form.window_status(model)
+    choices = settings_form.ai_terminal_choices(form_status.ai_terminals, form_status.ai_terminal)
+    assert [key for key, _name in choices] == [key for key in ("terminal", "iterm2", "kitty", "powershell", "cmd")
+                                                if key in terminals]
+    assert ai_launcher.resolve_terminal(form_status.ai_terminal, form_status.ai_terminals) == used
+    row = settings_form.row_states(form_status)["ai_terminal"]
+    assert (row.detail, row.enabled) == (note, True)
 
 
-def test_choosing_a_terminal_clears_the_last_failure():
+def test_applying_a_new_terminal_clears_a_terminal_failure():
     from blackboard_sync import ai_launcher
 
     model = ai_model()
     model.ai_result = ai_launcher.LaunchResult(ai_launcher.Failure.TERMINAL_FAILED, ai_launcher.TOOLS["claude"])
-    model.choose_ai_terminal("kitty")
+    model.apply_settings(model.dest, school_changed=False, ai_terminal="kitty")
     card = main_window_model.ai_card(model)
-    assert card.kind == main_window_model.AI_READY and card.terminal == "kitty"
+    assert card.kind == main_window_model.AI_READY and model.ai_terminal == "kitty"
 
 
 @pytest.mark.parametrize("language, detail", [("en", "Opening…"), ("tr", "Açılıyor…")])
@@ -906,9 +916,9 @@ def test_ai_card_disables_buttons_while_launching(monkeypatch, language, detail)
 
 
 @pytest.mark.parametrize("language, detail, primary, secondary", [
-    ("en", "No AI tool is installed. Install Claude Code, Gemini CLI or Codex, then try again.",
+    ("en", "No AI tool is installed. Install Claude Code, Gemini CLI, Codex or Antigravity, then try again.",
      "How to install", "Try again"),
-    ("tr", "Kurulu bir yapay zekâ aracı yok. Claude Code, Gemini CLI veya Codex'i kurup yeniden deneyin.",
+    ("tr", "Kurulu bir yapay zekâ aracı yok. Claude Code, Gemini CLI, Codex veya Antigravity'yi kurup yeniden deneyin.",
      "Nasıl kurulur", "Yeniden dene"),
 ])
 def test_ai_card_without_any_tool_says_how_to_install_one(monkeypatch, language, detail, primary, secondary):
@@ -917,7 +927,7 @@ def test_ai_card_without_any_tool_says_how_to_install_one(monkeypatch, language,
     assert card.kind == main_window_model.AI_ATTENTION and card.warning and card.detail == detail
     assert (card.action, card.action_title) == ("ai_install", primary)
     assert (card.secondary_action, card.secondary_title) == ("ai_detect", secondary)
-    assert card.tools == () and card.terminals == ()
+    assert card.tools == ()
 
 
 @pytest.mark.parametrize("language, detail", [

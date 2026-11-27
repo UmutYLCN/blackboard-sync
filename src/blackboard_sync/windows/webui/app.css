@@ -495,7 +495,6 @@ button, input, select { font: inherit; color: inherit; }
 .ai-title { margin: 0; font: 400 19px/1.25 var(--font-display); letter-spacing: -0.01em; }
 .ai-detail { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 .ai-detail.warning { color: var(--warning); }
-.ai-note { margin: 4px 0 0; color: var(--caution); font-size: 12.5px; }
 .ai-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 .ai-tool {
   display: grid;
@@ -514,7 +513,6 @@ button, input, select { font: inherit; color: inherit; }
 .ai-tool:disabled { opacity: 0.45; cursor: default; }
 /* Each tool's picture comes from webui_page.logo_styles. */
 .ai-logo { width: 24px; height: 24px; background: center / contain no-repeat; }
-.ai-tools .select { margin-left: 4px; max-width: 100%; }
 .ai-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
 @keyframes spin { to { transform: rotate(360deg); } }

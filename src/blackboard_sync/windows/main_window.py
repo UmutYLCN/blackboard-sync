@@ -67,6 +67,7 @@ ROW_ATTRIBUTES = {
     "account": ("account_button", "account_label", None),
     "interval": ("interval_dropdown", None, None),
     "language": ("language_dropdown", None, None),
+    "ai_terminal": ("ai_terminal_dropdown", None, None),
     "update": ("update_button", "version_label", None),
     "uninstall": ("uninstall_button", None, None),
 }
@@ -237,7 +238,10 @@ class MainWindow:
         self.check_updates = tk.BooleanVar(value=values.check_updates)
         self.auto_relogin = tk.BooleanVar(value=values.auto_relogin)
         self.notebooklm_auto = tk.BooleanVar(value=values.notebooklm_auto)
+        self.ai_terminal = tk.StringVar(value="")
         self.ai_resume = tk.BooleanVar(value=values.ai_resume)
+        self._terminal_choices = ()
+        self._terminal_initial_title = ""
         self.interval = tk.StringVar(value=form.interval_title(values.sync_interval_minutes))
         self.language = tk.StringVar(value=form.language_title(values.language))
         self.section_var = tk.StringVar(value=main.OVERVIEW)
@@ -255,12 +259,12 @@ class MainWindow:
             self.pages[name] = page
             build(page)
         for variable in (self.url, self.dest, self.autostart, self.check_updates, self.interval, self.language,
-                         self.auto_relogin, self.notebooklm_auto, self.ai_resume):
+                         self.auto_relogin, self.notebooklm_auto, self.ai_terminal, self.ai_resume):
             variable.trace_add("write", lambda *_args: self.changed())
         # The wheel scrolls the section in view wherever the pointer is; over a
         # list it scrolls too instead of changing the choice.
         window.bind("<MouseWheel>", self.wheel)
-        for combobox in (self.interval_dropdown, self.language_dropdown, self.ai_picker):
+        for combobox in (self.interval_dropdown, self.language_dropdown, self.ai_terminal_dropdown):
             combobox.bind("<MouseWheel>", lambda e: self.wheel(e) or "break")
         self._build_topbar(window)
         self.update_status(status)
@@ -508,11 +512,9 @@ class MainWindow:
         self.ai_card_frame = card
         self.ai_detail = ttk.Label(card, foreground=MUTED, wraplength=NOTEBOOKLM_WRAP)
         self.ai_detail.grid(row=0, column=0, sticky="w")
-        self.ai_note = ttk.Label(card, foreground=WARNING, wraplength=NOTEBOOKLM_WRAP)
-        self.ai_note.grid(row=1, column=0, sticky="w")
         # A button per tool (shown while it is installed), in a frame whose border marks the one used last.
         self.ai_row = ttk.Frame(card)
-        self.ai_row.grid(row=2, column=0, sticky="w", pady=(8, 0))
+        self.ai_row.grid(row=1, column=0, sticky="w", pady=(8, 0))
         background = background_of(card)
         dark = is_dark(background)
         self.ai_tools, self.ai_images = {}, []
@@ -526,37 +528,22 @@ class MainWindow:
             button.pack()
             self.ai_images.append(image)  # Tk drops an image that nothing holds on to
             self.ai_tools[key] = (border, button, Tooltip(button), background)
-        self.ai_terminal = tk.StringVar(value="")
-        self.ai_picker = ttk.Combobox(self.ai_row, textvariable=self.ai_terminal, width=18, state="readonly")
-        self.ai_picker.bind("<<ComboboxSelected>>", self.ai_terminal_picked)
-        Tooltip(self.ai_picker, main.T_AI_TERMINAL)
         buttons = ttk.Frame(card)
-        buttons.grid(row=3, column=0, sticky="w", pady=(8, 0))
+        buttons.grid(row=2, column=0, sticky="w", pady=(8, 0))
         self.ai_button = PillButton(buttons, command=lambda: self.status.ai.action and self.on_action(self.status.ai.action))
         self.ai_button.pack(side="left")
         self.ai_secondary = PillButton(
             buttons, command=lambda: self.status.ai.secondary_action and self.on_action(self.status.ai.secondary_action))
         self.ai_secondary.pack(side="left", padx=(8, 0))
 
-    def ai_terminal_picked(self, _event=None):
-        for key, name in self.status.ai.terminals:
-            if name == self.ai_terminal.get():
-                self.on_action(main.AI_TERMINAL_PREFIX + key)
-
     def _draw_ai_card(self):
         card = self.status.ai
         self.ai_card_frame.configure(text=card.title)
         self.ai_detail.configure(text=card.detail, foreground=WARNING if card.warning else MUTED)
-        self.ai_note.configure(text=card.note)
-        if card.note:
-            self.ai_note.grid()
-        else:
-            self.ai_note.grid_remove()
         state = "normal" if card.tools_enabled else "disabled"
         shown = {tool.key: tool for tool in card.tools}
         for border, *_ in self.ai_tools.values():
             border.pack_forget()
-        self.ai_picker.pack_forget()
         for key, (border, button, tooltip, background) in self.ai_tools.items():
             tool = shown.get(key)
             if tool is None:
@@ -566,11 +553,6 @@ class MainWindow:
             color = AI_CURRENT_BORDER if tool.current else background
             border.configure(highlightbackground=color, highlightcolor=color)
             border.pack(side="left", padx=(0, 6))
-        if shown and card.terminals:
-            names = [name for _, name in card.terminals]
-            self.ai_terminal.set(dict(card.terminals)[card.terminal])
-            self.ai_picker.configure(values=names, state="readonly" if card.tools_enabled else "disabled")
-            self.ai_picker.pack(side="left", padx=(6, 0))
         if shown:
             self.ai_row.grid()
         else:
@@ -839,7 +821,8 @@ class MainWindow:
         variables = {"base_url": self.url, "dest": self.dest, "autostart": self.autostart,
                      "check_updates": self.check_updates, "interval": self.interval, "language": self.language,
                      "auto_relogin": self.auto_relogin,
-                     "notebooklm_auto": self.notebooklm_auto, "ai_resume": self.ai_resume}
+                     "notebooklm_auto": self.notebooklm_auto, "ai_terminal": self.ai_terminal,
+                     "ai_resume": self.ai_resume}
         if kind == form.CONTROL_FIELD:
             if key == "base_url":  # typing a school's name offers the known schools
                 return ttk.Combobox(frame, textvariable=variables[key], width=34, values=schools.suggestions())
@@ -883,7 +866,8 @@ class MainWindow:
             return
         if state.button is not None:
             row.control.configure(text=state.button)
-        row.control.configure(state="normal" if state.enabled else "disabled")
+        enabled_state = "readonly" if key in ("interval", "language", "ai_terminal") else "normal"
+        row.control.configure(state=enabled_state if state.enabled else "disabled")
 
     def _build_courses(self, page):
         from tkinter import ttk
@@ -979,12 +963,23 @@ class MainWindow:
 
     def values(self):
         minutes = next((m for m, title in form.INTERVAL_OPTIONS if title == self.interval.get()), 60)
+        if not self._terminal_choices or self.ai_terminal.get() == self._terminal_initial_title:
+            ai_terminal = self.saved.ai_terminal
+        else:
+            picked = next((k for k, name in self._terminal_choices if name == self.ai_terminal.get()),
+                          self.saved.ai_terminal)
+            detected = self.status.form.ai_terminals
+            if self.saved.ai_terminal == "" and detected and picked == ai_launcher.system_terminal(detected):
+                ai_terminal = ""
+            else:
+                ai_terminal = picked
         return form.FormValues(self.url.get(), self.dest.get(), self.autostart.get(),
                                self.check_updates.get(), minutes, form.language_code(self.language.get()),
-                               self.auto_relogin.get(), self.notebooklm_auto.get(), self.ai_resume.get())
+                               self.auto_relogin.get(), self.notebooklm_auto.get(), ai_terminal, self.ai_resume.get())
 
     def set_values(self, values):
         """Show ``values`` as what is saved: the bar goes away."""
+        self.saved = values
         self._loading = True
         try:
             self.url.set(values.base_url)
@@ -996,10 +991,46 @@ class MainWindow:
             self.ai_resume.set(values.ai_resume)
             self.interval.set(form.interval_title(values.sync_interval_minutes))
             self.language.set(form.language_title(values.language))
+            self._set_terminal_from_values(values)
         finally:
             self._loading = False
-        self.saved = values
         self.show_error("")
+
+    def _set_terminal_from_values(self, values):
+        detected = self.status.form.ai_terminals
+        if self._terminal_choices and detected:
+            used = ai_launcher.resolve_terminal(values.ai_terminal, detected)
+            title = dict(self._terminal_choices)[used]
+        else:
+            title = ""
+        self._terminal_initial_title = title
+        self.ai_terminal.set(title)
+
+    def _refresh_terminal_dropdown(self, form_status):
+        choices = form.ai_terminal_choices(form_status.ai_terminals, self.saved.ai_terminal)
+        current_title = self.ai_terminal.get()
+        dirty = bool(self._terminal_choices) and current_title != self._terminal_initial_title
+        if choices != self._terminal_choices:
+            self._terminal_choices = choices
+            self.ai_terminal_dropdown.configure(values=[name for _, name in choices])
+        if not choices:
+            self._terminal_initial_title = ""
+            loading, self._loading = self._loading, True
+            try:
+                self.ai_terminal.set("")
+            finally:
+                self._loading = loading
+            return
+        names = dict(choices)
+        used = ai_launcher.resolve_terminal(self.saved.ai_terminal, form_status.ai_terminals)
+        expected = names[used]
+        self._terminal_initial_title = expected
+        if not dirty or current_title not in names.values():
+            loading, self._loading = self._loading, True
+            try:
+                self.ai_terminal.set(expected)
+            finally:
+                self._loading = loading
 
     def changed(self):
         if self._loading:
@@ -1115,6 +1146,7 @@ class MainWindow:
                                 fill=WARNING if card.warning else AVATAR_TEXT)
         # Genel
         form_status = status.form
+        self._refresh_terminal_dropdown(form_status)
         for key, state in form.row_states(form_status).items():
             if key.startswith("google_calendar"):
                 continue

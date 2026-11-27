@@ -219,7 +219,7 @@ def test_the_ai_tool_and_terminal_are_unset_with_resume_on_by_default_and_saved(
     # A settings.json from before the AI assistant existed.
     old = Settings.from_dict({"base_url": "https://bb.example.edu", "dest": str(tmp_path)})
     assert (old.ai_cli, old.ai_resume) == ("", True)
-    for tool in ("claude", "gemini", "codex"):
+    for tool in ("claude", "gemini", "codex", "agy"):
         chosen = replace(settings, ai_cli=tool, ai_resume=False)
         assert Settings.from_dict(chosen.to_dict()) == chosen
     save_settings(tmp_path, replace(settings, ai_cli="codex", ai_resume=False))
@@ -251,10 +251,10 @@ def test_a_tool_chosen_in_an_older_version_becomes_the_one_used_last(tmp_path):
     assert (old.ai_cli, old.ai_resume, old.ai_terminal) == ("gemini", False, "")
 
 
-def test_a_save_keeps_what_was_chosen_on_homes_ai_card(tmp_path):
+def test_a_save_keeps_ai_cli_and_saves_terminal_and_resume(tmp_path):
     current = Settings(base_url="https://bb.example.edu", dest=tmp_path, ai_cli="gemini", ai_resume=False,
                        ai_terminal="kitty")
     values = initial_values(current, current, autostart=True)
-    assert values.ai_resume is False
-    submitted = submit(replace(values, ai_resume=True), current).settings
-    assert (submitted.ai_cli, submitted.ai_resume, submitted.ai_terminal) == ("gemini", True, "kitty")
+    assert (values.ai_terminal, values.ai_resume) == ("kitty", False)
+    submitted = submit(replace(values, ai_terminal="iterm2", ai_resume=True), current).settings
+    assert (submitted.ai_cli, submitted.ai_resume, submitted.ai_terminal) == ("gemini", True, "iterm2")

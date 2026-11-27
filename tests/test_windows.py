@@ -491,27 +491,20 @@ def test_windows_tk_window_draws_the_ai_card_in_every_state(monkeypatch, tmp_pat
 
     model.ai_term = '2026-2027 Güz'
     model.ai_cli = 'codex'
-    model.ai_terminal = 'windows_terminal'
-    model.finish_ai_detection(frozenset({'claude', 'codex'}), frozenset({'powershell', 'cmd'}))
+    model.finish_ai_detection(frozenset({'claude', 'codex', 'agy'}), frozenset({'powershell', 'cmd'}))
     window.update_status(main.main_status(model, now))
-    assert shown() == ['claude', 'codex'] and not window.ai_row.removed
+    assert shown() == ['claude', 'codex', 'agy'] and not window.ai_row.removed
     _border, button, tooltip, background = window.ai_tools['codex']
     assert tooltip.text == 'Open in Codex' and button.options['state'] == 'normal'
     assert window.ai_tools['codex'][0].options['highlightbackground'] != background  # the one used last
     assert window.ai_tools['claude'][0].options['highlightbackground'] == window.ai_tools['claude'][3]
     button.options['command']()
     assert actions[-1] == 'ai_open:codex'
-    assert window.ai_picker.packed and window.ai_picker.options['values'] == ['PowerShell', 'Command Prompt']
-    assert window.ai_terminal.get() == 'PowerShell'
-    assert window.ai_note.options['text'] == "Windows Terminal wasn't found. Using PowerShell instead."
-    window.ai_terminal.set('Command Prompt')
-    window.ai_picker.bindings['<<ComboboxSelected>>'](None)
-    assert actions[-1] == 'ai_terminal:cmd'
-    assert not main.has_changes(saved, window.values())  # the picker is no part of the Settings form
+    assert not hasattr(window, 'ai_picker') and not hasattr(window, 'ai_note')
 
     model.ai_launching = True
     window.update_status(main.main_status(model, now))
-    assert button.options['state'] == 'disabled' and window.ai_picker.options['state'] == 'disabled'
+    assert button.options['state'] == 'disabled'
 
     model.ai_launching = False
     model.finish_ai_detection(frozenset(), model.ai_terminals)
@@ -623,6 +616,20 @@ def test_windows_settings_are_sections_of_rows(monkeypatch, tmp_path):
         assert window.settings_rows[key].control.options['variable'] is variable
     assert window.interval_dropdown.options['textvariable'] is window.interval
     assert window.language_dropdown.options['values'] == ['English', 'Türkçe']
+    assert window.ai_terminal_dropdown.options['textvariable'] is window.ai_terminal
+    assert window.ai_terminal_dropdown.options['state'] == 'disabled'
+    model.ai_terminal = 'windows_terminal'
+    model.finish_ai_detection(frozenset({'claude'}), frozenset({'powershell', 'cmd'}))
+    window.update_status(main_status(model, now))
+    assert window.ai_terminal_dropdown.options['values'] == ['PowerShell', 'Command Prompt']
+    assert window.ai_terminal_dropdown.options['state'] == 'readonly'
+    assert window.ai_terminal.get() == 'PowerShell'
+    assert window.settings_rows['ai_terminal'].detail.options['text'] == "Windows Terminal wasn't found. Using PowerShell instead."
+    assert window.button_bar.removed and window.values().ai_terminal == ''
+    window.ai_terminal.set('Command Prompt')
+    assert not window.button_bar.removed and window.values().ai_terminal == 'cmd'
+    window.discard()
+    assert window.button_bar.removed and window.ai_terminal.get() == 'PowerShell'
     choose = next(w for w in widgets if w.options.get('text') == 'Choose…')
     assert choose.options['command'] == window.choose_folder
     window.autostart.set(False)

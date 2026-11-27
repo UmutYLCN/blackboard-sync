@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from blackboard_sync import __version__, announcements, courses, deadlines, schools, uninstall, updater
+from blackboard_sync import __version__, ai_launcher, announcements, courses, deadlines, schools, uninstall, updater
 from blackboard_sync.i18n import tr
 from blackboard_sync.menubar import main_window_model as main
 from blackboard_sync.menubar import settings_form as form
@@ -182,13 +182,8 @@ def ai_card(card: main.AiCard) -> dict:
         "kind": card.kind,
         "title": card.title,
         "detail": card.detail,
-        "note": card.note,
         "tools": [{"id": tool.action, "key": tool.key, "title": tool.label, "current": tool.current,
                    "enabled": card.tools_enabled} for tool in card.tools],
-        "terminals": [{"id": main.AI_TERMINAL_PREFIX + key, "title": name} for key, name in card.terminals],
-        "terminal": main.AI_TERMINAL_PREFIX + card.terminal if card.terminals else "",
-        "terminal_label": main.T_AI_TERMINAL,
-        "terminal_enabled": card.tools_enabled,
         "button": {"id": card.action, "title": card.action_title, "enabled": card.enabled} if card.action else None,
         "secondary": ({"id": card.secondary_action, "title": card.secondary_title, "enabled": card.secondary_enabled}
                       if card.secondary_action else None),
@@ -307,22 +302,28 @@ def calendar_page(page: deadlines.DeadlinePage, status: main.MainStatus | None =
     }
 
 
-def _choices(key: str) -> list[dict]:
+def _choices(key: str, status_form: form.WindowStatus) -> list[dict]:
     if key == "interval":
         return [{"value": minutes, "title": title} for minutes, title in form.INTERVAL_OPTIONS]
     if key == "language":
         return [{"value": code, "title": name} for code, name in form.LANGUAGE_OPTIONS]
     if key == "theme":
         return [{"value": value, "title": title} for value, title in form.THEME_OPTIONS]
+    if key == "ai_terminal":
+        return [{"value": value, "title": title}
+                for value, title in form.ai_terminal_choices(status_form.ai_terminals, status_form.ai_terminal)]
     return []
 
 
-def _row(definition: form.SettingRow, state: form.RowState | None, packaged: bool) -> dict:
+def _row(definition: form.SettingRow, state: form.RowState | None, packaged: bool,
+         status_form: form.WindowStatus) -> dict:
     state = state or form.RowState()
     title = definition.title if state.title is None else state.title
     detail = definition.detail if state.detail is None else state.detail
     button = definition.button if state.button is None else state.button
     has_control = not (packaged and definition.key == "update")
+    selected = (ai_launcher.resolve_terminal(status_form.ai_terminal, status_form.ai_terminals)
+                if definition.key == "ai_terminal" and status_form.ai_terminals else "")
     return {
         "key": definition.key,
         "title": title,
@@ -334,7 +335,8 @@ def _row(definition: form.SettingRow, state: form.RowState | None, packaged: boo
         "destructive": definition.destructive,
         "enabled": state.enabled,
         "warning": state.warning,
-        "choices": _choices(definition.key),
+        "choices": _choices(definition.key, status_form),
+        "selected": selected,
         "hidden": False,
     }
 
@@ -370,7 +372,7 @@ def settings(status_form: form.WindowStatus, values: form.FormValues, error: tup
     for section in form.settings_sections(appearance=True, notebooklm=True, auto_relogin=True):
         if packaged and section.danger:
             continue  # the Store removes the app; the Updates card says so
-        rows = [_row(definition, states.get(definition.key), packaged)
+        rows = [_row(definition, states.get(definition.key), packaged, status_form)
                 for definition in section.rows
                 if not (packaged and definition.key in PACKAGED_HIDDEN_ROWS)]
         if section.key == form.SECTION_CALENDAR:
@@ -384,7 +386,8 @@ def settings(status_form: form.WindowStatus, values: form.FormValues, error: tup
         "values": {"base_url": values.base_url, "dest": values.dest, "autostart": values.autostart,
                    "check_updates": values.check_updates, "sync_interval_minutes": values.sync_interval_minutes,
                    "language": values.language, "auto_relogin": values.auto_relogin,
-                   "notebooklm_auto": values.notebooklm_auto, "ai_resume": values.ai_resume},
+                   "notebooklm_auto": values.notebooklm_auto, "ai_terminal": values.ai_terminal,
+                   "ai_resume": values.ai_resume},
         "theme": theme,
         "error": message,
         "error_field": field,
@@ -442,8 +445,7 @@ def ids(state: dict) -> dict[str, set[str]]:
                       | ({card["open"]["id"]} if card["open"] else set()),
         "ai": ({ai["button"]["id"]} if ai["button"] and ai["button"]["enabled"] else set())
               | ({ai["secondary"]["id"]} if ai["secondary"] and ai["secondary"]["enabled"] else set())
-              | {tool["id"] for tool in ai["tools"] if tool["enabled"]}
-              | ({terminal["id"] for terminal in ai["terminals"]} if ai["terminal_enabled"] else set()),
+              | {tool["id"] for tool in ai["tools"] if tool["enabled"]},
         # A settings button that is on the page and enabled.
         "button": ({row["key"] for row in rows
                     if row["control"] == form.CONTROL_BUTTON and row["enabled"] and not row["hidden"]}

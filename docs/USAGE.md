@@ -305,14 +305,15 @@ Open your current term's folder in a terminal with an AI CLI already running, co
 session in that folder when possible.
 
 - **Click a tool.** On **Home**, the **AI study session** card under NotebookLM shows a button for each
-  of **Claude Code**, **Gemini CLI** and **Codex** that is installed on your computer. Click one to
-  open it straight away. If none is installed, the card offers **How to install** and **Try again**.
-- **Choose a terminal.** The menu next to the buttons lists the terminal apps found on your computer.
-  On a Mac: Terminal, iTerm2, Ghostty, WezTerm, kitty and Alacritty. On Windows: Windows Terminal,
-  PowerShell and Command Prompt. Your choice is remembered. The system terminal (Terminal, or Windows
-  Terminal / PowerShell) is the default, and is used if the one you chose is removed. Warp is not
-  listed, because it offers no reliable way to open a window that runs a command. The first time
-  iTerm2 is used, macOS asks whether Blackboard Sync may control it.
+  of **Claude Code**, **Gemini CLI**, **Codex** and **Antigravity** that is installed on your computer.
+  Click one to open it straight away. If none is installed, the card offers **How to install** and
+  **Try again**.
+- **Choose a terminal.** **Settings → AI assistant → Terminal** lists the terminal apps found on your
+  computer. On a Mac: Terminal, iTerm2, Ghostty, WezTerm, kitty and Alacritty. On Windows: Windows
+  Terminal, PowerShell and Command Prompt. The system terminal (Terminal, or Windows Terminal /
+  PowerShell) is the default, and is used if the one you chose is removed. Warp is not listed, because
+  it offers no reliable way to open a window that runs a command. The first time iTerm2 is used, macOS
+  asks whether Blackboard Sync may control it.
 - **Menu bar / tray.** **Open {AI} in {term}** starts the tool you used last in the chosen terminal.
 - **Continue where you left off.** Leave **Settings → AI assistant → Continue my last session in this
   folder** on, or turn it off to start fresh each time.

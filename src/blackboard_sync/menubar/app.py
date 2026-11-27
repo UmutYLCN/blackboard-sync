@@ -25,7 +25,6 @@ from blackboard_sync.i18n import tr
 from blackboard_sync.menubar import jobs, launchagent, settings_form
 from blackboard_sync.menubar.main_window_model import (
     AI_OPEN_PREFIX,
-    AI_TERMINAL_PREFIX,
     GENERAL,
     OPEN_ITEM_PREFIX,
     OVERVIEW,
@@ -753,8 +752,8 @@ def build_app(config: Config, show_window: bool = False):
             self.refresh()
 
         def section_shown(self, section: str) -> None:
-            if section == OVERVIEW:
-                self.detect_ai_tools()  # Home's AI card lists the installed tools and terminals
+            if section in (OVERVIEW, GENERAL):
+                self.detect_ai_tools()  # Home's AI card lists the tools; Settings lists the terminals
             self.refresh()
 
         def detect_ai_tools(self) -> None:
@@ -782,15 +781,6 @@ def build_app(config: Config, show_window: bool = False):
             tool = ((self.model.ai_result.tool if self.model.ai_result is not None else None)
                     or ai_launcher.TOOLS.get(self.model.ai_cli) or ai_launcher.TOOLS[AI_CLAUDE])
             open_url(tool.install_url)
-
-        def choose_ai_terminal(self, key: str) -> None:
-            """The AI card's terminal picker: remembered right away."""
-            if key not in ai_launcher.TERMINALS:
-                return
-            self.settings = replace(self.settings, ai_terminal=key)
-            self.model.choose_ai_terminal(key)
-            jobs.save_ai_choice(self.config, self.settings)
-            self.refresh()
 
         def start_ai_launch(self, key: str | None = None, from_menu: bool = False) -> None:
             """Open the term folder with ``key`` (the menu item: the tool used last) in the chosen terminal."""
@@ -854,9 +844,6 @@ def build_app(config: Config, show_window: bool = False):
             if action.startswith(AI_OPEN_PREFIX):
                 self.start_ai_launch(action.removeprefix(AI_OPEN_PREFIX))
                 return
-            if action.startswith(AI_TERMINAL_PREFIX):
-                self.choose_ai_terminal(action.removeprefix(AI_TERMINAL_PREFIX))
-                return
             {
                 "calendar_connect": lambda: self.start_calendar("connect"),
                 "calendar_sync": self.start_calendar, "calendar_disconnect": self.disconnect_calendar,
@@ -909,6 +896,7 @@ def build_app(config: Config, show_window: bool = False):
                 dest_choice=choice,
                 auto_relogin=submission.settings.auto_relogin,
                 ai_resume=submission.settings.ai_resume,
+                ai_terminal=submission.settings.ai_terminal,
             )
             jobs.refresh_ai_term(self.config, self.model)
             if submission.autostart != launchagent.is_installed():

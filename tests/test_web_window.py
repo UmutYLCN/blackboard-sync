@@ -401,6 +401,7 @@ GOOD_FORM = {"base_url": "https://bb.example", "dest": "C:/Users/u/Documents", "
 @pytest.mark.parametrize("change", [
     {"autostart": "yes"}, {"sync_interval_minutes": 5}, {"sync_interval_minutes": True}, {"language": "de"},
     {"base_url": None}, {"dest": "x" * 5000}, {"check_updates": 1}, {"auto_relogin": "on"}, {"notebooklm_auto": None},
+    {"ai_terminal": "warp"}, {"ai_terminal": 123},
 ])
 def test_form_values_refuse_wrong_types(change):
     assert web_window.form_values({**GOOD_FORM, **change}) is None
@@ -568,7 +569,7 @@ def test_ai_card_actions_are_allowed_only_when_drawn_and_enabled():
 
     window, _host, events = make_window()
     # Before the first look the card has nothing to press.
-    for name in ("ai_open:claude", "ai_install", "ai_detect", "ai_terminal:cmd"):
+    for name in ("ai_open:claude", "ai_open:agy", "ai_install", "ai_detect"):
         window.run_action(name)
     assert events == []
 
@@ -580,17 +581,16 @@ def test_ai_card_actions_are_allowed_only_when_drawn_and_enabled():
     assert events == [("action", "ai_install"), ("action", "ai_detect")]
 
     del events[:]
-    model.finish_ai_detection(frozenset({"claude"}), frozenset({"powershell", "cmd"}))
+    model.finish_ai_detection(frozenset({"claude", "agy"}), frozenset({"powershell", "cmd"}))
     window.update_status(status(ai=main.ai_card(model)))
-    for name in ("ai_open:codex", "ai_terminal:windows_terminal", "ai_open:claude", "ai_terminal:cmd"):
+    for name in ("ai_open:codex", "ai_open:claude", "ai_open:agy"):
         window.run_action(name)
-    assert events == [("action", "ai_open:claude"), ("action", "ai_terminal:cmd")]
+    assert events == [("action", "ai_open:claude"), ("action", "ai_open:agy")]
 
     del events[:]
     model.ai_launching = True
     window.update_status(status(ai=main.ai_card(model)))
     window.run_action("ai_open:claude")
-    window.run_action("ai_terminal:cmd")
     assert events == []
 
     model.ai_launching = False

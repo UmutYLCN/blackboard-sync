@@ -11,3 +11,4 @@ This project's license does not cover them.
 | `codex.png` | OpenAI | `resources/blossom-black.svg` in the "Codex – OpenAI's coding agent" extension 26.1117 |
 | `codex-dark.png` | OpenAI, for dark backgrounds | `resources/blossom-white.svg` in the same extension |
 | `gemini.png` | Gemini (Google) | the `logo_gemini_2026` image in the Gemini app for macOS |
+| `agy.png` | Antigravity (Google) | `resources/app/out/media/antigravity-gradient-logo.svg` in "Antigravity IDE" 2.8.0 |
