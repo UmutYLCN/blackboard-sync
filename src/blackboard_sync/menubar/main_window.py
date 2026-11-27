@@ -11,6 +11,8 @@ illustration is drawn by ``sync_scene_view.py``.
 from __future__ import annotations
 
 import sys
+from functools import lru_cache
+from math import ceil
 from pathlib import Path
 from typing import Callable
 
@@ -19,6 +21,8 @@ from AppKit import (
     NSAlert,
     NSAlertFirstButtonReturn,
     NSAnimationContext,
+    NSAppearanceNameAqua,
+    NSAppearanceNameDarkAqua,
     NSApp,
     NSAttributedString,
     NSBackingStoreBuffered,
@@ -35,6 +39,7 @@ from AppKit import (
     NSEventTypeKeyDown,
     NSFont,
     NSFontAttributeName,
+    NSFontWeightSemibold,
     NSForegroundColorAttributeName,
     NSImage,
     NSImageScaleProportionallyUpOrDown,
@@ -81,6 +86,7 @@ from blackboard_sync.menubar.main_window_model import (
     ACTIVITY,
     COURSES,
     CALENDAR,
+    COURSE_PALETTE,
     GENERAL,
     HOME_DEADLINE_ROWS,
     HOME_ANNOUNCEMENT_ROWS,
@@ -124,7 +130,9 @@ from blackboard_sync.menubar.main_window_model import (
     T_UNSAVED,
     T_WINDOW_TITLE,
     MainStatus,
+    RecentRow,
     WindowState,
+    course_color_index,
     course_detail,
     course_title,
     enabled_count,
@@ -612,12 +620,56 @@ def _pill(frame, color):
     return box
 
 
-def _centered(text: str, frame, size: float, bold: bool = False):
+def _centered(text: str, frame, size: float, bold: bool = False, font=None):
     field = _label(text, size, bold=bold)
+    if font is not None:
+        field.setFont_(font)
     field.setAlignment_(NSTextAlignmentCenter)
     height = field.fittingSize().height
     field.setFrame_(NSMakeRect(0, (frame.size.height - height) / 2, frame.size.width, height))
     return field
+
+
+@lru_cache(maxsize=len(COURSE_PALETTE))
+def _course_badge_colors(index: int):
+    def srgb(hex_color):
+        channels = bytes.fromhex(hex_color[1:])
+        return NSColor.colorWithSRGBRed_green_blue_alpha_(*(channel / 255 for channel in channels), 1)
+
+    def dynamic(light, dark):
+        def color_for_appearance(appearance):
+            match = appearance.bestMatchFromAppearancesWithNames_([NSAppearanceNameAqua, NSAppearanceNameDarkAqua])
+            return dark if match == NSAppearanceNameDarkAqua else light
+
+        return NSColor.colorWithName_dynamicProvider_(None, color_for_appearance)
+
+    light, dark = COURSE_PALETTE[index]
+    return tuple(dynamic(srgb(day), srgb(night)) for day, night in zip(light, dark))
+
+
+def _course_detail(parent, x, y, width, detail, code, when, color):
+    """Draw Home's metadata line with room for a truncated code and timestamp."""
+    height = 18
+    if code and color is not None:
+        font = NSFont.systemFontOfSize_weight_(11, NSFontWeightSemibold)
+        text_size = NSAttributedString.alloc().initWithString_attributes_(code, {NSFontAttributeName: font}).size()
+        badge_width = min(ceil(text_size.width) + 12, width * 0.65 if when else width)
+        fill, ink = _course_badge_colors(color)
+        badge = _pill(NSMakeRect(x, y, badge_width, height), fill)
+        badge.setCornerRadius_(6)
+        badge.setToolTip_(detail)
+        label = _centered(code, NSMakeRect(0, 0, badge_width, height), 11, font=font)
+        label.setTextColor_(ink)
+        badge.contentView().addSubview_(label)
+        parent.addSubview_(badge)
+        if not when:
+            return
+        x += badge_width + 6
+        width -= badge_width + 6
+    line = _label(when if code and color is not None else detail, _small(), secondary=True)
+    line.setFrame_(NSMakeRect(x, y + 2, width, 15))
+    line.setToolTip_(detail)
+    parent.addSubview_(line)
 
 
 def _primary(button) -> None:
@@ -1175,7 +1227,8 @@ class MainWindow:
         """Home's Announcements card: what needs attention, then the newest announcements."""
         items = self.status.attention[:HOME_ANNOUNCEMENT_ROWS]
         rows = tuple(self.on_announcements()[:max(HOME_ANNOUNCEMENT_ROWS - len(items), 0)])
-        key = ("announcements", items, rows)
+        colors = tuple(course_color_index(self.status.course_colors, row.course_code) for row in rows)
+        key = ("announcements", items, rows, colors)
         if key == getattr(self, "_drawn_home_notifications", None):
             return self._home_heights[0]
         self._drawn_home_notifications = key
@@ -1200,19 +1253,18 @@ class MainWindow:
         for index, item in enumerate(items):
             self._attention_row(body, y, item, index, RIGHT_W, compact=True)
             y += HOME_ROW
-        for index, row in enumerate(rows):
+        for index, (row, color) in enumerate(zip(rows, colors)):
             title = _label(row.title, 12, bold=True)
             title.setFrame_(NSMakeRect(18, y, RIGHT_W - 36, 17))
             title.setToolTip_(row.title)
             body.addSubview_(title)
-            detail = _label(row.detail, _small(), secondary=True)
-            detail.setFrame_(NSMakeRect(18, y + 18, RIGHT_W - 36, 15))
-            detail.setToolTip_(row.detail)
-            body.addSubview_(detail)
+            _course_detail(body, 18, y + 18, RIGHT_W - 36, row.detail, row.course_code, row.date, color)
             button = NSButton.buttonWithTitle_target_action_("", self.target, "openHomeAnnouncement:")
             button.setBordered_(False)
             button.setTransparent_(True)
             button.setTag_(index)
+            button.setToolTip_(row.detail)
+            button.setAccessibilityLabel_(f"{row.title} · {row.detail}")
             button.setFrame_(NSMakeRect(0, y - 4, RIGHT_W, HOME_ROW - 8))
             body.addSubview_(button)
             y += HOME_ROW - 8
@@ -1257,7 +1309,8 @@ class MainWindow:
 
         today = datetime.now().astimezone().date()
         rows = deadlines.upcoming_rows(page, HOME_DEADLINE_ROWS)
-        key = ("calendar", rows, today)
+        colors = tuple(course_color_index(self.status.course_colors, row.course_code) for row in rows)
+        key = ("calendar", rows, today, colors)
         if key == getattr(self, "_drawn_home_calendar", None):
             return self._home_heights[1]
         self._drawn_home_calendar = key
@@ -1272,19 +1325,20 @@ class MainWindow:
             empty.setFrame_(NSMakeRect(18, y, RIGHT_W - 36, height))
             body.addSubview_(empty)
             y += height + 14
-        for row in rows:
+        for row, color in zip(rows, colors):
             title = _label(row.title, 12, bold=True)
             title.setFrame_(NSMakeRect(18, y, RIGHT_W - 36, 17))
             title.setToolTip_(row.title)
             body.addSubview_(title)
-            detail = _label(f"{deadlines.when_text(row, today)} · {row.course}", _small(), secondary=True)
-            detail.setFrame_(NSMakeRect(18, y + 18, RIGHT_W - 36, 15))
-            detail.setToolTip_(row.course)
-            body.addSubview_(detail)
+            when = deadlines.when_text(row, today)
+            detail = f"{when} · {row.course}"
+            _course_detail(body, 18, y + 18, RIGHT_W - 36, detail, row.course_code, when, color)
             button = NSButton.buttonWithTitle_target_action_("", self.target, "openHomeDeadline:")
             button.setBordered_(False)
             button.setTransparent_(True)
             button.setTag_(len(self.home_deadline_targets))
+            button.setToolTip_(detail)
+            button.setAccessibilityLabel_(f"{row.title} · {detail}")
             self.home_deadline_targets.append(row.target)
             button.setFrame_(NSMakeRect(0, y - 4, RIGHT_W, HOME_ROW - 8))
             body.addSubview_(button)
@@ -2004,11 +2058,11 @@ class MainWindow:
             document.addSubview_(empty)
         for index, row in enumerate(shown):
             self._file_row(document, index * ROW_HEIGHT, width, index, row.name, row.detail, None,
-                           "openRecent:", "recentMenu:", is_new=row.is_new)
+                           "openRecent:", "recentMenu:", recent=row)
         self.recent_scroll.setDocumentView_(document)
 
     def _file_row(self, document, y: float, width: float, index: int, name: str, detail: str,
-                  size: str | None, action: str, menu_action: str, is_new: bool = False) -> None:
+                  size: str | None, action: str, menu_action: str, recent: RecentRow | None = None) -> None:
         """Drive's file row: icon, name, a line under it, (size), a green check (or YENİ) and "⋮"."""
         icon = NSImageView.alloc().initWithFrame_(NSMakeRect(20, y + 10, 32, 32))
         icon.setImage_(file_icon(name))
@@ -2018,16 +2072,22 @@ class MainWindow:
         title.setFrame_(NSMakeRect(64, y + 9, width - 64 - right, 17))
         title.setToolTip_(name)
         document.addSubview_(title)
-        line = _label(detail, _small(), secondary=True)
-        line.setFrame_(NSMakeRect(64, y + 28, width - 64 - right, 15))
-        line.setToolTip_(detail)
-        document.addSubview_(line)
+        if recent:
+            _course_detail(document, 64, y + 27, width - 64 - right, detail,
+                           recent.course_code, recent.when, recent.color)
+        else:
+            line = _label(detail, _small(), secondary=True)
+            line.setFrame_(NSMakeRect(64, y + 28, width - 64 - right, 15))
+            line.setToolTip_(detail)
+            document.addSubview_(line)
         # The whole row is one transparent button; "⋮" sits on top of it.
         button = NSButton.buttonWithTitle_target_action_("", self.target, action)
         button.setBordered_(False)
         button.setTransparent_(True)
         button.setTag_(index)
-        button.setToolTip_(name)
+        label = f"{name} · {detail}" if recent and detail else name
+        button.setToolTip_(label)
+        button.setAccessibilityLabel_(label)
         button.setFrame_(NSMakeRect(0, y, width, ROW_HEIGHT))
         document.addSubview_(button)
         if size is not None:
@@ -2035,7 +2095,7 @@ class MainWindow:
             size_label.setAlignment_(NSTextAlignmentRight)
             size_label.setFrame_(NSMakeRect(width - 200, y + 18, 80, 17))
             document.addSubview_(size_label)
-        if is_new:
+        if recent and recent.is_new:
             pill = _pill(NSMakeRect(width - 104, y + 15, 52, 22),
                          NSColor.colorWithSRGBRed_green_blue_alpha_(37 / 255, 99 / 255, 235 / 255, 1))
             label = _centered(T_NEW, NSMakeRect(0, 0, 52, 22), 10, bold=True)

@@ -40,6 +40,14 @@
   --chip-image: light-dark(#fdecf6, #3a2232);     --chip-image-ink: light-dark(#b0307a, #ff9fd3);
   --chip-note: light-dark(#e8f2f7, #1a2f38);      --chip-note-ink: light-dark(#0f6a8b, #8fd3ef);
   --chip-other: light-dark(#eef1f5, #2a2e35);     --chip-other-ink: light-dark(#535b68, #b7bec9);
+  --course-0: light-dark(#e3edfd, #1d2b42);       --course-0-ink: light-dark(#1a56c4, #9cc0ff);
+  --course-1: light-dark(#e3f4e8, #1b3224);       --course-1-ink: light-dark(#137333, #7fd69a);
+  --course-2: light-dark(#feefe0, #3a2b1c);       --course-2-ink: light-dark(#9a4a00, #ffb871);
+  --course-3: light-dark(#f0eefa, #2a2640);       --course-3-ink: light-dark(#5b4bb7, #c2b8ff);
+  --course-4: light-dark(#fdecf6, #3a2232);       --course-4-ink: light-dark(#a02a6e, #ff9fd3);
+  --course-5: light-dark(#e0f4f4, #16302f);       --course-5-ink: light-dark(#00696b, #7fd8d4);
+  --course-6: light-dark(#fde8e7, #3a2224);       --course-6-ink: light-dark(#b3261e, #ff9e97);
+  --course-7: light-dark(#f4f1dc, #33301a);       --course-7-ink: light-dark(#625200, #e3cf6b);
   --radius-card: 20px;
   --radius-row: 12px;
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
@@ -280,6 +288,27 @@ button, input, select { font: inherit; color: inherit; }
 .row-text { flex: 1; min-width: 0; }
 .row-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-detail { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-course { display: flex; align-items: center; gap: 6px; }
+.course-badge {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.course-badge[data-c="0"] { background: var(--course-0); color: var(--course-0-ink); }
+.course-badge[data-c="1"] { background: var(--course-1); color: var(--course-1-ink); }
+.course-badge[data-c="2"] { background: var(--course-2); color: var(--course-2-ink); }
+.course-badge[data-c="3"] { background: var(--course-3); color: var(--course-3-ink); }
+.course-badge[data-c="4"] { background: var(--course-4); color: var(--course-4-ink); }
+.course-badge[data-c="5"] { background: var(--course-5); color: var(--course-5-ink); }
+.course-badge[data-c="6"] { background: var(--course-6); color: var(--course-6-ink); }
+.course-badge[data-c="7"] { background: var(--course-7); color: var(--course-7-ink); }
 .list .row-title {
   display: -webkit-box;
   -webkit-box-orient: vertical;

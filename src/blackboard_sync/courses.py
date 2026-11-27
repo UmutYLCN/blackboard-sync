@@ -25,6 +25,7 @@ from typing import Iterable, Mapping
 
 from blackboard_sync.i18n import tr
 from blackboard_sync.config import Config
+from blackboard_sync.paths import course_code_and_title
 from blackboard_sync.session import write_private_json
 from blackboard_sync.state import State
 
@@ -140,6 +141,15 @@ def termless_hint(rows: Iterable[CourseRow]) -> str:
     """The note under the courses without a term; empty when they sync like any course (a school without terms)."""
     rows = tuple(rows)
     return T_TERMLESS_HINT if any(r.termless for r in rows) and not all(r.termless for r in rows) else ""
+
+
+def cached_course_code(state: State, course_id: str, label: str) -> str:
+    """Read the saved code, or recover it from the label in an older cache."""
+    code = state.courses.get(course_id, {}).get("code")
+    if code:
+        return code
+    code, _ = course_code_and_title("", label)
+    return "" if code == "Course" else code
 
 
 def hidden_folders(state: State, disabled: set[str]) -> tuple[str, ...]:

@@ -684,6 +684,8 @@ class AppModel:
         self.last = last
         self.recent = list(recent or [])
         self.recent_seen = recent_seen or RecentSeen()
+        self.course_colors: dict[str, int] = {}
+        self.course_colors_dirty = False
         # The folders of the courses unticked in Dersler; their files stay out of view.
         self.hidden_folders: tuple[str, ...] = ()
         self.login_prompted = login_prompted
@@ -1207,6 +1209,7 @@ class AppModel:
             "login_prompted": self.login_prompted,
             "recent": [vars(item) for item in self.recent],
             "recent_seen": self.recent_seen.saved_state(self.recent),
+            "course_colors": dict(self.course_colors),
             "updates": self.updates.saved_state(),
             "pending": self.saved_pending(),
             "calendar": {key: value for key, value in vars(self.calendar).items() if key != "notice"},

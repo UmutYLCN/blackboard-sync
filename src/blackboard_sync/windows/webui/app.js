@@ -262,13 +262,23 @@
     return h("span", { class: `file-chip ${kind}` }, icon(FILE_ICONS[kind] || FILE_ICONS.other));
   }
 
+  function courseDetail(row) {
+    if (!row.course_code || row.color == null) {
+      return h("div", { class: "row-detail", text: row.detail, title: row.detail });
+    }
+    return h("div", { class: "row-course", title: row.detail },
+      h("span", { class: "course-badge", "data-c": row.color, text: row.course_code }),
+      row.when ? h("span", { class: "row-detail", text: row.when }) : null);
+  }
+
   function listRow(iconName, row, kind) {
     return h("div", { class: "row list" },
-      h("button", { class: "row-main", type: "button", title: row.title, onclick: () => call(kind, row.id) },
+      h("button", { class: "row-main", type: "button", title: row.title,
+        "aria-label": `${row.title} · ${row.detail}`, onclick: () => call(kind, row.id) },
         h("span", { class: "icon-tile" }, icon(iconName)),
         h("span", { class: "row-text" },
           h("div", { class: "row-title", text: row.title }),
-          h("div", { class: "row-detail", text: row.detail }))));
+          courseDetail(row))));
   }
 
   function attentionRow(item) {
@@ -300,11 +310,12 @@
 
   function fileRow(row) {
     return h("div", { class: "row file-row", "data-id": row.id },
-      h("button", { class: "row-main", type: "button", title: row.name, onclick: () => call("open_file", row.id) },
+      h("button", { class: "row-main", type: "button", title: row.name,
+        "aria-label": row.detail ? `${row.name} · ${row.detail}` : row.name, onclick: () => call("open_file", row.id) },
         chip(row.kind),
         h("span", { class: "row-text" },
           h("div", { class: "row-title", text: row.name }),
-          h("div", { class: "row-detail", text: row.detail }))),
+          courseDetail(row))),
       row.new ? h("span", { class: "new-badge", text: state.text.new }) : icon("check_circle-fill", "done"),
       moreButton(row));
   }

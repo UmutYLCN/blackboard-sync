@@ -26,7 +26,6 @@ from blackboard_sync.menubar.main_window_model import (
     GENERAL,
     duplicates_text,
     duplicates_title,
-    main_status,
     notebooklm_progress,
     removable_ids,
     shows_window_at_launch,
@@ -537,7 +536,7 @@ class TrayApp:
 
     def window_status(self):
         """What the main window draws; Home's greeting line counts the saved due dates."""
-        return main_status(self.model, jobs.utcnow(), deadlines.load_calendar(self.config, self.settings.dest))
+        return jobs.window_status(self.config, self.model, jobs.utcnow(), self.settings.dest)
 
     def refresh(self):
         import pystray
