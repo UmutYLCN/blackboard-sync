@@ -358,8 +358,9 @@ class HomeState:
 NOTEBOOKLM_OFF, NOTEBOOKLM_IDLE, NOTEBOOKLM_RUNNING, NOTEBOOKLM_ATTENTION = "off", "idle", "running", "attention"
 T_NOTEBOOKLM = "Gemini Notebook"  # the card's title: Google's name for NotebookLM
 T_NOTEBOOKLM_CONNECT = tr("Connect Gemini Notebook")
-T_NOTEBOOKLM_SYNC = tr("Sync Gemini Notebook")
-T_NOTEBOOKLM_OPEN = tr("Open Gemini Notebook")
+# The card is titled with the name, so its buttons do not repeat it: they must fit one row in every language.
+T_NOTEBOOKLM_SYNC = T_SYNC_NOW
+T_NOTEBOOKLM_OPEN = T_OPEN_FILE
 T_NOTEBOOKLM_INTRO = tr("Your course files are added after each sync.")
 T_NOTEBOOKLM_CHECKING = tr("Checking what is already in Gemini Notebook…")
 T_NOTEBOOKLM_WAITING = tr("Sign in to Google in the browser window.")

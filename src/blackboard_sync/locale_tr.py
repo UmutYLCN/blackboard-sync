@@ -652,14 +652,12 @@ CATALOG = {
         "Google oturumu bu bilgisayardan silinir. Gemini Notebook'taki dosyalar orada kalır, "
         "yenileri artık eklenmez.",
     "Connect Gemini Notebook": "Gemini Notebook'u bağla",
-    "Sync Gemini Notebook": "Gemini Notebook'a ekle",
     "Your course files are added after each sync.": "Ders dosyalarınız her senkrondan sonra eklenir.",
     "Checking what is already in Gemini Notebook…": "Gemini Notebook'ta nelerin olduğuna bakılıyor…",
     "Sign in to Google in the browser window.": "Tarayıcı penceresinde Google'da oturum açın.",
     "Adding {done} of {total}: {file}": "Ekleniyor {done}/{total}: {file}",
     "Gemini Notebook is reading the new files…": "Gemini Notebook yeni dosyaları okuyor…",
     "Checking the connection…": "Bağlantı kontrol ediliyor…",
-    "Open Gemini Notebook": "Gemini Notebook'u aç",
     "Google took the sign-in, but Gemini Notebook did not open. Try again.":
         "Google girişi kabul etti ama Gemini Notebook açılmadı. Yeniden deneyin.",
     "{n} new file added to your notebooks": "Defterlerinize {n} yeni dosya eklendi",

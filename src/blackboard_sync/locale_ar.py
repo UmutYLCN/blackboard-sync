@@ -652,14 +652,12 @@ CATALOG = {
         "ستُحذف جلسة Google من هذا الحاسوب. تبقى الملفات الموجودة في Gemini Notebook هناك، "
         "ولن تُضاف ملفات جديدة بعد الآن.",
     "Connect Gemini Notebook": "ربط Gemini Notebook",
-    "Sync Gemini Notebook": "مزامنة Gemini Notebook",
     "Your course files are added after each sync.": "تُضاف ملفات مقرراتك بعد كل مزامنة.",
     "Checking what is already in Gemini Notebook…": "جارٍ التحقق مما هو موجود في Gemini Notebook…",
     "Sign in to Google in the browser window.": "سجّل الدخول إلى Google في نافذة المتصفح.",
     "Adding {done} of {total}: {file}": "جارٍ إضافة {done} من {total}: {file}",
     "Gemini Notebook is reading the new files…": "يقرأ Gemini Notebook الملفات الجديدة…",
     "Checking the connection…": "جارٍ التحقق من الاتصال…",
-    "Open Gemini Notebook": "فتح Gemini Notebook",
     "Google took the sign-in, but Gemini Notebook did not open. Try again.":
         "قبل Google تسجيل الدخول، لكن Gemini Notebook لم يُفتح. حاول مرة أخرى.",
     "{n} new file added to your notebooks": "تمت إضافة {n} ملف جديد إلى دفاترك",

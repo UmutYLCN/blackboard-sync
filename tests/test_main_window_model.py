@@ -520,6 +520,8 @@ def test_notebooklm_offers_to_open_only_once_connected():
     assert not main_window_model.notebooklm_card(notebooklm_model(), NOW).open_action
     connected = main_window_model.notebooklm_card(notebooklm_model(connected=True), NOW)
     assert connected.open_action and connected.action == "notebooklm_sync"
+    # The card's title has the name; the buttons stay short, so both fit on one row in every language.
+    assert (connected.action_title, main_window_model.T_NOTEBOOKLM_OPEN) == ("Sync now", "Open")
     gone = main_window_model.notebooklm_card(notebooklm_model(connected=True, needs_login=True, message="x"), NOW)
     assert not gone.open_action and gone.action == "notebooklm_connect"
 
