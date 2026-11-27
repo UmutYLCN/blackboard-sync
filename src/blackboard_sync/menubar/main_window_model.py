@@ -203,7 +203,7 @@ def greeting(name: str, now: datetime, zone: tzinfo | None = None) -> str:
     else:
         text = tr("Good evening")
     first = first_name(name)
-    return f"{text}, {first}" if first else text
+    return tr("{greeting}, {name}").format(greeting=text, name=first) if first else text  # Arabic: "،"
 
 
 def deadline_subtitle(page: deadlines.DeadlinePage, now: datetime, zone: tzinfo | None = None) -> str:

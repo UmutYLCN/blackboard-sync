@@ -17,7 +17,7 @@ import re
 import secrets
 from pathlib import Path
 
-from blackboard_sync import ai_launcher
+from blackboard_sync import ai_launcher, i18n
 
 ASSETS = Path(__file__).with_name("webui")
 ICON_DIR = ASSETS / "icons"
@@ -79,6 +79,8 @@ def document(nonce: str | None = None, extra_style: str = "", extra_script: str 
              theme: str = "system") -> str:
     """The whole page; ``theme`` is ``Settings.theme`` (the page follows later changes itself).
 
+    ``lang`` is the app's language; a right-to-left one (Arabic) mirrors the page (``dir="rtl"``).
+
     ``extra_style``/``extra_script`` are for the preview only (its font, a fixed state).
     """
     nonce = nonce or new_nonce()
@@ -88,6 +90,7 @@ def document(nonce: str | None = None, extra_style: str = "", extra_script: str 
     before = f'<script nonce="{nonce}">{extra_script}</script>' if extra_script else ""
     replacements = {
         "{{LANG}}": lang,
+        "{{DIR}}": "rtl" if i18n.is_rtl(lang) else "ltr",
         "{{THEME}}": theme,
         "{{LOGO}}": logo(),
         "{{CSP}}": csp(nonce),

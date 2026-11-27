@@ -11,7 +11,7 @@ illustration is drawn by ``sync_scene_view.py``.
 from __future__ import annotations
 
 import sys
-from functools import lru_cache
+from functools import lru_cache, wraps
 from math import ceil
 from pathlib import Path
 from typing import Callable
@@ -139,7 +139,7 @@ from blackboard_sync.menubar.main_window_model import (
     reopen_hint,
 )
 from blackboard_sync.menubar.model import T_RECENT_EMPTY
-from blackboard_sync.i18n import tr
+from blackboard_sync.i18n import is_rtl, tr
 from blackboard_sync import announcements
 from blackboard_sync.menubar.main_window_model import ANNOUNCEMENTS
 from blackboard_sync.menubar.settings_form import (
@@ -176,6 +176,7 @@ from blackboard_sync.menubar.settings_form import (
 )
 from blackboard_sync.menubar.sync_scene_view import SyncSceneView, reduce_motion
 from blackboard_sync.menubar.school_picker import SchoolPicker
+from blackboard_sync.menubar import rtl_layout
 from blackboard_sync.menubar.presentation import configure_main_window, present_main_window
 from blackboard_sync.settings import AI_CLIS, AI_CODEX, display_path
 
@@ -252,6 +253,20 @@ EDIT_KEYS = {"x": "cut:", "c": "copy:", "v": "paste:", "a": "selectAll:", "z": "
 SubmitHandler = Callable[[FormValues, bool], "tuple[str, str] | None"]
 # Called with "sync", "folder", "login", "logout", "check_updates", "update" or "uninstall".
 ActionHandler = Callable[[str], None]
+
+
+# Arabic reads right to left: after each layout the window is mirrored (rtl_layout).
+RIGHT_TO_LEFT = is_rtl()
+
+
+def _mirrored(method):
+    """``method`` lays views out from the left; mirror them afterwards for a right-to-left language."""
+    @wraps(method)
+    def run(self, *args, **kwargs):
+        result = method(self, *args, **kwargs)
+        self._mirror()
+        return result
+    return run
 
 
 class _FlippedView(NSView):
@@ -887,6 +902,11 @@ class MainWindow:
         self.update_status(status)
         self.refresh_courses()  # the sidebar shows how many courses sync from the start
         self._show_section()
+        self._mirror()
+
+    def _mirror(self) -> None:
+        if RIGHT_TO_LEFT:
+            rtl_layout.mirror(self.window.contentView())
 
     # -- layout --------------------------------------------------------------
     def _build_sidebar(self, root) -> None:
@@ -1265,7 +1285,8 @@ class MainWindow:
         content.setFrame_(NSMakeRect(0, 0, LEFT_W, frame.size.height))
         changed = self._notebooklm_shown not in (None, card.kind)
         self._notebooklm_shown = card.kind
-        if not changed or reduce_motion() or not self.state.open:
+        # Right to left the frame is mirrored once laid out, which a slide in progress would undo.
+        if not changed or reduce_motion() or not self.state.open or RIGHT_TO_LEFT:
             box.setFrame_(frame)
             return
         content.setAlphaValue_(0.2)
@@ -1528,6 +1549,7 @@ class MainWindow:
         right_bottom = top + notify_height + GAP + calendar_height
         self.overview_scroll.documentView().setFrameSize_((PAGE, max(left_bottom, right_bottom) + PAD))
 
+    @_mirrored
     def reflow_overview(self) -> None:
         """The window's height changed: Home follows when that changes how many files fit."""
         if self.state.section == OVERVIEW and self._home_rows != self._fitting_rows():
@@ -1610,6 +1632,7 @@ class MainWindow:
         content.addSubview_(self.activity_scroll)
         page.addSubview_(self.activity_card)
 
+    @_mirrored
     def refresh_activity(self) -> None:
         self._place_state_header(self.activity_icon, self.activity_title, self.activity_detail,
                                  self.activity_scene, INNER)
@@ -1867,6 +1890,7 @@ class MainWindow:
         self.calendar_scroll.setAutoresizingMask_(NSViewHeightSizable)
         page.addSubview_(self.calendar_scroll)
 
+    @_mirrored
     def refresh_calendar(self) -> None:
         data = self.on_deadlines()
         colors = tuple(
@@ -1953,6 +1977,7 @@ class MainWindow:
         content.addSubview_(self.courses_scroll)
         page.addSubview_(self.courses_card)
 
+    @_mirrored
     def fit_to_screen(self, screen=None) -> None:
         """Open at the size that shows everything, but never taller than ``screen`` allows.
 
@@ -1975,6 +2000,7 @@ class MainWindow:
         self._layout_bar()
 
     # -- behaviour ------------------------------------------------------------
+    @_mirrored
     def show(self, section: str | None = None) -> None:
         """Open the window (or bring it forward) on ``section``; see ``WindowState.show``."""
         self.state.show(section)
@@ -1989,6 +2015,7 @@ class MainWindow:
                 0.25, self.target, "recentTick:", None, True)
             NSRunLoop.currentRunLoop().addTimer_forMode_(self._recent_timer, NSRunLoopCommonModes)
 
+    @_mirrored
     def select(self, section: str) -> None:
         self.state.select(section)
         self._show_section()
@@ -1999,6 +2026,7 @@ class MainWindow:
     def section(self) -> str:
         return self.state.section
 
+    @_mirrored
     def _show_section(self) -> None:
         self.school_picker.hide()
         section = self.state.section
@@ -2055,6 +2083,7 @@ class MainWindow:
             ai_resume=bool(self.ai_resume_switch.state()),
         )
 
+    @_mirrored
     def set_values(self, values: FormValues) -> None:
         """Show ``values`` as what is saved: the bar goes away."""
         self.school_picker.hide()
@@ -2075,6 +2104,7 @@ class MainWindow:
         self.ai_resume_switch.setState_(1 if values.ai_resume else 0)
         self.show_error("")
 
+    @_mirrored
     def changed(self, control) -> None:
         """A field was edited: keep its twin on the other section in step, then the bar."""
         if control is self.terminal_popup:
@@ -2103,6 +2133,7 @@ class MainWindow:
         self.form_scroll.setFrame_(NSMakeRect(0, top, PAGE, height - top - (BAR if visible else 0)))
         self.button_bar.setFrame_(NSMakeRect(0, height - BAR, PAGE, BAR))
 
+    @_mirrored
     def show_error(self, message: str) -> None:
         self.error = message
         self._layout_bar()
@@ -2112,10 +2143,12 @@ class MainWindow:
         self.start_message.setStringValue_(self.error or self.status.start_message)
         self.start_message.setTextColor_(NSColor.systemRedColor() if self.error else NSColor.secondaryLabelColor())
 
+    @_mirrored
     def discard(self) -> None:
         """Vazgeç: back to what is saved."""
         self.set_values(self.on_values())
 
+    @_mirrored
     def update_status(self, status: MainStatus) -> None:
         first_run_changed = status.first_run != self.status.first_run
         self.status = status
@@ -2261,9 +2294,11 @@ class MainWindow:
             size_label.setFrame_(NSMakeRect(width - 200, y + 18, 80, 17))
             document.addSubview_(size_label)
         if recent and recent.is_new:
-            pill = _pill(NSMakeRect(width - 104, y + 15, 52, 22),
+            # 52 points wide, or wider for a longer word ("NOUVEAU"); the right edge stays put.
+            badge = max(52, ceil(_label(T_NEW, 10, bold=True).fittingSize().width) + 12)
+            pill = _pill(NSMakeRect(width - 52 - badge, y + 15, badge, 22),
                          NSColor.colorWithSRGBRed_green_blue_alpha_(37 / 255, 99 / 255, 235 / 255, 1))
-            label = _centered(T_NEW, NSMakeRect(0, 0, 52, 22), 10, bold=True)
+            label = _centered(T_NEW, NSMakeRect(0, 0, badge, 22), 10, bold=True)
             label.setTextColor_(NSColor.whiteColor())
             pill.contentView().addSubview_(label)
             document.addSubview_(pill)
@@ -2281,6 +2316,7 @@ class MainWindow:
         more.setFrame_(NSMakeRect(width - 46, y + 12, 28, 28))
         document.addSubview_(more)
 
+    @_mirrored
     def observe_recent(self) -> None:
         active = (self.state.open and self.section == OVERVIEW and not self.status.first_run
                   and self.window.isVisible() and not self.window.isMiniaturized()
@@ -2294,6 +2330,7 @@ class MainWindow:
                            if index * ROW_HEIGHT < bottom and (index + 1) * ROW_HEIGHT > top]
         if self.recent_seen.observe(visible, active):
             self.on_seen()
+    @_mirrored
     def refresh_announcements(self) -> None:
         rows = self.on_announcements()
         colors = tuple(course_color_index(self.status.course_colors, row.course_code) for row in rows)
@@ -2331,6 +2368,7 @@ class MainWindow:
         document.setFrame_(NSMakeRect(0, 0, INNER, max(y, 1)))
         self.announcements_scroll.setDocumentView_(document)
 
+    @_mirrored
     def refresh_courses(self) -> None:
         """Draw Dersler again when the course list or a choice changed."""
         rows = self.on_courses()
@@ -2377,16 +2415,19 @@ class MainWindow:
         document.setFrame_(NSMakeRect(0, 0, width, height))
         self.courses_scroll.setDocumentView_(document)
 
+    @_mirrored
     def toggle_course(self, course_id: str, enabled: bool) -> None:
         self.on_course_toggle(course_id, enabled)
         self.refresh_courses()
 
+    @_mirrored
     def account_pressed(self) -> None:
         if self.status.form.account_action == "login":
             self.submit(login=True)  # sign in with the address in the field
         else:
             self.on_action(self.status.form.account_action)
 
+    @_mirrored
     def submit(self, login: bool) -> None:
         """Save the form (Kaydet, or before signing in); the window stays open either way."""
         error = self.on_submit(self.values(), login)
@@ -2401,6 +2442,7 @@ class MainWindow:
             target = self.url_field if field == "base_url" else self.dest_field
         self.window.makeFirstResponder_(target)
 
+    @_mirrored
     def choose_folder(self, sender=None) -> None:
         panel = NSOpenPanel.openPanel()
         panel.setCanChooseDirectories_(True)

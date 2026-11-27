@@ -1,6 +1,7 @@
-"""The language setting: every text has its Turkish, and the app starts in the saved language."""
+"""The language setting: every text has its translation in every language, and the app starts in the saved one."""
 
 import ast
+import importlib
 import json
 import os
 import string
@@ -11,11 +12,16 @@ from pathlib import Path
 import pytest
 
 from blackboard_sync import i18n
-from blackboard_sync.locale_tr import CATALOG
 from blackboard_sync.menubar import jobs, settings_form
 from blackboard_sync.settings import Settings, load_settings, save_settings
 
-SRC = Path(__file__).resolve().parents[1] / "src" / "blackboard_sync"
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src" / "blackboard_sync"
+TRANSLATED = [code for code, _ in i18n.LANGUAGES if code != i18n.ENGLISH]
+
+
+def catalog_of(code: str) -> dict[str, str]:
+    return importlib.import_module(f"blackboard_sync.locale_{code}").CATALOG
 
 
 def source_texts() -> dict[str, str]:
@@ -37,17 +43,47 @@ def fields(text: str) -> set[str]:
     return {name for _, name, _, _ in string.Formatter().parse(text) if name is not None}
 
 
-def test_every_text_has_turkish_with_the_same_fields():
+def test_the_settings_menu_lists_every_language_in_itself():
+    assert i18n.LANGUAGES == (("en", "English"), ("tr", "Türkçe"), ("es", "Español"), ("fr", "Français"),
+                              ("de", "Deutsch"), ("ar", "العربية"))
+    assert i18n.RTL_LANGUAGES == {"ar"}
+
+
+@pytest.mark.parametrize("code", TRANSLATED)
+def test_every_text_has_a_translation_with_the_same_fields(code):
+    catalog = catalog_of(code)
     texts = source_texts()
-    missing = [f"{where}: {text!r}" for text, where in texts.items() if text not in CATALOG]
-    assert not missing, "No Turkish for:\n" + "\n".join(missing)
-    wrong = [text for text in texts if fields(CATALOG[text]) != fields(text)]
-    assert not wrong, f"Turkish with other {{fields}}: {wrong}"
-    assert all(CATALOG[text].strip() for text in texts)
+    missing = [f"{where}: {text!r}" for text, where in texts.items() if text not in catalog]
+    assert not missing, f"No {code} for:\n" + "\n".join(missing)
+    wrong = [text for text in texts if fields(catalog[text]) != fields(text)]
+    assert not wrong, f"{code} with other {{fields}}: {wrong}"
+    assert all(isinstance(catalog[text], str) and catalog[text].strip() for text in texts)
 
 
-def test_catalog_has_no_unused_entries():
-    assert set(CATALOG) - set(source_texts()) == set()
+@pytest.mark.parametrize("code", TRANSLATED)
+def test_catalog_has_no_unused_entries(code):
+    assert set(catalog_of(code)) - set(source_texts()) == set()
+
+
+@pytest.mark.parametrize("spec", ["blackboard_sync.spec", "blackboard_sync_windows.spec"])
+def test_frozen_apps_bundle_every_catalog(spec):
+    """The catalogs are imported by name, which PyInstaller cannot see; the specs list them."""
+    text = (ROOT / "packaging" / spec).read_text(encoding="utf-8")
+    assert all(f'"blackboard_sync.locale_{code}"' in text for code in TRANSLATED)
+
+
+def test_only_the_chosen_language_is_loaded():
+    code = (
+        "import sys\n"
+        "from blackboard_sync import i18n\n"
+        "i18n.set_language('de')\n"
+        "i18n.tr('Sync now')\n"
+        "print(sorted(m for m in sys.modules if m.startswith('blackboard_sync.locale_')))\n"
+    )
+    env = {**os.environ, "PYTHONPATH": str(SRC.parent), i18n.LANGUAGE_ENV: "en"}
+    proc = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "['blackboard_sync.locale_de']"
 
 
 @pytest.fixture
@@ -55,6 +91,19 @@ def turkish():
     i18n.set_language(i18n.TURKISH)
     yield
     i18n.set_language(i18n.ENGLISH)
+
+
+@pytest.mark.parametrize("code", TRANSLATED)
+def test_tr_uses_the_chosen_languages_catalog(code):
+    i18n.set_language(code)
+    try:
+        assert i18n.tr("Sync now") == catalog_of(code)["Sync now"] != "Sync now"
+        assert i18n.ntr("{n} file", "{n} files", 1) == catalog_of(code)["{n} file"]
+        assert i18n.ntr("{n} file", "{n} files", 2) == catalog_of(code)["{n} files"]
+        assert i18n.is_rtl() == (code == "ar")
+    finally:
+        i18n.set_language(i18n.ENGLISH)
+    assert not i18n.is_rtl()
 
 
 def test_tr_and_ntr(turkish):
@@ -81,7 +130,9 @@ def test_saved_language_reads_settings_json(tmp_path):
     assert i18n.saved_language(env) == "en"  # nothing saved yet
     (tmp_path / "settings.json").write_text(json.dumps({"language": "tr"}), encoding="utf-8")
     assert i18n.saved_language(env) == "tr"
-    (tmp_path / "settings.json").write_text(json.dumps({"language": "de"}), encoding="utf-8")
+    (tmp_path / "settings.json").write_text(json.dumps({"language": "ar"}), encoding="utf-8")
+    assert i18n.saved_language(env) == "ar"
+    (tmp_path / "settings.json").write_text(json.dumps({"language": "pt"}), encoding="utf-8")
     assert i18n.saved_language(env) == "en"  # unknown: English
     (tmp_path / "settings.json").write_text("{broken", encoding="utf-8")
     assert i18n.saved_language(env) == "en"
@@ -98,13 +149,16 @@ def test_settings_keep_the_language(tmp_path):
     assert load_settings(tmp_path).language == "en"
 
 
-def test_form_offers_both_languages_and_reports_a_change(tmp_path):
+def test_form_offers_every_language_and_reports_a_change(tmp_path):
     current = Settings("https://bb.example.edu", tmp_path)
     values = settings_form.initial_values(current, current, autostart=False)
     assert values.language == "en"
-    assert [name for _, name in settings_form.LANGUAGE_OPTIONS] == ["English", "Türkçe"]
+    assert [name for _, name in settings_form.LANGUAGE_OPTIONS] == [
+        "English", "Türkçe", "Español", "Français", "Deutsch", "العربية"]
     assert settings_form.language_code("Türkçe") == "tr"
     assert settings_form.language_title("tr") == "Türkçe"
+    for code, name in i18n.LANGUAGES:
+        assert settings_form.language_code(name) == code and settings_form.language_title(code) == name
     assert not settings_form.submit(values, current).language_changed
     values.language = "tr"
     submission = settings_form.submit(values, current)

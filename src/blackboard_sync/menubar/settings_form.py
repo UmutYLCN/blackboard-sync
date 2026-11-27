@@ -61,7 +61,7 @@ def interval_title(minutes: int) -> str:
 
 
 T_LANGUAGE_LABEL = tr("Language")
-# Each language is named in itself, so a student can find theirs in either language.
+# Each language is named in itself, so a student can find theirs whatever the app is showing.
 LANGUAGE_OPTIONS = LANGUAGES
 T_LANGUAGE_RESTART_TITLE = tr("Restart Blackboard Sync to change the language?")
 T_LANGUAGE_RESTART = tr("The new language is used once the app starts again.")

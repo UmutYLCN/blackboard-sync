@@ -1,6 +1,6 @@
 """Render the Windows WebView2 main window with invented data, without Windows or signing in.
 
-PYTHONPATH=src python scripts/webui-preview.py [--lang en|tr] [--out DIR] [--font FILE.woff2]
+PYTHONPATH=src python scripts/webui-preview.py [--lang en|tr|es|fr|de|ar] [--out DIR] [--font FILE.woff2]
            [--state NAME ...] [--html-only]
 
 Writes one HTML file per state to DIR and, unless --html-only, Playwright screenshots in
@@ -24,7 +24,7 @@ THEMES = ("light", "dark")
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--lang", default="en", choices=("en", "tr"))
+    parser.add_argument("--lang", default="en", choices=("en", "tr", "es", "fr", "de", "ar"))
     parser.add_argument("--out", type=Path, default=Path("docs/screenshots/windows-webui"))
     parser.add_argument("--font", type=Path, action="append", default=[],
                         help="a .woff2 used in place of Segoe UI (repeat for more files of one family)")

@@ -30,6 +30,8 @@
     note: "article",
     other: "draft",
   };
+  // Icons that point along the reading direction; a right-to-left page turns them round (app.css).
+  const MIRRORED_ICONS = new Set(["chevron_right", "open_in_new", "login", "logout"]);
   const RECENT_SAMPLE_MS = 500; // under the 1 s gap after which RecentSeen starts the exposure over
 
   let state = null;
@@ -60,7 +62,8 @@
 
   function icon(name, cls) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("class", cls ? `icon ${cls}` : "icon");
+    const classes = ["icon", MIRRORED_ICONS.has(name) ? "mirror" : null, cls].filter(Boolean);
+    svg.setAttribute("class", classes.join(" "));
     svg.setAttribute("aria-hidden", "true");
     const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
     use.setAttribute("href", `#i-${name}`);
@@ -105,7 +108,9 @@
     const box = anchor.getBoundingClientRect();
     const width = menu.offsetWidth;
     const height = menu.offsetHeight;
-    const left = Math.max(8, Math.min(box.right - width, window.innerWidth - width - 8));
+    // The menu lines up with the anchor's far edge: its right one, or its left one right to left.
+    const edge = document.documentElement.dir === "rtl" ? box.left : box.right - width;
+    const left = Math.max(8, Math.min(edge, window.innerWidth - width - 8));
     const below = box.bottom + 6;
     const top = below + height > window.innerHeight - 8 ? Math.max(8, box.top - height - 6) : below;
     menu.style.left = `${left}px`;
@@ -261,9 +266,24 @@
     return h("span", { class: `file-chip ${kind}` }, icon(FILE_ICONS[kind] || FILE_ICONS.other));
   }
 
+  // A row's grey line. Right to left, each of its "·" parts reads in its own direction, so an
+  // English course name is shortened at its end, not at its start (the line's end is on the left).
+  function detailLine(text, props) {
+    if (document.documentElement.dir !== "rtl" || !text || !text.includes(" · ")) {
+      return h("div", { class: "row-detail", text, ...props });
+    }
+    // Only the longest part (the course's name, not a date or a time) is shortened.
+    const texts = text.split(" · ");
+    const longest = texts.reduce((best, part, index) => (part.length > texts[best].length ? index : best), 0);
+    const parts = texts.flatMap((part, index) => [
+      index ? h("span", { class: "detail-dot", text: "·" }) : null,
+      h("bdi", { class: index === longest ? "detail-part" : "detail-part whole", text: part })]);
+    return h("div", { class: "row-detail parts", ...props }, parts);
+  }
+
   function courseDetail(row) {
     if (!row.course_code || row.color == null) {
-      return h("div", { class: "row-detail", text: row.detail, title: row.detail });
+      return detailLine(row.detail, { title: row.detail });
     }
     const meta = row.course_title && row.when
       ? h("span", { class: "row-course-meta" },
@@ -525,8 +545,10 @@
 
   function field(name, props) {
     const error = state.settings.error_field === name && state.settings.error;
+    // A folder path reads left to right in any language.
+    const classes = ["input", error ? "invalid" : null, name === "dest" ? "ltr" : null].filter(Boolean);
     const input = h("input", {
-      class: error ? "input invalid" : "input", type: "text", value: edits[name], "data-key": `field-${name}`,
+      class: classes.join(" "), type: "text", value: edits[name], "data-key": `field-${name}`,
       spellcheck: "false", oninput: (event) => { edits[name] = event.target.value; drawSaveBar(); }, ...props,
     });
     return name === "base_url" ? schoolField(input) : input;
@@ -624,7 +646,7 @@
       }),
       h("span", { class: "row-text" },
         h("div", { class: "row-title", text: row.title }),
-        h("div", { class: "row-detail", text: row.detail })))))
+        detailLine(row.detail)))))
         : h("div", { class: "empty", text: data.empty }),
       data.termless ? h("p", { class: "hint", text: data.termless }) : null);
   }

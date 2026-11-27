@@ -14,7 +14,7 @@ Downloads your Blackboard course content to your computer automatically.
 - **Courses:** Untick a course you don't want and it is no longer synced. The folder is a copy of Blackboard; deleted or damaged files come back by themselves.
 - **Pause:** Stop syncing whenever you like and resume with one click.
 - **One-click updates:** When a new version is out you get a notification; just press **Update**.
-- **English or Turkish:** Pick the app's language in Settings (English / Türkçe).
+- **Six languages:** Pick the app's language in Settings: English, Türkçe, Español, Français, Deutsch or العربية (right to left).
 - **Light or dark (Windows):** Follow Windows or pick a theme in Settings → Appearance.
 - **Easy uninstall:** Remove the app and its data with one button in Settings.
 
