@@ -125,7 +125,7 @@ MOVE_JOB = "move"
 SESSION_JOB = "session"
 
 # The things the NotebookLM slot runs (``AppModel.notebooklm_busy``).
-NOTEBOOKLM_CONNECT, NOTEBOOKLM_SYNC, NOTEBOOKLM_DUPLICATES = "connect", "sync", "duplicates"
+NOTEBOOKLM_CONNECT, NOTEBOOKLM_SYNC = "connect", "sync"
 
 # What happens to the downloaded files when the destination folder changes:
 # move them over, or download them again into the new folder (the old one is
@@ -712,6 +712,7 @@ class AppModel:
         auto_relogin: bool = True,
         ai_cli: str = "",
         ai_resume: bool = True,
+        ai_terminal: str = "",
     ):
         self.dest = dest  # the folder the student chose; the files are in ``root``
         self.session = session
@@ -736,13 +737,15 @@ class AppModel:
         from blackboard_sync.notebooklm.store import NotebookLMStatus
         self.notebooklm = NotebookLMStatus()
         # Beside the job slot, like the calendar: uploads take minutes and must never hold up a sync.
-        self.notebooklm_busy: str | None = None  # NOTEBOOKLM_CONNECT | NOTEBOOKLM_SYNC | NOTEBOOKLM_DUPLICATES
+        self.notebooklm_busy: str | None = None  # NOTEBOOKLM_CONNECT | NOTEBOOKLM_SYNC
         self.notebooklm_progress = None  # main_window_model.NotebookLMProgress of the running job
         self.notebooklm_again = False  # a sync finished during a run: look again once it ends
         # The AI tools found on this computer (``ai_launcher.Detector.installed``); None: not looked for yet.
         self.ai_installed: frozenset[str] | None = None
-        self.ai_cli = ai_cli
+        self.ai_terminals: frozenset[str] | None = None  # the same for ``ai_launcher.TERMINAL_DETECTOR``
+        self.ai_cli = ai_cli  # the tool used last
         self.ai_resume = ai_resume
+        self.ai_terminal = ai_terminal  # the chosen terminal; "" the system's own
         self.ai_term = ""  # current term folder name ("2026-2027 Güz"), or root.name before the first sync
         self.ai_launching = False
         self.ai_result: ai_launcher.LaunchResult | None = None
@@ -1030,7 +1033,6 @@ class AppModel:
         now: datetime | None = None,
         dest_choice: str | None = None,
         auto_relogin: bool | None = None,
-        ai_cli: str | None = None,
         ai_resume: bool | None = None,
     ) -> None:
         """The settings window was saved.
@@ -1056,10 +1058,6 @@ class AppModel:
             if interval != self.sync_interval:
                 self.sync_interval = interval
                 self.reschedule(now or datetime.now(timezone.utc))
-        if ai_cli is not None:
-            if ai_cli != self.ai_cli:
-                self.ai_result = None
-            self.ai_cli = ai_cli
         if ai_resume is not None:
             self.ai_resume = ai_resume
         if sync_root(dest) != self.root:
@@ -1216,6 +1214,25 @@ class AppModel:
             lines.append(self.note)
         return lines
 
+    def finish_ai_detection(self, installed: frozenset[str] | None, terminals: frozenset[str] | None) -> None:
+        """What the last search found; a tool that is back clears "not installed"."""
+        self.ai_installed, self.ai_terminals = installed, terminals
+        result = self.ai_result
+        if (result is not None and result.failure == ai_launcher.Failure.CLI_MISSING and result.tool is not None
+                and installed is not None and result.tool.key in installed):
+            self.ai_result = None
+
+    def choose_ai_terminal(self, key: str) -> None:
+        """The card's terminal picker: what failed in the other one is no longer news."""
+        self.ai_terminal = key
+        self.ai_result = None
+
+    def finish_ai_launch(self, result: ai_launcher.LaunchResult) -> None:
+        self.ai_launching = False
+        self.ai_result = None if result.ok else result
+        if result.ok and result.tool is not None:
+            self.ai_cli = result.tool.key
+
     def current_ai_term(self) -> str:
         """Current term folder's name for the AI card and menu item; the University folder before the first sync."""
         if self.ai_term:
@@ -1253,7 +1270,7 @@ class AppModel:
         # Nothing syncs by itself in manual mode, so the button comes first.
         head = ([*top, sync, pause, *status, MenuEntry()] if self.sync_interval is None
                 else [*top, *status, MenuEntry(), sync, pause])
-        ai_tool = ai_launcher.TOOLS.get(self.ai_cli)
+        ai_tool = ai_launcher.preferred_tool(self.ai_cli, self.ai_installed)
         ai_entry = ([MenuEntry(tr("Open {name} in {term}").format(name=ai_tool.name, term=self.current_ai_term()),
                                "ai_open", enabled=not self.ai_launching)]
                     if ai_tool is not None else [])

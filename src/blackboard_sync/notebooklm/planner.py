@@ -258,7 +258,7 @@ def plan_course(course: CourseScan, state: store.UploadState, *, matches: list, 
             plan.actions.append(FileAction(info, MODIFIED, digest))
         else:
             new.append(info)
-    known = {source_id: known.sha256 for source_id, known in state.known_sources(course.folder).items()}
+    known = state.known_sources(course.folder)
     plan.actions.extend(place_new_files(new, sources, known))
     plan.actions.sort(key=lambda action: action.file.rel)
     if plan.overflow:

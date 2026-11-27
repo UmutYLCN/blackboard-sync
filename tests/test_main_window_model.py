@@ -818,76 +818,124 @@ def test_open_item_url_accepts_only_school_urls():
 
 # -- AI study session card on Home -----------------------------------------------------------------
 
-@pytest.mark.parametrize("language, title, detail, button", [
-    ("en", "AI study session", "Choose Claude, Gemini or Codex in Settings.", "Choose"),
-    ("tr", "Yapay zekâ ile çalış", "Ayarlar'dan Claude, Gemini veya Codex'i seçin.", "Seç"),
-])
-def test_ai_card_when_no_ai_is_chosen(monkeypatch, language, title, detail, button):
-    monkeypatch.setattr(i18n, "_language", language)
-    card = main_window_model.ai_card(synced())
-    assert card.kind == main_window_model.AI_OFF
-    assert not card.warning and card.enabled
-    assert (card.title, card.detail) == (title, detail)
-    assert (card.action, card.action_title) == ("ai_settings", button)
-    assert not card.secondary_action
-
-
-@pytest.mark.parametrize("language, resume, detail, button", [
-    ("en", True, "Opens 2026-2027 Güz in Claude Code, continuing your last session there.", "Open in Claude Code"),
-    ("en", False, "Opens 2026-2027 Güz in Claude Code, starting a new session.", "Open in Claude Code"),
-    ("tr", True, "2026-2027 Güz klasörünü Claude Code ile açar, oradaki son oturumdan devam eder.", "Claude Code ile aç"),
-    ("tr", False, "2026-2027 Güz klasörünü Claude Code ile açar, yeni bir oturum başlatır.", "Claude Code ile aç"),
-])
-def test_ai_card_ready_names_the_term_and_tool(monkeypatch, language, resume, detail, button):
-    monkeypatch.setattr(i18n, "_language", language)
-    model = synced(ai_cli="claude", ai_resume=resume)
+def ai_model(installed=("claude", "gemini", "codex"), terminals=("terminal", "iterm2", "kitty"), **options):
+    """A synced model after the app has looked for the tools and terminals."""
+    model = synced(**options)
     model.ai_term = "2026-2027 Güz"
-    model.ai_installed = frozenset({"claude"})
-    card = main_window_model.ai_card(model)
-    assert card.kind == main_window_model.AI_READY and not card.warning and card.enabled
-    assert card.detail == detail
-    assert (card.action, card.action_title) == ("ai_open", button)
-    assert not card.secondary_action
+    model.finish_ai_detection(frozenset(installed), frozenset(terminals))
+    return model
+
+
+def test_ai_card_before_the_first_look_has_no_buttons():
+    card = main_window_model.ai_card(synced())
+    assert (card.kind, card.detail) == (main_window_model.AI_OFF, "Looking for AI tools…")
+    assert not card.warning and not card.action and not card.secondary_action
+    assert card.tools == () and card.terminals == ()
+
+
+@pytest.mark.parametrize("installed, labels", [
+    (("claude", "gemini", "codex"), ["Open in Claude Code", "Open in Gemini CLI", "Open in Codex"]),
+    (("codex", "claude"), ["Open in Claude Code", "Open in Codex"]),
+    (("gemini",), ["Open in Gemini CLI"]),
+])
+def test_ai_card_has_a_button_per_installed_tool_only(installed, labels):
+    card = main_window_model.ai_card(ai_model(installed))
+    assert card.kind == main_window_model.AI_READY and not card.action and not card.secondary_action
+    assert [tool.label for tool in card.tools] == labels
+    assert [tool.action for tool in card.tools] == [f"ai_open:{tool.key}" for tool in card.tools]
+    assert card.tools_enabled
+
+
+def test_ai_card_marks_the_tool_used_last():
+    card = main_window_model.ai_card(ai_model(ai_cli="codex"))
+    assert [tool.key for tool in card.tools if tool.current] == ["codex"]
+    assert not any(tool.current for tool in main_window_model.ai_card(ai_model()).tools)
+
+
+@pytest.mark.parametrize("language, resume, detail", [
+    ("en", True, "Click a tool to open 2026-2027 Güz, continuing your last session there."),
+    ("en", False, "Click a tool to open 2026-2027 Güz in a new session."),
+    ("tr", True, "Bir araca tıklayın: 2026-2027 Güz açılır, oradaki son oturumunuz sürer."),
+    ("tr", False, "Bir araca tıklayın: 2026-2027 Güz yeni bir oturumla açılır."),
+])
+def test_ai_card_ready_names_the_term(monkeypatch, language, resume, detail):
+    monkeypatch.setattr(i18n, "_language", language)
+    assert main_window_model.ai_card(ai_model(ai_resume=resume)).detail == detail
 
 
 def test_ai_card_falls_back_to_university_folder_before_first_sync():
-    model = synced(ai_cli="codex", ai_resume=True)
+    model = ai_model()
+    model.ai_term = ""
+    assert main_window_model.ai_card(model).detail == (
+        "Click a tool to open University, continuing your last session there.")
+
+
+@pytest.mark.parametrize("chosen, terminals, used, note", [
+    ("", ("terminal", "iterm2", "kitty"), "terminal", ""),
+    ("kitty", ("terminal", "iterm2", "kitty"), "kitty", ""),
+    ("ghostty", ("terminal", "kitty"), "terminal", "Ghostty wasn't found. Using Terminal instead."),
+    ("", ("powershell", "cmd"), "powershell", ""),
+    ("windows_terminal", ("powershell", "cmd"), "powershell",
+     "Windows Terminal wasn't found. Using PowerShell instead."),
+])
+def test_ai_card_lists_the_terminals_and_falls_back_from_a_missing_one(chosen, terminals, used, note):
+    card = main_window_model.ai_card(ai_model(terminals=terminals, ai_terminal=chosen))
+    assert [key for key, _name in card.terminals] == [key for key in ("terminal", "iterm2", "kitty", "powershell", "cmd")
+                                                      if key in terminals]
+    assert (card.terminal, card.note) == (used, note)
+
+
+def test_choosing_a_terminal_clears_the_last_failure():
+    from blackboard_sync import ai_launcher
+
+    model = ai_model()
+    model.ai_result = ai_launcher.LaunchResult(ai_launcher.Failure.TERMINAL_FAILED, ai_launcher.TOOLS["claude"])
+    model.choose_ai_terminal("kitty")
     card = main_window_model.ai_card(model)
-    assert card.kind == main_window_model.AI_READY
-    assert card.detail == "Opens University in Codex, continuing your last session there."
-    assert card.action_title == "Open in Codex"
+    assert card.kind == main_window_model.AI_READY and card.terminal == "kitty"
 
 
-@pytest.mark.parametrize("language, button", [("en", "Opening…"), ("tr", "Açılıyor…")])
-def test_ai_card_disables_button_while_launching(monkeypatch, language, button):
+@pytest.mark.parametrize("language, detail", [("en", "Opening…"), ("tr", "Açılıyor…")])
+def test_ai_card_disables_buttons_while_launching(monkeypatch, language, detail):
     monkeypatch.setattr(i18n, "_language", language)
-    model = synced(ai_cli="gemini")
-    model.ai_term = "2026-2027 Güz"
+    model = ai_model()
     model.ai_launching = True
     card = main_window_model.ai_card(model)
-    assert card.kind == main_window_model.AI_LAUNCHING and not card.enabled and not card.warning
-    assert (card.action, card.action_title) == ("ai_open", button)
+    assert card.kind == main_window_model.AI_LAUNCHING and not card.warning
+    assert card.detail == detail and card.tools and not card.tools_enabled
 
 
-@pytest.mark.parametrize("via", ["installed", "result"])
 @pytest.mark.parametrize("language, detail, primary, secondary", [
-    ("en", "Gemini CLI is not installed. Install it, then try again.", "How to install", "Try again"),
-    ("tr", "Gemini CLI kurulu değil. Kurup yeniden deneyin.", "Nasıl kurulur", "Yeniden dene"),
+    ("en", "No AI tool is installed. Install Claude Code, Gemini CLI or Codex, then try again.",
+     "How to install", "Try again"),
+    ("tr", "Kurulu bir yapay zekâ aracı yok. Claude Code, Gemini CLI veya Codex'i kurup yeniden deneyin.",
+     "Nasıl kurulur", "Yeniden dene"),
 ])
-def test_ai_card_when_cli_is_missing(monkeypatch, via, language, detail, primary, secondary):
+def test_ai_card_without_any_tool_says_how_to_install_one(monkeypatch, language, detail, primary, secondary):
+    monkeypatch.setattr(i18n, "_language", language)
+    card = main_window_model.ai_card(ai_model(installed=()))
+    assert card.kind == main_window_model.AI_ATTENTION and card.warning and card.detail == detail
+    assert (card.action, card.action_title) == ("ai_install", primary)
+    assert (card.secondary_action, card.secondary_title) == ("ai_detect", secondary)
+    assert card.tools == () and card.terminals == ()
+
+
+@pytest.mark.parametrize("language, detail", [
+    ("en", "Gemini CLI is not installed. Install it, then try again."),
+    ("tr", "Gemini CLI kurulu değil. Kurup yeniden deneyin."),
+])
+def test_ai_card_when_the_clicked_tool_is_gone(monkeypatch, language, detail):
     from blackboard_sync import ai_launcher
 
     monkeypatch.setattr(i18n, "_language", language)
-    model = synced(ai_cli="gemini")
-    if via == "installed":
-        model.ai_installed = frozenset({"claude"})
-    else:
-        model.ai_result = ai_launcher.LaunchResult(ai_launcher.Failure.CLI_MISSING, ai_launcher.TOOLS["gemini"])
+    model = ai_model(installed=("claude",))
+    model.finish_ai_launch(ai_launcher.LaunchResult(ai_launcher.Failure.CLI_MISSING, ai_launcher.TOOLS["gemini"]))
     card = main_window_model.ai_card(model)
-    assert card.kind == main_window_model.AI_ATTENTION and card.warning
-    assert card.detail == detail
-    assert (card.action, card.action_title) == ("ai_install", primary)
-    assert (card.secondary_action, card.secondary_title) == ("ai_open", secondary)
+    assert card.kind == main_window_model.AI_ATTENTION and card.detail == detail
+    assert (card.action, card.secondary_action) == ("ai_install", "ai_detect")
+    assert [tool.key for tool in card.tools] == ["claude"]
+    model.finish_ai_detection(frozenset({"claude", "gemini"}), model.ai_terminals)  # installed since
+    assert main_window_model.ai_card(model).kind == main_window_model.AI_READY
 
 
 @pytest.mark.parametrize("language, detail", [
@@ -898,13 +946,12 @@ def test_ai_card_when_folder_is_missing_offers_sync_and_clears_after_sync(monkey
     from blackboard_sync import ai_launcher
 
     monkeypatch.setattr(i18n, "_language", language)
-    model = synced(ai_cli="claude")
-    model.ai_installed = frozenset({"claude"})
-    model.ai_result = ai_launcher.LaunchResult(
+    model = ai_model()
+    model.finish_ai_launch(ai_launcher.LaunchResult(
         ai_launcher.Failure.FOLDER_MISSING, ai_launcher.TOOLS["claude"], DEST / "University" / "2026-2027 Güz",
-    )
+    ))
     card = main_window_model.ai_card(model)
-    assert card.kind == main_window_model.AI_ATTENTION and card.warning
+    assert card.kind == main_window_model.AI_ATTENTION and card.warning and card.tools
     assert card.detail == detail
     assert (card.action, card.action_title) == ("sync", i18n.tr("Sync now"))
 
@@ -920,20 +967,25 @@ def test_ai_card_when_folder_is_missing_offers_sync_and_clears_after_sync(monkey
     ("tr", "Terminal yok", "Terminal açılamadı: Terminal yok"),
     ("tr", "", "Terminal açılamadı."),
 ])
-def test_ai_card_shows_terminal_failure_and_keeps_open_pill(monkeypatch, language, error, expected):
+def test_ai_card_shows_terminal_failure_and_keeps_the_buttons(monkeypatch, language, error, expected):
     from blackboard_sync import ai_launcher
 
     monkeypatch.setattr(i18n, "_language", language)
-    model = synced(ai_cli="codex")
-    model.ai_installed = frozenset({"codex"})
-    model.ai_result = ai_launcher.LaunchResult(
+    model = ai_model()
+    model.finish_ai_launch(ai_launcher.LaunchResult(
         ai_launcher.Failure.TERMINAL_FAILED, ai_launcher.TOOLS["codex"], DEST / "University" / "2026-2027 Güz", error,
-    )
+    ))
     card = main_window_model.ai_card(model)
     assert card.kind == main_window_model.AI_ATTENTION and card.warning
     assert card.detail == expected
-    assert card.action == "ai_open" and card.enabled
+    assert card.tools and card.tools_enabled and not card.action
+    assert model.ai_cli == ""  # a launch that failed does not become the tool used last
 
-    # Switching the chosen tool clears the old tool's failure.
-    model.apply_settings(DEST, school_changed=False, ai_cli="claude")
-    assert model.ai_result is None
+
+def test_a_launch_that_works_remembers_the_tool():
+    from blackboard_sync import ai_launcher
+
+    model = ai_model(ai_cli="claude")
+    model.ai_launching = True
+    model.finish_ai_launch(ai_launcher.LaunchResult(None, ai_launcher.TOOLS["gemini"]))
+    assert (model.ai_cli, model.ai_launching, model.ai_result) == ("gemini", False, None)

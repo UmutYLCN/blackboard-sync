@@ -1,16 +1,10 @@
 """The Settings page as data: which sections and rows it has, and what changes while the app runs."""
 
-from dataclasses import fields, replace
-from datetime import datetime, timezone
+from dataclasses import fields
 
-import pytest
-
-from blackboard_sync import i18n, uninstall
+from blackboard_sync import uninstall
 from blackboard_sync.gcal import CalendarStatus
 from blackboard_sync.menubar import settings_form as f
-from blackboard_sync.menubar.model import AppModel
-from blackboard_sync.notebooklm.store import NotebookLMStatus
-from blackboard_sync.windows import webui_state
 from blackboard_sync.menubar.settings_form import (
     SECTION_AI,
     CONTROL_BUTTON,
@@ -37,41 +31,10 @@ from blackboard_sync.menubar.settings_form import SECTION_NOTEBOOKLM
 def test_the_notebooklm_section_has_connection_controls_and_footer():
     assert SECTION_NOTEBOOKLM not in [section.key for section in settings_sections(appearance=True)]
     section = next(s for s in settings_sections(notebooklm=True) if s.key == SECTION_NOTEBOOKLM)
-    assert [row.key for row in section.rows] == ["notebooklm_auto", "notebooklm_duplicates", "notebooklm_disconnect"]
+    assert [row.key for row in section.rows] == ["notebooklm_auto", "notebooklm_disconnect"]
     assert section.rows[0].title == "Add new files to NotebookLM after each sync"
-    assert "unofficial" in section.footer
-
-
-@pytest.mark.parametrize("language, skipped, modified, expected", [
-    ("en", 29, 31, "29 files can't go to NotebookLM: their format isn't supported, or they're missing, empty "
-                   "or over 200 MB. 31 files changed after they were added; NotebookLM keeps the version it has."),
-    ("en", 1, 0, "1 file can't go to NotebookLM: its format isn't supported, or it's missing, empty or over 200 MB."),
-    ("en", 0, 1, "1 file changed after it was added; NotebookLM keeps the version it has."),
-    ("en", 0, 0, ""),
-    ("tr", 29, 31, "29 dosya NotebookLM'e eklenemiyor: biçimi desteklenmiyor ya da dosya bulunamadı, boş veya "
-                   "200 MB'tan büyük. 31 dosya eklendikten sonra değişti; NotebookLM elindeki sürümü tutuyor."),
-    ("tr", 2, 0, "2 dosya NotebookLM'e eklenemiyor: biçimi desteklenmiyor ya da dosya bulunamadı, boş veya "
-                 "200 MB'tan büyük."),
-    ("tr", 0, 0, ""),
-])
-def test_notebooklm_settings_explain_totals_after_a_check(monkeypatch, tmp_path, language, skipped, modified,
-                                                          expected):
-    monkeypatch.setattr(i18n, "_language", language)
-    now = datetime(2026, 11, 26, tzinfo=timezone.utc)
-    model = AppModel(tmp_path, now)
-    model.notebooklm = NotebookLMStatus(connected=True)
-    values = FormValues("", str(tmp_path), True)
-
-    def section_totals():
-        settings = webui_state.settings(f.window_status(model), values, ("", ""), False, "system")
-        return next(section["totals"] for section in settings["sections"] if section["key"] == SECTION_NOTEBOOKLM)
-
-    assert section_totals() == ""
-    model.notebooklm = replace(model.notebooklm, finished_at=now.isoformat(), skipped=skipped,
-                                modified=modified)
-    assert section_totals() == expected
-    model.notebooklm = NotebookLMStatus()
-    assert section_totals() == ""
+    assert section.footer == "Unofficial connection: it may stop working if Google changes NotebookLM."
+    assert [row.detail for row in section.rows] == ["", "Files in NotebookLM stay there."]
 
 
 def all_rows():
@@ -99,7 +62,7 @@ def test_the_rows_of_each_section():
         SECTION_ACCOUNT: ["base_url", "account"],
         SECTION_SYNC: ["interval", "autostart", "language"],
         SECTION_CALENDAR: ["google_calendar", "google_calendar_sync", "google_calendar_disconnect"],
-        SECTION_AI: ["ai_cli", "ai_resume"],
+        SECTION_AI: ["ai_resume"],
         SECTION_FOLDER: ["dest"],
         SECTION_UPDATES: ["check_updates", "update"],
         SECTION_DANGER: ["uninstall"],
@@ -120,20 +83,19 @@ def test_controls_match_what_they_edit():
     assert by_field["dest"].button == "Choose…"  # the folder picker beside the path
     assert by_field["autostart"].control == by_field["check_updates"].control == CONTROL_SWITCH
     assert by_field["sync_interval_minutes"].control == by_field["language"].control == CONTROL_POPUP
-    assert by_field["ai_cli"].control == CONTROL_POPUP and by_field["ai_resume"].control == CONTROL_SWITCH
+    assert by_field["ai_resume"].control == CONTROL_SWITCH
     # What acts at once (or only chooses) has no field, so Save and Cancel never touch it.
     immediate = {row.key: row.control for row in all_rows() if not row.field}
     assert immediate == {"account": CONTROL_BUTTON, "update": CONTROL_BUTTON, "uninstall": CONTROL_BUTTON,
                          "google_calendar": CONTROL_BUTTON, "google_calendar_sync": CONTROL_BUTTON,
-                         "google_calendar_disconnect": CONTROL_BUTTON, "notebooklm_disconnect": CONTROL_BUTTON,
-                         "notebooklm_duplicates": CONTROL_BUTTON}
+                         "google_calendar_disconnect": CONTROL_BUTTON, "notebooklm_disconnect": CONTROL_BUTTON}
 
 
 def test_every_row_has_a_description_or_a_live_one():
     live = {"account", "update", "google_calendar"}  # the status supplies their text
     for row in all_rows():
         assert row.title or row.key in live, row.key
-        if row.key not in live:
+        if row.key not in live | {"notebooklm_auto"}:  # its title says it all
             assert row.detail or row.control in (CONTROL_BUTTON,), row.key
 
 

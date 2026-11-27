@@ -29,6 +29,8 @@ a = Analysis(
         (str(ROOT / "assets" / "fonts"), "assets/fonts"),
         # The main window's sidebar logo (transparent; the .icns has a background).
         (str(ROOT / "assets" / "icon" / "logo.png"), "assets/icon"),
+        # The AI tools' logos on Home's card (ai_launcher.LOGO_DIR).
+        (str(ROOT / "src" / "blackboard_sync" / "ai_logos"), "blackboard_sync/ai_logos"),
     ] + GOOGLE_OAUTH_DATAS + copy_metadata("notebooklm-py"),
     # The sync child run and the menu bar app are imported lazily by app_entry,
     # the in-app sign-in window (WKWebView) lazily by login.
@@ -40,7 +42,6 @@ a = Analysis(
         "blackboard_sync.inapp_macos",
         "blackboard_sync.locale_tr",  # Turkish, loaded once the language is known
         "blackboard_sync.notebooklm.gateway",  # imported only when a run starts
-        "blackboard_sync.notebooklm.duplicates",  # imported only by its commands
         "WebKit",
     ] + NOTEBOOKLM_IMPORTS,
     excludes=[
@@ -75,5 +76,7 @@ app = BUNDLE(
         "LSUIElement": True,  # menu bar app: no Dock icon
         "LSMinimumSystemVersion": "11.0",
         "NSHumanReadableCopyright": "Copyright (c) 2026 Umut Yalcin. All rights reserved.",
+        # Asked once, when iTerm2 is the terminal chosen on Home's AI card (ai_launcher).
+        "NSAppleEventsUsageDescription": "Blackboard Sync asks iTerm2 to open a new window with your AI tool.",
     },
 )

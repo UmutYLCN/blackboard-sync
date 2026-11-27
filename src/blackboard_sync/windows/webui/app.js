@@ -167,7 +167,6 @@
     dialog.replaceChildren(...[ // replaceChildren would print a null as the word
       h("h2", { class: "dialog-title", text: data.title }),
       data.message ? h("p", { class: "dialog-message", text: data.message }) : null,
-      data.list ? h("pre", { class: "dialog-list", tabindex: "0", text: data.list }) : null,
       data.choices ? h("div", { class: "dialog-choices" }, data.choices.map((choice) =>
         h("label", { class: "check", title: choice.label },
           h("input", {
@@ -436,6 +435,21 @@
       h("div", { class: "card-footer" }, pill(state.text.open_calendar, "tonal", () => navigate("calendar"))));
   }
 
+  // A button per installed AI tool, and beside them the terminal it opens in.
+  function aiTools(data) {
+    const tools = data.tools.map((tool) => h("button", {
+      class: tool.current ? "ai-tool current" : "ai-tool", type: "button", "aria-label": tool.title, title: tool.title,
+      disabled: !tool.enabled, "data-key": `ai-tool-${tool.key}`, onclick: () => call("action", tool.id),
+    }, h("span", { class: `ai-logo ${tool.key}`, "aria-hidden": "true" })));
+    const picker = data.terminals.length ? h("select", {
+      class: "select", "aria-label": data.terminal_label, title: data.terminal_label, disabled: !data.terminal_enabled,
+      "data-key": "select-ai-terminal",
+      onchange: (event) => call("action", data.terminals[event.target.selectedIndex].id),
+    }, data.terminals.map((terminal) => h("option", { selected: terminal.id === data.terminal ? true : null },
+      terminal.title))) : null;
+    return h("div", { class: "ai-tools" }, tools, picker);
+  }
+
   function aiCard(data) {
     const buttons = [
       data.button ? pill(data.button.title, "gray", () => call("action", data.button.id), { disabled: !data.button.enabled }) : null,
@@ -446,6 +460,8 @@
       h("div", { class: "ai-text" },
         h("h2", { class: "ai-title", text: data.title }),
         h("p", { class: data.warning ? "ai-detail warning" : "ai-detail", text: data.detail, title: data.detail }),
+        data.note ? h("p", { class: "ai-note", text: data.note }) : null,
+        data.tools.length ? aiTools(data) : null,
         buttons.length ? h("footer", { class: "ai-buttons" }, buttons) : null));
   }
 
@@ -677,7 +693,6 @@
           section.rows.filter((row) => !row.hidden).map(settingRow),
           section.notes.map((note) => h("div", { class: "note", text: note }))),
         section.footer ? h("p", { class: "footer-note", text: section.footer }) : null,
-        section.totals ? h("p", { class: "footer-note", text: section.totals }) : null,
       ]),
       h("div", { class: "save-bar", id: "save-bar", hidden: true },
         h("span", { class: "text", id: "save-text" }),

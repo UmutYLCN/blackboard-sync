@@ -1,5 +1,6 @@
-from dataclasses import replace
+import json
 import sys
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from blackboard_sync.config import DEFAULT_BASE_URL, DEFAULT_DEST, Config
 from blackboard_sync.menubar.model import AppModel, RecentItem, RunOutcome
 from blackboard_sync.menubar.settings_form import FormValues, initial_values, submit
 from blackboard_sync.settings import (
+    AI_TERMINALS,
     Settings,
     SettingsError,
     display_path,
@@ -211,7 +213,7 @@ def test_adding_files_to_notebooklm_is_on_by_default_and_saved(tmp_path):
     assert not Settings.from_dict(off.to_dict()).notebooklm_auto
 
 
-def test_the_ai_assistant_is_none_with_resume_on_by_default_and_saved(tmp_path):
+def test_the_ai_tool_and_terminal_are_unset_with_resume_on_by_default_and_saved(tmp_path):
     settings = Settings(base_url="https://bb.example.edu", dest=tmp_path)
     assert (settings.ai_cli, settings.ai_resume) == ("", True)
     # A settings.json from before the AI assistant existed.
@@ -229,10 +231,30 @@ def test_the_ai_assistant_is_none_with_resume_on_by_default_and_saved(tmp_path):
     assert Settings.from_dict({**data, "ai_resume": "no"}).ai_resume is True
 
 
-def test_the_form_carries_the_ai_assistant_through_save(tmp_path):
-    current = Settings(base_url="https://bb.example.edu", dest=tmp_path, ai_cli="gemini", ai_resume=False)
+def test_the_chosen_terminal_is_saved_and_unknown_ones_are_dropped(tmp_path):
+    settings = Settings(base_url="https://bb.example.edu", dest=tmp_path)
+    assert settings.ai_terminal == ""  # the system's own
+    for terminal in AI_TERMINALS:
+        save_settings(tmp_path, replace(settings, ai_terminal=terminal))
+        assert load_settings(tmp_path).ai_terminal == terminal
+    data = {"base_url": "https://bb.example.edu", "dest": str(tmp_path)}
+    for value in ("warp", "rm -rf /", ["kitty"], None):
+        assert Settings.from_dict({**data, "ai_terminal": value}).ai_terminal == ""
+
+
+def test_a_tool_chosen_in_an_older_version_becomes_the_one_used_last(tmp_path):
+    # settings.json as the version with Settings → "Open with" wrote it: no terminal.
+    (tmp_path / "settings.json").write_text(json.dumps(
+        {"base_url": "https://bb.example.edu", "dest": str(tmp_path), "ai_cli": "gemini", "ai_resume": False}),
+        encoding="utf-8")
+    old = load_settings(tmp_path)
+    assert (old.ai_cli, old.ai_resume, old.ai_terminal) == ("gemini", False, "")
+
+
+def test_a_save_keeps_what_was_chosen_on_homes_ai_card(tmp_path):
+    current = Settings(base_url="https://bb.example.edu", dest=tmp_path, ai_cli="gemini", ai_resume=False,
+                       ai_terminal="kitty")
     values = initial_values(current, current, autostart=True)
-    assert (values.ai_cli, values.ai_resume) == ("gemini", False)
-    submitted = submit(replace(values, ai_cli="claude", ai_resume=True), current).settings
-    assert (submitted.ai_cli, submitted.ai_resume) == ("claude", True)
-    assert submit(replace(values, ai_cli="vim"), current).settings.ai_cli == ""
+    assert values.ai_resume is False
+    submitted = submit(replace(values, ai_resume=True), current).settings
+    assert (submitted.ai_cli, submitted.ai_resume, submitted.ai_terminal) == ("gemini", True, "kitty")

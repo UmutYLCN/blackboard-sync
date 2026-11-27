@@ -567,23 +567,34 @@ def test_ai_card_actions_are_allowed_only_when_drawn_and_enabled():
     from blackboard_sync import ai_launcher
 
     window, _host, events = make_window()
-    # Default state is AI_OFF ("Choose" -> ai_settings).
-    window.run_action("ai_open")
-    window.run_action("ai_install")
+    # Before the first look the card has nothing to press.
+    for name in ("ai_open:claude", "ai_install", "ai_detect", "ai_terminal:cmd"):
+        window.run_action(name)
     assert events == []
-    window.run_action("ai_settings")
-    assert events == [("action", "ai_settings")]
 
-    model = AppModel(Path("/tmp/dest"), datetime(2026, 10, 18, tzinfo=timezone.utc), ai_cli="claude")
-    model.ai_installed = frozenset()
+    model = AppModel(Path("/tmp/dest"), datetime(2026, 10, 18, tzinfo=timezone.utc))
+    model.finish_ai_detection(frozenset(), frozenset({"powershell"}))
     window.update_status(status(ai=main.ai_card(model)))
-    window.run_action("ai_settings")
-    window.run_action("ai_install")
-    window.run_action("ai_open")
-    assert events[-2:] == [("action", "ai_install"), ("action", "ai_open")]
+    for name in ("ai_open:claude", "ai_install", "ai_detect"):
+        window.run_action(name)
+    assert events == [("action", "ai_install"), ("action", "ai_detect")]
 
-    model.ai_installed = frozenset({"claude"})
+    del events[:]
+    model.finish_ai_detection(frozenset({"claude"}), frozenset({"powershell", "cmd"}))
+    window.update_status(status(ai=main.ai_card(model)))
+    for name in ("ai_open:codex", "ai_terminal:windows_terminal", "ai_open:claude", "ai_terminal:cmd"):
+        window.run_action(name)
+    assert events == [("action", "ai_open:claude"), ("action", "ai_terminal:cmd")]
+
+    del events[:]
+    model.ai_launching = True
+    window.update_status(status(ai=main.ai_card(model)))
+    window.run_action("ai_open:claude")
+    window.run_action("ai_terminal:cmd")
+    assert events == []
+
+    model.ai_launching = False
     model.ai_result = ai_launcher.LaunchResult(ai_launcher.Failure.FOLDER_MISSING, ai_launcher.TOOLS["claude"])
     window.update_status(status(ai=main.ai_card(model)))
-    window.run_action("ai_open")
-    assert len(events) == 3  # only "sync" is offered now
+    window.run_action("sync")
+    assert events == [("action", "sync")]

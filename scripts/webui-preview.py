@@ -42,7 +42,7 @@ def fixtures(now: datetime) -> dict[str, dict]:
     from blackboard_sync.i18n import tr
     from blackboard_sync.menubar import main_window_model as main
     from blackboard_sync.menubar.model import T_SYNC_NOW, AppModel
-    from blackboard_sync.menubar.settings_form import WindowStatus, notebooklm_totals
+    from blackboard_sync.menubar.settings_form import WindowStatus
     from blackboard_sync.notebooklm.store import NotebookLMStatus
     from blackboard_sync.windows import webui_state
 
@@ -80,7 +80,12 @@ def fixtures(now: datetime) -> dict[str, dict]:
     heading = main.greeting("UMUT YALÇIN", now)
     subtitle = main.deadline_subtitle(page, now)
     account = main.AccountCard("UY", "UMUT YALÇIN", tr("Last synced: {time}").format(time=tr("today {time}").format(time="18:14")))
+    ai = AppModel(Path("."), now)
+    ai.ai_cli, ai.ai_term = "claude", "2026-2027 Güz"
+    ai.ai_installed = frozenset(("claude", "gemini", "codex"))
+    ai.ai_terminals = frozenset(("windows_terminal", "powershell", "cmd"))
     synced = main.MainStatus(
+        ai=main.ai_card(ai),
         first_run=False, account=account, sync_title=T_SYNC_NOW, sync_enabled=True, recent=recent, form=form,
         home=main.HomeState(main.STATE_SYNCED, main.T_STATE_TITLES[main.STATE_SYNCED], account.detail),
         pause_enabled=True, home_heading=heading, home_subtitle=subtitle)
@@ -133,6 +138,10 @@ def fixtures(now: datetime) -> dict[str, dict]:
                        tr("Blackboard Sync {version} is ready").format(version="1.7.0"), main.T_UPDATE, True)),
                    announcements, page),
     }
+    ai.ai_terminals, ai.ai_terminal = frozenset(("powershell", "cmd")), "windows_terminal"
+    states["ai-terminal-gone"] = (replace(synced, ai=main.ai_card(ai)), announcements, page)
+    ai.ai_installed = frozenset()
+    states["ai-none"] = (replace(synced, ai=main.ai_card(ai)), announcements, page)
     from blackboard_sync import uninstall
     from blackboard_sync.courses import CourseRow
     from blackboard_sync.gcal import CalendarStatus
@@ -166,7 +175,6 @@ def fixtures(now: datetime) -> dict[str, dict]:
         tr("Blackboard Sync {version} is ready").format(version="1.7.0"), main.T_UPDATE_INTRO, "update", main.T_UPDATE,
         warning=False),))
     settings_form = replace(form, uninstall_enabled=True, notebooklm_connected=True,
-                            notebooklm_totals=notebooklm_totals(notebooklm.notebooklm),
                             calendar=CalendarStatus(connected=True, last_sync="2026-10-18T12:05:00+00:00"))
     for name, section, current, extra in (
         ("activity", main.ACTIVITY, full, {}),
@@ -178,13 +186,6 @@ def fixtures(now: datetime) -> dict[str, dict]:
                                                                      last_error="Token expired"))),
          {"error": (tr("The address must start with https://."), "base_url")}),
         ("settings-dark-forced", main.GENERAL, replace(full, form=settings_form), {"theme": "dark"}),
-        ("duplicates-dialog", main.GENERAL, replace(full, form=settings_form), {"dialog": {
-            "id": "q2", "title": tr("{n} files are in a notebook more than once.").format(n=2), "message": "",
-            "list": "CSE301 Database Management\n  Week 3/slides.pdf\n    older: 2026-10-02\n"
-                    "    newer: 2026-10-14 (same content, can be removed)\n\nPHY101 Physics I\n  lab1.pdf\n"
-                    "    older: 2026-09-30\n    newer: 2026-10-01 (the file changed since then, both stay)",
-            "buttons": [{"id": "cancel", "title": tr("Close"), "style": "gray", "default": True},
-                        {"id": "remove", "title": tr("Remove"), "style": "filled"}]}}),
         ("first-courses-dialog", main.OVERVIEW, full, {"dialog": {
             "id": "q3", "title": term_confirm.T_TITLE,
             "message": term_confirm.T_MESSAGE.format(terms="Term 1 2026, Year-long 2026"),

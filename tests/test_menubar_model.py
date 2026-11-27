@@ -475,20 +475,30 @@ def test_all_courses_unticked_is_not_no_courses_found():
     assert "no courses found" not in m.detail(NOW)
 
 
-def test_menu_shows_ai_item_only_when_an_ai_tool_is_chosen(monkeypatch):
+def test_menu_shows_ai_item_for_the_tool_used_last_while_one_is_installed(monkeypatch):
     from blackboard_sync import i18n
 
     m = model(session=signed_session(), last=outcome())
-    assert not any(e.action == "ai_open" for e in m.menu(NOW).entries)
 
-    m.apply_settings(DEST, school_changed=False, ai_cli="claude", ai_resume=True)
+    def item():
+        return next((e for e in m.menu(NOW).entries if e.action == "ai_open"), None)
+
+    assert item() is None  # nothing used, nothing looked for yet
+    m.finish_ai_detection(frozenset({"claude", "codex"}), frozenset({"terminal"}))
     entries_list = m.menu(NOW).entries
     folder_index = next(i for i, e in enumerate(entries_list) if e.action == "folder")
     ai_item = entries_list[folder_index + 1]
     assert (ai_item.title, ai_item.action, ai_item.enabled) == ("Open Claude Code in 2026-2027 Güz", "ai_open", True)
 
+    m.ai_cli = "codex"
+    assert item().title == "Open Codex in 2026-2027 Güz"
+    m.finish_ai_detection(frozenset(), frozenset({"terminal"}))
+    assert item() is None  # no tool installed
+
+    m.finish_ai_detection(frozenset({"claude"}), frozenset({"terminal"}))
+    m.ai_cli = "claude"
     m.ai_launching = True
-    assert not next(e for e in m.menu(NOW).entries if e.action == "ai_open").enabled
+    assert not item().enabled
 
     monkeypatch.setattr(i18n, "_language", "tr")
     m.ai_launching = False

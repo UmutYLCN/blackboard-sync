@@ -44,7 +44,6 @@ from blackboard_sync.i18n import ntr, tr
 from blackboard_sync.menubar.model import (
     MOVE_JOB,
     NOTEBOOKLM_CONNECT,
-    NOTEBOOKLM_DUPLICATES,
     NOTEBOOKLM_SYNC,
     T_LOGGING_IN,
     T_LOGIN,
@@ -372,7 +371,6 @@ T_NOTEBOOKLM_CHECKING = tr("Checking what is already in NotebookLM…")
 T_NOTEBOOKLM_WAITING = tr("Sign in to Google in the browser window.")
 T_NOTEBOOKLM_VERIFYING = tr("Checking the connection…")
 T_NOTEBOOKLM_READING = tr("NotebookLM is reading the new files…")
-T_NOTEBOOKLM_DUPLICATES_RUNNING = tr("Looking through the notebooks…")
 
 
 @dataclass(frozen=True)
@@ -412,26 +410,43 @@ class NotebookLMProgress:
 # The AI study session card's states (under NotebookLM on Home).
 AI_OFF, AI_READY, AI_LAUNCHING, AI_ATTENTION = "off", "ready", "launching", "attention"
 T_AI_TITLE = tr("AI study session")
-T_AI_NO_CHOICE = tr("Choose Claude, Gemini or Codex in Settings.")
-T_AI_CHOOSE = tr("Choose")
-T_AI_HOW_TO_INSTALL = tr("How to install")
-T_AI_TRY_AGAIN = tr("Try again")
-T_AI_OPENING = tr("Opening…")
+T_AI_LOOKING = tr("Looking for AI tools…")
+T_AI_TERMINAL = tr("Terminal")
+# What the card's tool buttons and its terminal picker ask for: the prefix, then the key.
+AI_OPEN_PREFIX, AI_TERMINAL_PREFIX = "ai_open:", "ai_terminal:"
+
+
+@dataclass(frozen=True)
+class AiButton:
+    """One installed AI tool on the card: a button showing the tool's logo."""
+
+    key: str  # settings.AI_CLIS
+    label: str  # "Open in Claude Code": the button's accessible name and tooltip
+    current: bool = False  # the tool used last, highlighted
+
+    @property
+    def action(self) -> str:
+        return AI_OPEN_PREFIX + self.key
 
 
 @dataclass(frozen=True)
 class AiCard:
-    """The card under Home's NotebookLM card: opens the current term's folder with the chosen AI tool."""
+    """The card under Home's NotebookLM card: opens the current term's folder with an AI tool."""
 
     kind: str  # one of the AI_* values
     detail: str
-    action: str = ""  # "ai_open" | "ai_settings" | "ai_install" | "sync"
+    action: str = ""  # "ai_install" | "sync"
     action_title: str = ""
     enabled: bool = True
-    secondary_action: str = ""
+    secondary_action: str = ""  # "ai_detect"
     secondary_title: str = ""
     secondary_enabled: bool = True
     title: str = T_AI_TITLE
+    tools: tuple[AiButton, ...] = ()  # the installed tools
+    tools_enabled: bool = True  # False while a terminal is opening: the buttons and the picker
+    terminals: tuple[tuple[str, str], ...] = ()  # (key, name) of the installed terminals
+    terminal: str = ""  # the one a click opens
+    note: str = ""  # the chosen terminal is gone, and which one is used instead
 
     @property
     def warning(self) -> bool:
@@ -523,7 +538,7 @@ class MainStatus:
     home_heading: str = ""
     home_subtitle: str = ""
     notebooklm: NotebookLMCard = NotebookLMCard(NOTEBOOKLM_OFF, T_NOTEBOOKLM_INTRO)
-    ai: AiCard = AiCard(AI_OFF, T_AI_NO_CHOICE, action="ai_settings", action_title=T_AI_CHOOSE)
+    ai: AiCard = AiCard(AI_OFF, T_AI_LOOKING)
     course_colors: Mapping[str, int] = field(default_factory=dict)
 
     @property
@@ -624,8 +639,6 @@ def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
     if busy == NOTEBOOKLM_CONNECT:
         return NotebookLMCard(NOTEBOOKLM_RUNNING, progress.text if progress else T_NOTEBOOKLM_WAITING,
                               **{**connect, "enabled": False})
-    if busy == NOTEBOOKLM_DUPLICATES:
-        return NotebookLMCard(NOTEBOOKLM_RUNNING, T_NOTEBOOKLM_DUPLICATES_RUNNING, **{**sync, "enabled": False})
     if busy == NOTEBOOKLM_SYNC:
         progress = progress or NotebookLMProgress(T_NOTEBOOKLM_CHECKING)
         return NotebookLMCard(NOTEBOOKLM_RUNNING, progress.text, progress.course, progress=progress.fraction,
@@ -651,38 +664,47 @@ def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
                           warning_counts=notebooklm_warning_counts(status), **sync)
 
 
+def _ai_terminals(model: AppModel) -> dict:
+    """The card's terminal picker and the note about a chosen terminal that is gone."""
+    if model.ai_terminals is None:
+        return {}
+    used = ai_launcher.resolve_terminal(model.ai_terminal, model.ai_terminals)
+    shown = tuple((key, terminal.name) for key, terminal in ai_launcher.TERMINALS.items()
+                  if key in model.ai_terminals or key == used)
+    chosen = ai_launcher.TERMINALS.get(model.ai_terminal)
+    note = ""
+    if chosen is not None and chosen.key != used:
+        note = tr("{name} wasn't found. Using {default} instead.").format(
+            name=chosen.name, default=ai_launcher.TERMINALS[used].name)
+    return {"terminals": shown, "terminal": used, "note": note}
+
+
 def ai_card(model: AppModel, sync_title: str | None = None, sync_enabled: bool = True) -> AiCard:
-    """No AI chosen, ready to open, launching, or explaining why the last launch did not open a terminal."""
+    """The installed AI tools to open the term folder with, launching, how to install one when
+    there is none, or why the last click did not open a terminal."""
     title = tr("AI study session")
-    tool = ai_launcher.TOOLS.get(model.ai_cli)
-    if tool is None:
-        return AiCard(AI_OFF, tr("Choose Claude, Gemini or Codex in Settings."), action="ai_settings",
-                      action_title=tr("Choose"), title=title)
-    term = model.current_ai_term()
-    if model.ai_resume:
-        ready_detail = tr("Opens {term} in {name}, continuing your last session there.").format(term=term, name=tool.name)
-    else:
-        ready_detail = tr("Opens {term} in {name}, starting a new session.").format(term=term, name=tool.name)
-    open_title = tr("Open in {name}").format(name=tool.name)
+    installed = model.ai_installed
+    if installed is None:
+        return AiCard(AI_OFF, tr("Looking for AI tools…"), title=title)
+    install = {"action": "ai_install", "action_title": tr("How to install"),
+               "secondary_action": "ai_detect", "secondary_title": tr("Try again")}
+    tools = tuple(AiButton(key, tr("Open in {name}").format(name=tool.name), key == model.ai_cli)
+                  for key, tool in ai_launcher.TOOLS.items() if key in installed)
+    if not tools:
+        return AiCard(AI_ATTENTION,
+                      tr("No AI tool is installed. Install Claude Code, Gemini CLI or Codex, then try again."),
+                      title=title, **install)
+    shown = {"title": title, "tools": tools, **_ai_terminals(model)}
     if model.ai_launching:
-        return AiCard(AI_LAUNCHING, ready_detail, action="ai_open", action_title=tr("Opening…"), enabled=False,
-                      title=title)
+        return AiCard(AI_LAUNCHING, tr("Opening…"), tools_enabled=False, **shown)
+    term = model.current_ai_term()
     result = model.ai_result
-    if result is not None and result.tool is not None and result.tool.key != tool.key:
-        result = None
-    cli_missing = ((result is not None and result.failure == ai_launcher.Failure.CLI_MISSING)
-                   or (model.ai_installed is not None and tool.key not in model.ai_installed))
-    if cli_missing:
-        return AiCard(
-            AI_ATTENTION,
-            tr("{name} is not installed. Install it, then try again.").format(name=tool.name),
-            action="ai_install",
-            action_title=tr("How to install"),
-            secondary_action="ai_open",
-            secondary_title=tr("Try again"),
-            title=title,
-        )
-    if result is not None and result.failure == ai_launcher.Failure.FOLDER_MISSING:
+    failure = None if result is None else result.failure
+    if failure == ai_launcher.Failure.CLI_MISSING and result.tool is not None and result.tool.key not in installed:
+        return AiCard(AI_ATTENTION,
+                      tr("{name} is not installed. Install it, then try again.").format(name=result.tool.name),
+                      **install, **shown)
+    if failure == ai_launcher.Failure.FOLDER_MISSING:
         folder_name = (result.folder.name or str(result.folder)) if result.folder is not None else term
         return AiCard(
             AI_ATTENTION,
@@ -690,48 +712,18 @@ def ai_card(model: AppModel, sync_title: str | None = None, sync_enabled: bool =
             action="sync",
             action_title=tr("Sync now") if sync_title is None else sync_title,
             enabled=sync_enabled,
-            title=title,
+            **shown,
         )
-    if result is not None and result.failure == ai_launcher.Failure.TERMINAL_FAILED:
+    if failure == ai_launcher.Failure.TERMINAL_FAILED:
         error = shorten(result.error, 140) if result.error else ""
         detail = (tr("Could not open a terminal: {error}").format(error=error) if error
                   else tr("Could not open a terminal."))
-        return AiCard(AI_ATTENTION, detail, action="ai_open", action_title=open_title, title=title)
-    return AiCard(AI_READY, ready_detail, action="ai_open", action_title=open_title, title=title)
-
-
-def duplicates_title(report: dict) -> str:
-    groups = report.get("duplicates", 0)
-    if not groups:
-        return tr("No duplicates in your notebooks.")
-    return ntr("{n} file is in a notebook more than once.", "{n} files are in a notebook more than once.",
-               groups).format(n=groups)
-
-
-def duplicates_text(report: dict) -> str:
-    """Per notebook, what is there twice: when each copy was added and what happens to the newer one."""
-    notes = {"identical": tr("same content, can be removed"),
-             "changed": tr("the file changed since then, both stay"),
-             "not-added-by-app": tr("not added by this app, stays"),
-             "unverified": tr("cannot be compared, stays")}
-    lines = []
-    for course in report.get("courses", ()):
-        if course["duplicates"]:
-            lines.append(course["course"])
-        for duplicate in course["duplicates"]:
-            lines.append(f"  {duplicate['name']}")
-            lines.append("    " + tr("older: {time}").format(time=duplicate["older"]["created_at"][:10]))
-            lines.extend("    " + tr("newer: {time}").format(time=copy["created_at"][:10]) + f" ({notes[copy['verdict']]})"
-                         for copy in duplicate["newer"])
-        if course["duplicates"]:
-            lines.append("")
-    return "\n".join(lines).strip()
-
-
-def removable_ids(report: dict) -> list[str]:
-    """Exactly the copies the student was shown as removable; a later removal goes no further."""
-    return [copy["id"] for course in report.get("courses", ()) for duplicate in course["duplicates"]
-            for copy in duplicate["newer"] if copy["removable"]]
+        return AiCard(AI_ATTENTION, detail, **shown)
+    if model.ai_resume:
+        detail = tr("Click a tool to open {term}, continuing your last session there.").format(term=term)
+    else:
+        detail = tr("Click a tool to open {term} in a new session.").format(term=term)
+    return AiCard(AI_READY, detail, **shown)
 
 
 def home_recent_rows(available: float, fixed: float, row: float, rows: int) -> int:

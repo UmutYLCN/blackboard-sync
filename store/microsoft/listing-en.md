@@ -51,7 +51,7 @@ CALENDAR AND ANNOUNCEMENTS
 See upcoming assignment due dates and course announcements in the app. Optionally connect Google Calendar from Settings to keep due dates in a separate Blackboard Deadlines calendar. Other calendars stay private.
 
 NOTEBOOKLM
-Optionally connect NotebookLM from the card on the Home page. After each sync, your downloaded course files and PDF notes are added to one notebook per course, so you can chat with your sources, create study guides and study faster. Sync NotebookLM adds files on demand and Open NotebookLM opens your notebooks. A file that is already in a notebook is never added twice, and Find duplicates in Settings lists extra copies. NotebookLM is reached through an unofficial connection to Google that may stop working if Google changes NotebookLM. Your Google session stays on your computer, Disconnect in Settings removes it, and your course files go to your own Google account.
+Optionally connect NotebookLM from the card on the Home page. After each sync, your downloaded course files and PDF notes are added to one notebook per course, so you can chat with your sources, create study guides and study faster. Sync NotebookLM adds files on demand and Open NotebookLM opens your notebooks. A file that is already in a notebook is never added twice. NotebookLM is reached through an unofficial connection to Google that may stop working if Google changes NotebookLM. Your Google session stays on your computer, Disconnect in Settings removes it, and your course files go to your own Google account.
 
 STAYS SIGNED IN
 While the app runs, it keeps your Blackboard session alive and, when it expires, signs in again quietly through your school's single sign-on. If your school asks for a password or a two-factor code, nothing is filled in and you get the usual Sign in notification. You can turn this off in Settings.
@@ -102,7 +102,7 @@ Light, dark and system themes; English and Turkish interface options
 Automatic sync every 30 minutes, every hour, every 3 hours, or manual only
 Deleted: pick files you removed and download them again
 NotebookLM: course files go to one notebook per course after each sync
-Never adds a file twice; finds duplicates already in a notebook
+Never adds a file to a notebook twice
 Stays signed in: quiet re-sign-in through your school's single sign-on
 Syncs your current term and asks you to confirm courses at a new school
 Can start in the background when the computer starts

@@ -33,19 +33,6 @@ STATE_VERSION = 1
 LEGACY_FIELDS = ("notebook_id", "source_id", "size", "mtime_ns", "sha256")
 LEGACY_TOOL = "dersler-notebooklm"  # the command line tool that filled the notebooks before this app
 
-ORIGIN_APP = "app"  # this app added it
-ORIGIN_LEGACY = "legacy"  # the old tool added it
-ORIGIN_ADOPTED = "adopted"  # it was there already, whoever added it
-ORIGIN_OTHER = "other"  # nothing on this computer knows it
-
-
-@dataclass(frozen=True)
-class KnownSource:
-    rel: str
-    sha256: str
-    origin: str
-
-
 def nfc(text: str) -> str:
     """macOS can hand back decomposed names; titles and state keys are composed."""
     return unicodedata.normalize("NFC", text)
@@ -124,7 +111,7 @@ class UploadState:
 
     def record(self, course: str, rel: str, *, notebook_id: str, source_id: str, size: int, mtime_ns: int,
                sha256: str, adopted: bool = False) -> None:
-        """``adopted``: it was in the notebook already, so this app did not add it and never removes it."""
+        """``adopted``: it was in the notebook already, so this app did not add it."""
         self._course(course)["files"][rel] = {
             "notebook_id": notebook_id,
             "source_id": source_id,
@@ -139,30 +126,21 @@ class UploadState:
         entry = self._course(course)["files"][rel]
         entry["size"], entry["mtime_ns"] = size, mtime_ns
 
-    def known_sources(self, course: str) -> dict[str, KnownSource]:
-        """Every source the record can say something about, by id: its file, content and origin."""
+    def known_sources(self, course: str) -> dict[str, str]:
+        """The content (SHA-256) of every source the record can say something about, by id."""
         data = self.data["courses"].get(course, {})
-        known = {source_id: KnownSource(entry["rel"], entry["sha256"], ORIGIN_LEGACY)
-                 for source_id, entry in data.get("legacy", {}).items()}
-        for rel, entry in data.get("files", {}).items():
-            if entry["source_id"] not in known:
-                origin = ORIGIN_ADOPTED if entry.get("adopted") else ORIGIN_APP
-                known[entry["source_id"]] = KnownSource(rel, entry["sha256"], origin)
+        known = {source_id: entry["sha256"] for source_id, entry in data.get("legacy", {}).items()}
+        for entry in data.get("files", {}).values():
+            known.setdefault(entry["source_id"], entry["sha256"])
         return known
-
-    def repoint(self, course: str, source_id: str, kept_id: str) -> None:
-        """A removed copy's files now count as the copy that stayed, so they are not added again."""
-        for entry in self.data["courses"].get(course, {}).get("files", {}).values():
-            if entry["source_id"] == source_id:
-                entry["source_id"], entry["adopted"] = kept_id, True
 
     def import_legacy(self, folders: list[str], path: Path) -> int:
         """Count what the old tool uploaded as present; returns how many files were new to the record.
 
         Its courses are keyed by the folder's own name, without the term. A file already in this
-        record keeps its entry, but the old tool's source is remembered beside it: that copy is
-        never this app's to remove. An entry from another notebook does no harm, since
-        ``plan_course`` ignores it. ``path`` is only ever read.
+        record keeps its entry, but the old tool's source is remembered beside it. An entry from
+        another notebook does no harm, since ``plan_course`` ignores it. ``path`` is only ever
+        read.
         """
         legacy = read_legacy(path)
         imported = 0

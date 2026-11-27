@@ -13,16 +13,14 @@ import shutil
 import stat
 import subprocess
 import sys
-from datetime import datetime, timezone
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
 
 from blackboard_sync import ai_launcher as ai
 from blackboard_sync.config import Config
 from blackboard_sync.courses import save_disabled
-from blackboard_sync.menubar import settings_form as form
-from blackboard_sync.menubar.model import AppModel
+from blackboard_sync.settings import AI_TERMINALS, MACOS_AI_TERMINALS, WINDOWS_AI_TERMINALS
 from blackboard_sync.state import State
 
 GUZ = "2026-2027 Güz"
@@ -196,23 +194,118 @@ def test_the_detector_remembers_the_last_answer():
     assert detector.installed() == frozenset({"codex"})
 
 
-# -- the "Open with" popup ---------------------------------------------------------------------------
+# -- the tools' buttons ----------------------------------------------------------------------------
 
-def test_open_with_lists_none_and_the_three_tools_saying_which_are_installed():
-    assert form.ai_cli_choices(None) == (("", "None"), ("claude", "Claude Code"), ("gemini", "Gemini CLI"),
-                                         ("codex", "Codex"))
-    assert form.ai_cli_choices(frozenset({"codex"})) == (
-        ("", "None"), ("claude", "Claude Code (not found)"), ("gemini", "Gemini CLI (not found)"),
-        ("codex", "Codex (installed)"))
-    assert [form.ai_cli_index(value) for value in ("", "claude", "gemini", "codex", "bogus")] == [0, 1, 2, 3, 0]
-    assert [form.ai_cli_value(index) for index in (0, 1, 2, 3, 4, -1)] == ["", "claude", "gemini", "codex", "", ""]
+@pytest.mark.parametrize("key", ai.AI_CLIS)
+def test_every_tool_has_a_bundled_logo(key):
+    for dark in (False, True):
+        assert ai.logo_path(key, dark).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
 
-def test_the_window_status_carries_what_was_found(tmp_path):
-    model = AppModel(dest=tmp_path, now=datetime(2026, 11, 26, tzinfo=timezone.utc))
-    assert form.window_status(model).ai_installed is None
-    model.ai_installed = frozenset({"claude"})
-    assert form.window_status(model).ai_installed == frozenset({"claude"})
+def test_only_codex_has_a_second_logo_for_dark_backgrounds():
+    assert ai.logo_path("codex", dark=True).name == "codex-dark.png"
+    assert ai.logo_path("claude", dark=True) == ai.logo_path("claude")
+
+
+@pytest.mark.parametrize("last, installed, expected", [
+    ("codex", None, "codex"),  # not looked yet: the one used last
+    ("", None, None),
+    ("codex", {"claude", "codex"}, "codex"),
+    ("gemini", {"claude", "codex"}, "claude"),  # gone: the first that is there
+    ("", {"codex"}, "codex"),
+    ("claude", set(), None),
+])
+def test_the_menu_item_opens_the_tool_used_last_while_it_is_installed(last, installed, expected):
+    tool = ai.preferred_tool(last, installed if installed is None else frozenset(installed))
+    assert (tool.key if tool else None) == expected
+
+
+# -- which terminals there are ---------------------------------------------------------------------
+
+def installed(found: dict) -> set[str]:
+    return {key for key, path in found.items() if path}
+
+
+def test_macos_lists_the_terminal_applications_that_are_there(tmp_path):
+    for app in ("iTerm.app", "kitty.app"):
+        (tmp_path / "Applications" / app).mkdir(parents=True)
+    (tmp_path / "More" / "Ghostty.app").mkdir(parents=True)
+    (tmp_path / "More" / "Warp.app").mkdir()  # not offered: it cannot be told to run a command
+    found = ai.detect_terminals("darwin", env={}, home=tmp_path, app_dirs=("~/Applications", str(tmp_path / "More")))
+    assert tuple(found) == MACOS_AI_TERMINALS
+    assert installed(found) == {"terminal", "iterm2", "ghostty", "kitty"}  # Terminal is part of macOS
+    assert found["kitty"] == tmp_path / "Applications" / "kitty.app"
+
+
+def windows_env(tmp_path: Path, terminal: bool, powershell: bool = True) -> dict:
+    apps = tmp_path / "Local" / "Microsoft" / "WindowsApps"
+    apps.mkdir(parents=True)
+    if terminal:
+        program(apps / "wt.exe")
+    system32 = tmp_path / "Windows" / "System32"
+    program(system32 / "cmd.exe")
+    if powershell:
+        program(system32 / "WindowsPowerShell" / "v1.0" / "powershell.exe")
+    return {"PATH": "", "LOCALAPPDATA": str(tmp_path / "Local"), "SystemRoot": str(tmp_path / "Windows"),
+            "USERPROFILE": str(tmp_path)}
+
+
+@pytest.mark.parametrize("terminal", [True, False])
+def test_windows_lists_its_terminals(tmp_path, terminal):
+    found = ai.detect_terminals("win32", env=windows_env(tmp_path, terminal), home=tmp_path)
+    assert tuple(found) == WINDOWS_AI_TERMINALS
+    assert installed(found) == set(WINDOWS_AI_TERMINALS) - (set() if terminal else {"windows_terminal"})
+
+
+@pytest.mark.parametrize("choice, there, used", [
+    ("", {"terminal", "kitty"}, "terminal"),
+    ("kitty", {"terminal", "kitty"}, "kitty"),
+    ("iterm2", {"terminal", "kitty"}, "terminal"),  # gone: the system's own
+    ("", {"windows_terminal", "powershell", "cmd"}, "windows_terminal"),
+    ("cmd", {"windows_terminal", "powershell", "cmd"}, "cmd"),
+    ("windows_terminal", {"powershell", "cmd"}, "powershell"),
+    ("kitty", {"powershell", "cmd"}, "powershell"),  # a choice made on a Mac
+])
+def test_the_chosen_terminal_is_used_while_it_is_there(choice, there, used):
+    assert ai.resolve_terminal(choice, there) == used
+
+
+def test_every_terminal_has_a_name():
+    assert tuple(ai.TERMINALS) == AI_TERMINALS
+    assert all(terminal.name for terminal in ai.TERMINALS.values())
+
+
+# -- how each macOS terminal is opened -------------------------------------------------------------
+
+SCRIPT = PurePosixPath("/Users/me/Library/Application Support/BlackboardSync/ai-launch/bbsync-ai-1.command")
+FOLDER = PurePosixPath("/Users/me/University") / HOSTILE
+RUN_SCRIPT = f"exec '{SCRIPT}'"
+SHELL = ["/bin/zsh", "-ilc", RUN_SCRIPT]
+
+
+def test_terminal_opens_the_script_itself():
+    assert ai.macos_commands(SCRIPT) == ["/usr/bin/open", "-a", "Terminal", str(SCRIPT)]
+    assert ai.macos_commands(SCRIPT, "terminal", None, FOLDER) == ai.macos_commands(SCRIPT)
+
+
+def test_iterm_gets_the_quoted_script_as_an_argument_never_inside_the_applescript():
+    argv = ai.macos_commands(SCRIPT, "iterm2", PurePosixPath("/Applications/iTerm.app"), FOLDER)
+    assert argv[0] == "/usr/bin/osascript" and argv[-1] == RUN_SCRIPT
+    assert argv[1:-1:2] == ["-e"] * len(ai.ITERM_SCRIPT) and tuple(argv[2:-1:2]) == ai.ITERM_SCRIPT
+    assert not any(str(SCRIPT) in line for line in ai.ITERM_SCRIPT)
+
+
+@pytest.mark.parametrize("terminal, options", [
+    ("ghostty", [f"--working-directory={FOLDER}", "-e", *SHELL]),
+    ("wezterm", ["start", "--cwd", str(FOLDER), "--", *SHELL]),
+    ("kitty", ["--directory", str(FOLDER), *SHELL]),
+    ("alacritty", ["--working-directory", str(FOLDER), "-e", *SHELL]),
+])
+def test_the_other_terminals_take_the_folder_as_one_argument_and_a_login_shell(terminal, options):
+    app = PurePosixPath("/Applications") / ai.TERMINALS[terminal].app
+    argv = ai.macos_commands(SCRIPT, terminal, app, FOLDER)
+    assert argv == ["/usr/bin/open", "-na", str(app), "--args", *options]
+    assert not any(HOSTILE in part for part in argv[argv.index(SHELL[0]):])  # no shell ever reads the folder
 
 
 # -- the macOS script ------------------------------------------------------------------------------
@@ -332,19 +425,26 @@ def test_the_windows_script_goes_to_the_folder_and_falls_back_to_a_new_session(k
     assert fresh.splitlines()[-1] == f"& '{program_path}'" and "LASTEXITCODE" not in fresh
 
 
-def test_the_windows_terminal_never_parses_the_folder_or_the_program():
+POWERSHELL = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+
+
+@pytest.mark.parametrize("terminal", WINDOWS_AI_TERMINALS)
+def test_a_windows_terminal_never_parses_the_folder_or_the_program(terminal):
     script = ai.windows_script(PureWindowsPath(r"C:\U") / HOSTILE, PureWindowsPath(r"C:\npm\gemini.cmd"),
                                ai.TOOLS["gemini"], resume=True)
-    with_wt = ai.windows_commands(script, Path(r"C:\Apps\wt.exe"), r"C:\Windows")
-    powershell = [r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe", "-NoLogo", "-NoProfile", "-NoExit",
-                  "-EncodedCommand", ai.encode_powershell(script)]
-    assert with_wt == [[str(Path(r"C:\Apps\wt.exe")), "new-tab", *powershell], powershell]
-    assert ai.windows_commands(script, None, r"C:\Windows") == [powershell]
-    encoded = powershell[-1]
+    wt = PureWindowsPath(r"C:\Apps\wt.exe")
+    argv = ai.windows_commands(script, terminal, wt, r"C:\Windows")
+    encoded = ai.encode_powershell(script)
+    stays = [POWERSHELL, "-NoLogo", "-NoProfile", "-NoExit", "-EncodedCommand", encoded]
+    assert argv == {
+        "windows_terminal": [str(wt), "new-tab", *stays],
+        "powershell": stays,
+        "cmd": [r"C:\Windows\System32\cmd.exe", "/k", POWERSHELL, "-NoLogo", "-NoProfile", "-EncodedCommand",
+                encoded],
+    }[terminal]
     assert set(encoded) <= set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")
     assert base64.b64decode(encoded).decode("utf-16-le") == script
-    for argv in with_wt:
-        assert not any(HOSTILE in part or "gemini" in part for part in argv)
+    assert not any(HOSTILE in part or "gemini" in part for part in argv)
 
 
 # -- launching -------------------------------------------------------------------------------------
@@ -418,22 +518,28 @@ class Spawner:
         return object()
 
 
-def windows_env(tmp_path: Path, terminal: bool) -> dict:
-    apps = tmp_path / "Local" / "Microsoft" / "WindowsApps"
-    apps.mkdir(parents=True)
-    if terminal:
-        program(apps / "wt.exe")
-    return {"PATH": "", "LOCALAPPDATA": str(tmp_path / "Local"), "SystemRoot": r"C:\Windows",
-            "USERPROFILE": str(tmp_path)}
+def windows_launch(tmp_path, config, key, resume, terminal_app, spawn, chosen="", **found):
+    env = windows_env(tmp_path, terminal_app, **found)
+    terminals = ai.Detector(lambda: ai.detect_terminals("win32", env=env, home=tmp_path))
+    return ai.launch(key, resume, config, detector(**{key: PureWindowsPath(r"C:\npm") / f"{key}.cmd"}),
+                     platform="win32", env=env, spawn=spawn, terminal=chosen, terminals=terminals)
+
+
+def programs(spawn: Spawner) -> list[str]:
+    return [argv[0].replace("/", "\\").rsplit("\\", 1)[-1] for argv, _ in spawn.calls]
+
+
+def term_config(tmp_path: Path) -> Config:
+    config = make_config(tmp_path, {"_1_1": course(GUZ)})
+    (config.root / GUZ).mkdir(parents=True)
+    return config
 
 
 def test_windows_opens_windows_terminal_in_the_term_folder(tmp_path):
-    config = make_config(tmp_path, {"_1_1": course(GUZ)})
-    (config.root / GUZ).mkdir(parents=True)
+    config = term_config(tmp_path)
     spawn = Spawner()
-    result = ai.launch("claude", True, config, detector(claude=Path(r"C:\Users\me\.local\bin\claude.exe")),
-                       platform="win32", env=windows_env(tmp_path, terminal=True), spawn=spawn)
-    assert result.ok
+    result = windows_launch(tmp_path, config, "claude", True, True, spawn)
+    assert result.ok and result.terminal.key == "windows_terminal"
     (argv, kwargs), = spawn.calls
     assert argv[0].endswith("wt.exe") and argv[1] == "new-tab" and argv[2].endswith("powershell.exe")
     assert kwargs["cwd"] == str(config.root / GUZ) and kwargs["creationflags"] == ai.DETACHED_PROCESS
@@ -442,29 +548,63 @@ def test_windows_opens_windows_terminal_in_the_term_folder(tmp_path):
 
 
 def test_windows_without_windows_terminal_opens_a_powershell_console(tmp_path):
-    config = make_config(tmp_path, {"_1_1": course(GUZ)})
-    (config.root / GUZ).mkdir(parents=True)
     spawn = Spawner()
-    result = ai.launch("gemini", False, config, detector(gemini=Path(r"C:\npm\gemini.cmd")), platform="win32",
-                       env=windows_env(tmp_path, terminal=False), spawn=spawn)
-    assert result.ok
+    result = windows_launch(tmp_path, term_config(tmp_path), "gemini", False, False, spawn)
+    assert result.ok and result.terminal.key == "powershell"
     (argv, kwargs), = spawn.calls
-    assert argv[0] == r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
-    assert kwargs["creationflags"] == ai.CREATE_NEW_CONSOLE
+    assert programs(spawn) == ["powershell.exe"] and kwargs["creationflags"] == ai.CREATE_NEW_CONSOLE
     assert "LASTEXITCODE" not in base64.b64decode(argv[-1]).decode("utf-16-le")  # resume is off
 
 
+@pytest.mark.parametrize("chosen, opened", [("powershell", "powershell.exe"), ("cmd", "cmd.exe")])
+def test_windows_opens_the_chosen_console(tmp_path, chosen, opened):
+    spawn = Spawner()
+    result = windows_launch(tmp_path, term_config(tmp_path), "claude", True, True, spawn, chosen)
+    assert result.ok and result.terminal.key == chosen
+    assert programs(spawn) == [opened] and spawn.calls[0][1]["creationflags"] == ai.CREATE_NEW_CONSOLE
+
+
+def test_windows_uses_its_own_terminal_when_the_chosen_one_is_gone(tmp_path):
+    spawn = Spawner()
+    result = windows_launch(tmp_path, term_config(tmp_path), "claude", True, False, spawn, "windows_terminal")
+    assert result.ok and result.terminal.key == "powershell" and programs(spawn) == ["powershell.exe"]
+
+
 def test_windows_falls_back_to_powershell_and_reports_when_nothing_starts(tmp_path):
-    config = make_config(tmp_path, {"_1_1": course(GUZ)})
-    (config.root / GUZ).mkdir(parents=True)
-    tools = detector(codex=Path(r"C:\npm\codex.cmd"))
+    config = term_config(tmp_path)
     spawn = Spawner(fail_first=1)
-    assert ai.launch("codex", True, config, tools, platform="win32", env=windows_env(tmp_path, True),
-                     spawn=spawn).ok
-    assert [argv[0].rsplit("\\", 1)[-1].rsplit("/", 1)[-1] for argv, _ in spawn.calls] == ["wt.exe", "powershell.exe"]
-    result = ai.launch("codex", True, config, tools, platform="win32", env=windows_env(tmp_path / "b", True),
-                       spawn=Spawner(fail_first=2))
+    assert windows_launch(tmp_path / "a", config, "codex", True, True, spawn).ok
+    assert programs(spawn) == ["wt.exe", "powershell.exe"]
+    result = windows_launch(tmp_path / "b", config, "codex", True, True, Spawner(fail_first=2))
     assert result.failure == ai.Failure.TERMINAL_FAILED and "powershell.exe" in result.error
+    spawn = Spawner(fail_first=1)  # a terminal the student chose is not swapped for another
+    result = windows_launch(tmp_path / "c", config, "codex", True, True, spawn, "windows_terminal")
+    assert result.failure == ai.Failure.TERMINAL_FAILED and programs(spawn) == ["wt.exe"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="macOS paths and file modes")
+@pytest.mark.parametrize("chosen, used", [("iterm2", "iterm2"), ("kitty", "kitty"), ("ghostty", "terminal"),
+                                          ("cmd", "terminal"), ("", "terminal")])
+def test_macos_opens_the_chosen_terminal_while_it_is_there(tmp_path, chosen, used):
+    config = term_config(tmp_path)
+    for app in ("iTerm.app", "kitty.app"):
+        (tmp_path / "Applications" / app).mkdir(parents=True)
+    terminals = ai.Detector(lambda: ai.detect_terminals("darwin", env={}, home=tmp_path,
+                                                        app_dirs=("~/Applications",)))
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    result = ai.launch("claude", True, config, detector(claude=Path("/x/claude")), platform="darwin", run=run,
+                       terminal=chosen, terminals=terminals)
+    assert result.ok and result.terminal.key == used
+    (argv, kwargs), = calls
+    assert argv[0] == ("/usr/bin/osascript" if used == "iterm2" else "/usr/bin/open")
+    assert kwargs["timeout"] == (ai.AUTOMATION_TIMEOUT if used == "iterm2" else ai.OPEN_TIMEOUT)
+    if used == "kitty":
+        assert argv[2] == str(tmp_path / "Applications" / "kitty.app") and str(config.root / GUZ) in argv
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX paths")

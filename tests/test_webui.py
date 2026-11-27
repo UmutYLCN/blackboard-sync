@@ -522,28 +522,36 @@ def test_ai_card_payload_and_ids_follow_every_state():
 
     off = state(status())
     assert off["home"]["ai"]["kind"] == main.AI_OFF
-    assert off["home"]["ai"]["button"] == {"id": "ai_settings", "title": "Choose", "enabled": True}
-    assert webui_state.ids(off)["ai"] == {"ai_settings"}
+    assert off["home"]["ai"]["tools"] == [] and off["home"]["ai"]["button"] is None
+    assert webui_state.ids(off)["ai"] == set()
 
-    model = AppModel(Path("/tmp/dest"), NOW, ai_cli="claude", ai_resume=True)
+    model = AppModel(Path("/tmp/dest"), NOW, ai_cli="codex", ai_resume=True, ai_terminal="cmd")
     model.ai_term = "2026-2027 Güz"
-    model.ai_installed = frozenset({"claude"})
+    model.finish_ai_detection(frozenset({"claude", "codex"}), frozenset({"powershell", "cmd"}))
     ready = state(status(ai=main.ai_card(model)))
-    assert ready["home"]["ai"]["kind"] == main.AI_READY
-    assert ready["home"]["ai"]["button"] == {"id": "ai_open", "title": "Open in Claude Code", "enabled": True}
-    assert webui_state.ids(ready)["ai"] == {"ai_open"}
+    card = ready["home"]["ai"]
+    json.dumps(card)
+    assert card["kind"] == main.AI_READY and card["button"] is None and card["secondary"] is None
+    assert card["tools"] == [
+        {"id": "ai_open:claude", "key": "claude", "title": "Open in Claude Code", "current": False, "enabled": True},
+        {"id": "ai_open:codex", "key": "codex", "title": "Open in Codex", "current": True, "enabled": True}]
+    assert card["terminals"] == [{"id": "ai_terminal:powershell", "title": "PowerShell"},
+                                 {"id": "ai_terminal:cmd", "title": "Command Prompt"}]
+    assert (card["terminal"], card["terminal_label"], card["note"]) == ("ai_terminal:cmd", "Terminal", "")
+    assert webui_state.ids(ready)["ai"] == {"ai_open:claude", "ai_open:codex", "ai_terminal:powershell",
+                                            "ai_terminal:cmd"}
 
-    model.ai_installed = frozenset()
+    model.finish_ai_detection(frozenset(), model.ai_terminals)
     missing = state(status(ai=main.ai_card(model)))
-    assert missing["home"]["ai"]["warning"] is True
+    assert missing["home"]["ai"]["warning"] is True and missing["home"]["ai"]["tools"] == []
     assert missing["home"]["ai"]["button"] == {"id": "ai_install", "title": "How to install", "enabled": True}
-    assert missing["home"]["ai"]["secondary"] == {"id": "ai_open", "title": "Try again", "enabled": True}
-    assert webui_state.ids(missing)["ai"] == {"ai_install", "ai_open"}
+    assert missing["home"]["ai"]["secondary"] == {"id": "ai_detect", "title": "Try again", "enabled": True}
+    assert webui_state.ids(missing)["ai"] == {"ai_install", "ai_detect"}
 
-    model.ai_installed = frozenset({"claude"})
+    model.finish_ai_detection(frozenset({"claude"}), model.ai_terminals)
     model.ai_launching = True
     launching = state(status(ai=main.ai_card(model)))
-    assert launching["home"]["ai"]["button"]["enabled"] is False
+    assert not launching["home"]["ai"]["tools"][0]["enabled"] and not launching["home"]["ai"]["terminal_enabled"]
     assert webui_state.ids(launching)["ai"] == set()
 
     model.ai_launching = False
@@ -552,4 +560,13 @@ def test_ai_card_payload_and_ids_follow_every_state():
     )
     folder_missing = state(status(ai=main.ai_card(model)))
     assert folder_missing["home"]["ai"]["button"] == {"id": "sync", "title": "Sync now", "enabled": True}
-    assert webui_state.ids(folder_missing)["ai"] == {"sync"}
+    assert "sync" in webui_state.ids(folder_missing)["ai"]
+
+
+def test_the_page_carries_every_tools_logo_and_the_dark_one_follows_the_theme():
+    html = webui_page.document(nonce="n")
+    for key in ("claude", "gemini", "codex"):
+        assert f".ai-logo.{key} {{ background-image: url(data:image/png;base64," in html
+    assert ':root[data-theme="dark"] .ai-logo.codex {' in html
+    assert ':root:not([data-theme="light"]) .ai-logo.codex {' in html
+    assert ".ai-logo.claude" in html and ':root[data-theme="dark"] .ai-logo.claude' not in html
