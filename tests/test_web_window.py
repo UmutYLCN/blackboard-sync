@@ -139,13 +139,14 @@ def test_window_starts_hidden_with_the_page_and_the_bridge():
     assert "Content-Security-Policy" in options["html"] and "window.app" in options["html"]
     assert options["background_color"] == web_window.BACKGROUND[True]
     assert (options["width"], options["height"]) == (web_window.WIDTH, web_window.HEIGHT)
-    assert options["min_size"] == (web_window.MIN_WIDTH, web_window.MIN_HEIGHT)
+    assert options["resizable"] is False
+    assert options["min_size"] == (web_window.WIDTH, web_window.HEIGHT)
 
 
 def test_bridge_exposes_only_its_calls():
     public = {name for name in dir(Bridge(make_host())) if not name.startswith("_")}
     assert public == {"next_state", "navigate", "action", "open_file", "reveal_file", "announcement", "deadline",
-                      "attention", "recent_visible", "toggle_course", "save", "cancel_form", "setting", "set_theme",
+                      "recent_visible", "toggle_course", "save", "cancel_form", "setting", "set_theme",
                       "choose_folder", "dialog_answer"}
 
 
@@ -232,8 +233,7 @@ ROWS = (AnnouncementRow("k1", "CSE301", "Exercise", "15.10.2026", "", "notes/k1.
 def status(**changes):
     base = main.MainStatus(first_run=False, account=main.AccountCard("U", "Umut", ""), sync_title="Sync now",
                            sync_enabled=True, recent=RECENT, form=FORM,
-                           home=main.HomeState(main.STATE_SYNCED, "Up to date", ""), pause_enabled=True,
-                           attention=(main.AttentionItem("Update", "", "update", "Update", warning=False),))
+                           home=main.HomeState(main.STATE_SYNCED, "Up to date", ""), pause_enabled=True)
     return replace(base, **changes)
 
 
@@ -296,21 +296,8 @@ def test_clicks_act_only_on_ids_the_page_was_given():
     window.open_deadline("https://evil.example/")
     window.open_announcement("k1")
     window.open_announcement("k2")
-    window.run_attention("update")
-    window.run_attention("uninstall")
     assert events == [("open", "Term/CSE303/a.pdf"), ("reveal", "Term/CSE303/b.pdf"),
-                      ("deadline", "https://bb.example/p"), ("announcement", "k1"), ("action", "update")]
-
-
-def test_attention_open_item_passes_only_drawn_link():
-    link = "https://bb.example/ultra/redirect?redirectType=nautilus&courseId=_1_1&contentId=_2_1"
-    action = f"open_item:{link}"
-    item = main.AttentionItem("1 file is missing on Blackboard", "PHY101 · a.pdf", action, "Open in Blackboard")
-    window, host, events = make_window()
-    window.update_status(status(attention=(item,)))
-    window.run_attention(action)
-    window.run_attention("open_item:https://evil.example/phish")
-    assert events == [("action", action)]
+                      ("deadline", "https://bb.example/p"), ("announcement", "k1")]
 
 
 def test_actions_map_to_the_tray_app():

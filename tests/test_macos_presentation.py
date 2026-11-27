@@ -13,7 +13,7 @@ def test_main_window_uses_normal_level_and_one_managed_space(monkeypatch):
     monkeypatch.setitem(sys.modules, "AppKit", SimpleNamespace(
         NSNormalWindowLevel=0,
         NSWindowCollectionBehaviorManaged=4,
-        NSWindowCollectionBehaviorFullScreenPrimary=128,
+        NSWindowCollectionBehaviorFullScreenNone=512,
     ))
     window = SimpleNamespace(
         setLevel_=lambda value: calls.append(("level", value)),
@@ -22,9 +22,9 @@ def test_main_window_uses_normal_level_and_one_managed_space(monkeypatch):
 
     configure_main_window(window)
 
-    # Exact flags exclude joining all Spaces, auxiliary full-screen windows,
+    # Exact flags exclude going full screen, joining all Spaces, auxiliary full-screen windows,
     # and moving into the currently active (possibly full-screen) Space.
-    assert calls == [("level", 0), ("behavior", 4 | 128)]
+    assert calls == [("level", 0), ("behavior", 4 | 512)]
 
 
 @pytest.mark.parametrize("minimized", [False, True])

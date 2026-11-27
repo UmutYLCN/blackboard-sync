@@ -212,8 +212,7 @@
       return h("button", {
         class: "nav-item", type: "button", "aria-current": active ? "page" : null,
         onclick: () => navigate(item.id),
-      }, icon(active ? `${item.icon}-fill` : item.icon), h("span", { class: "label", text: item.title }),
-      item.badge ? h("span", { class: "badge", text: item.badge }) : null);
+      }, icon(active ? `${item.icon}-fill` : item.icon), h("span", { class: "label", text: item.title }));
     }));
   }
 
@@ -291,16 +290,6 @@
         h("span", { class: "row-text" },
           h("div", { class: "row-title", text: row.title }),
           courseDetail(row))));
-  }
-
-  function attentionRow(item) {
-    return h("div", { class: "row attention-row" },
-      icon(item.warning ? "warning-fill" : "notifications", item.warning ? "attention-icon" : "attention-icon info"),
-      h("div", { class: "row-text" },
-        h("div", { class: "row-title", text: item.title }),
-        h("div", { class: "row-detail", text: item.detail }),
-        item.id && item.action_title
-          ? pill(item.action_title, "tonal small", () => call("attention", item.id)) : null));
   }
 
   function scene(small) {
@@ -416,13 +405,10 @@
   }
 
   function announcementsCard(home) {
-    const any = home.attention.length || home.announcements.length;
+    const any = home.announcements.length;
     return h("section", { class: "card" },
       h("h2", { class: "card-title", text: state.text.announcements }),
-      any ? null : h("div", { class: "empty" },
-        h("div", { class: "empty-title" }, icon("check_circle-fill"), h("span", { text: state.text.all_good })),
-        h("div", { text: state.text.all_good_detail })),
-      home.attention.map(attentionRow),
+      any ? null : h("div", { class: "empty", text: state.text.announcements_empty }),
       home.announcements.map((row) => listRow("campaign", row, "announcement")),
       any ? h("div", { class: "card-footer" }, pill(state.text.view_all, "tonal", () => navigate("announcements"))) : null);
   }
@@ -552,11 +538,6 @@
     const data = state.announcements;
     return h("div", {},
       h("p", { class: "hint", text: data.hint }),
-      data.attention.length ? [
-        h("h2", { class: "section-title", text: data.attention_title }),
-        h("section", { class: "card" }, data.attention.map(attentionRow)),
-        h("div", { class: "form-gap" }),
-      ] : null,
       data.rows.length ? h("div", { class: "stack" }, data.rows.map((row) => h("section", {
         class: "card announcement", onclick: () => call("announcement", row.id),
       },

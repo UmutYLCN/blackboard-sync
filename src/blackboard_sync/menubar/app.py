@@ -26,10 +26,8 @@ from blackboard_sync.menubar import jobs, launchagent, settings_form
 from blackboard_sync.menubar.main_window_model import (
     AI_OPEN_PREFIX,
     GENERAL,
-    OPEN_ITEM_PREFIX,
     OVERVIEW,
     notebooklm_progress,
-    open_item_url,
     shows_window_at_launch,
 )
 from blackboard_sync.menubar.model import (
@@ -415,10 +413,6 @@ def build_app(config: Config, show_window: bool = False):
             choice = ask_calendar_disconnect()
             if choice is not None:
                 self.start_calendar("disconnect", delete_calendar=choice)
-
-        def open_calendar_settings(self):
-            self.open_settings()
-            self._window.show_calendar_settings()
 
         def start_notebooklm(self, action: str = NOTEBOOKLM_SYNC, auto: bool = False) -> None:
             """Run beside the Blackboard jobs; whatever happens shows only on Home's card."""
@@ -836,18 +830,12 @@ def build_app(config: Config, show_window: bool = False):
 
         def window_action(self, action: str) -> None:
             """A button in the main window that acts right away instead of saving."""
-            if action.startswith(OPEN_ITEM_PREFIX):
-                url = open_item_url(action, self.settings.base_url, self.config.base_url)
-                if url:
-                    open_url(url)
-                return
             if action.startswith(AI_OPEN_PREFIX):
                 self.start_ai_launch(action.removeprefix(AI_OPEN_PREFIX))
                 return
             {
                 "calendar_connect": lambda: self.start_calendar("connect"),
                 "calendar_sync": self.start_calendar, "calendar_disconnect": self.disconnect_calendar,
-                "calendar_settings": self.open_calendar_settings,
                 "sync": self.start_sync, "folder": self.open_school_folder, "login": self.start_login,
                 "logout": self.logout,
                 "check_updates": self.start_update_check, "update": self.start_update,

@@ -25,10 +25,8 @@ from blackboard_sync.menubar import jobs, settings_form
 from blackboard_sync.menubar.main_window_model import (
     AI_OPEN_PREFIX,
     GENERAL,
-    OPEN_ITEM_PREFIX,
     OVERVIEW,
     notebooklm_progress,
-    open_item_url,
     shows_window_at_launch,
 )
 from blackboard_sync.menubar.model import (
@@ -538,7 +536,7 @@ class TrayApp:
             return
         elif action == "pause":
             self.toggle_pause()
-        elif action in ("settings", "calendar_settings"):
+        elif action == "settings":
             self.show_window(GENERAL)
         elif action == "ai_open":
             self.start_ai_launch(from_menu=from_menu)
@@ -565,10 +563,6 @@ class TrayApp:
             webbrowser.open(notebooklm_store.APP_URL)
         elif action == "notebooklm_disconnect":
             self.disconnect_notebooklm()
-        elif action.startswith(OPEN_ITEM_PREFIX):
-            url = open_item_url(action, self.settings.base_url, self.config.base_url)
-            if url:
-                webbrowser.open(url)
         elif action == "deadline":
             if value.startswith(self.config.base_url.rstrip("/") + "/"):
                 webbrowser.open(value)

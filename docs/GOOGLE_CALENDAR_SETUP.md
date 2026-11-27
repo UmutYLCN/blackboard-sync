@@ -142,12 +142,12 @@ local files alone does not revoke Google's grant or delete the Google calendar.
       deleted. Confirm Cancel of the dialog has no effect.
 - [ ] Connect again. Remove access at Google Account → Third-party connections.
       Run Sync calendar now (or wait for the next successful Blackboard sync).
-      Home shows **Google Calendar needs to be reconnected**. Its Reconnect
-      action opens Settings at Google Calendar. Blackboard sync still succeeds.
+      Settings shows **Google Calendar needs to be reconnected** on its
+      Google Calendar row. Blackboard sync still succeeds.
 - [ ] Test the same flows with Turkish selected; check row text fits the window.
 
 Windows already shares automatic post-sync updates, pause/cancellation, credential
-storage and Home attention. Native Windows connection/status/sync/disconnect
+storage. Native Windows connection/status/sync/disconnect
 controls, the delete-calendar confirmation and scrolling directly to a Calendar
 settings section remain out of scope; connect/reconnect/disconnect using the CLI.
 

@@ -324,8 +324,8 @@ def fake_tk(monkeypatch, tmp_path):
         def geometry(self, spec):
             self.size = spec
 
-        def minsize(self, *args):
-            self.minimum = args
+        def resizable(self, *args):
+            self.resizing = args
 
         def attributes(self, *args):
             self.topmost = args[1]
@@ -751,7 +751,7 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     # A short screen: the window fits above the taskbar, centred; sections scroll.
     total = 600 - SCREEN_MARGIN
     assert window.window.size == f"940x{total - CHROME}+213+{SCREEN_MARGIN // 2}"
-    assert window.window.minimum[0] == 760 and window.window.minimum[1] < total - CHROME
+    assert window.window.resizing == (False, False)
     assert window.window.shown and window.window.topmost is True
     window.window.later()
     assert window.window.topmost is False
@@ -866,6 +866,19 @@ def test_windows_main_window_sections_layout_and_validation(monkeypatch, tmp_pat
     window.window.bindings['<MouseWheel>'](SimpleNamespace(delta=-120))
     assert window.courses_canvas.scrolled == [(1, 'units')]
     assert window.interval_dropdown.bindings['<MouseWheel>'](SimpleNamespace(delta=120)) == 'break'
+    # Home scrolls as a whole; over its file list the list goes first, until it ends.
+    window.nav[OVERVIEW].options['command']()
+    window.overview_canvas.view = (0.0, 0.7)
+    window.window.bindings['<MouseWheel>'](SimpleNamespace(delta=-120))
+    assert window.overview_canvas.scrolled == [(1, 'units')] and window.recent_canvas.scrolled == []
+    over_list = SimpleNamespace(delta=-120, widget=f'{window.recent_canvas}.row')
+    window.recent_canvas.view = (0.0, 0.5)
+    window.window.bindings['<MouseWheel>'](over_list)
+    assert window.recent_canvas.scrolled == [(1, 'units')]
+    window.recent_canvas.view = (0.5, 1.0)
+    window.window.bindings['<MouseWheel>'](over_list)
+    assert window.recent_canvas.scrolled == [(1, 'units')]
+    assert window.overview_canvas.scrolled == [(1, 'units'), (1, 'units')]
 
     # Closing hides the window and drops unsaved edits; nothing else stops.
     window.gear_button.options['command']()
@@ -1088,18 +1101,6 @@ def test_tray_settings_item_opens_the_main_window_on_genel(tmp_path, monkeypatch
     app.show_window = lambda section=None: opened.append(section)
     app.dispatch('settings')
     assert opened == [GENERAL]
-
-
-def test_tray_open_item_opens_only_school_urls(tmp_path, monkeypatch):
-    from blackboard_sync.windows import app as windows_app
-
-    app, _workers = update_app(tmp_path, monkeypatch)
-    opened = []
-    monkeypatch.setattr(windows_app.webbrowser, 'open', opened.append)
-    good = f"{app.settings.base_url.rstrip('/')}/ultra/redirect?redirectType=nautilus&courseId=_1_1&contentId=_2_1"
-    app.dispatch(f"open_item:{good}")
-    app.dispatch("open_item:https://evil.example/phish")
-    assert opened == [good]
 
 
 def test_explicit_start_shows_the_window_and_login_start_stays_in_the_tray(tmp_path):
@@ -1442,4 +1443,3 @@ def test_windows_home_badges_show_course_title_and_truncate_long_titles(monkeypa
     assert 'wraplength' not in dl_labels[0].options
     assert '… · ' in dl_labels[1].options['text']
     assert 'wraplength' not in dl_labels[1].options
-

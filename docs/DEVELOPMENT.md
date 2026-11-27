@@ -225,14 +225,14 @@ Settings). A sidebar switches between the sections:
   animation of papers flying from a cloud into a folder takes the place of the status
   symbol in the card. It is drawn natively (AppKit / Tk canvas), moves only while Home is
   in view and stands still with reduce motion (macOS) or animations turned off
-  (Windows). On the right, **Announcements** (what needs attention, then the newest announcements, three
-  in all, or "You're all caught up!") and **Upcoming deadlines** (the next four due dates).
+  (Windows). On the right, **Announcements** (the three newest) and **Upcoming deadlines** (the next four due dates).
 - **Sync activity**: what each sync brought (files, notes, announcements), newest first,
   up to 300, with size and status like Drive's table (`menubar.json` `activity`); a click
   opens the file.
-- **Announcements**: Drive's notifications and the course announcements in one page — what
-  needs attention (signed out, an update, a failed sync, warnings or unreadable courses;
-  `main_window_model.attention_items`) on top, then every synced current-term announcement.
+- **Announcements**: every synced current-term announcement. The app's own warnings are
+  not listed here; sign-in, a failed sync and an update show on Home, Calendar problems in Settings.
+  What a finished sync could not do (files, courses, a bad connection) is one line on Home's status
+  card (`main_window_model.sync_problem_line`).
 - **Settings** (the gear, not in the sidebar): the [settings](#settings).
 - **Calendar**: due dates grouped by local day, upcoming first and elapsed dates
   separately. Clicking opens an existing downloaded note or Blackboard. The
@@ -1222,8 +1222,8 @@ worker. Calendar failures do not replace the successful Blackboard outcome.
 needs_reconnect); it is persisted with app state, with durable Calendar metadata
 in `google-calendar.json`. `calendar_busy` and cancellation belong to this worker,
 independent of the Blackboard slot. Pause cancels Calendar sync between requests
-and prevents new automatic work. A revoked grant creates a Home attention item
-whose action opens the macOS Calendar settings section. `settings_form` provides
+and prevents new automatic work. A revoked grant shows on the Calendar row
+in Settings. `settings_form` provides
 GUI-free row presentation for every state. Connection and disconnection act
 immediately and never modify the Save/Cancel form values. Windows shares the
 worker but not the native connection controls yet; see the setup guide.

@@ -12,7 +12,7 @@ import pytest
 from blackboard_sync.config import Config
 from blackboard_sync.menubar import jobs
 from blackboard_sync.menubar.main_window_model import (
-    STATE_ATTENTION, STATE_ERROR, STATE_PAUSED, STATE_SYNCED, STATE_SYNCING, attention_items, format_size, main_status,
+    STATE_ATTENTION, STATE_ERROR, STATE_PAUSED, STATE_SYNCED, STATE_SYNCING, format_size, main_status,
 )
 from blackboard_sync.menubar.model import (
     ACTIVITY_LIMIT, AppModel, Icon, RunOutcome, T_PAUSE, T_RESUME,
@@ -187,23 +187,5 @@ def test_home_states(tmp_path):
     assert (home.kind, home.detail) == (STATE_ERROR, "No network")
 
 
-def test_attention_lists_only_what_needs_the_student(tmp_path):
-    model = signed_in(tmp_path)
-    assert attention_items(model) == ()
-    model.pause()
-    assert attention_items(model) == ()  # a pause is on Home's card, not an alarm
-    model.last = RunOutcome("ok", finished_at=NOW, warning_count=3)
-    assert [i.title for i in attention_items(model)] == ["Something went wrong during the last sync"]
-    model.last = RunOutcome("ok", finished_at=NOW, unreadable_courses=2, warning_count=3)
-    assert [i.title for i in attention_items(model)] == ["Could not read 2 courses"]
-    model.last = RunOutcome("error", message="No network", finished_at=NOW)
-    assert [(i.title, i.detail) for i in attention_items(model)] == [("Sync did not finish", "No network")]
-    model.session, model.session_expired = None, True
-    items = attention_items(model)
-    assert items[0].title == "Session expired" and (items[0].action, items[0].action_title) == ("login", "Sign in")
-
-
-def test_nothing_needs_attention_before_the_first_sign_in(tmp_path):
-    assert attention_items(AppModel(tmp_path, NOW, configured=False)) == ()
+def test_nothing_to_pause_before_the_first_sign_in(tmp_path):
     assert main_status(AppModel(tmp_path, NOW, configured=False), NOW).pause_enabled is False
-

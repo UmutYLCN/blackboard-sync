@@ -28,7 +28,7 @@ from blackboard_sync.windows.theme import course_badge_colors
 log = logging.getLogger(__name__)
 
 REOPEN_WHERE = tr("the Start menu")
-WIDTH, HEIGHT = 940, 640  # what it opens with when the work area has room
+WIDTH, HEIGHT = 940, 640  # the window's fixed size when the work area has room
 MIN_WIDTH = 760
 SIDEBAR = 200
 # Buttons whose title follows the app's state keep one width (in characters).
@@ -390,9 +390,6 @@ class MainWindow:
     def _build_overview(self, page):
         from tkinter import ttk
 
-        page.columnconfigure(0, weight=3, uniform="home")
-        page.columnconfigure(1, weight=2, uniform="home")
-        page.rowconfigure(3, weight=1)
         # Home's header: a greeting, and under it one line about the next due dates (hidden without any).
         header = ttk.Frame(page)
         header.grid(row=0, column=0, sticky="w", pady=(0, 12))
@@ -401,6 +398,11 @@ class MainWindow:
         self.overview_subtitle = ttk.Label(header, foreground=MUTED)
         self.overview_subtitle.grid(row=1, column=0, sticky="w")
         self.overview_subtitle.grid_remove()
+        # Everything under the header scrolls: the window cannot grow to show what does not fit,
+        # and the buttons at the top right stay clear of it.
+        self.overview_canvas, page = self._scroll_area(page, 1)
+        page.columnconfigure(0, weight=3, uniform="home")
+        page.columnconfigure(1, weight=2, uniform="home")
         self.overview_update_banner = self._build_update_banner(page, 1)
         background = background_of(page)
 
@@ -568,31 +570,27 @@ class MainWindow:
             self.ai_secondary.pack(side="left", padx=(8, 0))
 
     def _draw_home_cards(self):
-        """Home's Announcements (what needs attention, then the newest) and Yaklaşan teslimler cards."""
+        """Home's Announcements and Yaklaşan teslimler cards."""
         from datetime import datetime
         from tkinter import ttk
 
-        items = self.status.attention[:main.HOME_ANNOUNCEMENT_ROWS]
-        rows = tuple(self.on_announcements()[:max(main.HOME_ANNOUNCEMENT_ROWS - len(items), 0)])
+        rows = tuple(self.on_announcements()[:main.HOME_ANNOUNCEMENT_ROWS])
         colors = tuple(main.course_color_index(self.status.course_colors, row.course_code) for row in rows)
-        key = ("announcements", items, rows, colors)
+        key = ("announcements", rows, colors)
         if key != self._drawn_home_notifications:
             self._drawn_home_notifications = key
             for child in self.notify_frame.winfo_children():
                 child.destroy()
-            if not items and not rows:
-                ttk.Label(self.notify_frame, text="✓ " + main.T_ALL_GOOD, font=BOLD_FONT).pack(anchor="w")
-                ttk.Label(self.notify_frame, text=main.T_ALL_GOOD_DETAIL, foreground=MUTED, wraplength=240).pack(
-                    anchor="w", pady=(2, 4))
-            for item in items:
-                self._attention_row(self.notify_frame, item, 240)
+            if not rows:
+                ttk.Label(self.notify_frame, text=announcements.T_EMPTY, foreground=MUTED, wraplength=240).pack(
+                    anchor="w")
             for row, color in zip(rows, colors):
                 ttk.Button(self.notify_frame, text=row.title, style="Toolbutton",
                            command=lambda item=row: self.on_open_announcement(item)).pack(anchor="w")
                 self._course_detail(self.notify_frame, row.detail, row.course_code, row.date, color, wrap=240,
                                     course_title=main.course_name_without_code(row.course, row.course_code)).pack(
                     anchor="w", padx=(4, 0), pady=(0, 6))
-            if items or rows:
+            if rows:
                 PillButton(self.notify_frame, main.T_VIEW_ALL, lambda: self.select(main.ANNOUNCEMENTS),
                            accent=True).pack(anchor="w", pady=(6, 0))
         page = self.on_deadlines()
@@ -640,18 +638,6 @@ class MainWindow:
             label_kwargs = {"wraplength": max(1, wrap - width - 6)} if (wrap and not course_title) else {}
             ttk.Label(row, text=trailing, style="Muted.TLabel", **label_kwargs).pack(side="left", padx=(6, 0))
         return row
-
-    def _attention_row(self, parent, item, wrap):
-        from tkinter import ttk
-
-        row = ttk.Frame(parent)
-        row.pack(anchor="w", fill="x", pady=(0, 8))
-        ttk.Label(row, text=item.title, font=BOLD_FONT, foreground=WARNING if item.warning else "",
-                  wraplength=wrap).pack(anchor="w")
-        ttk.Label(row, text=item.detail, foreground=MUTED, wraplength=wrap).pack(anchor="w")
-        if item.action:
-            ttk.Button(row, text=item.action_title, command=lambda a=item.action: self.on_action(a)).pack(
-                anchor="w", pady=(4, 0))
 
     def _build_activity(self, page):
         from tkinter import ttk
@@ -881,26 +867,32 @@ class MainWindow:
         self.courses_canvas.configure(background=background_of(page))
 
     def fit(self):
-        """Open at the default size, but never taller than the work area; centred in it."""
+        """The fixed size, but never taller than the work area; centred in it."""
         window = self.window
         window.update_idletasks()
         left, top, width, height = work_area(window)
         total = form.window_height(HEIGHT, CHROME, height)
         inner_width = min(WIDTH, max(MIN_WIDTH, width - 40))
-        window.minsize(MIN_WIDTH, min(form.MIN_WINDOW_HEIGHT, total) - CHROME)
         x = left + max(0, (width - inner_width) // 2)
         y = top + max(0, (height - total) // 2)
         window.geometry(f"{inner_width}x{total - CHROME}+{x}+{y}")
+        window.resizable(False, False)
 
     def wheel(self, event):
-        canvas = {"start": self.start_canvas, main.OVERVIEW: self.recent_canvas,
+        canvas = {"start": self.start_canvas, main.OVERVIEW: self.overview_canvas,
                   main.ACTIVITY: self.activity_canvas,
                   main.CALENDAR: self.calendar_canvas,
                   main.ANNOUNCEMENTS: self.announcements_canvas,
                   main.GENERAL: self.form_canvas, main.COURSES: self.courses_canvas}[self.visible_page()]
+        steps = wheel_steps(event.delta)
+        # Over Home's file list the list scrolls first, then the page.
+        if canvas is self.overview_canvas and str(getattr(event, "widget", "")).startswith(f"{self.recent_canvas}."):
+            first, last = self.recent_canvas.yview()
+            if (last < 1) if steps > 0 else (first > 0):
+                canvas = self.recent_canvas
         first, last = canvas.yview()
         if first > 0 or last < 1:  # a section that fits stays put
-            canvas.yview_scroll(wheel_steps(event.delta), "units")
+            canvas.yview_scroll(steps, "units")
 
     # -- behaviour ------------------------------------------------------------
     def show(self, section=None):
@@ -1067,8 +1059,7 @@ class MainWindow:
         self.status = status
         self.nav[main.OVERVIEW].configure(text=status.overview_title)
         self.nav[main.ACTIVITY].configure(text=main.T_NAV_ACTIVITY)
-        count = len(status.attention)
-        self.nav[main.ANNOUNCEMENTS].configure(text=announcements.T_TAB + (f" ({count})" if count else ""))
+        self.nav[main.ANNOUNCEMENTS].configure(text=announcements.T_TAB)
         self.nav[main.CALENDAR].configure(text=deadlines.T_TAB)
         self.nav[main.COURSES].configure(text=self.courses_nav_title(self._drawn_courses or ()))
         if first_run_changed:
@@ -1324,21 +1315,12 @@ class MainWindow:
         from tkinter import ttk
 
         rows = self.on_announcements()
-        attention = self.status.attention
         colors = tuple(main.course_color_index(self.status.course_colors, row.course_code) for row in rows)
-        if (rows, attention, colors) == self._drawn_announcements:
+        if (rows, colors) == self._drawn_announcements:
             return
-        self._drawn_announcements = (rows, attention, colors)
+        self._drawn_announcements = (rows, colors)
         for widget in self.announcements_frame.winfo_children():
             widget.destroy()
-        # Drive's notifications on top: what needs the student (sign in again, an update, a failed sync).
-        if attention:
-            ttk.Label(self.announcements_frame, text=main.T_NEEDS_ATTENTION, font=HEADING_FONT).pack(
-                anchor="w", pady=(0, 8))
-            for item in attention:
-                card = ttk.LabelFrame(self.announcements_frame, padding=(12, 8))
-                card.pack(fill="x", pady=(0, 8))
-                self._attention_row(card, item, WRAP - 60)
         if not rows:
             ttk.Label(self.announcements_frame, text=announcements.T_EMPTY,
                       foreground=MUTED, wraplength=WRAP).pack(anchor="w", pady=12)

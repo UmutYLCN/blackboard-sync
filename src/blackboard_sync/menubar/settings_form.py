@@ -115,11 +115,11 @@ DEST_CHOICES = ((DEST_MOVE, T_MOVE), (DEST_REFETCH, T_REDOWNLOAD))
 # The window never grows past the screen: what does not fit scrolls inside it,
 # above the Vazgeç/Kaydet bar. Heights include the title bar.
 SCREEN_MARGIN = 40  # kept free between the window and the Dock, menu bar or taskbar
-MIN_WINDOW_HEIGHT = 400  # the smallest height the student can resize the window to
+MIN_WINDOW_HEIGHT = 400  # the smallest height it opens with, on a tiny screen
 
 
 def window_height(content: float, chrome: float, available: float) -> int:
-    """The main window's opening height: everything when it fits on the screen.
+    """The main window's fixed height: everything when it fits on the screen.
 
     ``content`` is what the window's views need, ``chrome`` what the window
     adds around them (title bar, borders) and ``available`` the screen height

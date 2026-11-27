@@ -167,15 +167,12 @@ def states(lang: str) -> dict:
     from blackboard_sync import i18n
 
     i18n.set_language(lang)  # before the modules with tr() constants are imported
-    from dataclasses import replace
-
     from blackboard_sync.windows import webui_state
 
     # As the Store package shows them: the Store updates the app, so no update rows or offers.
     window_state = webui_state.window_state
 
     def packaged_state(status, *args, **kwargs):
-        status = replace(status, attention=tuple(item for item in status.attention if item.action != "update"))
         return window_state(status, *args, **{**kwargs, "packaged": True})
 
     webui_state.window_state = packaged_state

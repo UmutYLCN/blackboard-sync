@@ -35,8 +35,8 @@ from blackboard_sync.windows import webui_page, webui_state
 
 log = logging.getLogger(__name__)
 
-WIDTH, HEIGHT = 1120, 760  # what it opens with when the work area has room
-MIN_WIDTH, MIN_HEIGHT = 860, 560
+WIDTH, HEIGHT = 1120, 760  # the window's fixed size when the work area has room
+MIN_WIDTH = 860
 CHROME = 40  # title bar and borders Windows adds (pixels)
 BACKGROUND = {True: "#F1F4F9", False: "#111317"}  # app.css --bg, light and dark: no white flash
 STATE_WAIT = 20.0  # seconds a page's request for a new state waits before it asks again
@@ -146,9 +146,6 @@ class Bridge:
     def deadline(self, ident):
         self._post_id("open_deadline", ident)
 
-    def attention(self, ident):
-        self._post_id("run_attention", ident)
-
     def recent_visible(self, idents=(), active=False):
         if not isinstance(idents, list) or len(idents) > MAX_VISIBLE:
             idents = []
@@ -212,7 +209,7 @@ class WebHost:
         x, y, width, height = initial_geometry(area)
         self.window = webview.create_window(
             main.T_WINDOW_TITLE, html=webui_page.document(lang=language(), theme=theme), js_api=Bridge(self),
-            x=x, y=y, width=width, height=height, min_size=(MIN_WIDTH, MIN_HEIGHT), hidden=True,
+            x=x, y=y, width=width, height=height, min_size=(width, height), resizable=False, hidden=True,
             background_color=BACKGROUND[is_light(theme, windows_light)], text_select=False, zoomable=False)
         self.window.events.closing += self._closing
         self.window.events.before_show += self._remember_handle
@@ -617,10 +614,6 @@ class WebMainWindow:
     def open_deadline(self, ident):
         if ident in self._ids.get("deadline", ()):
             self.on_deadline(ident)
-
-    def run_attention(self, ident):
-        if ident in self._ids.get("attention", ()):
-            self.on_action(ident)
 
     def recent_visible(self, idents, active):
         """The page's sample of the last files on screen, every half second while it has the focus."""

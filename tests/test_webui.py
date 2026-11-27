@@ -78,7 +78,6 @@ def test_window_state_is_plain_json_with_home_and_sidebar():
     data = state()
     assert json.loads(json.dumps(data)) == data
     assert [item["id"] for item in data["nav"]] == list(main.NAV_SECTIONS)
-    assert {item["id"]: item["badge"] for item in data["nav"]}[main.COURSES] == ""
     home = data["home"]
     assert home["heading"] == "Good afternoon, Umut" and home["subtitle"] == "1 deadline today"
     assert home["button"] == {"id": "sync", "title": "Sync now", "enabled": True}
@@ -262,38 +261,14 @@ def test_home_button_follows_the_state():
     assert state(busy)["home"]["button"] == {"id": "sync", "title": "Syncing…", "enabled": False}
 
 
-def test_attention_comes_before_announcements_and_ids_are_what_was_drawn():
-    item = main.AttentionItem("Session expired", "Sign in to get new files.", "login", "Sign in")
-    note = main.AttentionItem("Note", "Something", warning=False)
-    data = state(status(attention=(item, note)))
+def test_home_lists_only_announcements_and_ids_are_what_was_drawn():
+    data = state()
     home = data["home"]
-    assert [entry["title"] for entry in home["attention"]] == ["Session expired", "Note"]
-    assert [row["id"] for row in home["announcements"]] == ["k1"]  # three rows in all
-    assert {item["id"] for item in data["nav"] if item["badge"] == "2"} == {main.ANNOUNCEMENTS}
+    assert [row["id"] for row in home["announcements"]] == ["k1", "k2", "k3"]
     ids = webui_state.ids(data)
     assert ids["file"] == {row.path for row in RECENT[:main.HOME_RECENT_ROWS]}
-    assert ids["announcement"] == {"k1", "k2", "k3"}  # k1 on Home, all three on Announcements
-    assert ids["attention"] == {"login"}  # a note without an action offers no click
+    assert ids["announcement"] == {"k1", "k2", "k3"}
     assert ids["deadline"] == {"Term/CSE301/Proposal.pdf", "https://bb.example/report"}
-
-
-def test_attention_open_item_action_passes_through_webui_state():
-    link = "https://bb.example/ultra/redirect?redirectType=nautilus&courseId=_1_1&contentId=_2_1"
-    item = main.AttentionItem(
-        "1 file is missing on Blackboard",
-        "PHY101 · W10_Quiz_CH6.pdf: Blackboard has no file behind this link. Open it in Blackboard or ask your instructor.",
-        f"open_item:{link}",
-        "Open in Blackboard",
-    )
-    data = state(status(attention=(item,)))
-    assert data["home"]["attention"] == [{
-        "id": f"open_item:{link}",
-        "title": item.title,
-        "detail": item.detail,
-        "action_title": "Open in Blackboard",
-        "warning": True,
-    }]
-    assert webui_state.ids(data)["attention"] == {f"open_item:{link}"}
 
 
 def test_empty_home_says_why():

@@ -139,18 +139,6 @@ button, input, select { font: inherit; color: inherit; }
 .nav-item:hover { background: var(--surface-press); }
 .nav-item[aria-current="page"] { background: var(--nav-active); color: var(--on-nav-active); font-weight: 600; }
 .nav-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.badge {
-  min-width: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--on-accent);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 18px;
-  text-align: center;
-}
-
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
 .topbar { display: flex; align-items: flex-start; gap: 16px; padding: 22px 28px 18px 16px; }
@@ -375,13 +363,6 @@ button, input, select { font: inherit; color: inherit; }
   flex: none;
 }
 .icon-tile .icon { width: 20px; height: 20px; }
-
-.attention-row { cursor: default; align-items: flex-start; }
-.attention-row:hover { background: transparent; }
-.attention-row .row-title, .attention-row .row-detail { white-space: normal; }
-.attention-row .pill { margin-top: 8px; }
-.attention-icon { color: var(--caution); margin-top: 2px; }
-.attention-icon.info { color: var(--accent); }
 
 /* -- state header (Home, Sync activity) -------------------------------------- */
 
