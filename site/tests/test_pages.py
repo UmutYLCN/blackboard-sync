@@ -152,6 +152,22 @@ def test_stats_json_route_returns_cached_release_totals(browser):
         assert isinstance(payload['updated'], str) and payload['updated']
 
 
+def test_min_version_json_is_served_uncached(browser):
+    with browser.new_context() as context:
+        response = context.request.get(BASE + '/min-version.json')
+        assert response.status == 200
+        assert 'application/json' in response.headers.get('content-type', '')
+        cache_control = response.headers.get('cache-control', '')
+        assert 'no-cache' in cache_control and 'max-age=0' in cache_control
+        assert 'access-control-allow-origin' not in response.headers
+        payload = response.json()
+        assert payload['schema'] == 1
+        assert isinstance(payload['minimum'], dict)
+        assert {'macos', 'windows'} <= set(payload['minimum'])
+        assert type(payload.get('dmg_retired')) is bool
+        assert isinstance(payload.get('mas_url'), str) and payload['mas_url'].startswith('https://apps.apple.com/')
+
+
 @pytest.mark.parametrize('locale,path', [('en', '/privacy'), ('tr', '/tr/privacy')])
 def test_privacy_mobile_layout_and_metadata(browser, locale, path):
     with context_for(browser, width=320) as context:

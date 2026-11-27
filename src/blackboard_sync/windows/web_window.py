@@ -45,8 +45,8 @@ QUIT_GRACE = 10.0  # seconds pywebview's loop gets to end after Quit before the 
 LICENSE_ACTIONS = (main.LICENSE_BUY_ACTION, main.LICENSE_RESTORE_ACTION)
 NOTEBOOKLM_ACTIONS = ("notebooklm_connect", "notebooklm_sync", "notebooklm_open")
 AI_ACTIONS = ("ai_install", "ai_detect", *(main.AI_OPEN_PREFIX + key for key in AI_CLIS))
-ACTIONS = ("sync", "pause", "folder", "update", "home_action", "account", *LICENSE_ACTIONS, *NOTEBOOKLM_ACTIONS,
-           *AI_ACTIONS)
+ACTIONS = ("sync", "pause", "folder", "update", main.REQUIRED_UPDATE_ACTION, "home_action", "account",
+           *LICENSE_ACTIONS, *NOTEBOOKLM_ACTIONS, *AI_ACTIONS)
 SETTING_BUTTONS = ("account", "update", "uninstall", "google_calendar", "google_calendar_sync",
                    "google_calendar_disconnect", "notebooklm_disconnect")
 BUTTON_ACTIONS = {"google_calendar": "calendar_connect", "google_calendar_sync": "calendar_sync",
@@ -563,6 +563,8 @@ class WebMainWindow:
 
     def visible_page(self):
         section = self.state.section
+        if section == main.OVERVIEW and self.status.update_required is not None:
+            return main.OVERVIEW
         return "start" if section == main.OVERVIEW and self.status.first_run else section
 
     # -- what the page asks (through WebHost.post) -----------------------------------
@@ -571,6 +573,9 @@ class WebMainWindow:
         if name == "home_action":
             if status.home.action:
                 self.on_action(status.home.action)
+        elif name == main.REQUIRED_UPDATE_ACTION:
+            if name in self._ids.get("update_required", ()):
+                self.on_action(name)
         elif name in LICENSE_ACTIONS:
             if name in self._ids.get("license", ()):
                 self.on_action(name)
@@ -651,7 +656,7 @@ class WebMainWindow:
         """The page's sample of the last files on screen, every half second while it has the focus."""
         if self.recent_seen is None:
             return
-        active = active and self.state.open and self.visible_page() == main.OVERVIEW
+        active = active and self.state.open and self.visible_page() == main.OVERVIEW and self.status.update_required is None
         shown = set(idents) if active else set()
         visible = [(row.path, row.at) for row in self.status.recent if row.path in shown]
         if self.recent_seen.observe(visible, active):

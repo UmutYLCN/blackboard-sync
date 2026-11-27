@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "minimum": {
+    "macos": "1.7.2",
+    "windows": "1.7.2"
+  },
+  "dmg_retired": false,
+  "mas_url": "https://apps.apple.com/app/id<TBD>"
+}
