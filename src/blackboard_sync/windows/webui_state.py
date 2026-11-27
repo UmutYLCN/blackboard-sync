@@ -177,6 +177,19 @@ def notebooklm_card(card: main.NotebookLMCard) -> dict:
     }
 
 
+def ai_card(card: main.AiCard) -> dict:
+    """The card under Home's NotebookLM card, the same one macOS draws (``main_window_model.ai_card``)."""
+    return {
+        "kind": card.kind,
+        "title": card.title,
+        "detail": card.detail,
+        "button": {"id": card.action, "title": card.action_title, "enabled": card.enabled} if card.action else None,
+        "secondary": ({"id": card.secondary_action, "title": card.secondary_title, "enabled": card.secondary_enabled}
+                      if card.secondary_action else None),
+        "warning": card.warning,
+    }
+
+
 def home(status: main.MainStatus, announcement_rows, deadline_page: deadlines.DeadlinePage, today: date) -> dict:
     """Home: the greeting, the status card with the last files, Announcements and the next due dates."""
     state = status.home
@@ -196,6 +209,7 @@ def home(status: main.MainStatus, announcement_rows, deadline_page: deadlines.De
         "recent": recent(status.recent),
         "recent_count": main.recent_count(status.recent),
         "notebooklm": notebooklm_card(status.notebooklm),
+        "ai": ai_card(status.ai),
         "attention": attention,
         "announcements": rows,
         "deadlines": upcoming,
@@ -401,6 +415,7 @@ def ids(state: dict) -> dict[str, set[str]]:
     """The ids a click may send back, by kind, from the state the page was given."""
     home_state = state["home"]
     card = home_state["notebooklm"]
+    ai = home_state["ai"]
     settings_state = state["settings"]
     rows = [row for section in settings_state["sections"] for row in section["rows"]]
     return {
@@ -415,6 +430,8 @@ def ids(state: dict) -> dict[str, set[str]]:
         # The card's own buttons, while it shows them and they work.
         "notebooklm": ({card["button"]["id"]} if card["button"] and card["button"]["enabled"] else set())
                       | ({card["open"]["id"]} if card["open"] else set()),
+        "ai": ({ai["button"]["id"]} if ai["button"] and ai["button"]["enabled"] else set())
+              | ({ai["secondary"]["id"]} if ai["secondary"] and ai["secondary"]["enabled"] else set()),
         # A settings button that is on the page and enabled.
         "button": ({row["key"] for row in rows
                     if row["control"] == form.CONTROL_BUTTON and row["enabled"] and not row["hidden"]}

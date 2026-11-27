@@ -84,6 +84,10 @@ from Foundation import NSURL, NSMakeRect, NSObject, NSTimer, NSRunLoop, NSRunLoo
 from blackboard_sync import courses, deadlines, schools, term_confirm
 from blackboard_sync.menubar.main_window_model import (
     ACTIVITY,
+    AI_ATTENTION,
+    AI_LAUNCHING,
+    AI_OFF,
+    AI_READY,
     COURSES,
     CALENDAR,
     COURSE_PALETTE,
@@ -103,6 +107,7 @@ from blackboard_sync.menubar.main_window_model import (
     STATE_PAUSED,
     STATE_SYNCED,
     T_ACTIVITY_EMPTY,
+    T_AI_TITLE,
     T_ALL_GOOD,
     T_ALL_GOOD_DETAIL,
     T_HOME_CALENDAR,
@@ -249,6 +254,14 @@ NOTEBOOKLM_SYMBOLS = {
     NOTEBOOKLM_ATTENTION: ("exclamationmark.triangle", "systemOrangeColor"),
 }
 
+# The AI study session card's symbol and its tint.
+AI_SYMBOLS = {
+    AI_OFF: ("terminal", "secondaryLabelColor"),
+    AI_READY: ("terminal.fill", "controlAccentColor"),
+    AI_LAUNCHING: ("terminal.fill", "controlAccentColor"),
+    AI_ATTENTION: ("exclamationmark.triangle", "systemOrangeColor"),
+}
+
 # Text fields get Cmd+V and friends from the main menu; while it is not there
 # (the app is a menu bar accessory) the window forwards them itself.
 EDIT_KEYS = {"x": "cut:", "c": "copy:", "v": "paste:", "a": "selectAll:", "z": "undo:"}
@@ -357,6 +370,14 @@ class _Target(NSObject):
 
     def notebooklmDuplicates_(self, _sender):
         self.owner.on_action("notebooklm_duplicates")
+
+    def aiAction_(self, _sender):
+        if self.owner.status.ai.action:
+            self.owner.on_action(self.owner.status.ai.action)
+
+    def aiSecondary_(self, _sender):
+        if self.owner.status.ai.secondary_action:
+            self.owner.on_action(self.owner.status.ai.secondary_action)
 
     def windowDidResize_(self, _notification):
         self.owner.reflow_overview()
@@ -917,6 +938,12 @@ class MainWindow:
         point = row.convertPoint_toView_((0, 0), self.form_scroll.documentView())
         self.form_scroll.documentView().scrollPoint_(point)
 
+    def show_ai_settings(self):
+        self.show(GENERAL)
+        row = self.settings_rows["ai_cli"].title
+        point = row.convertPoint_toView_((0, 0), self.form_scroll.documentView())
+        self.form_scroll.documentView().scrollPoint_(point)
+
     def run_attention(self, index: int) -> None:
         items = self.status.attention
         if 0 <= index < len(items) and items[index].action:
@@ -1072,6 +1099,7 @@ class MainWindow:
         content.addSubview_(self.recent_count)
         page.addSubview_(self.status_card)
         self._build_notebooklm_card(page)
+        self._build_ai_card(page)
 
         # Right: what needs attention, then the next due dates.
         x = PAD + LEFT_W + GAP
@@ -1194,6 +1222,66 @@ class MainWindow:
         box.animator().setFrame_(frame)
         content.animator().setAlphaValue_(1.0)
         NSAnimationContext.endGrouping()
+
+    def _build_ai_card(self, page) -> None:
+        """Under the NotebookLM card: opens the current term folder in a terminal with the chosen AI tool."""
+        self.ai_card = _card(NSMakeRect(PAD, HEADER, LEFT_W, NOTEBOOKLM_BASE))
+        content = self.ai_card.contentView()
+        self.ai_icon = NSImageView.alloc().initWithFrame_(NSMakeRect(22, 18, ICON_SIZE, ICON_SIZE))
+        content.addSubview_(self.ai_icon)
+        self.ai_title = _label(T_AI_TITLE, 17)
+        self.ai_title.setFont_(NSFont.systemFontOfSize_weight_(17, -0.4))  # NSFontWeightLight
+        content.addSubview_(self.ai_title)
+        self.ai_detail, _ = _wrapping("", LEFT_W - NOTEBOOKLM_TEXT_X - 20, 13, secondary=True)
+        content.addSubview_(self.ai_detail)
+        self.ai_button = _pill_view("", self.target, "aiAction:", 0, 0)
+        content.addSubview_(self.ai_button)
+        self.ai_secondary = _pill_view("", self.target, "aiSecondary:", 0, 0)
+        content.addSubview_(self.ai_secondary)
+        self._ai_height = NOTEBOOKLM_BASE
+        page.addSubview_(self.ai_card)
+
+    def _layout_ai_card(self) -> float:
+        """Fills the AI study session card and returns its height."""
+        card = self.status.ai
+        symbol, tint = AI_SYMBOLS.get(card.kind, AI_SYMBOLS[AI_OFF])
+        self.ai_icon.setImage_(_symbol_image(symbol, 20))
+        self.ai_icon.setContentTintColor_(getattr(NSColor, tint)())
+        x = NOTEBOOKLM_TEXT_X
+        text = LEFT_W - x - 20
+        self.ai_title.setStringValue_(card.title)
+        self.ai_title.setFrame_(NSMakeRect(x, 16, text, 24))
+        self.ai_detail.setStringValue_(card.detail)
+        self.ai_detail.setToolTip_(card.detail or None)
+        self.ai_detail.setTextColor_(NSColor.systemOrangeColor() if card.warning else NSColor.secondaryLabelColor())
+        self.ai_detail.setPreferredMaxLayoutWidth_(text)
+        detail_height = max(self.ai_detail.fittingSize().height, 17) if card.detail else 0
+        self.ai_detail.setHidden_(not card.detail)
+        y = 46
+        if card.detail:
+            self.ai_detail.setFrame_(NSMakeRect(x, y, text, detail_height))
+            y += detail_height + 10
+        button, secondary = self.ai_button, self.ai_secondary
+        button.setHidden_(not card.action)
+        button.setTitle_(card.action_title)
+        button.setEnabled_(card.enabled)
+        secondary.setHidden_(not card.secondary_action)
+        secondary.setTitle_(card.secondary_title)
+        secondary.setEnabled_(card.secondary_enabled)
+        width = _pill_width(button) if card.action else 0
+        secondary_width = _pill_width(secondary) if card.secondary_action else 0
+        needed = width + (8 + secondary_width if card.secondary_action else 0)
+        left = max(min(NOTEBOOKLM_TEXT_X, LEFT_W - 20 - needed), 20)
+        button.setFrame_(NSMakeRect(left, y, width, PILL_H))
+        secondary.setFrame_(NSMakeRect(left + width + 8, y, secondary_width, PILL_H))
+        _tone(self.ai_card, card.warning)
+        self._ai_height = y + PILL_H + 16
+        return self._ai_height
+
+    def _place_ai_card(self, top: float) -> None:
+        frame = NSMakeRect(PAD, top, LEFT_W, self._ai_height)
+        self.ai_card.setFrame_(frame)
+        self.ai_card.contentView().setFrame_(NSMakeRect(0, 0, LEFT_W, frame.size.height))
 
     def _state_header(self, content, width: float):
         """Drive's "Up to date" header: a small symbol (the illustration while a sync runs), the
@@ -1384,11 +1472,13 @@ class MainWindow:
             top += UPDATE_BANNER_HEIGHT + GAP
         # The NotebookLM card is laid out first: the files give way to it in a short window.
         notebooklm_height = self._layout_notebooklm_card()
+        ai_height = self._layout_ai_card()
         height = self._layout_status_card(self.pages[OVERVIEW].frame().size.height - top - GAP - notebooklm_height - PAD)
         self.status_card.setFrame_(NSMakeRect(PAD, top, LEFT_W, height))
         self.status_card.contentView().setFrame_(NSMakeRect(0, 0, LEFT_W, height))
         self._place_notebooklm_card(top + height + GAP)
-        left_bottom = top + height + GAP + notebooklm_height
+        self._place_ai_card(top + height + GAP + notebooklm_height + GAP)
+        left_bottom = top + height + GAP + notebooklm_height + GAP + ai_height
         notify_height = self._draw_home_notifications()
         calendar_height = self._draw_home_calendar()
         self._home_heights = (notify_height, calendar_height)

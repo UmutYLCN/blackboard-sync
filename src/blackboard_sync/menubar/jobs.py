@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, IO
 
-from blackboard_sync import courses, deadlines, gcal, relocate, runtime, session_refresh, signout
+from blackboard_sync import ai_launcher, courses, deadlines, gcal, relocate, runtime, session_refresh, signout
 from blackboard_sync.notebooklm import store as notebooklm_store
 from blackboard_sync.config import Config
 from blackboard_sync.errors import EXIT_ERROR, LoginRequired
@@ -387,6 +387,26 @@ def refresh_hidden_folders(config: Config, model: AppModel) -> None:
         model.hidden_folders = courses.load_hidden_folders(config)
     except OSError as exc:
         log.warning("Could not read the course choices: %s", exc)
+    refresh_ai_term(config, model)
+
+
+def refresh_ai_term(config: Config, model: AppModel) -> None:
+    """Which term folder the AI card and menu item open (never raises)."""
+    try:
+        folder = ai_launcher.current_term_folder(replace(config, dest=model.dest))
+        model.ai_term = folder.name or str(folder)
+    except OSError as exc:
+        log.warning("Could not read the current term folder: %s", exc)
+
+
+def run_ai_launch_guarded(ai_cli: str, resume: bool, config: Config) -> ai_launcher.LaunchResult:
+    """``ai_launcher.launch`` for a worker thread: it always reports back, and never raises."""
+    try:
+        return ai_launcher.launch(ai_cli, resume, config)
+    except Exception as exc:
+        log.exception("AI launch failed")
+        return ai_launcher.LaunchResult(ai_launcher.Failure.TERMINAL_FAILED, ai_launcher.TOOLS.get(ai_cli),
+                                        error=str(exc))
 
 
 def synced_file_count(config: Config, dest: Path) -> int:
@@ -489,6 +509,8 @@ def load_model(config: Config, now: datetime, autostart: bool) -> AppModel:
         check_updates=settings.check_updates,
         sync_interval_minutes=settings.sync_interval_minutes,
         auto_relogin=settings.auto_relogin,
+        ai_cli=settings.ai_cli,
+        ai_resume=settings.ai_resume,
         updates=UpdateState.load((saved or {}).get("updates"), now),
         recent_seen=RecentSeen((saved or {}).get("recent_seen")),
     )
@@ -563,7 +585,10 @@ def window_status(config: Config, model: AppModel, now: datetime, dest: Path) ->
     """Build the desktop window state and persist colors assigned on first display."""
     state = State.load(config.state_file, backup=False)
     disabled = courses.effective_disabled(config, state.courses)
-    page = deadlines.calendar_page(state, sync_root(dest), now, hidden=disabled)
+    root = sync_root(dest)
+    folder = ai_launcher.term_folder(root, state.courses, disabled)
+    model.ai_term = folder.name or str(folder)
+    page = deadlines.calendar_page(state, root, now, hidden=disabled)
     codes = [info["code"] for info in state.courses.values() if info.get("code")]
     # Older caches have the course label on the deadline or announcement itself.
     missing = set(state.current_courses) - disabled

@@ -473,3 +473,23 @@ def test_all_courses_unticked_is_not_no_courses_found():
     m.begin("sync")
     assert m.finish_sync(outcome(report()), NOW) == []
     assert "no courses found" not in m.detail(NOW)
+
+
+def test_menu_shows_ai_item_only_when_an_ai_tool_is_chosen(monkeypatch):
+    from blackboard_sync import i18n
+
+    m = model(session=signed_session(), last=outcome())
+    assert not any(e.action == "ai_open" for e in m.menu(NOW).entries)
+
+    m.apply_settings(DEST, school_changed=False, ai_cli="claude", ai_resume=True)
+    entries_list = m.menu(NOW).entries
+    folder_index = next(i for i, e in enumerate(entries_list) if e.action == "folder")
+    ai_item = entries_list[folder_index + 1]
+    assert (ai_item.title, ai_item.action, ai_item.enabled) == ("Open Claude Code in 2026-2027 Güz", "ai_open", True)
+
+    m.ai_launching = True
+    assert not next(e for e in m.menu(NOW).entries if e.action == "ai_open").enabled
+
+    monkeypatch.setattr(i18n, "_language", "tr")
+    m.ai_launching = False
+    assert next(e for e in m.menu(NOW).entries if e.action == "ai_open").title == "2026-2027 Güz klasöründe Claude Code aç"

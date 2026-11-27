@@ -483,6 +483,20 @@ button, input, select { font: inherit; color: inherit; }
 .nlm-bar.moving > span { width: 35%; transition: none; animation: slide 1.4s ease-in-out infinite; }
 .nlm-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
+/* -- the AI study session card (Home) ---------------------------------------------- */
+
+.ai-card { display: flex; align-items: flex-start; gap: 14px; }
+.ai-card.warning { background: var(--warning-soft); }
+.ai-icon { width: 32px; height: 32px; margin-top: 2px; }
+.ai-icon.off { color: var(--muted); }
+.ai-icon.ready, .ai-icon.launching { color: var(--accent); }
+.ai-icon.attention { color: var(--caution); }
+.ai-text { flex: 1; min-width: 0; }
+.ai-title { margin: 0; font: 400 19px/1.25 var(--font-display); letter-spacing: -0.01em; }
+.ai-detail { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.ai-detail.warning { color: var(--warning); }
+.ai-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes settle { from { opacity: 0.2; transform: translateY(4px); } }
 @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(290%); } }

@@ -464,3 +464,41 @@ def test_the_avatar_is_a_plain_badge_in_the_page():
     html = (page / "index.html").read_text(encoding="utf-8")
     assert 'getElementById("avatar").addEventListener' not in script
     assert 'id="avatar"' in html and 'id="avatar" type="button"' not in html and "aria-haspopup" not in html.split('id="avatar"')[1].split(">")[0]
+
+
+def test_ai_card_payload_and_ids_follow_every_state():
+    from blackboard_sync import ai_launcher
+
+    off = state(status())
+    assert off["home"]["ai"]["kind"] == main.AI_OFF
+    assert off["home"]["ai"]["button"] == {"id": "ai_settings", "title": "Choose", "enabled": True}
+    assert webui_state.ids(off)["ai"] == {"ai_settings"}
+
+    model = AppModel(Path("/tmp/dest"), NOW, ai_cli="claude", ai_resume=True)
+    model.ai_term = "2026-2027 Güz"
+    model.ai_installed = frozenset({"claude"})
+    ready = state(status(ai=main.ai_card(model)))
+    assert ready["home"]["ai"]["kind"] == main.AI_READY
+    assert ready["home"]["ai"]["button"] == {"id": "ai_open", "title": "Open in Claude Code", "enabled": True}
+    assert webui_state.ids(ready)["ai"] == {"ai_open"}
+
+    model.ai_installed = frozenset()
+    missing = state(status(ai=main.ai_card(model)))
+    assert missing["home"]["ai"]["warning"] is True
+    assert missing["home"]["ai"]["button"] == {"id": "ai_install", "title": "How to install", "enabled": True}
+    assert missing["home"]["ai"]["secondary"] == {"id": "ai_open", "title": "Try again", "enabled": True}
+    assert webui_state.ids(missing)["ai"] == {"ai_install", "ai_open"}
+
+    model.ai_installed = frozenset({"claude"})
+    model.ai_launching = True
+    launching = state(status(ai=main.ai_card(model)))
+    assert launching["home"]["ai"]["button"]["enabled"] is False
+    assert webui_state.ids(launching)["ai"] == set()
+
+    model.ai_launching = False
+    model.ai_result = ai_launcher.LaunchResult(
+        ai_launcher.Failure.FOLDER_MISSING, ai_launcher.TOOLS["claude"], Path("/tmp/dest/University/2026-2027 Güz"),
+    )
+    folder_missing = state(status(ai=main.ai_card(model)))
+    assert folder_missing["home"]["ai"]["button"] == {"id": "sync", "title": "Sync now", "enabled": True}
+    assert webui_state.ids(folder_missing)["ai"] == {"sync"}

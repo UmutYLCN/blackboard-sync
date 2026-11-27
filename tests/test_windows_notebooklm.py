@@ -235,6 +235,46 @@ def test_open_goes_to_notebooklm(app, monkeypatch):
     assert opened == [store.APP_URL]
 
 
+def test_tray_app_ai_card_and_menu_actions(app, monkeypatch, tmp_path):
+    from blackboard_sync import ai_launcher
+
+    opened_urls, started_files, shown = [], [], []
+    monkeypatch.setattr(module.webbrowser, "open", opened_urls.append)
+    monkeypatch.setattr(module.os, "startfile", started_files.append, raising=False)
+    app.show_window = shown.append
+
+    app.dispatch("ai_settings")
+    assert shown == [main.GENERAL]
+
+    term_dir = tmp_path / "files" / "University" / "2026-2027 Güz"
+    term_dir.mkdir(parents=True)
+    app.settings = replace(app.settings, ai_cli="gemini", ai_resume=True)
+    app.model.apply_settings(app.settings.dest, school_changed=False, ai_cli="gemini", ai_resume=True)
+
+    app.dispatch("ai_install")
+    assert opened_urls == [ai_launcher.TOOLS["gemini"].install_url]
+
+    launched = []
+
+    def fake_launch(ai_cli, resume, config):
+        launched.append((ai_cli, resume, config.dest))
+        return ai_launcher.LaunchResult(
+            ai_launcher.Failure.TERMINAL_FAILED, ai_launcher.TOOLS["gemini"], term_dir, "wt failed",
+        )
+
+    monkeypatch.setattr(jobs, "run_ai_launch_guarded", fake_launch)
+    app.dispatch("ai_open", from_menu=True)
+    assert launched == [("gemini", True, app.settings.dest)]
+    assert started_files == [str(term_dir)]
+    assert app.model.ai_result.failure == ai_launcher.Failure.TERMINAL_FAILED
+    assert shown[-1] == main.OVERVIEW
+
+    app.model.ai_result = ai_launcher.LaunchResult(ai_launcher.Failure.CLI_MISSING, ai_launcher.TOOLS["gemini"])
+    monkeypatch.setattr(ai_launcher.DETECTOR, "installed", lambda: frozenset({"gemini"}))
+    app.ai_detected()
+    assert app.model.ai_result is None
+
+
 # -- disconnect and duplicates --------------------------------------------------------------------
 def test_disconnect_asks_and_deletes_the_session(app, tmp_path):
     session = store.session_file(app.config)

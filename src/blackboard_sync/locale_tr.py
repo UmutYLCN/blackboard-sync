@@ -641,6 +641,22 @@ CATALOG = {
     "{name} (installed)": "{name} (kurulu)",
     "{name} (not found)": "{name} (bulunamadı)",
     "No earlier session here, starting a new one.": "Burada önceki oturum yok, yeni bir oturum başlıyor.",
+    "AI study session": "Yapay zekâ ile çalış",
+    "Opens {term} in {name}, continuing your last session there.":
+        "{term} klasörünü {name} ile açar, oradaki son oturumdan devam eder.",
+    "Opens {term} in {name}, starting a new session.":
+        "{term} klasörünü {name} ile açar, yeni bir oturum başlatır.",
+    "Open in {name}": "{name} ile aç",
+    "Opening…": "Açılıyor…",
+    "Choose Claude, Gemini or Codex in Settings.": "Ayarlar'dan Claude, Gemini veya Codex'i seçin.",
+    "Choose": "Seç",
+    "{name} is not installed. Install it, then try again.": "{name} kurulu değil. Kurup yeniden deneyin.",
+    "How to install": "Nasıl kurulur",
+    "Try again": "Yeniden dene",
+    "The {term} folder isn't there yet. Sync first.": "{term} klasörü henüz yok. Önce eşitleyin.",
+    "Could not open a terminal: {error}": "Terminal açılamadı: {error}",
+    "Could not open a terminal.": "Terminal açılamadı.",
+    "Open {name} in {term}": "{term} klasöründe {name} aç",
 
     # NotebookLM
     "Sign in to Google again to keep adding files.": "Dosya eklemek için Google'da yeniden oturum açın.",

@@ -26,6 +26,7 @@ from blackboard_sync.menubar import jobs, launchagent, settings_form
 from blackboard_sync.menubar.main_window_model import (
     GENERAL,
     OPEN_ITEM_PREFIX,
+    OVERVIEW,
     duplicates_text,
     duplicates_title,
     notebooklm_progress,
@@ -800,7 +801,50 @@ def build_app(config: Config, show_window: bool = False):
         def _ai_detected(self) -> None:
             self._ai_detecting = False
             self.model.ai_installed = ai_launcher.DETECTOR.installed()
+            if (self.model.ai_result is not None
+                    and self.model.ai_result.failure == ai_launcher.Failure.CLI_MISSING
+                    and self.model.ai_installed is not None
+                    and self.model.ai_cli in self.model.ai_installed):
+                self.model.ai_result = None
             self.refresh()
+
+        def open_ai_settings(self) -> None:
+            self.open_settings()
+            self._window.show_ai_settings()
+
+        def open_ai_install(self) -> None:
+            tool = ((self.model.ai_result.tool if self.model.ai_result is not None else None)
+                    or ai_launcher.TOOLS.get(self.settings.ai_cli))
+            if tool is not None:
+                open_url(tool.install_url)
+
+        def start_ai_launch(self, _sender=None, from_menu: bool = False) -> None:
+            if self.model.ai_launching:
+                return
+            self.model.ai_launching = True
+            self.model.ai_result = None
+            self.refresh()
+            ai_cli, ai_resume = self.settings.ai_cli, self.settings.ai_resume
+            launch_config = replace(self.config, dest=self.settings.dest)
+
+            def work() -> None:
+                result = jobs.run_ai_launch_guarded(ai_cli, ai_resume, launch_config)
+                AppHelper.callAfter(self._ai_launched, result, from_menu)
+
+            threading.Thread(target=work, daemon=True).start()
+
+        def _ai_launched(self, result: ai_launcher.LaunchResult, from_menu: bool = False) -> None:
+            self.model.ai_launching = False
+            installed = ai_launcher.DETECTOR.installed()
+            if installed is not None:
+                self.model.ai_installed = installed
+            self.model.ai_result = None if result.ok else result
+            if (result.failure == ai_launcher.Failure.TERMINAL_FAILED
+                    and result.folder is not None and result.folder.is_dir()):
+                open_path(result.folder)
+            self.refresh()
+            if from_menu and not result.ok:
+                self.show_window(OVERVIEW)
 
         def course_toggled(self, course_id: str, enabled: bool) -> None:
             """A Dersler checkbox: save the choice; a course ticked again syncs right away."""
@@ -833,6 +877,9 @@ def build_app(config: Config, show_window: bool = False):
                 "notebooklm_sync": self.start_notebooklm, "notebooklm_disconnect": self.disconnect_notebooklm,
                 "notebooklm_open": lambda: open_url(notebooklm_store.APP_URL),
                 "notebooklm_duplicates": self.find_notebooklm_duplicates,
+                "ai_open": self.start_ai_launch,
+                "ai_settings": self.open_ai_settings,
+                "ai_install": self.open_ai_install,
             }[action]()
 
         def _window_closed(self) -> None:
@@ -871,7 +918,10 @@ def build_app(config: Config, show_window: bool = False):
                 submission.settings.sync_interval_minutes,
                 dest_choice=choice,
                 auto_relogin=submission.settings.auto_relogin,
+                ai_cli=submission.settings.ai_cli,
+                ai_resume=submission.settings.ai_resume,
             )
+            jobs.refresh_ai_term(self.config, self.model)
             if submission.autostart != launchagent.is_installed():
                 self.toggle_autostart()
             self._save()
@@ -1025,6 +1075,7 @@ def build_app(config: Config, show_window: bool = False):
                     "folder": self.open_school_folder, "settings": self.open_settings,
                     "quit": self.quit, "open": lambda _s: self.open_recent(entry.value),
                     "update": self.start_update, "pause": self.toggle_pause,
+                    "ai_open": lambda _s: self.start_ai_launch(from_menu=True),
                 }
                 item = rumps.MenuItem(entry.title, callback=actions.get(entry.action) if entry.enabled else None)
                 item.state = int(entry.checked)
