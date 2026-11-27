@@ -209,3 +209,30 @@ def test_adding_files_to_notebooklm_is_on_by_default_and_saved(tmp_path):
     assert Settings.from_dict({"base_url": "https://bb.example.edu", "dest": str(tmp_path)}).notebooklm_auto
     off = replace(settings, notebooklm_auto=False)
     assert not Settings.from_dict(off.to_dict()).notebooklm_auto
+
+
+def test_the_ai_assistant_is_none_with_resume_on_by_default_and_saved(tmp_path):
+    settings = Settings(base_url="https://bb.example.edu", dest=tmp_path)
+    assert (settings.ai_cli, settings.ai_resume) == ("", True)
+    # A settings.json from before the AI assistant existed.
+    old = Settings.from_dict({"base_url": "https://bb.example.edu", "dest": str(tmp_path)})
+    assert (old.ai_cli, old.ai_resume) == ("", True)
+    for tool in ("claude", "gemini", "codex"):
+        chosen = replace(settings, ai_cli=tool, ai_resume=False)
+        assert Settings.from_dict(chosen.to_dict()) == chosen
+    save_settings(tmp_path, replace(settings, ai_cli="codex", ai_resume=False))
+    assert (load_settings(tmp_path).ai_cli, load_settings(tmp_path).ai_resume) == ("codex", False)
+    # A hand-edited or unknown tool is none; anything but false keeps resuming.
+    data = {"base_url": "https://bb.example.edu", "dest": str(tmp_path)}
+    assert Settings.from_dict({**data, "ai_cli": "rm -rf /"}).ai_cli == ""
+    assert Settings.from_dict({**data, "ai_cli": ["claude"]}).ai_cli == ""
+    assert Settings.from_dict({**data, "ai_resume": "no"}).ai_resume is True
+
+
+def test_the_form_carries_the_ai_assistant_through_save(tmp_path):
+    current = Settings(base_url="https://bb.example.edu", dest=tmp_path, ai_cli="gemini", ai_resume=False)
+    values = initial_values(current, current, autostart=True)
+    assert (values.ai_cli, values.ai_resume) == ("gemini", False)
+    submitted = submit(replace(values, ai_cli="claude", ai_resume=True), current).settings
+    assert (submitted.ai_cli, submitted.ai_resume) == ("claude", True)
+    assert submit(replace(values, ai_cli="vim"), current).settings.ai_cli == ""

@@ -134,3 +134,29 @@ def test_switching_school_keeps_each_schools_files_apart(tmp_path):
     assert [State.from_this_school(o) for o in state.outputs.values()] == [True, False]
     assert state.school == "blackboard.example.edu"
 
+
+
+def test_a_termless_course_is_listed_but_not_synced_at_the_first_school(tmp_path):
+    """S15 as a whole sync: LIB100 shows in Dersler, unticked, and gets no request or folder."""
+    scenario = SCENARIOS["S15"]
+    config = Config(base_url=BASE_URL, dest=tmp_path / "University", data_dir=tmp_path / "data")
+    bb = FakeBlackboard(scenario["api_routes"])
+    report = run_sync(config, BlackboardClient(BASE_URL, bb), now=parse_time(scenario["now"]))
+    assert report.terms == ["2026-2027 Güz"]
+    assert [c.code for c in report.courses] == ["CSE303"]
+    assert not any("_14000_1" in call for call in bb.calls)
+    assert not (config.root / "No term").exists()
+    listed = State.load(config.state_file, backup=False).courses
+    assert listed["_14000_1"]["code"] == "LIB100" and listed["_14000_1"]["termless"] is True
+    from blackboard_sync import courses
+    assert {r.code: r.enabled for r in courses.load_rows(config)} == {"CSE303": True, "LIB100": False}
+
+
+def test_a_filtered_sync_reports_only_the_term_of_the_synced_course(tmp_path):
+    """S11 has two current terms; syncing one course names only that course's term."""
+    scenario = SCENARIOS["S11"]
+    config = Config(base_url=BASE_URL, dest=tmp_path / "University", data_dir=tmp_path / "data")
+    report = run_sync(config, BlackboardClient(BASE_URL, FakeBlackboard(scenario["api_routes"])),
+                      course_filters=["CSE303"], now=parse_time(scenario["now"]))
+    assert [c.code for c in report.courses] == ["CSE303"]
+    assert report.terms == ["Fall 2026"]

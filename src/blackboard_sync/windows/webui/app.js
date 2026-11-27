@@ -540,7 +540,8 @@
       h("span", { class: "row-text" },
         h("div", { class: "row-title", text: row.title }),
         h("div", { class: "row-detail", text: row.detail })))))
-        : h("div", { class: "empty", text: data.empty }));
+        : h("div", { class: "empty", text: data.empty }),
+      data.termless ? h("p", { class: "hint", text: data.termless }) : null);
   }
 
   // -- Calendar -----------------------------------------------------------------

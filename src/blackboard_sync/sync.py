@@ -376,7 +376,8 @@ def choose_current_terms(terms: list[Term], now: datetime) -> list[Term]:
        term is running, the newer of the dated group and the undated terms of
        the newest semester (``_undated_cohort``) is current.
     3. A term holding the merged (cross-listed) parent of a current course comes along.
-    4. Courses without a term (``termId`` empty) are always included.
+    4. Courses without a term (``termId`` empty) are always included here, so Dersler lists
+       them; ``courses.default_off`` leaves them unticked when any other course is current.
     5. When no term can be dated at all, the terms whose names give the latest
        academic year and season (``_latest_named``); if no name gives one, every course.
     """
@@ -612,7 +613,7 @@ class Syncer:
         candidates = [t for t in all_found
                       if not (set(t.ids) & set(self.state.past_terms) and not in_date_range(t, now))]
         current = choose_current_terms(candidates, now)
-        self.current_course_ids = [c.id for t in current for c in t.courses]
+        self.current_courses = [c for t in current for c in t.courses]
         selected = all_found if all_terms else current
 
         recorded = self.recorded_course_dirs()
@@ -1493,7 +1494,7 @@ def run_sync(
     report has status ``confirm`` and the terms and courses found, for the app to ask.
     """
     from blackboard_sync import term_confirm  # it builds on this module
-    from blackboard_sync.courses import load_disabled  # it builds on this module's State
+    from blackboard_sync.courses import effective_disabled  # it builds on this module's State
 
     now = now or datetime.now(timezone.utc)
     report = SyncReport(started_at=_now_iso(), dry_run=dry_run, dest=str(config.root))
@@ -1518,35 +1519,34 @@ def run_sync(
         now=now,
         warnings=report.warnings,
     )
-    # Terms an older version archived (``state.past_terms``) are left out by ``discover``.
-    report.terms = [t.name for t in terms]
     card = term_confirm.proposal(config.base_url, terms, courses) if ask else None
     if card is not None:
         # Nothing is written: no file, no state.json, so the next sync asks again until confirmed.
         log.info("First sync at %s: the term is not clear (%s); asking first", card["school"],
                  ", ".join(card["reasons"]))
         report.status, report.confirm, report.message = "confirm", card, term_confirm.T_WAITING
+        report.terms = [t.name for t in terms]
         report.finished_at = _now_iso()
         return report
     everything = not all_terms and not course_filters
-    if everything and not dry_run:
-        # Dersler lists every current course, the unticked ones too.
-        found = {c.id: {"code": c.code, "title": course_code_and_title(c.course_id, c.name)[1],
-                        "term": c.term_name, "folder": c.rel_dir} for c in courses}
-        if found != state.courses:
-            state.courses = found
-            state.dirty = True
-    disabled = load_disabled(config)
+    # Dersler lists every current course, the unticked ones too. "termless" is stored, so nothing
+    # compares the English folder name "No term" (courses.default_off).
+    found = {c.id: {"code": c.code, "title": course_code_and_title(c.course_id, c.name)[1],
+                    "term": c.term_name, "folder": c.rel_dir, "termless": not c.term_id} for c in syncer.current_courses}
+    if everything and not dry_run and found != state.courses:
+        state.courses = found
+        state.dirty = True
+    disabled = effective_disabled(config, found)
     discovered = bool(courses)
     courses = [c for c in courses if c.id not in disabled]
     if everything and not dry_run:
-        current_ids = {c.id for c in courses}
-        active = {key: value for key, value in state.deadline_courses.items() if key in current_ids}
+        selected_ids = {c.id for c in courses}
+        active = {key: value for key, value in state.deadline_courses.items() if key in selected_ids}
         if active != state.deadline_courses:
             state.deadline_courses = active
             state.dirty = True
     if not dry_run:
-        state.record_current_courses(syncer.current_course_ids)
+        state.record_current_courses(list(found))
     for course in courses:
         syncer.migrate_course_folder(course, report.warnings)
     if not dry_run:
@@ -1558,13 +1558,15 @@ def run_sync(
         report.message = tr("No courses found on Blackboard, so the current term could not be determined. "
                             "Your courses will be synced as soon as Blackboard lists them.")
         report.warnings.append(report.message)
+    synced_ids = set()
     try:
         for course in courses:
-            if course.id in load_disabled(config):
+            if course.id in effective_disabled(config, found):
                 log.info("Skipping %s: unticked in Dersler", course.rel_dir)
                 continue
             log.info("Syncing %s", course.rel_dir)
             report.courses.append(syncer.sync_course(course))
+            synced_ids.add(course.id)
             syncer.checkpoint_now()  # keep progress even if a later course fails
     finally:
         syncer.checkpoint_now()
@@ -1574,4 +1576,5 @@ def run_sync(
                 "files downloaded in this run may be fetched again next time."
             )
         report.finished_at = _now_iso()
+    report.terms = [t.name for t in terms if any(c.id in synced_ids for c in t.courses)]
     return report

@@ -248,7 +248,9 @@ Settings). A sidebar switches between the sections:
   dates, and it disappears from **Calendar**, **Announcements** and Recent downloads
   at once; its files stay on disk. Ticking it again starts a sync that fills in
   what is missing. The choice is saved as the unticked Blackboard course
-  primary keys (`_13004_1`) in `courses.json` in the data folder; every sync,
+  primary keys (`_13004_1`) in `courses.json` in the data folder (plus an
+  `enabled` list for ticked courses without a term, which are off by default);
+  every sync,
   also one from the terminal, reads it before each course. The list is what
   the last normal sync found (`courses` in `state.json`); past terms are not in
   it. The sidebar shows `1/3` while some course is unticked.
@@ -506,8 +508,12 @@ term running now, in `choose_current_terms` (`sync.py`):
   full official names such as `2026-2027 Eğitim-Öğretim Yılı Güz Dönemi`, ordinal
   and Hijri names such as `1448 First Semester`); when no name gives one, every course.
 
-Courses without a term (`termId` empty) are always synced with the current terms,
-in a `No term` folder, and each course is synced once. When Blackboard lists no
+Courses without a term (`termId` empty) are listed in Dersler (marked `termless`
+in `state.json`, never found by comparing the `No term` folder name) but are
+**unticked by default**, since they are usually guidance or orientation pages
+nobody asked for. They only sync by themselves when no course with a term is
+current (a school that uses no terms); a student can tick them, which is saved
+in the `enabled` list of `courses.json`. A course is synced once. When Blackboard lists no
 course at all, the sync says so in its result (`message` and a warning) and the
 app shows **no courses found** with one notification, instead of staying silent.
 Courses the instructor has not opened yet (shown as private) are skipped until

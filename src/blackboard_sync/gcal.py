@@ -371,9 +371,9 @@ class CalendarClient:
             mapping = {key: {"eventId": event["id"], "hash": event.get("extendedProperties", {})
                        .get("private", {}).get("bbHash", "")} for key, event in remote.items()}
             write_private_json(self.mapping_path, mapping)
-            from blackboard_sync.courses import load_disabled
-            hidden = load_disabled(self.config)
+            from blackboard_sync.courses import effective_disabled
             state = State.load(self.config.state_file, backup=False)
+            hidden = effective_disabled(self.config, state.courses)
             if not self.config.state_file.exists() or state.recovery:
                 raise BlackboardSyncError(tr("Sync Blackboard successfully before syncing Google Calendar."))
             desired = {}

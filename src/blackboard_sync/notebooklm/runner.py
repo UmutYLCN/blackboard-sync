@@ -351,8 +351,8 @@ async def _refresh_session(config: Config, opener) -> None:
 
 
 async def _run(config: Config, auto: bool, events: Events, opener, sleep: Sleep) -> RunResult:
-    scans = planner.scan_courses(State.load(config.state_file, backup=False), config.root,
-                                 courses.load_disabled(config))
+    synced = State.load(config.state_file, backup=False)
+    scans = planner.scan_courses(synced, config.root, courses.effective_disabled(config, synced.courses))
     state = store.UploadState.load(store.state_file(config))
     state.import_legacy([scan.folder for scan in scans], config.notebooklm_legacy_state)
     result = RunResult(skipped=sum(len(scan.skipped) for scan in scans))

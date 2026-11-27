@@ -16,8 +16,8 @@ import webbrowser
 from dataclasses import replace
 from pathlib import Path
 
-from blackboard_sync import (announcements, courses, deadlines, relocate, runtime, session_refresh, signout,
-                             term_confirm, updater, uninstall)
+from blackboard_sync import (ai_launcher, announcements, courses, deadlines, relocate, runtime, session_refresh,
+                             signout, term_confirm, updater, uninstall)
 from blackboard_sync.config import Config
 from blackboard_sync.errors import BlackboardSyncError
 from blackboard_sync.i18n import ntr, tr
@@ -145,6 +145,7 @@ class TrayApp:
         self.login_after_job = False  # a new school's sign-in waits for the file move
         self.closed = False
         self.uninstalling = False
+        self.ai_detecting = False  # ``detect_ai_tools`` is looking
         self.drawn = None
         self.drawn_icon = None
         self.icon = pystray.Icon("Blackboard Sync", icon_image(self.model.icon()), "Blackboard Sync")
@@ -745,9 +746,34 @@ class TrayApp:
                                      on_open_announcement=lambda row: self.dispatch("announcement", row),
                                      on_courses=lambda: courses.load_rows(self.config),
                                      on_course_toggle=self.course_toggled,
-                                     on_section=lambda _section: self.refresh(),
+                                     on_section=self.section_shown,
                                      recent_seen=self.model.recent_seen, on_seen=self.save, **web)
         self.window.show(section)
+        self.detect_ai_tools()
+        self.refresh()
+
+    def section_shown(self, section):
+        if section == GENERAL:
+            self.detect_ai_tools()  # Settings → AI assistant says which tools are installed
+        self.refresh()
+
+    def detect_ai_tools(self):
+        """Look for the AI tools again in the background."""
+        if self.ai_detecting:
+            return
+        self.ai_detecting = True
+
+        def worker():
+            try:
+                ai_launcher.DETECTOR.refresh()
+            except Exception:  # never lose the flag; Settings keeps the names without a state
+                log.exception("Looking for the AI tools failed")
+            self.post(self.ai_detected)
+        threading.Thread(target=worker, daemon=True).start()
+
+    def ai_detected(self):
+        self.ai_detecting = False
+        self.model.ai_installed = ai_launcher.DETECTOR.installed()
         self.refresh()
 
     def course_toggled(self, course_id, enabled):

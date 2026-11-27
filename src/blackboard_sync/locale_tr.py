@@ -50,6 +50,8 @@ CATALOG = {
     "files are not deleted. Tick it again and its missing files come right away.":
         "İşaretini kaldırdığınız ders artık senkronize edilmez, Takvim'de ve Duyurular'da görünmez. İndirilmiş "
         "dosyaları silinmez. Yeniden işaretlediğinizde eksik dosyaları hemen gelir.",
+    "Courses without a term, such as guidance or orientation pages, are not synced unless you tick them.":
+        "Rehberlik veya oryantasyon sayfaları gibi dönemi olmayan dersler, işaretlemediğiniz sürece eşitlenmez.",
     "Your courses are listed here after the first sync.": "Dersleriniz ilk senkrondan sonra burada listelenir.",
     # The card before the first download at a school whose current term is not clear
     "Check your courses before the first download": "İlk indirmeden önce derslerinizi kontrol edin",
@@ -616,6 +618,22 @@ CATALOG = {
     "System": "Sistem",
     "Light": "Açık",
     "Dark": "Koyu",
+
+    # Settings → AI assistant (ai_launcher)
+    "AI assistant": "Yapay zekâ asistanı",
+    "Open with": "Şununla aç",
+    "The AI tool that starts in a terminal, in your current term's folder.":
+        "Güncel dönem klasörünüzde bir terminalde başlayan yapay zekâ aracı.",
+    "Continue my last session in this folder": "Bu klasördeki son oturumumdan devam et",
+    "When it is off, a new session starts every time.": "Kapalıyken her seferinde yeni bir oturum başlar.",
+    "The app only opens a terminal in your course folder. The AI tool runs with your own account and its own "
+    "rules.":
+        "Uygulama yalnızca ders klasörünüzde bir terminal açar. Yapay zekâ aracı kendi hesabınız ve kendi "
+        "kurallarıyla çalışır.",
+    "None": "Hiçbiri",
+    "{name} (installed)": "{name} (kurulu)",
+    "{name} (not found)": "{name} (bulunamadı)",
+    "No earlier session here, starting a new one.": "Burada önceki oturum yok, yeni bir oturum başlıyor.",
 
     # NotebookLM
     "Sign in to Google again to keep adding files.": "Dosya eklemek için Google'da yeniden oturum açın.",

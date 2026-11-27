@@ -12,6 +12,7 @@ from blackboard_sync.menubar.model import AppModel
 from blackboard_sync.notebooklm.store import NotebookLMStatus
 from blackboard_sync.windows import webui_state
 from blackboard_sync.menubar.settings_form import (
+    SECTION_AI,
     CONTROL_BUTTON,
     CONTROL_FIELD,
     CONTROL_POPUP,
@@ -79,13 +80,13 @@ def all_rows():
 
 def test_the_sections_come_in_the_planned_order_with_a_slot_for_the_calendar():
     assert SECTION_ORDER == (SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR, SECTION_NOTEBOOKLM,
-                             SECTION_FOLDER, SECTION_UPDATES, SECTION_DANGER)
+                             SECTION_AI, SECTION_FOLDER, SECTION_UPDATES, SECTION_DANGER)
     # The immediate Calendar controls occupy the reserved slot.
     assert SECTION_CALENDAR in SECTIONS
     assert [section.key for section in settings_sections()] == [
-        SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_FOLDER, SECTION_UPDATES, SECTION_DANGER]
+        SECTION_ACCOUNT, SECTION_SYNC, SECTION_CALENDAR, SECTION_AI, SECTION_FOLDER, SECTION_UPDATES, SECTION_DANGER]
     assert [section.title for section in settings_sections()] == [
-        "Account", "Sync", "Google Calendar", "Folder", "Updates", "Danger zone"]
+        "Account", "Sync", "Google Calendar", "AI assistant", "Folder", "Updates", "Danger zone"]
     # Appearance (the theme) only where the window can change it: the Windows WebView2 window.
     assert [section.key for section in settings_sections(appearance=True)][:4] == [
         SECTION_ACCOUNT, SECTION_SYNC, SECTION_APPEARANCE, SECTION_CALENDAR]
@@ -98,6 +99,7 @@ def test_the_rows_of_each_section():
         SECTION_ACCOUNT: ["base_url", "account"],
         SECTION_SYNC: ["interval", "autostart", "language"],
         SECTION_CALENDAR: ["google_calendar", "google_calendar_sync", "google_calendar_disconnect"],
+        SECTION_AI: ["ai_cli", "ai_resume"],
         SECTION_FOLDER: ["dest"],
         SECTION_UPDATES: ["check_updates", "update"],
         SECTION_DANGER: ["uninstall"],
@@ -118,6 +120,7 @@ def test_controls_match_what_they_edit():
     assert by_field["dest"].button == "Choose…"  # the folder picker beside the path
     assert by_field["autostart"].control == by_field["check_updates"].control == CONTROL_SWITCH
     assert by_field["sync_interval_minutes"].control == by_field["language"].control == CONTROL_POPUP
+    assert by_field["ai_cli"].control == CONTROL_POPUP and by_field["ai_resume"].control == CONTROL_SWITCH
     # What acts at once (or only chooses) has no field, so Save and Cancel never touch it.
     immediate = {row.key: row.control for row in all_rows() if not row.field}
     assert immediate == {"account": CONTROL_BUTTON, "update": CONTROL_BUTTON, "uninstall": CONTROL_BUTTON,

@@ -62,6 +62,7 @@ ROW_ATTRIBUTES = {
     "account": ("account_button", "account_label", None),
     "interval": ("interval_dropdown", None, None),
     "language": ("language_dropdown", None, None),
+    "ai_cli": ("ai_dropdown", None, None),
     "update": ("update_button", "version_label", None),
     "uninstall": ("uninstall_button", None, None),
 }
@@ -164,6 +165,10 @@ class MainWindow:
         self.check_updates = tk.BooleanVar(value=values.check_updates)
         self.auto_relogin = tk.BooleanVar(value=values.auto_relogin)
         self.notebooklm_auto = tk.BooleanVar(value=values.notebooklm_auto)
+        self.ai_resume = tk.BooleanVar(value=values.ai_resume)
+        # "Open with" shows each tool's install state, which changes the menu's texts: the choice is its index.
+        self.ai_titles = [title for _, title in form.ai_cli_choices(status.form.ai_installed)]
+        self.ai_cli = tk.StringVar(value=self.ai_titles[form.ai_cli_index(values.ai_cli)])
         self.interval = tk.StringVar(value=form.interval_title(values.sync_interval_minutes))
         self.language = tk.StringVar(value=form.language_title(values.language))
         self.section_var = tk.StringVar(value=main.OVERVIEW)
@@ -181,12 +186,12 @@ class MainWindow:
             self.pages[name] = page
             build(page)
         for variable in (self.url, self.dest, self.autostart, self.check_updates, self.interval, self.language,
-                         self.auto_relogin, self.notebooklm_auto):
+                         self.auto_relogin, self.notebooklm_auto, self.ai_cli, self.ai_resume):
             variable.trace_add("write", lambda *_args: self.changed())
         # The wheel scrolls the section in view wherever the pointer is; over a
         # list it scrolls too instead of changing the choice.
         window.bind("<MouseWheel>", self.wheel)
-        for combobox in (self.interval_dropdown, self.language_dropdown):
+        for combobox in (self.interval_dropdown, self.language_dropdown, self.ai_dropdown):
             combobox.bind("<MouseWheel>", lambda e: self.wheel(e) or "break")
         self._build_topbar(window)
         self.update_status(status)
@@ -651,14 +656,15 @@ class MainWindow:
         variables = {"base_url": self.url, "dest": self.dest, "autostart": self.autostart,
                      "check_updates": self.check_updates, "interval": self.interval, "language": self.language,
                      "auto_relogin": self.auto_relogin,
-                     "notebooklm_auto": self.notebooklm_auto}
+                     "notebooklm_auto": self.notebooklm_auto, "ai_cli": self.ai_cli, "ai_resume": self.ai_resume}
         if kind == form.CONTROL_FIELD:
             if key == "base_url":  # typing a school's name offers the known schools
                 return ttk.Combobox(frame, textvariable=variables[key], width=34, values=schools.suggestions())
             return ttk.Entry(frame, textvariable=variables[key], width=26 if definition.button else 34)
         if kind == form.CONTROL_POPUP:
             choices = {"interval": [title for _, title in form.INTERVAL_OPTIONS],
-                       "language": [name for _, name in form.LANGUAGE_OPTIONS]}.get(key, [])
+                       "language": [name for _, name in form.LANGUAGE_OPTIONS],
+                       "ai_cli": self.ai_titles}.get(key, [])
             return ttk.Combobox(frame, textvariable=variables[key], width=24, values=choices,
                                 state="readonly" if choices else "disabled")
         if kind == form.CONTROL_SWITCH:
@@ -792,9 +798,11 @@ class MainWindow:
 
     def values(self):
         minutes = next((m for m, title in form.INTERVAL_OPTIONS if title == self.interval.get()), 60)
+        ai_cli = form.ai_cli_value(self.ai_titles.index(self.ai_cli.get()) if self.ai_cli.get() in self.ai_titles
+                                   else -1)
         return form.FormValues(self.url.get(), self.dest.get(), self.autostart.get(),
                                self.check_updates.get(), minutes, form.language_code(self.language.get()),
-                               self.auto_relogin.get(), self.notebooklm_auto.get())
+                               self.auto_relogin.get(), self.notebooklm_auto.get(), ai_cli, self.ai_resume.get())
 
     def set_values(self, values):
         """Show ``values`` as what is saved: the bar goes away."""
@@ -806,6 +814,8 @@ class MainWindow:
             self.check_updates.set(values.check_updates)
             self.auto_relogin.set(values.auto_relogin)
             self.notebooklm_auto.set(values.notebooklm_auto)
+            self.ai_resume.set(values.ai_resume)
+            self.ai_cli.set(self.ai_titles[form.ai_cli_index(values.ai_cli)])
             self.interval.set(form.interval_title(values.sync_interval_minutes))
             self.language.set(form.language_title(values.language))
         finally:
@@ -938,8 +948,24 @@ class MainWindow:
             self._apply_row_state(key, state)
         for key in ("notebooklm_duplicates", "notebooklm_disconnect"):
             self._apply_row_state(key, form.notebooklm_disconnect_state(form_status))
+        self._retitle_ai_choices(form_status.ai_installed)
         self._animate()
         self.refresh_announcements()
+
+    def _retitle_ai_choices(self, installed):
+        """Show in "Open with" which tools are installed, keeping the choice (and the unsaved state)."""
+        titles = [title for _, title in form.ai_cli_choices(installed)]
+        if titles == self.ai_titles:
+            return
+        index = self.ai_titles.index(self.ai_cli.get()) if self.ai_cli.get() in self.ai_titles else 0
+        self.ai_titles = titles
+        if getattr(self, "ai_dropdown", None) is not None:
+            self.ai_dropdown.configure(values=titles)
+        loading, self._loading = self._loading, True
+        try:
+            self.ai_cli.set(titles[index])
+        finally:
+            self._loading = loading
 
     def _build_calendar(self, page):
         from tkinter import ttk
@@ -1157,6 +1183,10 @@ class MainWindow:
             ttk.Label(text, text=main.course_title(row), font=BOLD_FONT if row.enabled else None,
                       foreground="" if row.enabled else MUTED, wraplength=WRAP - 60).pack(anchor="w")
             ttk.Label(text, text=main.course_detail(row), foreground=MUTED, wraplength=WRAP - 60).pack(anchor="w")
+        note = courses.termless_hint(rows)
+        if note:
+            ttk.Label(self.courses_frame, text=note, foreground=MUTED, wraplength=WRAP - 60).pack(
+                anchor="w", pady=(8, 0))
 
     @staticmethod
     def courses_nav_title(rows):
