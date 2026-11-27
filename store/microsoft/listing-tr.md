@@ -17,11 +17,13 @@ Blackboard ders dosyaların otomatik olarak bilgisayarına insin. Doğrulanmış
 ```text
 Blackboard ders dosyalarını otomatik olarak bilgisayarına indir, dönem ve derse göre düzenle. Uygulamanın okul listesinde Blackboard Learn adresi doğrulanmış 193 kurum var. Birleşik Krallık ve ABD’de 34’er, Suudi Arabistan’da 27 kurum yer alıyor. Önerileri görmek için okulunun adını, kısaltmasını veya alan adını yazmaya başla. Okulun listede yoksa Blackboard adresini girip okul hesabınla oturum aç.
 
-Ana sayfadaki yapay zekâ ile çalışma kartından yüklü bir yardımcıyı geçerli dönem klasöründe açabilirsin: Claude Code, Gemini CLI, Codex veya Antigravity. Ayrıca Gemini Notebook’u (NotebookLM) bağlayıp desteklenen dosyaları her ders için ayrı bir not defterine aktarabilirsin. Bu isteğe bağlı aktarım, Google hizmeti değiştirirse çalışmayı durdurabilecek resmî olmayan bir bağlantı kullanır.
+Mevcut yapay zekâ aboneliğini kullan. Ana sayfadan tek tıkla Claude Code, Gemini CLI, Codex (ChatGPT) veya Antigravity’yi geçerli dönem klasöründe aç. Tercih ettiğin aracı yükle ve kendi hesabınla oturum aç.
 
-Teslim tarihlerini ve ders duyurularını tek pencerede gör. Renkli ders rozetleri teslim tarihlerinin, duyuruların ve son indirilenlerin hangi derse ait olduğunu gösterir. İstersen teslim tarihlerini ayrı bir Google Takvim’e eşitle.
+Ana sayfadan Gemini Notebook’u (NotebookLM) bağla ve desteklenen dosyaları her ders için ayrı bir not defterine aktar. Bu isteğe bağlı aktarım, Google hizmeti değiştirirse çalışmayı durdurabilecek resmî olmayan bir bağlantı kullanır.
 
-Eşitlenecek dersleri seç. Pencereyi kapattığında indirmeler Windows bildirim alanından arka planda sürer. Açık veya koyu temayı seç ya da Windows temasını izle.
+Teslim tarihlerini ve ders duyurularını tek pencerede gör. Renkli ders rozetleri teslim tarihlerinin, duyuruların ve son indirilenlerin hangi derse ait olduğunu gösterir.
+
+Eşitlenecek dersleri seç. Pencereyi kapattığında indirmeler Windows bildirim alanından arka planda sürer.
 
 Uygulama English, Türkçe, Español, Français, Deutsch ve العربية dillerinde kullanılabilir.
 
@@ -32,13 +34,12 @@ blackboard-sync bağımsız bir uygulamadır ve Anthology Inc. veya Blackboard i
 
 ```text
 Blackboard ders dosyaları otomatik iner, dönem ve derse göre düzenlenir
+Gemini Notebook’a (NotebookLM) her ders için ayrı not defterine aktarım
+Mevcut yapay zekâ aboneliğinle dönem klasöründe tek tıkla çalış
 Doğrulanmış 193 kurumu ad, kısaltma veya alan adıyla ara
-Claude Code, Gemini CLI, Codex veya Antigravity ile çalış
-Gemini Notebook’a (NotebookLM) derse göre isteğe bağlı aktarım
-Yaklaşan teslim tarihleri ve isteğe bağlı Google Takvim eşitlemesi
+Yaklaşan teslim tarihleri uygulamada
 Ders duyuruları ve renkli ders rozetleri
 Windows bildirim alanından arka planda eşitleme
-Açık, koyu ve sistem temaları. Altı arayüz dili.
 ```
 
 ## Search terms
@@ -70,11 +71,11 @@ Umut Yalçın
 | Image | Caption |
 | --- | --- |
 | `01-home.png` | Ana sayfada son indirilenler, yapay zekâ ile çalışma kartı ve Gemini Notebook bir arada. |
-| `02-school-search.png` | Doğrulanmış 193 kurumu ad, kısaltma veya alan adıyla ara. |
-| `03-calendar.png` | Blackboard teslim tarihlerini ve renkli ders rozetlerini tek takvimde gör. |
-| `04-google-calendar.png` | Ayarlar’dan Google Takvim’i bağla, teslim tarihlerin ayrı bir takvimde güncel kalsın. |
-| `05-announcements.png` | Tüm derslerinin en yeni Blackboard duyurularını oku. |
-| `06-courses.png` | Bu dönemin derslerini gör ve hangilerinin indirileceğini belirle. |
-| `07-languages.png` | English, Türkçe, Español, Français, Deutsch ve العربية arasında geçiş yap. |
-| `08-dark-theme.png` | Açık veya koyu temayı seç ya da Windows temasını izle. |
+| `02-gemini-notebook.png` | Gemini Notebook’u (NotebookLM) bağla ve desteklenen dosyaları her ders için ayrı bir not defterine aktar. |
+| `03-ai-study.png` | Claude Code, Gemini CLI, Codex veya Antigravity’yi geçerli dönem klasöründe aç. |
+| `04-school-search.png` | Doğrulanmış 193 kurumu ad, kısaltma veya alan adıyla ara. |
+| `05-calendar.png` | Blackboard teslim tarihlerini ve renkli ders rozetlerini tek takvimde gör. |
+| `06-announcements.png` | Tüm derslerinin en yeni Blackboard duyurularını oku. |
+| `07-courses.png` | Bu dönemin derslerini gör ve hangilerinin indirileceğini belirle. |
+| `08-languages.png` | English, Türkçe, Español, Français, Deutsch ve العربية arasında geçiş yap. |
 | `09-tray.png` | Windows bildirim alanından son eşitlemeyi kontrol et ve son indirilenlere eriş. |

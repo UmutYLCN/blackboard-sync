@@ -100,7 +100,7 @@ below follow what the app does. Check each question's info icon when its wording
 | Gambling, simulated gambling | No | Same |
 | Users can interact or exchange content with other users (chat, posting, sharing) | No | It only downloads from the student's own courses; nothing is posted |
 | Shares the user's location | No | It reads no location |
-| Shares personal information with third parties | Yes, optional | If Calendar is enabled, deadline titles, course names, due times and Blackboard links are sent to Google at the user’s request; disclose optional sharing in the submission. Blackboard cookies go only to the school. |
+| Shares personal information with third parties | Yes, optional | Optional integrations send data to Google at the user’s request. Disclose this sharing in the submission. Blackboard cookies go only to the school. |
 | Digital purchases | No | No in-app purchases |
 | Unrestricted internet access (for example a web browser) | No | The sign-in window opens the school's sign-in page; the app is not a browser. Confirm against the question's info text |
 
@@ -113,9 +113,7 @@ The Store signs the package, so upload the **unsigned** `.msix` from the
 **Microsoft Store package** workflow. Ordinary CI artifacts omit production Google
 OAuth metadata and are for testing only.
 
-1. Run the workflow on the tested `main` commit. It requires the existing
-   `GOOGLE_CALENDAR_OAUTH_CLIENT_JSON` secret, checks Calendar configuration inside
-   the installed package and exercises startup, tray activation and package behavior.
+1. Run the workflow on the tested `main` commit. It checks production OAuth configuration inside the installed package and exercises startup, tray activation and package behavior.
 2. Download the artifact after the workflow succeeds:
 
    ```sh
@@ -180,7 +178,7 @@ OAuth metadata and are for testing only.
   explanation and a link to the demo video. Suggested text for the second case (date it):
 
   ```text
-  [date] This app downloads course files from a university's Blackboard Learn system. Signing in requires the student's own school account on the school's sign-in page, so we cannot provide a shared test account. Without an account testers can: open the app from Start (the "Get started" first-run page appears; the UI language can be changed under Settings > Language), enter any Blackboard address and choose a folder, open Settings (the gear; automatic sync interval, language, start at sign-in, the note that updates come from the Microsoft Store), and close the window to see the app keep running in the notification area. The Windows screenshots and optional Windows trailer in this submission illustrate the main screens. Full sync still requires a valid school account. The app has no analytics. It contacts the Blackboard address the user enters and its redirects; optional Calendar sync also contacts Google. Optional Google Calendar connection is available in Settings; it opens the Google consent page in the default browser and manages only a dedicated Blackboard Deadlines calendar.
+  [date] This app downloads course files from a university's Blackboard Learn system. Signing in requires the student's own school account on the school's sign-in page, so we cannot provide a shared test account. Without an account testers can: open the app from Start (the "Get started" first-run page appears; the UI language can be changed under Settings > Language), enter any Blackboard address and choose a folder, open Settings (the gear; automatic sync interval, language, start at sign-in, the note that updates come from the Microsoft Store), and close the window to see the app keep running in the notification area. The Windows screenshots and optional Windows trailer in this submission illustrate the main screens. Full sync still requires a valid school account. The app has no analytics. It contacts the Blackboard address the user enters and its redirects. Optional Gemini Notebook export contacts Google.
   ```
 
 - [ ] **Submission notification audience:** the account owner is notified by default; add
@@ -199,13 +197,13 @@ read right to left.
 | Upload order | Content |
 | --- | --- |
 | `01-home.png` | Recent downloads, Gemini Notebook and the AI study session card |
-| `02-school-search.png` | Get started with matching schools as the student types |
-| `03-calendar.png` | Upcoming deadlines with colour-coded course badges |
-| `04-google-calendar.png` | Google Calendar connection in Settings |
-| `05-announcements.png` | Course announcements |
-| `06-courses.png` | Course selection for sync |
-| `07-languages.png` | Language selector expanded in Settings |
-| `08-dark-theme.png` | Home in dark mode |
+| `02-gemini-notebook.png` | Connected Gemini Notebook card with course export controls |
+| `03-ai-study.png` | AI study session card with the four available tool logos |
+| `04-school-search.png` | Get started with matching schools as the student types |
+| `05-calendar.png` | Upcoming deadlines with colour-coded course badges |
+| `06-announcements.png` | Course announcements |
+| `07-courses.png` | Course selection for sync |
+| `08-languages.png` | Language selector expanded in Settings |
 | `09-tray.png` | Windows notification-area menu |
 
 ### Sources and rendering

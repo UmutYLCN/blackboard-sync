@@ -26,17 +26,18 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 OUT = HERE / "src" / "windows"
 
-# id -> (preview state, theme, content width, content height)
+# id -> (preview state, content height)
 WINDOWS = {
-    "01-home": ("notebooklm-idle", "light", 1180, 880),
-    "02-school-search": ("start", "light", 1180, 760),
-    "03-calendar": ("calendar", "light", 1180, 760),
-    "04-google-calendar": ("settings", "light", 1180, 760),
-    "05-announcements": ("announcements-page", "light", 1180, 760),
-    "06-courses": ("courses", "light", 1180, 760),
-    "07-languages": ("settings", "light", 1180, 760),
-    "08-dark-theme": ("notebooklm-idle", "dark", 1180, 880),
+    "01-home": ("notebooklm-idle", 880),
+    "02-gemini-notebook": ("notebooklm-idle", 880),
+    "03-ai-study": ("notebooklm-idle", 880),
+    "04-school-search": ("start", 760),
+    "05-calendar": ("calendar", 760),
+    "06-announcements": ("announcements-page", 760),
+    "07-courses": ("courses", 760),
+    "08-languages": ("settings", 640),
 }
+FEATURE_CARDS = {"02-gemini-notebook": "#notebooklm-card", "03-ai-study": "#ai-card"}
 TRAY = "09-tray"
 SCHOOL_QUERY = "King"
 COURSE_COLORS = {"COE305": 0, "CSE301": 1, "CSE303": 2, "PHY101": 3}
@@ -201,6 +202,10 @@ def states(lang: str) -> dict:
     result = namespace["fixtures"](now)
     # Show a completed sync without the preview fixture's intentional held-file warning.
     result["notebooklm-idle"]["home"]["notebooklm"].update({"notice": "", "warning-counts": ""})
+    # Keep the portion of Settings that contains the language control in frame.
+    settings = result["settings"]["settings"]
+    settings["sections"] = [section for section in settings["sections"]
+                            if any(row["key"] == "language" for row in section["rows"])]
     return result
 
 
@@ -245,11 +250,12 @@ def main(argv=None) -> int:
                 page.close()
                 print(out)
                 continue
-            name, theme, width, height = WINDOWS[shot_id]
+            name, height = WINDOWS[shot_id]
+            width = 1180
             page = browser.new_page(viewport={"width": width + 40, "height": height + 80}, device_scale_factor=2,
-                                    color_scheme=theme)
+                                    color_scheme="light")
             page.on("pageerror", lambda exc, shot_id=shot_id: errors.append(f"{shot_id}: {exc}"))
-            page.set_content(FRAME.format(font=frame_font, theme=theme, logo=logo(32), width=width, height=height))
+            page.set_content(FRAME.format(font=frame_font, theme="light", logo=logo(32), width=width, height=height))
             script = "window.__PREVIEW_STATE__ = " + json.dumps(fixtures[name], ensure_ascii=True) + ";"
             if name == "start":
                 matches = json.dumps([school.name for school in schools.search(SCHOOL_QUERY)])
@@ -259,12 +265,10 @@ def main(argv=None) -> int:
             app = page.frame_locator("#app")
             app.locator("body").wait_for()
             page.wait_for_timeout(300)
-            if shot_id == "02-school-search":
+            if name == "start":
                 app.locator('input[aria-controls="school-list"]').fill(SCHOOL_QUERY)
                 app.get_by_role("option").first.wait_for()
-            if shot_id == "04-google-calendar":
-                app.locator('[data-key="select-theme"]').evaluate("el => el.closest('.section-title + section').scrollIntoView()")
-            if shot_id == "07-languages":
+            if name == "settings":
                 language = app.locator('[data-key="select-language"]')
                 # Native select popups are outside Chromium's page screenshot surface.
                 # Expand the real app options as a listbox for the capture.
@@ -274,7 +278,8 @@ def main(argv=None) -> int:
                     el.scrollIntoView({block: 'center'});
                 }""")
             page.evaluate("document.fonts.ready")
-            page.locator(".win").screenshot(path=str(out), omit_background=True, animations="disabled")
+            target = app.locator(FEATURE_CARDS[shot_id]) if shot_id in FEATURE_CARDS else page.locator(".win")
+            target.screenshot(path=str(out), omit_background=True, animations="disabled")
             page.close()
             print(out)
         browser.close()

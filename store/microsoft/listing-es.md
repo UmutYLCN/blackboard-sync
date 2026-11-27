@@ -17,11 +17,13 @@ Sincroniza automáticamente los archivos de Blackboard en tu PC. Encuentra tu ce
 ```text
 Descarga automáticamente los archivos de tus cursos de Blackboard en tu PC, organizados por periodo y asignatura. El directorio incluye 193 instituciones con una dirección de Blackboard Learn verificada, entre ellas 34 del Reino Unido, 34 de Estados Unidos y 27 de Arabia Saudí. Empieza a escribir el nombre, las siglas o el dominio de tu centro para ver sugerencias. Si no aparece, introduce su dirección de Blackboard e inicia sesión con tu cuenta del centro.
 
-Abre la tarjeta de estudio con IA en Inicio para iniciar un asistente instalado en la carpeta del periodo actual: Claude Code, Gemini CLI, Codex o Antigravity. También puedes conectar Gemini Notebook (NotebookLM) para exportar los archivos compatibles a un cuaderno por asignatura. La exportación opcional usa una conexión no oficial con Google que puede dejar de funcionar si cambia el servicio.
+Usa la suscripción de IA que ya tienes. Desde Inicio, abre con un clic Claude Code, Gemini CLI, Codex (ChatGPT) o Antigravity en la carpeta del periodo actual. Instala la herramienta que prefieras e inicia sesión con tu cuenta.
 
-Consulta las fechas de entrega y los avisos en una sola ventana. Las etiquetas de colores identifican la asignatura de cada entrega, aviso o descarga reciente. Si quieres, sincroniza las entregas con un calendario dedicado en Google Calendar.
+Conecta Gemini Notebook (NotebookLM) desde Inicio para exportar los archivos compatibles a un cuaderno por asignatura. La exportación opcional usa una conexión no oficial con Google que puede dejar de funcionar si cambia el servicio.
 
-Elige qué cursos se sincronizan. Las descargas siguen desde el área de notificación de Windows al cerrar la ventana. Elige el tema claro, oscuro o el de Windows.
+Consulta las fechas de entrega y los avisos en una sola ventana. Las etiquetas de colores identifican la asignatura de cada entrega, aviso o descarga reciente.
+
+Elige qué cursos se sincronizan. Las descargas siguen desde el área de notificación de Windows al cerrar la ventana.
 
 Disponible en English, Türkçe, Español, Français, Deutsch y العربية.
 
@@ -32,13 +34,12 @@ blackboard-sync es una aplicación independiente sin afiliación con Anthology I
 
 ```text
 Descargas automáticas de Blackboard organizadas por periodo y asignatura
+Exportación a Gemini Notebook (NotebookLM) en un cuaderno por asignatura
+Estudio con IA en un clic en la carpeta del periodo con tu suscripción actual
 Búsqueda por nombre, siglas o dominio entre 193 instituciones verificadas
-Sesiones de estudio con Claude Code, Gemini CLI, Codex o Antigravity
-Exportación opcional a Gemini Notebook (NotebookLM) por asignatura
-Próximas entregas y sincronización opcional con Google Calendar
+Próximas fechas de entrega en la aplicación
 Avisos y etiquetas de asignaturas por colores
 Sincronización en segundo plano desde el área de notificación de Windows
-Temas claro, oscuro y del sistema. Seis idiomas de interfaz.
 ```
 
 ## Search terms
@@ -70,11 +71,11 @@ Umut Yalçın
 | Image | Caption |
 | --- | --- |
 | `01-home.png` | Inicio reúne las descargas recientes, la tarjeta de estudio con IA y Gemini Notebook. |
-| `02-school-search.png` | Busca por nombre, siglas o dominio entre 193 instituciones verificadas. |
-| `03-calendar.png` | Consulta las próximas fechas de Blackboard y sus asignaturas con colores en un solo calendario. |
-| `04-google-calendar.png` | Conecta Google Calendar en Ajustes para sincronizar las entregas en un calendario dedicado. |
-| `05-announcements.png` | Lee los últimos avisos de Blackboard de todas tus asignaturas. |
-| `06-courses.png` | Consulta tus cursos actuales y elige de cuáles quieres descargar archivos. |
-| `07-languages.png` | Cambia entre English, Türkçe, Español, Français, Deutsch y العربية. |
-| `08-dark-theme.png` | Elige el tema claro u oscuro, o usa el tema de Windows. |
+| `02-gemini-notebook.png` | Conecta Gemini Notebook (NotebookLM) y exporta los archivos compatibles a un cuaderno por asignatura. |
+| `03-ai-study.png` | Abre Claude Code, Gemini CLI, Codex o Antigravity en la carpeta del periodo actual. |
+| `04-school-search.png` | Busca por nombre, siglas o dominio entre 193 instituciones verificadas. |
+| `05-calendar.png` | Consulta las próximas fechas de Blackboard y sus asignaturas con colores en un solo calendario. |
+| `06-announcements.png` | Lee los últimos avisos de Blackboard de todas tus asignaturas. |
+| `07-courses.png` | Consulta tus cursos actuales y elige de cuáles quieres descargar archivos. |
+| `08-languages.png` | Cambia entre English, Türkçe, Español, Français, Deutsch y العربية. |
 | `09-tray.png` | Consulta la última sincronización y las descargas recientes desde el área de notificación de Windows. |

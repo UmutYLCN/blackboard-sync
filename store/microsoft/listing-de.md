@@ -17,11 +17,13 @@ Synchronisiere Blackboard-Kursdateien automatisch auf deinem PC. Finde deine Hoc
 ```text
 Lade deine Blackboard-Kursdateien automatisch auf den PC und lege sie nach Semester und Kurs ab. Das Verzeichnis enthält 193 Bildungseinrichtungen mit verifizierter Blackboard-Learn-Adresse, darunter je 34 im Vereinigten Königreich und in den USA sowie 27 in Saudi-Arabien. Tippe den Namen, das Kürzel oder die Domain deiner Hochschule ein, um Vorschläge zu sehen. Fehlt deine Einrichtung, gib ihre Blackboard-Adresse ein und melde dich mit deinem Hochschulkonto an.
 
-Öffne auf der Startseite die KI-Lernkarte, um einen installierten Assistenten direkt im Ordner des aktuellen Semesters zu starten: Claude Code, Gemini CLI, Codex oder Antigravity. Du kannst auch Gemini Notebook (NotebookLM) verbinden und unterstützte Dateien in ein Notizbuch pro Kurs exportieren. Der optionale Export nutzt eine inoffizielle Verbindung zu Google, die bei Änderungen des Dienstes ausfallen kann.
+Nutze dein bestehendes KI-Abo. Starte Claude Code, Gemini CLI, Codex (ChatGPT) oder Antigravity mit einem Klick auf der Startseite direkt im Ordner des aktuellen Semesters. Installiere das gewünschte Tool und melde dich mit deinem Konto an.
 
-Sieh Abgabefristen und Kursankündigungen in einem Fenster. Farbige Kursmarkierungen zeigen, zu welchem Kurs ein Termin, eine Ankündigung oder ein letzter Download gehört. Wenn du möchtest, synchronisiere Abgabefristen mit einem eigenen Kalender in Google Kalender.
+Verbinde Gemini Notebook (NotebookLM) auf der Startseite und exportiere unterstützte Dateien in ein Notizbuch pro Kurs. Der optionale Export nutzt eine inoffizielle Verbindung zu Google, die bei Änderungen des Dienstes ausfallen kann.
 
-Wähle, welche Kurse synchronisiert werden. Nach dem Schließen des Fensters laufen Downloads im Windows-Infobereich weiter. Wähle das helle oder dunkle Design oder übernimm das Windows-Design.
+Sieh Abgabefristen und Kursankündigungen in einem Fenster. Farbige Kursmarkierungen zeigen, zu welchem Kurs ein Termin, eine Ankündigung oder ein letzter Download gehört.
+
+Wähle, welche Kurse synchronisiert werden. Nach dem Schließen des Fensters laufen Downloads im Windows-Infobereich weiter.
 
 Verfügbar in English, Türkçe, Español, Français, Deutsch und العربية.
 
@@ -32,13 +34,12 @@ blackboard-sync ist eine unabhängige App und steht in keiner Verbindung zu Anth
 
 ```text
 Automatische Blackboard-Downloads, sortiert nach Semester und Kurs
+Export zu Gemini Notebook (NotebookLM) in ein Notizbuch pro Kurs
+Mit deinem bestehenden KI-Abo per Klick im Semesterordner lernen
 Suche unter 193 verifizierten Einrichtungen nach Name, Kürzel oder Domain
-Lernsitzungen mit Claude Code, Gemini CLI, Codex oder Antigravity
-Optionaler Export pro Kurs zu Gemini Notebook (NotebookLM)
-Abgabefristen und optionale Synchronisierung mit Google Kalender
+Bevorstehende Abgabefristen in der App
 Kursankündigungen und farbige Kursmarkierungen
 Hintergrundsynchronisierung im Windows-Infobereich
-Helles, dunkles und Systemdesign. Sechs Oberflächensprachen.
 ```
 
 ## Search terms
@@ -70,11 +71,11 @@ Umut Yalçın
 | Image | Caption |
 | --- | --- |
 | `01-home.png` | Die Startseite zeigt letzte Downloads, die KI-Lernkarte und Gemini Notebook. |
-| `02-school-search.png` | Durchsuche 193 verifizierte Einrichtungen nach Name, Kürzel oder Domain. |
-| `03-calendar.png` | Sieh kommende Blackboard-Fristen und farblich markierte Kurse in einem Kalender. |
-| `04-google-calendar.png` | Verbinde Google Kalender in den Einstellungen, um Fristen in einen eigenen Kalender zu übernehmen. |
-| `05-announcements.png` | Lies die neuesten Blackboard-Ankündigungen aus all deinen Kursen. |
-| `06-courses.png` | Sieh deine aktuellen Kurse und wähle aus, welche du herunterladen möchtest. |
-| `07-languages.png` | Wechsle zwischen English, Türkçe, Español, Français, Deutsch und العربية. |
-| `08-dark-theme.png` | Wähle das helle oder dunkle Design oder übernimm das Windows-Design. |
+| `02-gemini-notebook.png` | Verbinde Gemini Notebook (NotebookLM) und exportiere unterstützte Dateien in ein Notizbuch pro Kurs. |
+| `03-ai-study.png` | Starte Claude Code, Gemini CLI, Codex oder Antigravity im Ordner des aktuellen Semesters. |
+| `04-school-search.png` | Durchsuche 193 verifizierte Einrichtungen nach Name, Kürzel oder Domain. |
+| `05-calendar.png` | Sieh kommende Blackboard-Fristen und farblich markierte Kurse in einem Kalender. |
+| `06-announcements.png` | Lies die neuesten Blackboard-Ankündigungen aus all deinen Kursen. |
+| `07-courses.png` | Sieh deine aktuellen Kurse und wähle aus, welche du herunterladen möchtest. |
+| `08-languages.png` | Wechsle zwischen English, Türkçe, Español, Français, Deutsch und العربية. |
 | `09-tray.png` | Sieh die letzte Synchronisierung und öffne letzte Downloads über den Windows-Infobereich. |

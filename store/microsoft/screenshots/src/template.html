@@ -59,6 +59,7 @@
     object-fit: contain;
     filter: drop-shadow(0 30px 60px #000000a0);
   }
+  .stage.featured img { width: 1300px; border-radius: 24px; }
   .placeholder {
     width: 1400px;
     height: 760px;
@@ -103,6 +104,7 @@
 
   const stage = document.getElementById("stage");
   stage.classList.toggle("compact", !!shot.compact);
+  stage.classList.toggle("featured", !!shot.featured);
   const img = params.get("img");
   if (img) {
     const el = document.createElement("img");
