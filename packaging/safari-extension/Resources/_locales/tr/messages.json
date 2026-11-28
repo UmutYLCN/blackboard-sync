@@ -1,0 +1,29 @@
+{
+  "extName": {
+    "message": "Gemini Notebook için Blackboard Sync"
+  },
+  "extDescription": {
+    "message": "Blackboard ders dosyalarınızı, Safari'deki kendi Google oturumunuzla Gemini Notebook'a ekler."
+  },
+  "actionTitle": {
+    "message": "Blackboard Sync: izin verdikten sonra bu sayfayı yeniler"
+  },
+  "connected": {
+    "message": "uygulamaya bağlanıldı…"
+  },
+  "working": {
+    "message": "çalışıyor… bu sekmeyi açık tutun."
+  },
+  "adding": {
+    "message": "$1 ekleniyor… bu sekmeyi açık tutun."
+  },
+  "done": {
+    "message": "bitti. Bu sekmeyi kapatabilirsiniz."
+  },
+  "lost": {
+    "message": "uygulama durdu. Bu sekmeyi kapatabilirsiniz."
+  },
+  "signIn": {
+    "message": "bu sayfada Google'da oturum açın."
+  }
+}

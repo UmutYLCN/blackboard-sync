@@ -46,8 +46,8 @@ class NotebookLMLoginRequired(BlackboardSyncError):
 
     exit_code = EXIT_LOGIN_REQUIRED
 
-    def __init__(self):
-        super().__init__(tr("Sign in to Google again to keep adding files."))
+    def __init__(self, message: str | None = None):
+        super().__init__(message or tr("Sign in to Google again to keep adding files."))
 
 
 class NotebookLMTransient(BlackboardSyncError):

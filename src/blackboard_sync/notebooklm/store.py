@@ -2,7 +2,8 @@
 
 Everything is in the ``notebooklm`` folder of the private data directory: never in the
 repository or the course folder. ``session.json`` holds the Google cookies, so it is written
-owner-only and never logged. ``state.json`` records per file what it looked like when it was
+owner-only and never logged. The Mac App Store build keeps no cookies: Safari holds the Google
+session, and ``safari.json`` only says when the Safari extension was set up (``safari``). ``state.json`` records per file what it looked like when it was
 added, so a file goes up once however often the sync runs. It survives a disconnect: signing
 in again does not add everything a second time.
 """
@@ -40,6 +41,15 @@ def nfc(text: str) -> str:
 
 def session_file(config: Config) -> Path:
     return config.notebooklm_dir / "session.json"
+
+
+def safari_file(config: Config) -> Path:
+    """The Mac App Store build's mark that the Safari extension answered once; holds no secret."""
+    return config.notebooklm_dir / "safari.json"
+
+
+def is_connected(config: Config) -> bool:
+    return session_file(config).is_file() or safari_file(config).is_file()
 
 
 def state_file(config: Config) -> Path:
@@ -221,7 +231,7 @@ def status(config: Config) -> NotebookLMStatus:
     counts = {key: value for key in ("added", "skipped", "modified", "blocked", "held", "failed")
               if isinstance(value := data.get(key), int)}
     return NotebookLMStatus(
-        connected=session_file(config).is_file(),
+        connected=is_connected(config),
         needs_login=data.get("status") == "login_required",
         error=data.get("status") == "error",
         finished_at=data.get("finished_at") if isinstance(data.get("finished_at"), str) else "",
@@ -253,6 +263,7 @@ def disconnect(config: Config) -> list[str]:
     """
     for path in session_file(config).parent.glob(session_file(config).name + "*"):  # with its .lock
         path.unlink(missing_ok=True)
+    safari_file(config).unlink(missing_ok=True)
     last_run_file(config).unlink(missing_ok=True)
     return [str(path) for path in (profile_dir(config), library_home(config)) if not _remove_tree(path)]
 

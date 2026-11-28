@@ -9,7 +9,6 @@ into what the caller can do: sign in again, try again, or give up on this file.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 
@@ -31,28 +30,15 @@ from blackboard_sync.errors import (
     NotebookLMRateLimited,
     NotebookLMTransient,
 )
+from blackboard_sync.notebooklm.remote import RemoteNotebook, RemoteSource, wait_ready
 from blackboard_sync.notebooklm.store import nfc
 
 TRANSIENT = (NetworkError, RateLimitError, ServerError, RPCTimeoutError, WaitTimeoutError, SourceAddError,
              asyncio.TimeoutError)
 RATE_MARKERS = ("429", "rate limit", "rate-limit", "too many requests", "resource_exhausted", "resource exhausted")
 AUTH_MARKERS = ("unauthenticated", "authentication expired", "signed-out", "notebooklm login")
-FIRST_POLL, LAST_POLL = 3.0, 10.0  # seconds between looks at a file NotebookLM is processing
 # Google only renews a session when asked, and uploads alone do not ask, so a long run does.
 KEEPALIVE_SECONDS = 600.0
-
-
-@dataclass(frozen=True)
-class RemoteNotebook:
-    id: str
-    title: str
-
-
-@dataclass(frozen=True)
-class RemoteSource:
-    id: str
-    title: str
-    status: str  # ready | processing | preparing | error | unknown
 
 
 def check_runtime() -> str:
@@ -168,20 +154,4 @@ class Gateway:
 
     async def wait_ready(self, notebook_id: str, source_ids: list[str], timeout: float) -> dict[str, str]:
         """Each source's status once none is still processing, or at ``timeout``."""
-        pending = set(source_ids)
-        status: dict[str, str] = {}
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + timeout
-        interval = FIRST_POLL
-        while True:
-            for source in await self.list_sources(notebook_id):
-                if source.id in pending:
-                    status[source.id] = source.status
-            pending -= {source_id for source_id in pending if status.get(source_id) in ("ready", "error")}
-            if not pending or loop.time() >= deadline:
-                break
-            await asyncio.sleep(interval)
-            interval = min(interval * 1.5, LAST_POLL)
-        for source_id in pending:
-            status.setdefault(source_id, "missing")
-        return status
+        return await wait_ready(self.list_sources, notebook_id, source_ids, timeout)

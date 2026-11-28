@@ -773,8 +773,29 @@ CATALOG = {
     "Copy command for {name}": "Befehl für {name} kopieren",
     "Copy {name} command for {term}": "{name}-Befehl für {term} kopieren",
     "Could not copy the command.": "Der Befehl konnte nicht kopiert werden.",
-    "Gemini Notebook sign-in is not available in the Mac App Store version.":
-        "Die Anmeldung bei Gemini Notebook ist in der Mac App Store-Version nicht verfügbar.",
+    # Gemini Notebook through Safari (Mac App Store build)
+    "Add new course files whenever you choose.": "Füge neue Kursdateien hinzu, wann immer du willst.",
+    "Uses your Google sign-in in Safari.": "Nutzt deine Google-Anmeldung in Safari.",
+    "Opening Gemini Notebook in Safari…": "Gemini Notebook wird in Safari geöffnet …",
+    "Set up in Safari": "In Safari einrichten",
+    "Turn on the Safari extension": "Schalte die Safari-Erweiterung ein",
+    "Safari > Settings > Extensions > Blackboard Sync": "Safari > Einstellungen > Erweiterungen > Blackboard Sync",
+    "Allow it on notebook.google.com": "Erlaube sie auf notebook.google.com",
+    "Click Blackboard Sync in Safari's toolbar: Always Allow":
+        "Klicke in der Safari-Symbolleiste auf Blackboard Sync: Immer erlauben",
+    "Sign in to Google in Safari": "Melde dich in Safari bei Google an",
+    "Safari extension": "Safari-Erweiterung",
+    "Turn on Blackboard Sync in Safari and allow it on notebook.google.com.":
+        "Schalte Blackboard Sync in Safari ein und erlaube es auf notebook.google.com.",
+    "Open Safari Settings": "Safari-Einstellungen öffnen",
+    "Turn on the Blackboard Sync extension in Safari, then try again.":
+        "Schalte die Blackboard Sync-Erweiterung in Safari ein und versuche es erneut.",
+    "Safari did not answer. Allow Blackboard Sync on notebook.google.com in Safari, then try again.":
+        "Safari hat nicht geantwortet. Erlaube Blackboard Sync in Safari auf notebook.google.com und versuche es erneut.",
+    "Sign in to Google in Safari, then try again.": "Melde dich in Safari bei Google an und versuche es erneut.",
+    "The Safari tab closed before all files were added. Sync again to go on.":
+        "Der Safari-Tab wurde geschlossen, bevor alle Dateien hinzugefügt waren. Synchronisiere erneut, um weiterzumachen.",
+    "Could not open Safari.": "Safari konnte nicht geöffnet werden.",
     "Try the demo": "Demo testen",
     "Updates are installed through the App Store.": "Updates werden über den App Store installiert.",
     "You can uninstall Blackboard Sync from Launchpad or the Applications folder.":

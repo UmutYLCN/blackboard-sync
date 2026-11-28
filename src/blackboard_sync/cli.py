@@ -303,7 +303,7 @@ def cmd_notebooklm(args, config: Config) -> int:
     if args.notebooklm_action == "login":
         outcome, message = signin.CONNECTED, ""
         try:
-            signin.login(config, on_verify=lambda: emit({"event": "sign_in", "step": "verify"}))
+            signin.login(config, on_verify=lambda: emit({"event": "sign_in", "step": "verify"}), on_event=emit)
         except BlackboardSyncError as exc:
             outcome, message = getattr(exc, "outcome", "error"), str(exc)
         emit({"event": "result", **asdict(store.status(config)), "outcome": outcome, "message": message})

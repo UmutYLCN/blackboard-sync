@@ -222,7 +222,12 @@ def main() -> int:
         print(check_note_pdf())
         return 0
     if args == [CHECK_NOTEBOOKLM]:
-        from blackboard_sync.notebooklm.gateway import check_runtime as check_notebooklm
+        from blackboard_sync import licensing
+
+        if licensing.is_mas():  # no library in this build: Gemini Notebook goes through Safari
+            from blackboard_sync.notebooklm.safari import check_runtime as check_notebooklm
+        else:
+            from blackboard_sync.notebooklm.gateway import check_runtime as check_notebooklm
 
         print(check_notebooklm())
         return 0

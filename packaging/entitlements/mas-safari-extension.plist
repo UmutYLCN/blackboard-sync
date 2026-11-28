@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The Mac App Store build's Safari Web Extension (Contents/PlugIns/*.appex). It runs in its own
+     sandbox and needs nothing else: its scripts reach Google and the app's loopback bridge through
+     Safari, under the host permissions in its manifest. -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+</dict>
+</plist>

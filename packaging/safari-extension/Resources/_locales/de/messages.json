@@ -1,0 +1,29 @@
+{
+  "extName": {
+    "message": "Blackboard Sync für Gemini Notebook"
+  },
+  "extDescription": {
+    "message": "Fügt deine Blackboard-Kursdateien mit deiner eigenen Google-Anmeldung in Safari zu Gemini Notebook hinzu."
+  },
+  "actionTitle": {
+    "message": "Blackboard Sync: Seite nach dem Erlauben neu laden"
+  },
+  "connected": {
+    "message": "mit der App verbunden…"
+  },
+  "working": {
+    "message": "läuft… lass diesen Tab offen."
+  },
+  "adding": {
+    "message": "$1 wird hinzugefügt… lass diesen Tab offen."
+  },
+  "done": {
+    "message": "fertig. Du kannst diesen Tab schließen."
+  },
+  "lost": {
+    "message": "die App wurde beendet. Du kannst diesen Tab schließen."
+  },
+  "signIn": {
+    "message": "melde dich auf dieser Seite bei Google an."
+  }
+}

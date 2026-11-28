@@ -1,0 +1,29 @@
+{
+  "extName": {
+    "message": "Blackboard Sync لـ Gemini Notebook"
+  },
+  "extDescription": {
+    "message": "يضيف ملفات مقرراتك في Blackboard إلى Gemini Notebook باستخدام تسجيل دخولك إلى Google في Safari."
+  },
+  "actionTitle": {
+    "message": "Blackboard Sync: أعد تحميل هذه الصفحة بعد السماح له"
+  },
+  "connected": {
+    "message": "تم الاتصال بالتطبيق…"
+  },
+  "working": {
+    "message": "جارٍ العمل… أبقِ علامة التبويب هذه مفتوحة."
+  },
+  "adding": {
+    "message": "جارٍ إضافة $1… أبقِ علامة التبويب هذه مفتوحة."
+  },
+  "done": {
+    "message": "تم. يمكنك إغلاق علامة التبويب هذه."
+  },
+  "lost": {
+    "message": "توقف التطبيق. يمكنك إغلاق علامة التبويب هذه."
+  },
+  "signIn": {
+    "message": "سجّل الدخول إلى Google في هذه الصفحة."
+  }
+}

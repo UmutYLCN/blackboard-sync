@@ -425,6 +425,9 @@ class _Target(NSObject):
     def notebooklmDisconnect_(self, _sender):
         self.owner.on_action("notebooklm_disconnect")
 
+    def notebooklmSafari_(self, _sender):
+        self.owner.on_action("notebooklm_safari")
+
     def aiTool_(self, sender):
         self.owner.on_action(AI_OPEN_PREFIX + AI_CLIS[int(sender.tag())])
 
@@ -700,6 +703,7 @@ ROW_ATTRIBUTES = {
     "dest": ("dest_field", None, None),
     "notebooklm_auto": ("notebooklm_switch", None, None),
     "notebooklm_disconnect": (None, None, None),
+    "notebooklm_safari": (None, None, None),
     "ai_terminal": ("terminal_popup", None, None),
     "ai_resume": ("ai_resume_switch", None, None),
     "check_updates": ("check_updates", None, None),
@@ -709,7 +713,7 @@ ROW_ATTRIBUTES = {
 # A button of a row that acts at once, and the buttons whose title changes keep one width.
 ROW_ACTIONS = {"google_calendar": "googleCalendar:", "google_calendar_sync": "googleCalendarSync:",
                "google_calendar_disconnect": "googleCalendarDisconnect:", "account": "account:", "update": "update:", "uninstall": "uninstall:",
-               "notebooklm_disconnect": "notebooklmDisconnect:"}
+               "notebooklm_disconnect": "notebooklmDisconnect:", "notebooklm_safari": "notebooklmSafari:"}
 ROW_BUTTON_WIDTH = {"google_calendar": 210, "account": ACTION_WIDTH, "update": ACTION_WIDTH}
 # Rows whose description changes while the app runs keep room for two lines.
 LIVE_DETAIL_LINES = {"google_calendar": 3, "ai_terminal": 2}
@@ -1634,22 +1638,13 @@ class MainWindow:
         if status.update_banner is not None:
             self.overview_update_banner[0].setFrame_(NSMakeRect(PAD, top, INNER, UPDATE_BANNER_HEIGHT))
             top += UPDATE_BANNER_HEIGHT + GAP
-        # The NotebookLM card is laid out first when shown: the files give way to it in a short window.
-        if status.shows_notebooklm:
-            self.notebooklm_card.setHidden_(False)
-            notebooklm_height = self._layout_notebooklm_card()
-            notebooklm_space = notebooklm_height + GAP
-        else:
-            self.notebooklm_card.setHidden_(True)
-            self._notebooklm_height = 0
-            notebooklm_height = 0
-            notebooklm_space = 0
+        # The NotebookLM card is laid out first: the files give way to it in a short window.
+        notebooklm_space = self._layout_notebooklm_card() + GAP
         ai_height = self._layout_ai_card()
         height = self._layout_status_card(self.pages[OVERVIEW].frame().size.height - top - notebooklm_space - PAD)
         self.status_card.setFrame_(NSMakeRect(PAD, top, LEFT_W, height))
         self.status_card.contentView().setFrame_(NSMakeRect(0, 0, LEFT_W, height))
-        if status.shows_notebooklm:
-            self._place_notebooklm_card(top + height + GAP)
+        self._place_notebooklm_card(top + height + GAP)
         self._place_ai_card(top + height + GAP + notebooklm_space)
         left_bottom = top + height + GAP + notebooklm_space + ai_height
         notify_height = self._draw_home_notifications()
@@ -1675,7 +1670,7 @@ class MainWindow:
 
     def _fitting_rows(self) -> int:
         available = self.pages[OVERVIEW].frame().size.height - self.status_card.frame().origin.y
-        notebooklm_space = (self._notebooklm_height + GAP) if self.status.shows_notebooklm else 0
+        notebooklm_space = self._notebooklm_height + GAP
         return home_recent_rows(available - notebooklm_space - PAD, self._status_fixed, ROW_HEIGHT,
                                 len(self.status.recent))
 
@@ -1720,8 +1715,8 @@ class MainWindow:
                 view.start()
             else:
                 view.stop()
-        if (self.status.shows_notebooklm and self.status.notebooklm.running and self.state.open
-                and self.state.section == OVERVIEW and self.status.update_required is None):
+        if (self.status.notebooklm.running and self.state.open and self.state.section == OVERVIEW
+                and self.status.update_required is None):
             self.notebooklm_scene.start()
         else:
             self.notebooklm_scene.stop()
@@ -1794,7 +1789,7 @@ class MainWindow:
         self.settings_rows = {}
         mas = licensing.is_mas()
         y = 8
-        for section in settings_sections(notebooklm=not mas, auto_relogin=True, mas=mas):
+        for section in settings_sections(notebooklm=True, auto_relogin=True, mas=mas):
             y = self._build_section(view, section, y)
         if mas:
             self.dest_field.setEditable_(False)

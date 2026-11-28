@@ -971,8 +971,9 @@ class AppModel:
         """Whether a finished Blackboard sync should be followed by a NotebookLM run.
 
         A run that is going on when the sync ends cannot see its new files: it looks once more.
+        Never in the Mac App Store build: a run there opens Safari, so only the student starts one.
         """
-        if outcome.status != "ok" or self.paused or not enabled:
+        if licensing.is_mas() or outcome.status != "ok" or self.paused or not enabled:
             return False
         if not self.notebooklm.connected or self.notebooklm.needs_login:
             return False

@@ -974,11 +974,27 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
                 "uninstall": self.start_uninstall, "pause": self.toggle_pause,
                 "notebooklm_connect": lambda: self.start_notebooklm(NOTEBOOKLM_CONNECT),
                 "notebooklm_sync": self.start_notebooklm, "notebooklm_disconnect": self.disconnect_notebooklm,
-                "notebooklm_open": lambda: open_url(notebooklm_store.APP_URL),
+                "notebooklm_open": self.open_notebooklm,
+                "notebooklm_safari": self.open_safari_extension_settings,
                 "ai_detect": self.detect_ai_tools,
                 "ai_install": self.open_ai_install,
                 DEMO_ACTION: self.start_demo,
             }[action]()
+
+        def open_notebooklm(self) -> None:
+            """Gemini Notebook in the browser; in Safari for the Mac App Store build, which works through it."""
+            if licensing.is_mas():
+                from blackboard_sync.notebooklm import safari
+
+                threading.Thread(target=safari.open_page, args=(notebooklm_store.APP_URL,), daemon=True).start()
+            else:
+                open_url(notebooklm_store.APP_URL)
+
+        def open_safari_extension_settings(self) -> None:
+            """Safari's Settings on the app's extension (Mac App Store build); Safari answers later."""
+            from blackboard_sync.notebooklm import safari
+
+            threading.Thread(target=safari.open_extension_settings, daemon=True).start()
 
         def start_demo(self) -> None:
             """Enter built-in offline Demo Mode after an explicit folder selection."""
