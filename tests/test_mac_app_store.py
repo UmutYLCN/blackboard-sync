@@ -23,6 +23,7 @@ from blackboard_sync import (
     courses,
     deadlines,
     demo,
+    i18n,
     licensing,
     login as login_mod,
     macos_bookmarks,
@@ -464,11 +465,30 @@ def test_mas_ai_launcher_copies_command_without_spawning_shells_or_osascript(tmp
 
     model.finish_ai_launch(res)
     card_after = main.ai_card(model)
-    assert "Copied terminal command for Claude Code" in card_after.detail
+    assert card_after.kind == main.AI_COPIED
+    assert card_after.detail == "Command copied. Paste it in your terminal and press Enter."
+    assert card_after.tools_enabled
 
     menu = model.menu(NOW)
     ai_entry = next(e for e in menu.entries if e.action == "ai_open")
     assert ai_entry.title == "Copy Claude Code command for 2026-2027 Fall"
+
+
+@pytest.mark.parametrize("language, expected", [
+    ("tr", "Komut kopyalandı. Terminale yapıştırın ve Enter’a basın."),
+    ("fr", "Commande copiée. Collez-la dans votre terminal et appuyez sur Entrée."),
+    ("de", "Befehl kopiert. Füge ihn im Terminal ein und drücke die Eingabetaste."),
+    ("es", "Comando copiado. Pégalo en la terminal y pulsa Intro."),
+    ("ar", "تم نسخ الأمر. الصقه في تطبيق الطرفية واضغط على Enter."),
+])
+def test_mas_ai_copy_confirmation_is_localized(monkeypatch, tmp_path, language, expected):
+    monkeypatch.setattr(licensing, "is_mas", lambda: True)
+    monkeypatch.setattr(i18n, "_language", language)
+    model = AppModel(dest=tmp_path, now=NOW, configured=True)
+    model.finish_ai_launch(ai_launcher.LaunchResult(
+        tool=ai_launcher.TOOLS["codex"], folder=tmp_path, copied_command="codex",
+    ))
+    assert main.ai_card(model).detail == expected
 
 
 # -- 8. Built-in offline Demo Mode -------------------------------------------------------

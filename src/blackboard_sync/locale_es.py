@@ -768,8 +768,8 @@ CATALOG = {
         "Elige la carpeta con “Elegir…” para que macOS conceda acceso a ella.",
     "Click a tool to copy the terminal command for {term}.":
         "Haz clic en una herramienta para copiar el comando de terminal de {term}.",
-    "Copied terminal command for {name} — paste it into Terminal.":
-        "Se copió el comando de terminal de {name}; pégalo en Terminal.",
+    "Command copied. Paste it in your terminal and press Enter.":
+        "Comando copiado. Pégalo en la terminal y pulsa Intro.",
     "Copy command for {name}": "Copiar comando de {name}",
     "Copy {name} command for {term}": "Copiar comando de {name} para {term}",
     "Could not copy the command.": "No se pudo copiar el comando.",

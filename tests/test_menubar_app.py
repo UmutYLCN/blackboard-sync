@@ -1562,3 +1562,43 @@ def test_menubar_app_wires_ai_card_actions_and_menu_item(menu_app, monkeypatch, 
     menu_app._ai_detected()
     assert not any('Gemini CLI' in str(title) for title in menu_app.menu.keys())
 
+
+def test_mas_ai_card_click_copies_then_opens_the_folder(menu_app, monkeypatch):
+    from blackboard_sync import ai_launcher
+    from blackboard_sync.menubar import app, jobs
+    from blackboard_sync.menubar.main_window_model import AI_COPIED, OVERVIEW
+
+    monkeypatch.setenv("BBSYNC_DISTRIBUTION", "mas")
+    seen = []
+
+    class ImmediateThread:
+        def __init__(self, target, daemon=None):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(app.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr("PyObjCTools.AppHelper.callAfter", lambda fn, *args: fn(*args))
+    term = menu_app.model.root
+    term.mkdir(parents=True)
+    monkeypatch.setattr(menu_app, "detect_ai_tools", lambda: None)
+
+    def launch(key, resume, config, terminal):
+        return ai_launcher.launch(key, resume, config, terminal=terminal, copy_fn=copy)
+
+    def copy(command):
+        seen.append(("copy", command))
+        return True
+
+    def open_folder(folder, terminal):
+        seen.append(("open", folder, terminal))
+        assert menu_app.windows[0].statuses[-1].ai.kind == AI_COPIED
+
+    monkeypatch.setattr(jobs, "run_ai_launch_guarded", launch)
+    monkeypatch.setattr(ai_launcher, "open_mas_terminal", open_folder)
+    menu_app.show_window(OVERVIEW)
+    menu_app.windows[0].handlers["on_action"]("ai_open:codex")
+
+    command = ai_launcher.copy_command_text(term, ai_launcher.TOOLS["codex"])
+    assert seen == [("copy", command), ("open", term, menu_app.settings.ai_terminal)]

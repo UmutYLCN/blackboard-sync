@@ -944,6 +944,8 @@ def build_app(config: Config, show_window: bool = False, min_version_checker=Non
                     and result.folder is not None and result.folder.is_dir()):
                 open_path(result.folder)
             self.refresh()
+            if not from_menu and result.copied_command and result.folder is not None and licensing.is_mas():
+                ai_launcher.open_mas_terminal(result.folder, self.settings.ai_terminal)
             if from_menu and not result.ok:
                 self.show_window(OVERVIEW)
 

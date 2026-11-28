@@ -408,6 +408,7 @@ class NotebookLMProgress:
 
 # The AI study session card's states (under NotebookLM on Home).
 AI_OFF, AI_READY, AI_LAUNCHING, AI_ATTENTION = "off", "ready", "launching", "attention"
+AI_COPIED = "copied"
 T_AI_TITLE = tr("AI study session")
 T_AI_LOOKING = tr("Looking for AI tools…")
 # What the card's tool buttons ask for: the prefix, then the key.
@@ -866,11 +867,10 @@ def ai_card(model: AppModel, sync_title: str | None = None, sync_enabled: bool =
                   else tr("Could not open a terminal."))
         return AiCard(AI_ATTENTION, detail, **shown)
     if mas:
-        if result is not None and result.ok and result.copied_command and result.tool is not None:
-            detail = tr("Copied terminal command for {name} — paste it into Terminal.").format(name=result.tool.name)
-        else:
-            detail = tr("Click a tool to copy the terminal command for {term}.").format(term=term)
-        return AiCard(AI_READY, detail, **shown)
+        if result is not None and result.copied_command:
+            return AiCard(AI_COPIED, tr("Command copied. Paste it in your terminal and press Enter."), **shown)
+        return AiCard(AI_READY, tr("Click a tool to copy the terminal command for {term}.").format(term=term),
+                      **shown)
     if model.ai_resume:
         detail = tr("Click a tool to open {term}, continuing your last session there.").format(term=term)
     else:

@@ -642,6 +642,32 @@ def copy_command(
     return LaunchResult(None, tool, folder, copied_command=command)
 
 
+def open_mas_terminal(folder: Path, terminal: str = "") -> None:
+    """Ask Launch Services to open a folder in a terminal, without sending a command."""
+    def completed(_app, error):
+        if error is not None:
+            log.warning("Could not open a terminal for the copied AI command: %s", error)
+
+    try:
+        from AppKit import NSWorkspace, NSWorkspaceOpenConfiguration
+        from Foundation import NSURL
+
+        workspace = NSWorkspace.sharedWorkspace()
+        app_url = None
+        # iTerm2 also starts a shell when handed a directory URL.
+        if terminal == "iterm2":
+            app_url = workspace.URLForApplicationWithBundleIdentifier_("com.googlecode.iterm2")
+        if app_url is None:
+            app_url = workspace.URLForApplicationWithBundleIdentifier_("com.apple.Terminal")
+        if app_url is not None:
+            workspace.openURLs_withApplicationAtURL_configuration_completionHandler_(
+                [NSURL.fileURLWithPath_isDirectory_(str(folder), True)],
+                app_url, NSWorkspaceOpenConfiguration.configuration(), completed,
+            )
+    except Exception:
+        log.exception("Could not open a terminal for the copied AI command")
+
+
 def launch(ai_cli: str, resume: bool, config: Config, detector: Detector = DETECTOR,
            platform: str | None = None, env: Mapping[str, str] | None = None,
            run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
@@ -657,7 +683,8 @@ def launch(ai_cli: str, resume: bool, config: Config, detector: Detector = DETEC
     caller can open ``LaunchResult.folder`` in Finder or Explorer instead.
 
     In Mac App Store (``mas``) builds, App Sandbox does not allow launching terminals via
-    ``osascript``: clicking a tool copies ``cd <term folder> && <tool>`` to the clipboard instead.
+    ``osascript``: copy ``cd <term folder> && <tool>`` to the clipboard. The macOS UI then
+    opens the folder in a terminal without running a command.
     """
     env = os.environ if env is None else env
     if licensing.is_mas(platform=platform, env=env):

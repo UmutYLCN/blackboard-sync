@@ -727,8 +727,8 @@ CATALOG = {
         "macOS'un erişim izni verebilmesi için klasörü “Seç…” düğmesiyle seçin.",
     "Click a tool to copy the terminal command for {term}.":
         "{term} için terminal komutunu kopyalamak üzere bir araca tıklayın.",
-    "Copied terminal command for {name} — paste it into Terminal.":
-        "{name} için terminal komutu kopyalandı — Terminal'e yapıştırın.",
+    "Command copied. Paste it in your terminal and press Enter.":
+        "Komut kopyalandı. Terminale yapıştırın ve Enter’a basın.",
     "Copy command for {name}": "{name} komutunu kopyala",
     "Copy {name} command for {term}": "{term} için {name} komutunu kopyala",
     "Could not copy the command.": "Komut kopyalanamadı.",
