@@ -264,7 +264,7 @@ def test_connect_walks_through_the_extension_the_site_and_google_then_marks_the_
                    pause=lambda _s: None, attempt=0.2)
     assert shown == [True]
     assert [e["step"] for e in events] == [safari.STEP_EXTENSION, safari.STEP_GOOGLE, safari.STEP_VERIFY]
-    marker = json.loads(store.safari_file(cfg).read_text())
+    marker = json.loads(store.safari_file(cfg).read_text(encoding="utf-8"))
     assert set(marker) == {"connected_at"}  # no cookie, token or account
     assert store.status(cfg).connected
     assert not store.session_file(cfg).exists()
@@ -346,21 +346,21 @@ def test_mas_runs_through_safari_and_only_when_the_student_asks(tmp_path, monkey
 
 def test_extension_package_matches_the_app_side():
     resources = ROOT / "packaging" / "safari-extension" / "Resources"
-    manifest = json.loads((resources / "manifest.json").read_text())
+    manifest = json.loads((resources / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["manifest_version"] == 3
     hosts = {"https://notebook.google.com/*", "https://notebooklm.google.com/*"}
     assert set(manifest["content_scripts"][0]["matches"]) == hosts
     assert set(manifest["host_permissions"]) == hosts | {"http://127.0.0.1/*"}
     assert manifest["permissions"] == ["storage"]  # no cookies, no tabs, no history
-    content = (resources / "content.js").read_text()
+    content = (resources / "content.js").read_text(encoding="utf-8")
     for op in ("hello", "account_limits", "list_notebooks", "create_notebook", "list_sources", "add_file",
                "rename_source"):
         assert f'case "{op}"' in content
-    assert safari.HEADER in (resources / "background.js").read_text()
-    keys = set(json.loads((resources / "_locales" / "en" / "messages.json").read_text()))
+    assert safari.HEADER in (resources / "background.js").read_text(encoding="utf-8")
+    keys = set(json.loads((resources / "_locales" / "en" / "messages.json").read_text(encoding="utf-8")))
     for lang in ("tr", "es", "fr", "de", "ar"):
-        assert set(json.loads((resources / "_locales" / lang / "messages.json").read_text())) == keys
-    build = (ROOT / "scripts" / "build-safari-extension.sh").read_text()
+        assert set(json.loads((resources / "_locales" / lang / "messages.json").read_text(encoding="utf-8"))) == keys
+    build = (ROOT / "scripts" / "build-safari-extension.sh").read_text(encoding="utf-8")
     assert f"$APP_ID{safari.EXTENSION_SUFFIX}" in build
-    assert "build-safari-extension.sh" in (ROOT / "scripts" / "build-mas.sh").read_text()
-    assert "mas-safari-extension.plist" in (ROOT / "scripts" / "sign-mas.sh").read_text()
+    assert "build-safari-extension.sh" in (ROOT / "scripts" / "build-mas.sh").read_text(encoding="utf-8")
+    assert "mas-safari-extension.plist" in (ROOT / "scripts" / "sign-mas.sh").read_text(encoding="utf-8")
