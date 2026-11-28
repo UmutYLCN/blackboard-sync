@@ -250,7 +250,7 @@ SECTIONS = {section.key: section for section in (
 )}
 
 
-MAS_HIDDEN_SECTIONS = (SECTION_NOTEBOOKLM, SECTION_AI, SECTION_DANGER)
+MAS_HIDDEN_SECTIONS = (SECTION_NOTEBOOKLM, SECTION_DANGER)
 MAS_HIDDEN_ROWS = ("check_updates",)
 
 
@@ -272,6 +272,9 @@ def settings_sections(appearance: bool = False, notebooklm: bool = False,
         footer = section.footer
         if not auto_relogin:
             rows = tuple(row for row in rows if row.key != "auto_relogin")
+        if mas and section.key == SECTION_AI:
+            rows = tuple(row for row in rows if row.key == "ai_resume")
+            footer = ""
         if mas and section.key == SECTION_UPDATES:
             rows = tuple(
                 replace(row, button="") if row.key == "update" else row

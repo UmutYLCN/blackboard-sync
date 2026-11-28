@@ -415,6 +415,22 @@ def _command(program: PurePath, args: tuple[str, ...], quote: Callable[[str], st
     return " ".join(quote(part) for part in (str(program), *args))
 
 
+def _macos_session_lines(program: PurePath, tool: AiTool, resume: bool, notice: str = "") -> list[str]:
+    q = shlex.quote
+    fresh = _command(program, tool.fresh, q)
+    if not resume:
+        return [f"exec {fresh}"]
+    return [
+        "start=$SECONDS",
+        _command(program, tool.resume, q),
+        "rc=$?",
+        f'if [ "$rc" -ne 0 ] && [ $((SECONDS - start)) -lt {FALLBACK_SECONDS} ]; then',
+        f"  printf '%s\\n' {q(notice or T_NO_SESSION)}",
+        f"  exec {fresh}",
+        "fi",
+    ]
+
+
 def macos_script(folder: Path, program: Path, tool: AiTool, resume: bool, notice: str = "") -> str:
     """The ``.command`` file Terminal runs: go to ``folder`` and start the tool.
 
@@ -422,25 +438,13 @@ def macos_script(folder: Path, program: Path, tool: AiTool, resume: bool, notice
     ``PATH``, so a tool installed with npm under nvm finds its ``node``.
     """
     q = shlex.quote
-    fresh = _command(program, tool.fresh, q)
     lines = [
         "#!/bin/zsh -l",
         'rm -f -- "$0"',
         f'export PATH={q(str(program.parent))}:"$PATH"',
         f"cd -- {q(str(folder))} || exit 1",
+        *_macos_session_lines(program, tool, resume, notice),
     ]
-    if not resume:
-        lines.append(f"exec {fresh}")
-    else:
-        lines += [
-            "start=$SECONDS",
-            _command(program, tool.resume, q),
-            "rc=$?",
-            f'if [ "$rc" -ne 0 ] && [ $((SECONDS - start)) -lt {FALLBACK_SECONDS} ]; then',
-            f"  printf '%s\\n' {q(notice or T_NO_SESSION)}",
-            f"  exec {fresh}",
-            "fi",
-        ]
     return "\n".join(lines) + "\n"
 
 
@@ -604,9 +608,15 @@ def _open_windows(folder: Path, program: Path, tool: AiTool, resume: bool, termi
     return error
 
 
-def copy_command_text(folder: PurePath, tool: AiTool) -> str:
-    """Shell command copied to the clipboard in Mac App Store builds (no ``osascript``)."""
-    return f"cd -- {shlex.quote(str(folder))} && {shlex.quote(tool.key)}"
+def copy_command_text(folder: PurePath, tool: AiTool, resume: bool = False) -> str:
+    """Shell command pasted into the student's terminal, where their PATH is already set."""
+    program = PurePosixPath(tool.key)
+    cd = f"cd -- {shlex.quote(str(folder))}"
+    if not resume:
+        return f"{cd} && {_command(program, tool.fresh, shlex.quote)}"
+    # A child zsh provides SECONDS and contains exec, leaving the terminal's shell open.
+    session = "; ".join(line.strip() for line in _macos_session_lines(program, tool, resume))
+    return f"{cd} && {shlex.join(('/bin/zsh', '-c', session))}"
 
 
 def copy_to_clipboard(text: str) -> bool:
@@ -628,15 +638,17 @@ def copy_command(
     ai_cli: str,
     config: Config,
     copy_fn: Callable[[str], bool] = copy_to_clipboard,
+    *,
+    resume: bool = False,
 ) -> LaunchResult:
-    """Copy the ``cd <term folder> && <tool>`` command for Mac App Store builds."""
+    """Copy the command for Mac App Store builds."""
     tool = TOOLS.get(ai_cli)
     if tool is None:
         return LaunchResult(Failure.NO_AI)
     folder = current_term_folder(config)
     if not folder.is_dir():
         return LaunchResult(Failure.FOLDER_MISSING, tool, folder)
-    command = copy_command_text(folder, tool)
+    command = copy_command_text(folder, tool, resume)
     if not copy_fn(command):
         return LaunchResult(Failure.TERMINAL_FAILED, tool, folder, error=tr("Could not copy the command."))
     return LaunchResult(None, tool, folder, copied_command=command)
@@ -683,12 +695,12 @@ def launch(ai_cli: str, resume: bool, config: Config, detector: Detector = DETEC
     caller can open ``LaunchResult.folder`` in Finder or Explorer instead.
 
     In Mac App Store (``mas``) builds, App Sandbox does not allow launching terminals via
-    ``osascript``: copy ``cd <term folder> && <tool>`` to the clipboard. The macOS UI then
-    opens the folder in a terminal without running a command.
+    ``osascript``. Copy the session command to the clipboard so the student can run it in the
+    terminal. The macOS AI card opens the folder after the copy.
     """
     env = os.environ if env is None else env
     if licensing.is_mas(platform=platform, env=env):
-        return copy_command(ai_cli, config, copy_fn=copy_fn)
+        return copy_command(ai_cli, config, copy_fn=copy_fn, resume=resume)
     tool = TOOLS.get(ai_cli)
     if tool is None:
         return LaunchResult(Failure.NO_AI)

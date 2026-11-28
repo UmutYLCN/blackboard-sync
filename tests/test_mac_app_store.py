@@ -262,7 +262,8 @@ def test_mas_onboarding_starts_empty_and_hides_non_sandbox_sections(tmp_path, mo
     sections = settings_form.settings_sections(notebooklm=True, auto_relogin=True, mas=True)
     keys = [s.key for s in sections]
     assert settings_form.SECTION_NOTEBOOKLM not in keys
-    assert settings_form.SECTION_AI not in keys
+    ai_sec = next(s for s in sections if s.key == settings_form.SECTION_AI)
+    assert [r.key for r in ai_sec.rows] == ["ai_resume"]
     assert settings_form.SECTION_DANGER not in keys
     updates_sec = next(s for s in sections if s.key == settings_form.SECTION_UPDATES)
     assert [r.key for r in updates_sec.rows] == ["update"]
@@ -454,7 +455,8 @@ def test_mas_ai_launcher_copies_command_without_spawning_shells_or_osascript(tmp
     )
     assert res.ok
     assert res.folder == term_dir
-    assert len(copied) == 1 and "2026-2027 Fall" in copied[0] and copied[0].endswith("&& claude")
+    assert copied == [ai_launcher.copy_command_text(term_dir, ai_launcher.TOOLS["claude"], resume=True)]
+    assert "claude --continue" in copied[0]
 
     model = AppModel(dest=dest, now=NOW, configured=True, ai_cli="claude")
     model.ai_term = "2026-2027 Fall"

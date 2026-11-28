@@ -1600,5 +1600,5 @@ def test_mas_ai_card_click_copies_then_opens_the_folder(menu_app, monkeypatch):
     menu_app.show_window(OVERVIEW)
     menu_app.windows[0].handlers["on_action"]("ai_open:codex")
 
-    command = ai_launcher.copy_command_text(term, ai_launcher.TOOLS["codex"])
+    command = ai_launcher.copy_command_text(term, ai_launcher.TOOLS["codex"], resume=True)
     assert seen == [("copy", command), ("open", term, menu_app.settings.ai_terminal)]
