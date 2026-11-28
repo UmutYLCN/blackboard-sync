@@ -82,10 +82,8 @@ class RunResult:
         if failed:
             return ntr("{n} file could not be added; the next sync tries again.",
                        "{n} files could not be added; the next sync tries again.", failed).format(n=failed)
-        if self.held:
-            return ntr("{n} file may already be in Gemini Notebook, so it was not added.",
-                       "{n} files may already be in Gemini Notebook, so they were not added.",
-                       len(self.held)).format(n=len(self.held))
+        # A held file is most likely in the notebook already (another app or device added it under
+        # its own name): nothing for the student to do, so nothing to say. ``held_files`` lists them.
         return ""
 
     def last_run(self) -> dict:
@@ -99,6 +97,8 @@ class RunResult:
             "held": len(self.held),
             "held_files": [f"{label}: {reason}" for label, reason in self.held],
             "failed": len(self.failed) + len(self.processing_errors),
+            # Why, for whoever looks into it: the run's own log goes nowhere a student can see.
+            "failed_files": [f"{label}: {reason}"[:300] for label, reason in self.failed[:50]],
             "message": self.message or self.notice(),
         }
 

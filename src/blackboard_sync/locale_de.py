@@ -697,6 +697,7 @@ CATALOG = {
     "Sign in to Google in the browser window.": "Melde dich im Browserfenster bei Google an.",
     "Adding {done} of {total}: {file}": "Hinzufügen {done} von {total}: {file}",
     "Gemini Notebook is reading the new files…": "Gemini Notebook liest die neuen Dateien…",
+    "All your files are already in Gemini Notebook": "Alle deine Dateien sind schon in Gemini Notebook",
     "Checking the connection…": "Verbindung wird geprüft…",
     "Google took the sign-in, but Gemini Notebook did not open. Try again.":
         "Google hat die Anmeldung angenommen, aber Gemini Notebook hat sich nicht geöffnet. Versuche es erneut.",
@@ -726,13 +727,6 @@ CATALOG = {
     "Gemini Notebook needs Chrome, Edge or Brave to sign in to Google; install one and try again.":
         "Gemini Notebook braucht Chrome, Edge oder Brave für die Google-Anmeldung; installiere einen davon und "
         "versuche es erneut.",
-
-    # NotebookLM: files that may be there already
-    "{n} file may already be in Gemini Notebook, so it was not added.":
-        "{n} Datei ist möglicherweise schon in Gemini Notebook und wurde daher nicht hinzugefügt.",
-    "{n} files may already be in Gemini Notebook, so they were not added.":
-        "{n} Dateien sind möglicherweise schon in Gemini Notebook und wurden daher nicht hinzugefügt.",
-    "{n} held back": "{n} zurückgehalten",
 
     # Store trial and purchase (licensing)
     "Purchases are not available in this build.": "Käufe sind in dieser Version nicht verfügbar.",

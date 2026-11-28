@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import shutil
+import subprocess
 import threading
 import urllib.error
 import urllib.request
@@ -36,17 +38,19 @@ ROOT = Path(__file__).resolve().parents[1]
 class Page(threading.Thread):
     """The extension's page: serves the bridge until it says bye, with ``handlers[op](args)``."""
 
-    def __init__(self, bridge: safari.Bridge, handlers: dict, token: str | None = None):
+    def __init__(self, bridge: safari.Bridge, handlers: dict, token: str | None = None, page: str = ""):
         super().__init__(daemon=True)
         self.bridge, self.handlers = bridge, handlers
         self.token = token or bridge.token
+        self.page = page  # which copy of the page this is, as content.js sends it
         self.seen: list[str] = []
         self.goodbye: dict | None = None
 
     def request(self, path: str, body: dict | None = None) -> bytes:
         data = None if body is None else json.dumps(body).encode()
         req = urllib.request.Request(f"http://127.0.0.1:{self.bridge.port}{path}", data=data,
-                                     headers={safari.HEADER: self.token}, method="GET" if data is None else "POST")
+                                     headers={safari.HEADER: self.token, safari.PAGE_HEADER: self.page},
+                                     method="GET" if data is None else "POST")
         with urllib.request.urlopen(req, timeout=5) as response:
             return response.read()
 
@@ -364,3 +368,108 @@ def test_extension_package_matches_the_app_side():
     assert f"$APP_ID{safari.EXTENSION_SUFFIX}" in build
     assert "build-safari-extension.sh" in (ROOT / "scripts" / "build-mas.sh").read_text(encoding="utf-8")
     assert "mas-safari-extension.plist" in (ROOT / "scripts" / "sign-mas.sh").read_text(encoding="utf-8")
+
+
+# -- what the captain's first Mac App Store test run hit ------------------------------------
+
+
+def test_a_request_taken_by_a_page_that_reloaded_fails_fast_while_the_new_page_works(monkeypatch):
+    """First run: ``rpc rLM1Ne: TypeError: Load failed``; the page went away under a request."""
+    monkeypatch.setattr(safari, "GONE_SECONDS", 0.5)
+    bridge = safari.Bridge(long_poll=0.2)
+    bridge.start()
+    taken = threading.Event()
+
+    def reloads(page, args):  # takes the request and is gone (a reload) before it answers
+        taken.set()
+        raise SystemExit
+
+    old = Page(bridge, {"list_sources": reloads}, page="old")
+    old.run = lambda: _take_once(old, reloads)
+    old.start()
+    new = Page(bridge, {"list_sources": lambda page, args: [{"id": "s1", "title": "a.pdf", "status": "ready"}]},
+                page="new")
+
+    async def go():
+        with pytest.raises(safari.BridgeDropped):
+            await bridge.call("list_sources", {"notebook_id": "n1"}, timeout=10)
+        assert taken.is_set()
+        new.start()
+        return await bridge.call("list_sources", {"notebook_id": "n1"}, timeout=10)
+
+    assert asyncio.run(go()) == [{"id": "s1", "title": "a.pdf", "status": "ready"}]
+    bridge.stop()
+    new.join(5)
+
+
+def _take_once(page: Page, handler) -> None:
+    while True:
+        work = json.loads(page.request("/next"))
+        if work["op"] != "idle":
+            try:
+                handler(page, work["args"])
+            except SystemExit:
+                return
+
+
+def test_a_look_that_fails_in_passing_is_asked_again_and_the_run_goes_on():
+    attempts = {"list_notebooks": 0}
+
+    def flaky(page, args):
+        attempts["list_notebooks"] += 1
+        if attempts["list_notebooks"] == 1:
+            raise safari.BridgeError("transient", "rpc wXbhsf: TypeError: Load failed")
+        return [{"id": "n1", "title": "BIO 101"}]
+
+    async def no_wait(_seconds):
+        return None
+
+    bridge, page = started({"list_notebooks": flaky})
+    gateway = safari.SafariGateway(bridge=bridge, sleep=no_wait)
+    assert asyncio.run(gateway.list_notebooks()) == [safari.RemoteNotebook("n1", "BIO 101")]
+    assert attempts["list_notebooks"] == 2
+
+    def refuse(page, args):
+        raise safari.BridgeError("transient", "upload: TypeError: Load failed")
+
+    page.handlers["add_file"] = refuse  # an add is never repeated here: runner looks before it adds again
+    with pytest.raises(NotebookLMTransient):
+        asyncio.run(gateway._call("add_file", {}))
+    assert page.seen.count("add_file") == 1
+    bridge.stop()
+    page.join(5)
+
+
+NODE = shutil.which("node")
+CLIENT = ROOT / "packaging" / "safari-extension" / "Resources" / "notebook-client.js"
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
+def test_the_extension_takes_an_upload_address_on_either_personal_host():
+    """Second run: every upload failed; Google named notebooklm.google.com for a notebook.google.com page."""
+    script = CLIENT.read_text(encoding="utf-8") + """
+globalThis.out = {
+  other: BBSyncNotebook.uploadTarget("https://notebooklm.google.com/upload/_/?authuser=0&upload_id=AB-12&upload_protocol=resumable"),
+  same: BBSyncNotebook.uploadTarget("https://notebook.google.com/upload/_/?upload_id=CD"),
+  foreign: BBSyncNotebook.uploadTarget("https://evil.example/upload/_/?upload_id=CD"),
+  plain: BBSyncNotebook.uploadTarget("http://notebook.google.com/upload/_/?upload_id=CD"),
+  noid: BBSyncNotebook.uploadTarget("https://notebooklm.google.com/upload/_/"),
+  path: BBSyncNotebook.uploadTarget("https://notebooklm.google.com/_/elsewhere?upload_id=CD"),
+  source: BBSyncNotebook.findSourceId([[["9d0c1a52-0000-4000-8000-00000000000a"],
+    ["4b1e7c11-0000-4000-8000-00000000000b"]]], "9d0c1a52-0000-4000-8000-00000000000a"),
+};
+console.log(JSON.stringify(out));
+"""
+    prelude = 'globalThis.location = new URL("https://notebook.google.com/notebook/x");\n'
+    found = json.loads(subprocess.run([NODE, "-e", prelude + script], capture_output=True, text=True,
+                                      check=True, encoding="utf-8").stdout)
+    assert found["other"] == "https://notebook.google.com/upload/_/?authuser=0&upload_id=AB-12&upload_protocol=resumable"
+    assert found["same"] == "https://notebook.google.com/upload/_/?upload_id=CD"
+    assert found["foreign"] is None and found["plain"] is None and found["noid"] is None and found["path"] is None
+    assert found["source"] == "4b1e7c11-0000-4000-8000-00000000000b"  # never the notebook's own id
+
+
+def test_a_failed_file_says_why_in_the_last_run():
+    result = runner.RunResult()
+    result.failed.append(("CSE301/notes.pdf", "upload start: refused upload address (host evil.example)"))
+    assert result.last_run()["failed_files"] == ["CSE301/notes.pdf: upload start: refused upload address (host evil.example)"]

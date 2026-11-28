@@ -18,9 +18,12 @@ function toBase64(buffer) {
 async function relay(message) {
   const url = new URL(message.url);
   if (url.protocol !== "http:" || url.hostname !== "127.0.0.1") return { error: "refused" };
+  const headers = { "X-BBSync-Token": message.token };
+  if (typeof message.page === "string") headers["X-BBSync-Page"] = message.page;
+  if (message.body != null) headers["Content-Type"] = "application/json";
   const init = {
     method: message.method || "GET",
-    headers: { "X-BBSync-Token": message.token, ...(message.body != null ? { "Content-Type": "application/json" } : {}) },
+    headers,
     body: message.body != null ? message.body : undefined,
     cache: "no-store",
     credentials: "omit",
@@ -41,9 +44,12 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const { bridge } = await api.storage.local.get("bridge");
         return { bridge: bridge && Date.now() - bridge.at < LIFETIME_MS ? bridge : null };
       }
-      case "forget":
-        await api.storage.local.remove("bridge");
+      case "forget": {
+        // Only its own: the next run's page may have remembered a new bridge in the meantime.
+        const { bridge } = await api.storage.local.get("bridge");
+        if (bridge && bridge.token === message.token) await api.storage.local.remove("bridge");
         return { ok: true };
+      }
       case "bridge":
         return relay(message);
       case "close":

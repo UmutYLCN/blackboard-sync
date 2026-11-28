@@ -779,12 +779,13 @@ def notebooklm_progress(event: dict) -> NotebookLMProgress:
 
 
 def notebooklm_warning_counts(status: NotebookLMStatus) -> str:
-    """Summarize the files or courses that need attention."""
+    """Summarize the files or courses that need attention.
+
+    Held files are left out: they are most likely in the notebook already, so they need nothing.
+    """
     parts = []
     if status.blocked:
         parts.append(ntr("{n} course blocked", "{n} courses blocked", status.blocked).format(n=status.blocked))
-    if status.held:
-        parts.append(tr("{n} held back").format(n=status.held))
     if status.failed:
         parts.append(tr("{n} failed").format(n=status.failed))
     return " · ".join(parts)
@@ -825,6 +826,8 @@ def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
     if finished is None:
         return NotebookLMCard(NOTEBOOKLM_IDLE, T_NEVER_SYNCED, **sync)
     detail = tr("No new files were added")
+    if not (status.added or status.failed or status.blocked or status.message):
+        detail = tr("All your files are already in Gemini Notebook")  # whichever app or device put them there
     if status.added:
         detail = ntr("{n} new file added to your notebooks", "{n} new files added to your notebooks",
                      status.added).format(n=status.added)

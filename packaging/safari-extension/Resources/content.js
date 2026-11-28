@@ -11,6 +11,8 @@
   const CHUNK = 4 * 1024 * 1024; // bytes per file read from the app
   const ALIVE_MS = 10000; // the app takes a silent page for a closed tab after 90 s
   const say = (key, ...subs) => (api.i18n && api.i18n.getMessage(key, subs)) || key;
+  // This copy of the page: after a reload the app knows the work it gave the old one is lost.
+  const PAGE = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   let bridge = null;
   let banner = null;
   let finished = false;
@@ -41,7 +43,7 @@
 
   async function call(path, { method = "GET", body = null, as = "json" } = {}) {
     const reply = await api.runtime.sendMessage({
-      type: "bridge", url: `http://127.0.0.1:${bridge.port}${path}`, token: bridge.token,
+      type: "bridge", url: `http://127.0.0.1:${bridge.port}${path}`, token: bridge.token, page: PAGE,
       method, body: body == null ? null : JSON.stringify(body), as,
     });
     if (!reply || reply.error) throw new Error(reply ? reply.error : "no reply from the background page");
@@ -85,7 +87,7 @@
   async function finish(request) {
     if (finished) return;
     finished = true;
-    await api.runtime.sendMessage({ type: "forget" });
+    await api.runtime.sendMessage({ type: "forget", token: bridge.token });
     show(say("done"));
     if (request.args && request.args.close) {
       setTimeout(() => api.runtime.sendMessage({ type: "close" }), 1500);

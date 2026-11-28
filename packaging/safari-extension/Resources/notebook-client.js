@@ -16,6 +16,9 @@ const BBSyncNotebook = (() => {
   };
   const STATUS = { 1: "processing", 2: "ready", 3: "error" };
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  // The personal app answers on both hosts, and Google's upload service names either one in
+  // x-goog-upload-url whichever the page is on (notebooklm-py: _accepted_upload_hosts).
+  const PERSONAL_HOSTS = new Set(["notebook.google.com", "notebooklm.google.com"]);
 
   class NotebookError extends Error {
     constructor(kind, message) {
@@ -165,20 +168,32 @@ const BBSyncNotebook = (() => {
     return sources;
   }
 
-  function findSourceId(node, depth = 0) {
-    if (depth > 6) return null;
-    if (typeof node === "string") return UUID.test(node) ? node : null;
+  // The new source's id in an ADD_SOURCE_FILE answer: the first id that is not the notebook's own.
+  function findSourceId(node, notebookId, depth = 0) {
+    if (depth > 8) return null;
+    if (typeof node === "string") return UUID.test(node) && node !== notebookId ? node : null;
     if (!Array.isArray(node)) return null;
     for (const child of node) {
-      const found = findSourceId(child, depth + 1);
+      const found = findSourceId(child, notebookId, depth + 1);
       if (found) return found;
     }
     return null;
   }
 
+  // Where the file's bytes go: the address Google gave, on this page's own origin. The two personal
+  // hosts stand in for each other, and only a same-origin request carries this page's session (and
+  // an Origin that matches the host, which Google checks). Anything else is refused.
+  function uploadTarget(address) {
+    let url;
+    try { url = new URL(address); } catch (_) { return null; }
+    if (url.protocol !== "https:" || url.username || url.password || !PERSONAL_HOSTS.has(url.hostname)) return null;
+    if (!url.pathname.startsWith("/upload/") || !url.searchParams.get("upload_id")) return null;
+    return `${location.origin}${url.pathname}${url.search}`;
+  }
+
   async function addFile(notebookId, blob, filename, mime) {
     const registered = await rpc(RPC.ADD_SOURCE_FILE, [[[filename]], notebookId, TEMPLATE()], `/notebook/${notebookId}`);
-    const sourceId = findSourceId(registered);
+    const sourceId = findSourceId(registered, notebookId);
     if (!sourceId) throw new NotebookError("permanent", `register ${filename}: no source id`);
     const user = authuser();
     let start;
@@ -200,9 +215,12 @@ const BBSyncNotebook = (() => {
       throw new NotebookError("transient", `upload start: ${error}`);
     }
     if (!start.ok) throw classifyHttp(start.status, await start.text());
-    const uploadUrl = start.headers.get("x-goog-upload-url");
-    if (!uploadUrl || new URL(uploadUrl).origin !== location.origin) {
-      throw new NotebookError("permanent", "upload start: no upload address");
+    const given = start.headers.get("x-goog-upload-url") || "";
+    const uploadUrl = uploadTarget(given);
+    if (!uploadUrl) {
+      let host = "none";
+      try { host = given ? new URL(given).host : "none"; } catch (_) { host = "unreadable"; }
+      throw new NotebookError("permanent", `upload start: refused upload address (host ${host})`);
     }
     let finish;
     try {
@@ -224,5 +242,6 @@ const BBSyncNotebook = (() => {
     return sourceId;
   }
 
-  return { NotebookError, open, accountLimits, listNotebooks, createNotebook, listSources, addFile, renameSource };
+  return { NotebookError, open, accountLimits, listNotebooks, createNotebook, listSources, addFile, renameSource,
+    uploadTarget, findSourceId };
 })();

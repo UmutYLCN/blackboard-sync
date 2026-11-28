@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -1166,7 +1166,7 @@ def test_a_held_file_is_reported_and_nothing_goes_up(config):
     result = run(config, gateway)
 
     assert not gateway.added and len(result.held) == 1
-    assert result.notice() == "1 file may already be in Gemini Notebook, so it was not added."
+    assert result.notice() == ""  # most likely in the notebook already: nothing to alarm the student with
     assert store.status(config).held == 1
     assert "CSE301 Database/Week 2/notes.pdf" in result.last_run()["held_files"][0]
 
@@ -1291,10 +1291,15 @@ def test_the_old_state_path_can_be_set(tmp_path):
     assert Config.from_env({"BBSYNC_DATA_DIR": str(tmp_path)}).notebooklm_legacy_state.name == "state.json"
 
 
-def test_the_card_says_what_was_held_back(tmp_path):
+def test_the_card_says_held_files_are_already_there_without_a_warning(tmp_path):
     model = AppModel(Settings(base_url="https://bb.example.edu", dest=tmp_path), datetime.now(timezone.utc))
     model.notebooklm = store.NotebookLMStatus(connected=True, finished_at="2026-11-06T10:00:00+00:00", held=2)
-    assert "2 held back" in main_window_model.notebooklm_card(model, datetime.now(timezone.utc)).warning_counts
+    card = main_window_model.notebooklm_card(model, datetime.now(timezone.utc))
+    assert card.detail == "All your files are already in Gemini Notebook"
+    assert not card.warning_counts and not card.notice
+    model.notebooklm = replace(model.notebooklm, failed=3, message="3 files could not be added; the next sync tries again.")
+    card = main_window_model.notebooklm_card(model, datetime.now(timezone.utc))
+    assert card.detail == "No new files were added" and card.warning_counts == "3 failed"
 
 
 def test_a_course_without_a_term_is_never_scanned_unless_ticked(config):

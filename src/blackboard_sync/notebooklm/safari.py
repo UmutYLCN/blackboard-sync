@@ -53,6 +53,7 @@ SAFARI = "com.apple.Safari"
 DEFAULT_BUNDLE_ID = "io.github.umutylcn.blackboard-sync.mas"
 EXTENSION_SUFFIX = ".SafariExtension"  # the extension's bundle id, after the app's
 HEADER = "X-BBSync-Token"
+PAGE_HEADER = "X-BBSync-Page"  # which copy of the page asks: a reload makes a new one
 
 LONG_POLL_SECONDS = 20.0  # how long the page's ask for work is held open
 HELLO_SECONDS = 60.0  # a run's wait for the page to answer before it gives up
@@ -60,6 +61,9 @@ CALL_SECONDS = 120.0
 UPLOAD_SECONDS = 15 * 60.0
 REGISTER_SECONDS = 30.0  # a new source must be listed before it can be renamed
 LOST_SECONDS = 90.0  # the page pings every 10 s; this long without it, the tab is gone
+GONE_SECONDS = 35.0  # the copy of the page that took a request said nothing this long: it reloaded
+READ_ATTEMPTS = 3  # a look that fails in passing (a reload, a dropped connection) is asked again
+READ_OPS = frozenset({"account_limits", "list_notebooks", "list_sources"})
 ALLOW_HINT_SECONDS = 8.0  # connect: no word from the page this long, so Safari has not let it run
 SIGN_IN_TIMEOUT = 600.0
 
@@ -83,6 +87,10 @@ class BridgeError(Exception):
 
 class BridgeLost(Exception):
     """The page stopped asking for work: the Safari tab was closed or Safari quit."""
+
+
+class BridgeDropped(Exception):
+    """The copy of the page that took the request went away (it reloaded) before it answered."""
 
 
 def bundle_id() -> str:
@@ -193,6 +201,8 @@ class Bridge:
         self._queue: deque[dict] = deque()
         self._pending: dict[str, concurrent.futures.Future] = {}
         self._files: dict[str, Path] = {}
+        self._taken: dict[str, str] = {}  # request id -> the copy of the page that took it
+        self._pages: dict[str, float] = {}  # copy of the page -> when it was last heard from
         self._ids = itertools.count(1)
         self._goodbye: dict | None = None  # once set, every ask for work gets it
         self._heard_goodbye = threading.Event()
@@ -227,6 +237,13 @@ class Bridge:
     def lost(self, now: float | None = None) -> bool:
         return self.reached.is_set() and (now or time.monotonic()) - self.last_seen > LOST_SECONDS
 
+    def dropped(self, request_id: str, now: float | None = None) -> bool:
+        """The request went to a copy of the page that has since gone quiet, while others go on."""
+        with self._cond:
+            page = self._taken.get(request_id)
+            heard = self._pages.get(page) if page else None
+        return heard is not None and (now or time.monotonic()) - heard > GONE_SECONDS
+
     async def call(self, op: str, args: dict | None = None, timeout: float = CALL_SECONDS) -> Any:
         """Have the page do ``op``; raises ``BridgeError``, ``BridgeLost`` or ``asyncio.TimeoutError``."""
         request_id = f"r{next(self._ids)}"
@@ -249,9 +266,12 @@ class Bridge:
                     break
                 if self.lost():
                     raise BridgeLost(op)
+                if self.dropped(request_id):
+                    raise BridgeDropped(op)
         finally:
             with self._cond:
                 self._pending.pop(request_id, None)
+                self._taken.pop(request_id, None)
                 self._queue = deque(item for item in self._queue if item["id"] != request_id)
             if not waiting.done():
                 waiting.cancel()
@@ -274,17 +294,23 @@ class Bridge:
         server.server_close()
 
     # The page's side, on the server's threads.
-    def _seen(self) -> None:
+    def _seen(self, page: str = "") -> None:
         self.last_seen = time.monotonic()
+        if page:
+            with self._cond:
+                self._pages[page] = self.last_seen
         self.reached.set()
 
-    def _next(self) -> dict:
-        self._seen()
+    def _next(self, page: str = "") -> dict:
+        self._seen(page)
         end = time.monotonic() + self.long_poll
         with self._cond:
             while True:
                 if self._queue:
-                    return self._queue.popleft()
+                    work = self._queue.popleft()
+                    if page:
+                        self._taken[work["id"]] = page
+                    return work
                 if self._goodbye is not None:
                     self._heard_goodbye.set()
                     return self._goodbye
@@ -293,15 +319,15 @@ class Bridge:
                     return {"op": "idle"}
                 self._cond.wait(min(left, 1.0))
 
-    def _result(self, body: dict) -> None:
-        self._seen()
+    def _result(self, body: dict, page: str = "") -> None:
+        self._seen(page)
         with self._cond:
             future = self._pending.get(str(body.get("id")))
         if future is not None and not future.done():
             future.set_result(body)
 
-    def _file(self, file_id: str, offset: int, length: int) -> bytes | None:
-        self._seen()
+    def _file(self, file_id: str, offset: int, length: int, page: str = "") -> bytes | None:
+        self._seen(page)
         with self._cond:
             path = self._files.get(file_id)
         if path is None:
@@ -323,7 +349,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", f"{HEADER}, Content-Type")
+        self.send_header("Access-Control-Allow-Headers", f"{HEADER}, {PAGE_HEADER}, Content-Type")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
         if body:
@@ -331,6 +357,10 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _json(self, value: Any, status: int = 200) -> None:
         self._send(status, json.dumps(value, ensure_ascii=False).encode("utf-8"))
+
+    @property
+    def page(self) -> str:
+        return (self.headers.get(PAGE_HEADER) or "")[:64]
 
     def _allowed(self) -> bool:
         if hmac.compare_digest(self.headers.get(HEADER, ""), self.bridge.token):
@@ -346,7 +376,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         url = urlsplit(self.path)
         if url.path == "/next":
-            self._json(self.bridge._next())
+            self._json(self.bridge._next(self.page))
         elif url.path.startswith("/file/"):
             query = parse_qs(url.query)
             try:
@@ -356,7 +386,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json({"error": "bad range"}, 400)
                 return
             try:
-                data = self.bridge._file(url.path.removeprefix("/file/"), offset, length)
+                data = self.bridge._file(url.path.removeprefix("/file/"), offset, length, self.page)
             except OSError as exc:
                 self._json({"error": str(exc)}, 500)
                 return
@@ -377,11 +407,11 @@ class _Handler(BaseHTTPRequestHandler):
             body = {}
         path = urlsplit(self.path).path
         if path == "/result" and isinstance(body, dict):
-            self.bridge._result(body)
+            self.bridge._result(body, self.page)
         elif path == "/alive":
-            self.bridge._seen()
+            self.bridge._seen(self.page)
         elif path == "/log" and isinstance(body, dict):
-            self.bridge._seen()
+            self.bridge._seen(self.page)
             log.info("Safari page: %s %s", body.get("event"), str(body.get("detail", ""))[:200])
         else:
             self._json({"error": "not found"}, 404)
@@ -420,12 +450,27 @@ class SafariGateway:
         self._notebooks: list[RemoteNotebook] | None = None
 
     async def _call(self, op: str, args: dict | None = None, timeout: float = CALL_SECONDS) -> Any:
+        """One request to the page; a look (``READ_OPS``) that fails in passing is asked again."""
+        attempts = READ_ATTEMPTS if op in READ_OPS else 1
+        for attempt in range(1, attempts + 1):
+            try:
+                return await self._call_once(op, args, timeout)
+            except NotebookLMTransient as exc:
+                if attempt == attempts:
+                    raise
+                log.warning("%s failed in passing (%d of %d): %s", op, attempt, attempts, exc)
+                await self._sleep(2.0 * attempt)
+        raise AssertionError("unreachable")
+
+    async def _call_once(self, op: str, args: dict | None, timeout: float) -> Any:
         try:
             return await self.bridge.call(op, args, timeout)
         except BridgeError as exc:
             raise translate(exc) from exc
         except BridgeLost as exc:
             raise NotebookLMLoginRequired(T_TAB_CLOSED) from exc
+        except BridgeDropped as exc:
+            raise NotebookLMTransient(f"the Safari page reloaded before it answered {op}") from exc
         except asyncio.TimeoutError as exc:
             raise NotebookLMTransient(f"Safari did not answer {op} in {int(timeout)} s") from exc
 

@@ -449,10 +449,10 @@ def test_notebooklm_not_connected_offers_to_connect():
 
 
 @pytest.mark.parametrize("language, added, detail, checked", [
-    ("en", 0, "No new files were added", "Last checked: today"),
+    ("en", 0, "All your files are already in Gemini Notebook", "Last checked: today"),
     ("en", 1, "1 new file added to your notebooks", "Last checked: today"),
     ("en", 3, "3 new files added to your notebooks", "Last checked: today"),
-    ("tr", 0, "Yeni dosya eklenmedi", "Son kontrol: bugün"),
+    ("tr", 0, "Tüm dosyalarınız zaten Gemini Notebook'ta", "Son kontrol: bugün"),
     ("tr", 1, "Defterlerinize 1 yeni dosya eklendi", "Son kontrol: bugün"),
     ("tr", 3, "Defterlerinize 3 yeni dosya eklendi", "Son kontrol: bugün"),
 ])
@@ -468,9 +468,9 @@ def test_notebooklm_idle_shows_the_last_run(monkeypatch, language, added, detail
 
 
 @pytest.mark.parametrize("language, blocked, warning_counts", [
-    ("en", 1, "1 course blocked · 2 held back · 3 failed"),
-    ("en", 2, "2 courses blocked · 2 held back · 3 failed"),
-    ("tr", 2, "2 ders engellendi · 2 bekletildi · 3 başarısız"),
+    ("en", 1, "1 course blocked · 3 failed"),
+    ("en", 2, "2 courses blocked · 3 failed"),
+    ("tr", 2, "2 ders engellendi · 3 başarısız"),
 ])
 def test_notebooklm_idle_keeps_actionable_warnings(monkeypatch, language, blocked, warning_counts):
     monkeypatch.setattr(i18n, "_language", language)

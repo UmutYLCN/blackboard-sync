@@ -578,7 +578,7 @@ def test_the_preview_draws_every_card_state(monkeypatch):
     idle = states["notebooklm-idle"]["home"]["notebooklm"]
     assert idle["detail"] == "3 new files added to your notebooks"
     assert idle["secondary"].startswith("Last checked: ")
-    assert idle["warning-counts"] == "2 held back"
+    assert idle["warning-counts"] == "2 failed"
     assert idle["button"]["id"] == "notebooklm_sync" and idle["open"]
     ai = states["up-to-date"]["home"]["ai"]
     assert [tool["key"] for tool in ai["tools"]] == ["claude", "gemini", "codex", "agy"]
