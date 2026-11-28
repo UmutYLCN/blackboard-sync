@@ -22,7 +22,6 @@ import hmac
 import itertools
 import json
 import logging
-import mimetypes
 import os
 import secrets
 import subprocess
@@ -42,6 +41,7 @@ from blackboard_sync.errors import (
     NotebookLMSignInFailed,
     NotebookLMTransient,
 )
+from blackboard_sync import mimes
 from blackboard_sync.i18n import tr
 from blackboard_sync.notebooklm import remote, store
 from blackboard_sync.notebooklm.remote import RemoteNotebook, RemoteSource
@@ -539,7 +539,7 @@ class SafariGateway:
         try:
             source_id = await self._call("add_file", {
                 "notebook_id": notebook_id, "file_id": file_id, "filename": path.name, "size": size,
-                "mime": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                "mime": mimes.guess_type(path.name),
             }, timeout=UPLOAD_SECONDS)
         finally:
             self.bridge.withdraw(file_id)
@@ -571,6 +571,9 @@ def check_runtime() -> str:
     """For the packaged app's self-test: the Safari route and SafariServices load, without the library."""
     services = _safari_services()
     assert "SFSafariExtensionManager" in services and "SFSafariApplication" in services
+    # The upload types, inside the sandbox: once this read /etc/apache2/mime.types and failed.
+    assert mimes.guess_type("Week 1.pdf") == "application/pdf"
+    assert mimes.guess_type("notes.odt").startswith("application/")
     return f"notebooklm ok (Safari, {extension_id()})"
 
 

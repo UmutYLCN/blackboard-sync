@@ -14,7 +14,7 @@ from pathlib import Path
 
 import requests
 
-from blackboard_sync import __version__, demo, macos_bookmarks, relocate
+from blackboard_sync import __version__, demo, macos_bookmarks, mimes, relocate
 from blackboard_sync.api import BlackboardClient
 from blackboard_sync.config import Config
 from blackboard_sync.errors import (
@@ -328,6 +328,7 @@ def _utf8_output() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    mimes.sandbox_safe()  # before any library asks mimetypes, which would read system files
     if is_windows():
         _utf8_output()
     parser = build_parser()

@@ -197,6 +197,9 @@ def _check_mas_sandbox() -> int:
 
 
 def main() -> int:
+    from blackboard_sync import mimes
+
+    mimes.sandbox_safe()  # App Sandbox denies the system's mime.types files mimetypes would read
     args = sys.argv[1:]
     if args == [CHECK_LOGIN_RUNTIME]:
         from blackboard_sync import licensing
