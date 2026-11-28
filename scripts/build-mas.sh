@@ -10,6 +10,7 @@
 #   MAS_APP_IDENTITY="Apple Distribution: Your Name (TEAMID)" \
 #   MAS_INSTALLER_IDENTITY="3rd Party Mac Developer Installer: Your Name (TEAMID)" \
 #   MAS_PROVISIONING_PROFILE=/path/to/Blackboard_Sync_MAS.provisionprofile \
+#   MAS_EXTENSION_PROVISIONING_PROFILE=/path/to/Blackboard_Sync_MAS_Safari_Extension.provisionprofile \
 #     ./scripts/build-mas.sh
 #
 # Override PYTHON=/path/to/python to build from an isolated build venv.
@@ -31,6 +32,8 @@ rm -rf build dist
 
 BBSYNC_DISTRIBUTION=mas PYTHONPATH=src "$PYTHON" -m PyInstaller --noconfirm --clean packaging/blackboard_sync_mas.spec
 APP="dist/Blackboard Sync.app"
+# Gemini Notebook goes through the app's own Safari extension in this build.
+./scripts/build-safari-extension.sh "$APP"
 
 if [ -n "${MAS_INSTALLER_IDENTITY:-}" ]; then
   PKG="dist/Blackboard-Sync-$VERSION-mas.pkg"

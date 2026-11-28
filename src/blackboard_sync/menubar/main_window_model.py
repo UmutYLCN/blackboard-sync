@@ -370,6 +370,18 @@ T_NOTEBOOKLM_CHECKING = tr("Checking what is already in Gemini Notebook…")
 T_NOTEBOOKLM_WAITING = tr("Sign in to Google in the browser window.")
 T_NOTEBOOKLM_VERIFYING = tr("Checking the connection…")
 T_NOTEBOOKLM_READING = tr("Gemini Notebook is reading the new files…")
+# The Mac App Store build reaches Gemini Notebook through Safari and the app's Safari extension,
+# only when the student asks: a run opens Safari.
+T_NOTEBOOKLM_SAFARI_INTRO = tr("Add new course files whenever you choose.")
+T_NOTEBOOKLM_SAFARI_SIGN_IN = tr("Uses your Google sign-in in Safari.")
+T_NOTEBOOKLM_SAFARI_OPENING = tr("Opening Gemini Notebook in Safari…")
+T_NOTEBOOKLM_SAFARI_SETUP = tr("Set up in Safari")
+# What the Safari setup waits for (``safari.connect``'s steps): a line, and how to do it.
+T_NOTEBOOKLM_SAFARI_STEPS = {
+    "extension": (tr("Turn on the Safari extension"), tr("Safari > Settings > Extensions > Blackboard Sync")),
+    "allow": (tr("Allow it on notebook.google.com"), tr("Click Blackboard Sync in Safari's toolbar: Always Allow")),
+    "google": (tr("Sign in to Google in Safari"), ""),
+}
 
 
 @dataclass(frozen=True)
@@ -404,6 +416,7 @@ class NotebookLMProgress:
     text: str
     course: str = ""
     fraction: float | None = None
+    hint: str = ""  # a setup step's how-to, under its line
 
 
 # The AI study session card's states (under NotebookLM on Home).
@@ -656,7 +669,6 @@ class MainStatus:
     course_colors: Mapping[str, int] = field(default_factory=dict)
     license: LicenseCard | None = None
     shows_demo: bool = False
-    shows_notebooklm: bool = True
     update_required: UpdateRequiredState | None = None
 
     @property
@@ -759,38 +771,41 @@ def notebooklm_progress(event: dict) -> NotebookLMProgress:
     if kind == "processing":
         return NotebookLMProgress(T_NOTEBOOKLM_READING)
     if kind == "sign_in":
+        if event.get("step") in T_NOTEBOOKLM_SAFARI_STEPS:
+            text, hint = T_NOTEBOOKLM_SAFARI_STEPS[event["step"]]
+            return NotebookLMProgress(text, hint=hint)
         return NotebookLMProgress(T_NOTEBOOKLM_VERIFYING)
     return NotebookLMProgress(T_NOTEBOOKLM_CHECKING)
 
 
 def notebooklm_warning_counts(status: NotebookLMStatus) -> str:
-    """Summarize the files or courses that need attention."""
+    """Summarize the files or courses that need attention.
+
+    Held files are left out: they are most likely in the notebook already, so they need nothing.
+    """
     parts = []
     if status.blocked:
         parts.append(ntr("{n} course blocked", "{n} courses blocked", status.blocked).format(n=status.blocked))
-    if status.held:
-        parts.append(tr("{n} held back").format(n=status.held))
     if status.failed:
         parts.append(tr("{n} failed").format(n=status.failed))
     return " · ".join(parts)
 
 
 def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
-    """Not connected, signing in, running, needing the student, or idle with the last run's result."""
-    if licensing.is_mas():
-        return NotebookLMCard(
-            NOTEBOOKLM_OFF,
-            tr("Gemini Notebook sign-in is not available in the Mac App Store version."),
-            enabled=False,
-        )
+    """Not connected, signing in, running, needing the student, or idle with the last run's result.
+
+    The Mac App Store build signs in with Safari, so it says so and offers to set Safari up again.
+    """
+    mas = licensing.is_mas()
     status, busy = model.notebooklm, model.notebooklm_busy
     connect = {"action": "notebooklm_connect", "action_title": T_NOTEBOOKLM_CONNECT}
     sync = {"action": "notebooklm_sync", "action_title": T_NOTEBOOKLM_SYNC, "enabled": not model.paused,
             "open_action": True}
     progress = model.notebooklm_progress
     if busy == NOTEBOOKLM_CONNECT:
-        return NotebookLMCard(NOTEBOOKLM_RUNNING, progress.text if progress else T_NOTEBOOKLM_WAITING,
-                              **{**connect, "enabled": False})
+        waiting = T_NOTEBOOKLM_SAFARI_OPENING if mas else T_NOTEBOOKLM_WAITING
+        return NotebookLMCard(NOTEBOOKLM_RUNNING, progress.text if progress else waiting,
+                              progress.hint if progress else "", **{**connect, "enabled": False})
     if busy == NOTEBOOKLM_SYNC:
         progress = progress or NotebookLMProgress(T_NOTEBOOKLM_CHECKING)
         return NotebookLMCard(NOTEBOOKLM_RUNNING, progress.text, progress.course, progress=progress.fraction,
@@ -798,9 +813,12 @@ def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
     if not status.connected:
         if status.error:
             return NotebookLMCard(NOTEBOOKLM_ATTENTION, status.message, **connect)
+        if mas:
+            return NotebookLMCard(NOTEBOOKLM_OFF, T_NOTEBOOKLM_SAFARI_INTRO, T_NOTEBOOKLM_SAFARI_SIGN_IN, **connect)
         return NotebookLMCard(NOTEBOOKLM_OFF, T_NOTEBOOKLM_INTRO, **connect)
     if status.needs_login:
-        return NotebookLMCard(NOTEBOOKLM_ATTENTION, status.message, action="notebooklm_connect", action_title=T_LOGIN)
+        return NotebookLMCard(NOTEBOOKLM_ATTENTION, status.message, action="notebooklm_connect",
+                              action_title=T_NOTEBOOKLM_SAFARI_SETUP if mas else T_LOGIN)
     if status.error:
         return NotebookLMCard(NOTEBOOKLM_ATTENTION, tr("Sync did not finish: {error}").format(error=status.message),
                               **sync)
@@ -808,6 +826,8 @@ def notebooklm_card(model: AppModel, now: datetime) -> NotebookLMCard:
     if finished is None:
         return NotebookLMCard(NOTEBOOKLM_IDLE, T_NEVER_SYNCED, **sync)
     detail = tr("No new files were added")
+    if not (status.added or status.failed or status.blocked or status.message):
+        detail = tr("All your files are already in Gemini Notebook")  # whichever app or device put them there
     if status.added:
         detail = ntr("{n} new file added to your notebooks", "{n} new files added to your notebooks",
                      status.added).format(n=status.added)
@@ -972,7 +992,6 @@ def main_status(model: AppModel, now: datetime, deadlines_page: deadlines.Deadli
         course_colors=model.course_colors.copy(),
         license=license_card(model, now),
         shows_demo=bool(first_run and idle and mas and not blocked),
-        shows_notebooklm=not mas,
         update_required=required_update,
     )
 

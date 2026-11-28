@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import html
-import mimetypes
 import re
 import unicodedata
 from pathlib import Path, PurePosixPath
 
+from blackboard_sync import mimes
 from blackboard_sync.system import is_windows
 
 # APFS limits a single path component to 255 UTF-8 bytes.
@@ -157,7 +157,7 @@ def guess_extension(mime_type: str | None) -> str:
         return ""
     ext = _MIME_EXTENSIONS.get(mime)
     if not ext:
-        ext = mimetypes.guess_extension(mime, strict=False) or ""
+        ext = mimes.guess_extension(mime)  # never the system's mime.types: App Sandbox denies them
     if ext and _REAL_EXT.match(ext) and any(c.isalpha() for c in ext):
         return ext.lower()
     return ""

@@ -5,6 +5,9 @@ and the student signs in by hand, two-factor steps included; this code never see
 It watches over the browser's local DevTools port until NotebookLM has opened and the Google
 session cookies exist, saves them owner-only and closes the browser.
 
+The Mac App Store build cannot start a browser like that (App Sandbox), so it signs in with
+Safari instead: the student's own Safari session and the app's Safari extension (``safari``).
+
 Google refuses embedded web views, so there is no in-app window to fall back on here. It can
 also refuse a browser that reports automation (``navigator.webdriver``), which Chromium does for
 ``--remote-debugging-port=0``, so a free port is chosen here; Chromium then writes no port file.
@@ -143,13 +146,20 @@ def _capture_session(config: Config, app: Path, timeout: float, run, spawn, conn
 
 def login(config: Config, timeout: float = SIGN_IN_TIMEOUT, run=subprocess.run, spawn=subprocess.Popen,
           connect=None, check: Callable[[Config], None] = verify, platform: str | None = None,
-          on_verify: Callable[[], None] = lambda: None) -> None:
-    """Sign in to Google and save the session; raises ``BlackboardSyncError`` with what went wrong."""
+          on_verify: Callable[[], None] = lambda: None,
+          on_event: Callable[[dict], None] = lambda event: None) -> None:
+    """Sign in to Google and save the session; raises ``BlackboardSyncError`` with what went wrong.
+
+    ``on_event`` hears the steps of the Mac App Store build's Safari setup.
+    """
     if licensing.is_mas(platform=platform):
-        raise NotebookLMSignInFailed(
-            tr("Gemini Notebook sign-in is not available in the Mac App Store version."),
-            NO_BROWSER,
-        )
+        from blackboard_sync.notebooklm import safari
+
+        config.ensure_data_dir()
+        make_private_dir(config.notebooklm_dir, platform=platform)
+        safari.connect(config, timeout=timeout, on_event=on_event)
+        store.mark_connected(config)
+        return
     config.ensure_data_dir()
     make_private_dir(config.notebooklm_dir, platform=platform)
     try:

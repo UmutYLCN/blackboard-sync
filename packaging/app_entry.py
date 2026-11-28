@@ -17,7 +17,8 @@ CHECK_PACKAGE = "--check-package"
 # Hidden self-test used by CI: draws a PDF note with the bundled fonts.
 CHECK_NOTE_PDF = "--check-note-pdf"
 CHECK_GOOGLE_CALENDAR = "--check-google-calendar"
-# Hidden self-test used by CI: loads the NotebookLM library, which is imported only by a run.
+# Hidden self-test used by CI: loads the NotebookLM library, which is imported only by a run
+# (in the Mac App Store build, the Safari route and SafariServices instead).
 CHECK_NOTEBOOKLM = "--check-notebooklm"
 # Hidden self-test for the Mac App Store ("mas") sandboxed bundle: verifies App Sandbox
 # container paths, onboarding MainWindow controls, WKWebView + persistent data store,
@@ -98,7 +99,7 @@ def _check_mas_sandbox() -> int:
             and form.autostart is False
             and status.first_run is True
             and status.shows_demo is True
-            and status.shows_notebooklm is False
+            and status.notebooklm.action == "notebooklm_connect"  # Gemini Notebook, through Safari
         )
         if aqua:
             from AppKit import NSApplication, NSApplicationActivationPolicyAccessory, NSOpenPanel
@@ -196,6 +197,9 @@ def _check_mas_sandbox() -> int:
 
 
 def main() -> int:
+    from blackboard_sync import mimes
+
+    mimes.sandbox_safe()  # App Sandbox denies the system's mime.types files mimetypes would read
     args = sys.argv[1:]
     if args == [CHECK_LOGIN_RUNTIME]:
         from blackboard_sync import licensing
@@ -222,7 +226,12 @@ def main() -> int:
         print(check_note_pdf())
         return 0
     if args == [CHECK_NOTEBOOKLM]:
-        from blackboard_sync.notebooklm.gateway import check_runtime as check_notebooklm
+        from blackboard_sync import licensing
+
+        if licensing.is_mas():  # no library in this build: Gemini Notebook goes through Safari
+            from blackboard_sync.notebooklm.safari import check_runtime as check_notebooklm
+        else:
+            from blackboard_sync.notebooklm.gateway import check_runtime as check_notebooklm
 
         print(check_notebooklm())
         return 0

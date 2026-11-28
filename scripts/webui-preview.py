@@ -91,7 +91,7 @@ def fixtures(now: datetime) -> dict[str, dict]:
         pause_enabled=True, home_heading=heading, home_subtitle=subtitle)
     notebooklm = AppModel(Path("."), now)
     notebooklm.notebooklm = NotebookLMStatus(connected=True, finished_at=local.replace(hour=18, minute=14).isoformat(),
-                                            added=3, skipped=2, modified=1, held=2)
+                                            added=3, skipped=2, modified=1, failed=2)
     states = {
         "up-to-date": (synced, announcements, page),
         "syncing": (replace(synced, sync_title=tr("Syncing…"), sync_enabled=False, scene=main.SCENE_COMPACT,

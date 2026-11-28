@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Collection
 
-from blackboard_sync import courses
+from blackboard_sync import courses, licensing
 from blackboard_sync.config import Config
 from blackboard_sync.errors import (
     EXIT_ERROR,
@@ -82,10 +82,8 @@ class RunResult:
         if failed:
             return ntr("{n} file could not be added; the next sync tries again.",
                        "{n} files could not be added; the next sync tries again.", failed).format(n=failed)
-        if self.held:
-            return ntr("{n} file may already be in Gemini Notebook, so it was not added.",
-                       "{n} files may already be in Gemini Notebook, so they were not added.",
-                       len(self.held)).format(n=len(self.held))
+        # A held file is most likely in the notebook already (another app or device added it under
+        # its own name): nothing for the student to do, so nothing to say. ``held_files`` lists them.
         return ""
 
     def last_run(self) -> dict:
@@ -99,6 +97,8 @@ class RunResult:
             "held": len(self.held),
             "held_files": [f"{label}: {reason}" for label, reason in self.held],
             "failed": len(self.failed) + len(self.processing_errors),
+            # Why, for whoever looks into it: the run's own log goes nowhere a student can see.
+            "failed_files": [f"{label}: {reason}"[:300] for label, reason in self.failed[:50]],
             "message": self.message or self.notice(),
         }
 
@@ -328,7 +328,14 @@ async def _collect_processing(gateway, notebook_id: str, added: dict[str, str], 
 
 
 async def open_gateway(config: Config):
-    """The library is loaded here, with its home in the data directory; only a run needs it."""
+    """The library is loaded here, with its home in the data directory; only a run needs it.
+
+    The Mac App Store build has no library: its Safari extension does the Google side (``safari``).
+    """
+    if licensing.is_mas():
+        from blackboard_sync.notebooklm.safari import SafariGateway
+
+        return await SafariGateway().open()
     home = store.library_home(config)
     make_private_dir(home)
     os.environ["NOTEBOOKLM_HOME"] = str(home)
@@ -338,9 +345,12 @@ async def open_gateway(config: Config):
 
 
 async def _refresh_session(config: Config, opener) -> None:
-    """Open and close the session if that was not done lately; only a lost session is news here."""
+    """Open and close the session if that was not done lately; only a lost session is news here.
+
+    Safari keeps its own Google session alive, so the Mac App Store build has nothing to do here.
+    """
     session = store.session_file(config)
-    if time.time() - session.stat().st_mtime < SESSION_REFRESH_SECONDS:
+    if not session.is_file() or time.time() - session.stat().st_mtime < SESSION_REFRESH_SECONDS:
         return
     try:
         await (await opener(config)).close()
@@ -369,7 +379,8 @@ async def _run(config: Config, auto: bool, events: Events, opener, sleep: Sleep)
     finally:
         state.save()
         await gateway.close()
-    os.utime(store.session_file(config))
+    if store.session_file(config).is_file():
+        os.utime(store.session_file(config))
     return result
 
 
@@ -384,7 +395,7 @@ def run(config: Config, *, auto: bool = False, events: Events = lambda event: No
     make_private_dir(config.notebooklm_dir)
     try:
         with run_lock(store.lock_file(config)):
-            if not store.session_file(config).is_file():
+            if not store.is_connected(config):
                 raise NotebookLMLoginRequired()
             result = asyncio.run(_run(config, auto, events, opener, sleep))
     except AlreadyRunning:

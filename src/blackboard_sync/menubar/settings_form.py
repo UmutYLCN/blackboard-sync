@@ -151,6 +151,10 @@ T_UNINSTALL_LABEL = tr("Uninstall Blackboard Sync")
 T_SECTION_APPEARANCE = tr("Appearance")
 T_NOTEBOOKLM_AUTO = tr("Add new files to Gemini Notebook after each sync")
 T_NOTEBOOKLM_DISCONNECT = tr("Disconnect Gemini Notebook")
+# Mac App Store build only: Gemini Notebook goes through the app's Safari extension.
+T_NOTEBOOKLM_SAFARI = tr("Safari extension")
+T_NOTEBOOKLM_SAFARI_DETAIL = tr("Turn on Blackboard Sync in Safari and allow it on notebook.google.com.")
+T_NOTEBOOKLM_SAFARI_BUTTON = tr("Open Safari Settings")
 T_THEME_LABEL = tr("Theme")
 T_THEME_DETAIL = tr("System follows the light or dark mode chosen in Windows.")
 # (value, menu text); applies at once, outside the Save/Cancel form.
@@ -229,6 +233,8 @@ SECTIONS = {section.key: section for section in (
     ), footer=tr("Sends deadlines to a dedicated Blackboard Deadlines calendar. Your other calendars stay private.")),
     SettingsSection(SECTION_NOTEBOOKLM, "Gemini Notebook", (
         SettingRow("notebooklm_auto", T_NOTEBOOKLM_AUTO, control=CONTROL_SWITCH, field="notebooklm_auto"),
+        SettingRow("notebooklm_safari", T_NOTEBOOKLM_SAFARI, T_NOTEBOOKLM_SAFARI_DETAIL, CONTROL_BUTTON,
+                   button=T_NOTEBOOKLM_SAFARI_BUTTON),
         SettingRow("notebooklm_disconnect", T_NOTEBOOKLM_DISCONNECT, tr("Files in Gemini Notebook stay there."),
                    CONTROL_BUTTON, button=tr("Disconnect")),
     ), footer=tr("Unofficial connection: it may stop working if Google changes Gemini Notebook.")),
@@ -250,8 +256,9 @@ SECTIONS = {section.key: section for section in (
 )}
 
 
-MAS_HIDDEN_SECTIONS = (SECTION_NOTEBOOKLM, SECTION_AI, SECTION_DANGER)
-MAS_HIDDEN_ROWS = ("check_updates",)
+MAS_HIDDEN_SECTIONS = (SECTION_AI, SECTION_DANGER)
+MAS_HIDDEN_ROWS = ("check_updates", "notebooklm_auto")  # a Safari run is only ever the student's
+MAS_ONLY_ROWS = ("notebooklm_safari",)
 
 
 def settings_sections(appearance: bool = False, notebooklm: bool = False,
@@ -260,7 +267,8 @@ def settings_sections(appearance: bool = False, notebooklm: bool = False,
 
     Appearance only where the window can change its theme, NotebookLM only where the app
     has it, the "Automatic re-sign-in" row only where the app does that. Mac App Store
-    (``mas``) builds omit sections managed by the Store or disallowed in App Sandbox.
+    (``mas``) builds omit sections managed by the Store or disallowed in App Sandbox, and only
+    they have the Safari extension row (``MAS_ONLY_ROWS``).
     """
     sections = tuple(SECTIONS[key] for key in SECTION_ORDER
                      if key in SECTIONS and (appearance or key != SECTION_APPEARANCE)
@@ -272,12 +280,9 @@ def settings_sections(appearance: bool = False, notebooklm: bool = False,
         footer = section.footer
         if not auto_relogin:
             rows = tuple(row for row in rows if row.key != "auto_relogin")
+        rows = tuple(row for row in rows if row.key not in (MAS_HIDDEN_ROWS if mas else MAS_ONLY_ROWS))
         if mas and section.key == SECTION_UPDATES:
-            rows = tuple(
-                replace(row, button="") if row.key == "update" else row
-                for row in rows
-                if row.key not in MAS_HIDDEN_ROWS
-            )
+            rows = tuple(replace(row, button="") if row.key == "update" else row for row in rows)
             footer = f"{updater.MAS_STORE_UPDATES} {uninstall.MAS_STORE_REMOVAL}"
         result.append(replace(section, rows=rows, footer=footer))
     return tuple(result)

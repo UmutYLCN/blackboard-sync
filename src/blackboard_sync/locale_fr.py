@@ -709,6 +709,7 @@ CATALOG = {
     "Sign in to Google in the browser window.": "Connectez-vous à Google dans la fenêtre du navigateur.",
     "Adding {done} of {total}: {file}": "Ajout {done} sur {total} : {file}",
     "Gemini Notebook is reading the new files…": "Gemini Notebook lit les nouveaux fichiers…",
+    "All your files are already in Gemini Notebook": "Tous vos fichiers sont déjà dans Gemini Notebook",
     "Checking the connection…": "Vérification de la connexion…",
     "Google took the sign-in, but Gemini Notebook did not open. Try again.":
         "Google a accepté la connexion, mais Gemini Notebook ne s’est pas ouvert. Réessayez.",
@@ -739,13 +740,6 @@ CATALOG = {
     "Gemini Notebook needs Chrome, Edge or Brave to sign in to Google; install one and try again.":
         "Gemini Notebook a besoin de Chrome, Edge ou Brave pour se connecter à Google ; installez-en un et "
         "réessayez.",
-
-    # NotebookLM: files that may be there already
-    "{n} file may already be in Gemini Notebook, so it was not added.":
-        "{n} fichier est peut-être déjà dans Gemini Notebook, il n’a donc pas été ajouté.",
-    "{n} files may already be in Gemini Notebook, so they were not added.":
-        "{n} fichiers sont peut-être déjà dans Gemini Notebook, ils n’ont donc pas été ajoutés.",
-    "{n} held back": "{n} en attente",
 
     # Store trial and purchase (licensing)
     "Purchases are not available in this build.": "Les achats ne sont pas disponibles dans cette version.",
@@ -786,8 +780,29 @@ CATALOG = {
     "Copy command for {name}": "Copier la commande pour {name}",
     "Copy {name} command for {term}": "Copier la commande {name} pour {term}",
     "Could not copy the command.": "Impossible de copier la commande.",
-    "Gemini Notebook sign-in is not available in the Mac App Store version.":
-        "La connexion à Gemini Notebook n’est pas disponible dans la version Mac App Store.",
+    # Gemini Notebook through Safari (Mac App Store build)
+    "Add new course files whenever you choose.": "Ajoutez les nouveaux fichiers de vos cours quand vous le voulez.",
+    "Uses your Google sign-in in Safari.": "Utilise votre connexion Google dans Safari.",
+    "Opening Gemini Notebook in Safari…": "Ouverture de Gemini Notebook dans Safari…",
+    "Set up in Safari": "Configurer dans Safari",
+    "Turn on the Safari extension": "Activez l’extension Safari",
+    "Safari > Settings > Extensions > Blackboard Sync": "Safari > Réglages > Extensions > Blackboard Sync",
+    "Allow it on notebook.google.com": "Autorisez-la sur notebook.google.com",
+    "Click Blackboard Sync in Safari's toolbar: Always Allow":
+        "Cliquez sur Blackboard Sync dans la barre de Safari : Toujours autoriser",
+    "Sign in to Google in Safari": "Connectez-vous à Google dans Safari",
+    "Safari extension": "Extension Safari",
+    "Turn on Blackboard Sync in Safari and allow it on notebook.google.com.":
+        "Activez Blackboard Sync dans Safari et autorisez-le sur notebook.google.com.",
+    "Open Safari Settings": "Ouvrir les réglages de Safari",
+    "Turn on the Blackboard Sync extension in Safari, then try again.":
+        "Activez l’extension Blackboard Sync dans Safari, puis réessayez.",
+    "Safari did not answer. Allow Blackboard Sync on notebook.google.com in Safari, then try again.":
+        "Safari n’a pas répondu. Autorisez Blackboard Sync sur notebook.google.com dans Safari, puis réessayez.",
+    "Sign in to Google in Safari, then try again.": "Connectez-vous à Google dans Safari, puis réessayez.",
+    "The Safari tab closed before all files were added. Sync again to go on.":
+        "L’onglet Safari s’est fermé avant l’ajout de tous les fichiers. Synchronisez à nouveau pour continuer.",
+    "Could not open Safari.": "Impossible d’ouvrir Safari.",
     "Try the demo": "Essayer la démo",
     "Updates are installed through the App Store.": "Les mises à jour sont installées via l’App Store.",
     "You can uninstall Blackboard Sync from Launchpad or the Applications folder.":

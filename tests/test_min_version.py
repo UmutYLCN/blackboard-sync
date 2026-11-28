@@ -768,7 +768,6 @@ def test_macos_window_and_menubar_app_enforce_min_version_dmg_retired_and_mas(tm
     first_run_mas = AppModel(tmp_path, NOW, configured=False, min_version_state=MinVersionResult("required", minimum="1.9.0"))
     first_run_mas_status = main.main_status(first_run_mas, NOW)
     assert first_run_mas_status.shows_demo is False
-    assert first_run_mas_status.shows_notebooklm is False
     assert first_run_mas_status.update_required is not None
 
     menu_app.window_action(REQUIRED_UPDATE_ACTION)

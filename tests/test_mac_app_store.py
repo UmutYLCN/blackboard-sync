@@ -249,18 +249,22 @@ def test_mas_onboarding_starts_empty_and_hides_non_sandbox_sections(tmp_path, mo
     )
     assert settings_form.submit(form_ready, current).settings.base_url == demo.DEMO_BASE_URL
 
-    # Get started screen exposes "Try the demo" and hides Gemini Notebook in MAS.
+    # Get started screen exposes "Try the demo"; Gemini Notebook offers to set up Safari.
     unconfigured_model = AppModel(dest=dest_dir, now=NOW, configured=False)
     status = main.main_status(unconfigured_model, NOW)
     assert status.first_run
     assert status.shows_demo is True
-    assert status.shows_notebooklm is False
+    assert status.notebooklm.enabled and status.notebooklm.detail == main.T_NOTEBOOKLM_SAFARI_INTRO
     assert not unconfigured_model.menu(NOW).sync_enabled
 
-    # Settings sections omit Gemini Notebook, AI terminal picker, Danger zone, and check_updates switch.
+    # Settings sections omit the AI terminal picker, Danger zone, and check_updates switch; Gemini
+    # Notebook stays, with the Safari extension's settings button.
     sections = settings_form.settings_sections(notebooklm=True, auto_relogin=True, mas=True)
     keys = [s.key for s in sections]
-    assert settings_form.SECTION_NOTEBOOKLM not in keys
+    notebooklm_rows = [r.key for r in next(s for s in sections if s.key == settings_form.SECTION_NOTEBOOKLM).rows]
+    assert notebooklm_rows == ["notebooklm_safari", "notebooklm_disconnect"]
+    direct = settings_form.settings_sections(notebooklm=True, auto_relogin=True, mas=False)
+    assert "notebooklm_safari" not in [r.key for s in direct for r in s.rows]
     assert settings_form.SECTION_AI not in keys
     assert settings_form.SECTION_DANGER not in keys
     updates_sec = next(s for s in sections if s.key == settings_form.SECTION_UPDATES)
@@ -327,11 +331,16 @@ def test_mas_login_and_silent_refresh_never_touch_external_browsers(tmp_path, mo
     )
     assert not res_sso.ok and res_sso.reason == session_refresh.NEEDS_INTERACTION
 
-    # Gemini Notebook sign-in refuses immediately with a clear MAS message instead of launching Chrome/CDP.
-    with pytest.raises(notebooklm_signin.NotebookLMSignInFailed) as exc_info:
-        notebooklm_signin.login(cfg)
-    assert exc_info.value.outcome == notebooklm_signin.NO_BROWSER
-    assert "Mac App Store" in str(exc_info.value)
+    # Gemini Notebook signs in through Safari and its extension, never Chrome/CDP.
+    from blackboard_sync.notebooklm import safari
+
+    def no_browser(*_a, **_kw):
+        pytest.fail("MAS must not start a browser for Gemini Notebook")
+
+    connected = []
+    monkeypatch.setattr(safari, "connect", lambda config, **kw: connected.append(kw["timeout"]))
+    notebooklm_signin.login(cfg, run=no_browser, spawn=no_browser, connect=no_browser)
+    assert connected == [notebooklm_signin.SIGN_IN_TIMEOUT]
 
 
 # -- 5. SMAppService Start at Login ------------------------------------------------------

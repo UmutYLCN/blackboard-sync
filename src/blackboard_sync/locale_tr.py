@@ -657,6 +657,7 @@ CATALOG = {
     "Sign in to Google in the browser window.": "Tarayıcı penceresinde Google'da oturum açın.",
     "Adding {done} of {total}: {file}": "Ekleniyor {done}/{total}: {file}",
     "Gemini Notebook is reading the new files…": "Gemini Notebook yeni dosyaları okuyor…",
+    "All your files are already in Gemini Notebook": "Tüm dosyalarınız zaten Gemini Notebook'ta",
     "Checking the connection…": "Bağlantı kontrol ediliyor…",
     "Google took the sign-in, but Gemini Notebook did not open. Try again.":
         "Google girişi kabul etti ama Gemini Notebook açılmadı. Yeniden deneyin.",
@@ -685,13 +686,6 @@ CATALOG = {
     "Gemini Notebook needs Chrome, Edge or Brave to sign in to Google; install one and try again.":
         "Gemini Notebook, Google'da oturum açmak için Chrome, Edge veya Brave gerektirir; "
         "birini kurup yeniden deneyin.",
-
-    # NotebookLM: files that may be there already
-    "{n} file may already be in Gemini Notebook, so it was not added.":
-        "{n} dosya Gemini Notebook'ta zaten olabilir, bu yüzden eklenmedi.",
-    "{n} files may already be in Gemini Notebook, so they were not added.":
-        "{n} dosya Gemini Notebook'ta zaten olabilir, bu yüzden eklenmedi.",
-    "{n} held back": "{n} bekletildi",
 
     # Store trial and purchase (licensing)
     "Purchases are not available in this build.": "Bu sürümde satın alma kullanılamıyor.",
@@ -732,8 +726,29 @@ CATALOG = {
     "Copy command for {name}": "{name} komutunu kopyala",
     "Copy {name} command for {term}": "{term} için {name} komutunu kopyala",
     "Could not copy the command.": "Komut kopyalanamadı.",
-    "Gemini Notebook sign-in is not available in the Mac App Store version.":
-        "Gemini Notebook girişi Mac App Store sürümünde kullanılamıyor.",
+    # Gemini Notebook through Safari (Mac App Store build)
+    "Add new course files whenever you choose.": "Yeni ders dosyalarını istediğiniz zaman ekleyin.",
+    "Uses your Google sign-in in Safari.": "Safari'deki Google oturumunuzu kullanır.",
+    "Opening Gemini Notebook in Safari…": "Gemini Notebook Safari'de açılıyor…",
+    "Set up in Safari": "Safari'de kur",
+    "Turn on the Safari extension": "Safari uzantısını açın",
+    "Safari > Settings > Extensions > Blackboard Sync": "Safari > Ayarlar > Uzantılar > Blackboard Sync",
+    "Allow it on notebook.google.com": "notebook.google.com'da izin verin",
+    "Click Blackboard Sync in Safari's toolbar: Always Allow":
+        "Safari araç çubuğunda Blackboard Sync'e tıklayın: Her Zaman İzin Ver",
+    "Sign in to Google in Safari": "Safari'de Google'da oturum açın",
+    "Safari extension": "Safari uzantısı",
+    "Turn on Blackboard Sync in Safari and allow it on notebook.google.com.":
+        "Safari'de Blackboard Sync'i açın ve notebook.google.com'da izin verin.",
+    "Open Safari Settings": "Safari Ayarlarını Aç",
+    "Turn on the Blackboard Sync extension in Safari, then try again.":
+        "Safari'de Blackboard Sync uzantısını açın, sonra yeniden deneyin.",
+    "Safari did not answer. Allow Blackboard Sync on notebook.google.com in Safari, then try again.":
+        "Safari yanıt vermedi. Safari'de notebook.google.com için Blackboard Sync'e izin verin, sonra yeniden deneyin.",
+    "Sign in to Google in Safari, then try again.": "Safari'de Google'da oturum açın, sonra yeniden deneyin.",
+    "The Safari tab closed before all files were added. Sync again to go on.":
+        "Tüm dosyalar eklenmeden Safari sekmesi kapandı. Devam etmek için yeniden senkronize edin.",
+    "Could not open Safari.": "Safari açılamadı.",
     "Try the demo": "Demoyu dene",
     "Updates are installed through the App Store.": "Güncellemeler App Store üzerinden yüklenir.",
     "You can uninstall Blackboard Sync from Launchpad or the Applications folder.":
