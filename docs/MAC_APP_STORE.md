@@ -22,7 +22,7 @@ the environment.
 | Sign-in & silent SSO refresh | External Chromium via CDP + Playwright fallback to `WKWebView` | In-app `WKWebView` (`inapp_macos.py`) with persistent `WKWebsiteDataStore` only; Playwright and Node.js are excluded from the bundle |
 | Start at login | `~/Library/LaunchAgents/*.plist` | `SMAppService.mainApp` (opt-in, off by default per Guideline 2.4.5(iii)) |
 | App updates & removal | GitHub Releases self-updater + Trash uninstaller | Self-updater and GitHub checks disabled; App Store delivers updates (`updater.store_update_url()` opens the App Store page for minimum-version prompts) |
-| AI study session card | Launches Terminal / iTerm2 (`osascript`) | Copies `cd -- '<term folder>' && <tool>` to the clipboard (no `osascript` or AppleEvents) |
+| AI study session card | Launches Terminal / iTerm2 (`osascript`) | Opens the term folder in Terminal and copies the command for the selected tool. Paste it and press Enter to start or resume the session. |
 | Gemini Notebook | External Chromium Google sign-in | Hidden in the UI and disabled with an explanatory message in `notebooklm/signin.py` (Google blocks embedded web views and App Sandbox blocks external browser CDP) |
 | App Review Demo Mode | Not shown by default | **Try the demo** button on the Get started screen runs the real sync engine offline against built-in sample courses, PDFs, announcements, and deadlines (`demo.py`) |
 

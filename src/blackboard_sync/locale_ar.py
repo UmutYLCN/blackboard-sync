@@ -727,8 +727,8 @@ CATALOG = {
         "اختر المجلد باستخدام “اختيار…” حتى يمنح macOS إذن الوصول إليه.",
     "Click a tool to copy the terminal command for {term}.":
         "انقر على أداة لنسخ أمر الطرفية الخاص بـ {term}.",
-    "Copied terminal command for {name} — paste it into Terminal.":
-        "تم نسخ أمر الطرفية لـ {name} — الصقه في الطرفية.",
+    "Command copied. Paste it in your terminal and press Enter.":
+        "تم نسخ الأمر. الصقه في تطبيق الطرفية واضغط على Enter.",
     "Copy command for {name}": "نسخ الأمر لـ {name}",
     "Copy {name} command for {term}": "نسخ أمر {name} لـ {term}",
     "Could not copy the command.": "تعذّر نسخ الأمر.",

@@ -319,6 +319,9 @@ session in that folder when possible.
 - **What runs.** The terminal opens in your current term's folder and starts the tool. If resuming fails
   immediately because there is no earlier session in that folder, a new session starts instead. The AI
   tool runs with your own account and its own rules.
+- **Mac App Store.** Clicking a tool on Home opens the term folder in Terminal and copies the command.
+  Paste it with **⌘V** and press **Enter**. The copied command follows your **Continue my last session
+  in this folder** setting.
 
 
 ## Version 1.6.0

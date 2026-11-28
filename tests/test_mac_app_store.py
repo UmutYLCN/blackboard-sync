@@ -23,6 +23,7 @@ from blackboard_sync import (
     courses,
     deadlines,
     demo,
+    i18n,
     licensing,
     login as login_mod,
     macos_bookmarks,
@@ -261,7 +262,8 @@ def test_mas_onboarding_starts_empty_and_hides_non_sandbox_sections(tmp_path, mo
     sections = settings_form.settings_sections(notebooklm=True, auto_relogin=True, mas=True)
     keys = [s.key for s in sections]
     assert settings_form.SECTION_NOTEBOOKLM not in keys
-    assert settings_form.SECTION_AI not in keys
+    ai_sec = next(s for s in sections if s.key == settings_form.SECTION_AI)
+    assert [r.key for r in ai_sec.rows] == ["ai_resume"]
     assert settings_form.SECTION_DANGER not in keys
     updates_sec = next(s for s in sections if s.key == settings_form.SECTION_UPDATES)
     assert [r.key for r in updates_sec.rows] == ["update"]
@@ -453,7 +455,8 @@ def test_mas_ai_launcher_copies_command_without_spawning_shells_or_osascript(tmp
     )
     assert res.ok
     assert res.folder == term_dir
-    assert len(copied) == 1 and "2026-2027 Fall" in copied[0] and copied[0].endswith("&& claude")
+    assert copied == [ai_launcher.copy_command_text(term_dir, ai_launcher.TOOLS["claude"], resume=True)]
+    assert "claude --continue" in copied[0]
 
     model = AppModel(dest=dest, now=NOW, configured=True, ai_cli="claude")
     model.ai_term = "2026-2027 Fall"
@@ -464,11 +467,30 @@ def test_mas_ai_launcher_copies_command_without_spawning_shells_or_osascript(tmp
 
     model.finish_ai_launch(res)
     card_after = main.ai_card(model)
-    assert "Copied terminal command for Claude Code" in card_after.detail
+    assert card_after.kind == main.AI_COPIED
+    assert card_after.detail == "Command copied. Paste it in your terminal and press Enter."
+    assert card_after.tools_enabled
 
     menu = model.menu(NOW)
     ai_entry = next(e for e in menu.entries if e.action == "ai_open")
     assert ai_entry.title == "Copy Claude Code command for 2026-2027 Fall"
+
+
+@pytest.mark.parametrize("language, expected", [
+    ("tr", "Komut kopyalandı. Terminale yapıştırın ve Enter’a basın."),
+    ("fr", "Commande copiée. Collez-la dans votre terminal et appuyez sur Entrée."),
+    ("de", "Befehl kopiert. Füge ihn im Terminal ein und drücke die Eingabetaste."),
+    ("es", "Comando copiado. Pégalo en la terminal y pulsa Intro."),
+    ("ar", "تم نسخ الأمر. الصقه في تطبيق الطرفية واضغط على Enter."),
+])
+def test_mas_ai_copy_confirmation_is_localized(monkeypatch, tmp_path, language, expected):
+    monkeypatch.setattr(licensing, "is_mas", lambda: True)
+    monkeypatch.setattr(i18n, "_language", language)
+    model = AppModel(dest=tmp_path, now=NOW, configured=True)
+    model.finish_ai_launch(ai_launcher.LaunchResult(
+        tool=ai_launcher.TOOLS["codex"], folder=tmp_path, copied_command="codex",
+    ))
+    assert main.ai_card(model).detail == expected
 
 
 # -- 8. Built-in offline Demo Mode -------------------------------------------------------

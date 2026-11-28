@@ -768,8 +768,8 @@ CATALOG = {
         "Wähle den Ordner über „Auswählen…“, damit macOS den Zugriff darauf erlaubt.",
     "Click a tool to copy the terminal command for {term}.":
         "Klicke auf ein Tool, um den Terminalbefehl für {term} zu kopieren.",
-    "Copied terminal command for {name} — paste it into Terminal.":
-        "Terminalbefehl für {name} kopiert — füge ihn in Terminal ein.",
+    "Command copied. Paste it in your terminal and press Enter.":
+        "Befehl kopiert. Füge ihn im Terminal ein und drücke die Eingabetaste.",
     "Copy command for {name}": "Befehl für {name} kopieren",
     "Copy {name} command for {term}": "{name}-Befehl für {term} kopieren",
     "Could not copy the command.": "Der Befehl konnte nicht kopiert werden.",

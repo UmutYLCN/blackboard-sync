@@ -84,6 +84,7 @@ from blackboard_sync import ai_launcher, courses, deadlines, licensing, schools,
 from blackboard_sync.menubar.main_window_model import (
     ACTIVITY,
     AI_ATTENTION,
+    AI_COPIED,
     AI_LAUNCHING,
     AI_OFF,
     AI_OPEN_PREFIX,
@@ -249,6 +250,7 @@ AI_SYMBOLS = {
     AI_READY: ("terminal.fill", "controlAccentColor"),
     AI_LAUNCHING: ("terminal.fill", "controlAccentColor"),
     AI_ATTENTION: ("exclamationmark.triangle", "systemOrangeColor"),
+    AI_COPIED: ("checkmark.circle.fill", "systemGreenColor"),
 }
 
 # Text fields get Cmd+V and friends from the main menu; while it is not there
@@ -1426,7 +1428,10 @@ class MainWindow:
         text = LEFT_W - x - 20
         self.ai_title.setStringValue_(card.title)
         self.ai_title.setFrame_(NSMakeRect(x, 16, text, 24))
-        self.ai_detail.setTextColor_(NSColor.systemOrangeColor() if card.warning else NSColor.secondaryLabelColor())
+        detail_color = NSColor.systemOrangeColor() if card.warning else NSColor.secondaryLabelColor()
+        if card.kind == AI_COPIED:
+            detail_color = NSColor.labelColor()
+        self.ai_detail.setTextColor_(detail_color)
         y = 46
         self.ai_detail.setStringValue_(card.detail)
         self.ai_detail.setToolTip_(card.detail or None)

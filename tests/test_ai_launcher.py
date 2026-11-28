@@ -372,33 +372,51 @@ def run_script(tmp_path: Path, folder: Path, tool: ai.AiTool, resume: bool, exit
     return calls, result.stdout
 
 
+def run_copied_command(tmp_path: Path, folder: Path, tool: ai.AiTool, resume: bool,
+                       exit_on_resume: int) -> tuple[list, str]:
+    log = tmp_path / "calls.log"
+    program_path = fake_tool(tmp_path / "bin" / tool.key, log, exit_on_resume)
+    command = ai.copy_command_text(folder, tool, resume)
+    assert "\n" not in command
+    # Simulate pasting at the prompt, with the AI executable already on the terminal's PATH.
+    result = subprocess.run(
+        [ZSH, "-fc", command], capture_output=True, text=True, timeout=30, cwd=tmp_path,
+        env={"PATH": f"{program_path.parent}:/usr/bin:/bin", "HOME": str(tmp_path)},
+    )
+    calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+    return calls, result.stdout
+
+
 @pytest.mark.skipif(ZSH is None, reason="needs zsh")
+@pytest.mark.parametrize("run", [run_script, run_copied_command])
 @pytest.mark.parametrize("name", [GUZ, QUOTED, HOSTILE])
-def test_the_macos_script_runs_in_the_term_folder_whatever_its_name(name, tmp_path):
+def test_the_macos_launcher_runs_in_the_term_folder_whatever_its_name(name, tmp_path, run):
     folder = tmp_path / "University" / name
     folder.mkdir(parents=True)
-    calls, out = run_script(tmp_path, folder, ai.TOOLS["claude"], resume=True, exit_on_resume=0)
-    assert calls == [f"{folder.resolve()}|--continue"]  # resumed, and a session that ended normally stays ended
-    assert "No earlier session" not in out
+    calls, out = run(tmp_path, folder, ai.TOOLS["claude"], resume=True, exit_on_resume=0)
+    assert calls == [f"{folder.resolve()}|--continue"]
+    assert not out
     assert not (tmp_path / "pwned").exists() and not (folder / "pwned").exists()
 
 
 @pytest.mark.skipif(ZSH is None, reason="needs zsh")
+@pytest.mark.parametrize("run", [run_script, run_copied_command])
 @pytest.mark.parametrize("key", ai.AI_CLIS)
-def test_a_resume_that_fails_at_once_starts_a_new_session(key, tmp_path):
+def test_a_resume_that_fails_at_once_starts_a_new_session(key, tmp_path, run):
     folder = tmp_path / "University" / GUZ
     folder.mkdir(parents=True)
     tool = ai.TOOLS[key]
-    calls, out = run_script(tmp_path, folder, tool, resume=True, exit_on_resume=1)
+    calls, out = run(tmp_path, folder, tool, resume=True, exit_on_resume=1)
     assert calls == [f"{folder.resolve()}|{' '.join(tool.resume)}", f"{folder.resolve()}|"]
-    assert "No earlier session" in out
+    assert ("No earlier session" if run is run_script else ai.T_NO_SESSION) in out
 
 
 @pytest.mark.skipif(ZSH is None, reason="needs zsh")
-def test_resume_off_starts_a_new_session_only(tmp_path):
+@pytest.mark.parametrize("run", [run_script, run_copied_command])
+def test_resume_off_starts_a_new_session_only(tmp_path, run):
     folder = tmp_path / "University" / GUZ
     folder.mkdir(parents=True)
-    calls, _ = run_script(tmp_path, folder, ai.TOOLS["codex"], resume=False, exit_on_resume=1)
+    calls, _ = run(tmp_path, folder, ai.TOOLS["codex"], resume=False, exit_on_resume=1)
     assert calls == [f"{folder.resolve()}|"]
 
 
